@@ -74,7 +74,7 @@ class TrainTicketHandler(BaseHTTPRequestHandler):
             )
         elif self.path == "/api/v1/preserveservice/preserve":
             self._send({"status": 0 if self.fail_preserve_status else 1, "msg": "ok"})
-        elif self.path == "/api/v1/orderOtherService/orderOther/refresh":
+        elif self.path == "/api/v1/orderservice/order/refresh":
             if self.large_order_response:
                 self._send({"status": 1, "data": "x" * (2 * 1024 * 1024 + 8)})
                 return
@@ -162,6 +162,8 @@ def test_generator_runs_order_flow_and_writes_jmeter_compatible_jtl(tmp_path, tr
     assert any(path == "/api/v1/travelservice/trips/left" for _, path, _ in TrainTicketHandler.seen)
     preserve_body = next(body for method, path, body in TrainTicketHandler.seen if method == "POST" and path == "/api/v1/preserveservice/preserve")
     assert preserve_body["foodType"] == 0
+    assert any(path == "/api/v1/orderservice/order/refresh" for _, path, _ in TrainTicketHandler.seen)
+    assert not any("orderOther" in path for _, path, _ in TrainTicketHandler.seen)
     assert ("GET", "/api/v1/cancelservice/cancel/newest-order-for-test/account-for-test", None) in TrainTicketHandler.seen
 
 

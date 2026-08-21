@@ -403,7 +403,7 @@ def flow_order(client: HttpClient, config: dict[str, Any], username: str, passwo
 
     order_sample, order_payload = client.request(
         "POST",
-        "/api/v1/orderOtherService/orderOther/refresh",
+        "/api/v1/orderservice/order/refresh",
         body={
             "loginId": account_id,
             "enableStateQuery": False,
