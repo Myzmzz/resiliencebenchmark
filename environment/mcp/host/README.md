@@ -104,6 +104,14 @@ and `0640 root:resbench-chaos-control` for the second. Do not point these units
 at an administrator home-directory kubeconfig: the services have
 `ProtectHome=yes` and should not inherit cluster-admin access.
 
+`environment/mcp/rbac.yaml` defines separate Kubernetes ServiceAccounts for
+each application and for read-only versus Chaos control. Namespaced reads are
+granted through RoleBindings only; the read-only identity cannot read Secrets or
+exec into Pods. ChaosBlade CR create/delete remains on a separate identity and
+is still disabled by the MCP runtime until controller gates pass. Use bounded
+TokenRequest credentials and refresh the selected application's kubeconfigs per
+Episode; never copy the administrator kubeconfig into the service directory.
+
 ## Per-Episode Activation
 
 Use `scripts/activate_mcp_episode.py` on the MCP host to render the four runtime

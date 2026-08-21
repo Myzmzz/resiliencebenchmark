@@ -38,6 +38,7 @@ spec:
       - environment/observability/prometheus-pvc.yaml
     mcpDeployments:
       runtimeContract: environment/mcp/runtime-contract.yaml
+      kubernetesRbac: environment/mcp/rbac.yaml
       httpRuntime: mcp_servers/http_runtime.py
       hostInstaller: environment/mcp/host/install.sh
       hostDeployer: scripts/deploy_mcp_host.py

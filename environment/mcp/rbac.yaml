@@ -1,0 +1,229 @@
+apiVersion: v1
+kind: List
+metadata:
+  name: resiliencebenchmark-mcp-rbac
+items:
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: resiliencebenchmark-system
+      labels: &managedLabels
+        app.kubernetes.io/part-of: resiliencebenchmark
+        app.kubernetes.io/managed-by: resiliencebenchmark-preparation
+
+  - &k8sServiceAccount
+    apiVersion: v1
+    kind: ServiceAccount
+    automountServiceAccountToken: false
+    metadata:
+      name: resbench-k8s-ro-train-ticket
+      namespace: resiliencebenchmark-system
+      labels: *managedLabels
+  - <<: *k8sServiceAccount
+    metadata:
+      name: resbench-k8s-ro-sock-shop
+      namespace: resiliencebenchmark-system
+      labels: *managedLabels
+  - <<: *k8sServiceAccount
+    metadata:
+      name: resbench-k8s-ro-otel-demo
+      namespace: resiliencebenchmark-system
+      labels: *managedLabels
+
+  - &chaosServiceAccount
+    apiVersion: v1
+    kind: ServiceAccount
+    automountServiceAccountToken: false
+    metadata:
+      name: resbench-chaos-control-train-ticket
+      namespace: resiliencebenchmark-system
+      labels: *managedLabels
+  - <<: *chaosServiceAccount
+    metadata:
+      name: resbench-chaos-control-sock-shop
+      namespace: resiliencebenchmark-system
+      labels: *managedLabels
+  - <<: *chaosServiceAccount
+    metadata:
+      name: resbench-chaos-control-otel-demo
+      namespace: resiliencebenchmark-system
+      labels: *managedLabels
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: resbench-mcp-k8s-inventory
+      labels: *managedLabels
+    rules:
+      - apiGroups: [""]
+        resources: [nodes, namespaces]
+        verbs: [get, list]
+      - apiGroups: [apiextensions.k8s.io]
+        resources: [customresourcedefinitions]
+        verbs: [get, list]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: resbench-mcp-k8s-namespaced-read
+      labels: *managedLabels
+    rules:
+      - apiGroups: [""]
+        resources: [pods, pods/log, services, endpoints, events, configmaps]
+        verbs: [get, list]
+      - apiGroups: [apps]
+        resources: [deployments, statefulsets, daemonsets, replicasets]
+        verbs: [get, list]
+      - apiGroups: [batch]
+        resources: [jobs]
+        verbs: [get, list]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: resbench-mcp-chaos-global-control
+      labels: *managedLabels
+    rules:
+      - apiGroups: [chaosblade.io]
+        resources: [chaosblades]
+        verbs: [get, list, create, delete]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: resbench-mcp-chaos-target-read
+      labels: *managedLabels
+    rules:
+      - apiGroups: [""]
+        resources: [pods]
+        verbs: [get, list]
+
+  - &k8sInventoryBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: resbench-mcp-k8s-inventory-train-ticket
+      labels: *managedLabels
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: resbench-mcp-k8s-inventory
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-k8s-ro-train-ticket
+        namespace: resiliencebenchmark-system
+  - <<: *k8sInventoryBinding
+    metadata:
+      name: resbench-mcp-k8s-inventory-sock-shop
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-k8s-ro-sock-shop
+        namespace: resiliencebenchmark-system
+  - <<: *k8sInventoryBinding
+    metadata:
+      name: resbench-mcp-k8s-inventory-otel-demo
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-k8s-ro-otel-demo
+        namespace: resiliencebenchmark-system
+
+  - &chaosGlobalBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: resbench-mcp-chaos-global-train-ticket
+      labels: *managedLabels
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: resbench-mcp-chaos-global-control
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-chaos-control-train-ticket
+        namespace: resiliencebenchmark-system
+  - <<: *chaosGlobalBinding
+    metadata:
+      name: resbench-mcp-chaos-global-sock-shop
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-chaos-control-sock-shop
+        namespace: resiliencebenchmark-system
+  - <<: *chaosGlobalBinding
+    metadata:
+      name: resbench-mcp-chaos-global-otel-demo
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-chaos-control-otel-demo
+        namespace: resiliencebenchmark-system
+
+  - &k8sNamespaceBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: resbench-mcp-k8s-ro
+      namespace: train-ticket
+      labels: *managedLabels
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: resbench-mcp-k8s-namespaced-read
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-k8s-ro-train-ticket
+        namespace: resiliencebenchmark-system
+  - <<: *k8sNamespaceBinding
+    metadata:
+      name: resbench-mcp-k8s-ro
+      namespace: sock-shop
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-k8s-ro-sock-shop
+        namespace: resiliencebenchmark-system
+  - <<: *k8sNamespaceBinding
+    metadata:
+      name: resbench-mcp-k8s-ro
+      namespace: otel-demo
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-k8s-ro-otel-demo
+        namespace: resiliencebenchmark-system
+
+  - &chaosTargetBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: resbench-mcp-chaos-target-read
+      namespace: train-ticket
+      labels: *managedLabels
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: resbench-mcp-chaos-target-read
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-chaos-control-train-ticket
+        namespace: resiliencebenchmark-system
+  - <<: *chaosTargetBinding
+    metadata:
+      name: resbench-mcp-chaos-target-read
+      namespace: sock-shop
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-chaos-control-sock-shop
+        namespace: resiliencebenchmark-system
+  - <<: *chaosTargetBinding
+    metadata:
+      name: resbench-mcp-chaos-target-read
+      namespace: otel-demo
+      labels: *managedLabels
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-chaos-control-otel-demo
+        namespace: resiliencebenchmark-system
