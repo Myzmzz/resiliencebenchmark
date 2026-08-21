@@ -61,6 +61,10 @@ async def _call(operation):
         return exc.as_response()
 
 
+def _server_kubeconfig(service: ChaosControlService) -> str | None:
+    return service.config.kubeconfig
+
+
 def create_server(
     *,
     service: ChaosControlService | None = None,
@@ -113,10 +117,10 @@ def create_server(
         title="Inventory ChaosBlade Run State",
         annotations=_read_annotations("Inventory ChaosBlade Run State"),
     )
-    async def chaos_inventory_run(namespace: str, kubeconfig: str | None = None) -> dict[str, Any]:
+    async def chaos_inventory_run(namespace: str) -> dict[str, Any]:
         """Read-only inventory of cluster-scoped ChaosBlade CRs for one logical namespace."""
 
-        return await _call(chaos.inventory_run(namespace=namespace, kubeconfig=kubeconfig))
+        return await _call(chaos.inventory_run(namespace=namespace, kubeconfig=_server_kubeconfig(chaos)))
 
     @server.tool(
         name="chaos_create_experiment",
@@ -131,7 +135,6 @@ def create_server(
         fault_type: str,
         duration_seconds: int,
         intensity: dict[str, Any],
-        kubeconfig: str,
         controller_token_ref: str,
         expected_controller_pod_uid: str,
         baseline_gate_token: str,
@@ -149,7 +152,7 @@ def create_server(
                 fault_type=fault_type,
                 duration_seconds=duration_seconds,
                 intensity=intensity,
-                kubeconfig=kubeconfig,
+                kubeconfig=_server_kubeconfig(chaos),
                 controller_token_ref=controller_token_ref,
                 expected_controller_pod_uid=expected_controller_pod_uid,
                 baseline_gate_token=baseline_gate_token,
@@ -163,30 +166,30 @@ def create_server(
         title="Get ChaosBlade Experiment",
         annotations=_read_annotations("Get ChaosBlade Experiment"),
     )
-    async def chaos_get_experiment(namespace: str, name: str, kubeconfig: str | None = None) -> dict[str, Any]:
+    async def chaos_get_experiment(namespace: str, name: str) -> dict[str, Any]:
         """Read-only lookup of one cluster-scoped ChaosBlade CR by logical namespace and name."""
 
-        return await _call(chaos.get_experiment(namespace=namespace, name=name, kubeconfig=kubeconfig))
+        return await _call(chaos.get_experiment(namespace=namespace, name=name, kubeconfig=_server_kubeconfig(chaos)))
 
     @server.tool(
         name="chaos_destroy_experiment",
         title="Destroy Ledger-Owned ChaosBlade Experiment",
         annotations=_destroy_annotations("Destroy Ledger-Owned ChaosBlade Experiment"),
     )
-    async def chaos_destroy_experiment(cleanup_handle: str, kubeconfig: str) -> dict[str, Any]:
+    async def chaos_destroy_experiment(cleanup_handle: str) -> dict[str, Any]:
         """Destroy one ChaosBlade CR only through this server's private ledger handle."""
 
-        return await _call(chaos.destroy_experiment(cleanup_handle=cleanup_handle, kubeconfig=kubeconfig))
+        return await _call(chaos.destroy_experiment(cleanup_handle=cleanup_handle, kubeconfig=_server_kubeconfig(chaos)))
 
     @server.tool(
         name="chaos_recovery_status",
         title="Read ChaosBlade Recovery Status",
         annotations=_read_annotations("Read ChaosBlade Recovery Status"),
     )
-    async def chaos_recovery_status(cleanup_handle: str, kubeconfig: str | None = None) -> dict[str, Any]:
+    async def chaos_recovery_status(cleanup_handle: str) -> dict[str, Any]:
         """Read-only recovery status for a ledger-owned ChaosBlade experiment."""
 
-        return await _call(chaos.recovery_status(cleanup_handle=cleanup_handle, kubeconfig=kubeconfig))
+        return await _call(chaos.recovery_status(cleanup_handle=cleanup_handle, kubeconfig=_server_kubeconfig(chaos)))
 
     return server
 

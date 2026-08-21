@@ -12,6 +12,8 @@ import yaml
 
 DEFAULT_LOCKFILE = Path("environment/shared/source-locks.yaml")
 SOURCE_ROOT_ENV = "RESBENCH_SOURCE_ROOT"
+ALLOWED_APPLICATIONS_ENV = "RESBENCH_SOURCE_ALLOWED_APPLICATIONS"
+ALLOWED_REPOSITORIES_ENV = "RESBENCH_SOURCE_ALLOWED_REPOSITORIES"
 MAX_FILE_BYTES = 1_000_000
 MAX_OUTPUT_CHARS = 25_000
 MAX_PAGE_LIMIT = 500
@@ -100,6 +102,16 @@ def error_envelope(exc: SourceROError) -> dict[str, Any]:
 
 def scan_warning(kind: str, message: str, action: str) -> dict[str, str]:
     return {"code": kind, "message": message, "action": action}
+
+
+def parse_csv_allowlist(value: str | None) -> set[str]:
+    if value is None:
+        return set()
+    return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def _format_scope(values: set[str]) -> list[str]:
+    return sorted(values)
 
 
 def _bounded_limit(limit: int | None) -> int:
@@ -240,6 +252,9 @@ class SourceROIndex:
         *,
         source_root: str | Path | None = None,
         lockfile: str | Path = DEFAULT_LOCKFILE,
+        allowed_applications: set[str] | None = None,
+        allowed_repositories: set[str] | None = None,
+        require_scope: bool = False,
     ) -> None:
         root_value = source_root if source_root is not None else os.environ.get(SOURCE_ROOT_ENV)
         if not root_value:
@@ -250,12 +265,38 @@ class SourceROIndex:
             )
         self.source_root = Path(root_value).expanduser().resolve()
         self.lockfile = Path(lockfile)
-        self.locks = self._load_locks(self.lockfile)
+        raw_locks = self._load_locks(self.lockfile)
+        self.allowed_applications = set(allowed_applications or set())
+        self.allowed_repositories = set(allowed_repositories or set())
+        if require_scope and not self.allowed_applications:
+            raise SourceROError(
+                "missing_source_scope",
+                f"{ALLOWED_APPLICATIONS_ENV} is required for source_ro runtime.",
+                "Set exactly one episode application, for example RESBENCH_SOURCE_ALLOWED_APPLICATIONS=train-ticket.",
+            )
+        self.locks = self._apply_scope(raw_locks)
         self._lock_by_id = {lock.id: lock for lock in self.locks}
 
     @classmethod
     def from_environment(cls) -> "SourceROIndex":
-        return cls()
+        applications = parse_csv_allowlist(os.environ.get(ALLOWED_APPLICATIONS_ENV))
+        if not applications:
+            raise SourceROError(
+                "missing_source_scope",
+                f"{ALLOWED_APPLICATIONS_ENV} is required for source_ro runtime.",
+                "Set exactly one episode application, for example RESBENCH_SOURCE_ALLOWED_APPLICATIONS=train-ticket.",
+            )
+        if len(applications) != 1:
+            raise SourceROError(
+                "invalid_source_scope",
+                f"{ALLOWED_APPLICATIONS_ENV} must name exactly one episode application.",
+                "Run one source_ro server per episode application; use RESBENCH_SOURCE_ALLOWED_REPOSITORIES to narrow repos.",
+            )
+        return cls(
+            allowed_applications=applications,
+            allowed_repositories=parse_csv_allowlist(os.environ.get(ALLOWED_REPOSITORIES_ENV)),
+            require_scope=True,
+        )
 
     def _load_locks(self, lockfile: Path) -> list[SourceLock]:
         if not lockfile.exists():
@@ -290,9 +331,64 @@ class SourceROIndex:
             locks.append(SourceLock.from_raw(raw, index))
         return locks
 
+    def _apply_scope(self, locks: list[SourceLock]) -> list[SourceLock]:
+        if not self.allowed_applications and not self.allowed_repositories:
+            return locks
+
+        scoped = [
+            lock
+            for lock in locks
+            if (not self.allowed_applications or lock.application in self.allowed_applications)
+            and (not self.allowed_repositories or lock.id in self.allowed_repositories)
+        ]
+        if self.allowed_applications and not any(lock.application in self.allowed_applications for lock in locks):
+            raise SourceROError(
+                "invalid_source_scope",
+                f"allowed application scope matched no source locks: {', '.join(_format_scope(self.allowed_applications))}",
+                "Use an application name from environment/shared/source-locks.yaml.",
+            )
+        if self.allowed_repositories:
+            known_repo_ids = {lock.id for lock in locks}
+            unknown = self.allowed_repositories - known_repo_ids
+            if unknown:
+                raise SourceROError(
+                    "invalid_source_scope",
+                    f"allowed repository scope contains unknown lock id(s): {', '.join(_format_scope(unknown))}",
+                    "Use lock ids returned by source_list_repositories for this repository.",
+                )
+            out_of_application = {
+                lock.id
+                for lock in locks
+                if lock.id in self.allowed_repositories
+                and self.allowed_applications
+                and lock.application not in self.allowed_applications
+            }
+            if out_of_application:
+                raise SourceROError(
+                    "invalid_source_scope",
+                    (
+                        "allowed repository scope includes repo(s) outside the allowed application: "
+                        f"{', '.join(_format_scope(out_of_application))}"
+                    ),
+                    "Keep RESBENCH_SOURCE_ALLOWED_REPOSITORIES within the episode application.",
+                )
+        if not scoped:
+            raise SourceROError(
+                "invalid_source_scope",
+                "source_ro allowlist matched no source repositories.",
+                "Check RESBENCH_SOURCE_ALLOWED_APPLICATIONS and RESBENCH_SOURCE_ALLOWED_REPOSITORIES.",
+            )
+        return scoped
+
     def _lock(self, repo_id: str) -> SourceLock:
         lock = self._lock_by_id.get(repo_id)
         if lock is None:
+            if self.allowed_applications or self.allowed_repositories:
+                raise SourceROError(
+                    "repository_out_of_scope",
+                    f"source repository is outside this episode scope: {repo_id}",
+                    "Call source_list_repositories and use only repositories returned for this episode.",
+                )
             raise SourceROError(
                 "unknown_repository",
                 f"unknown source repository id: {repo_id}",
