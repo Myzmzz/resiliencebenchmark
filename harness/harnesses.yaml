@@ -30,8 +30,8 @@ shared:
 harnesses:
   bladeai:
     kind: bladeai
-    status: preparation_configured_remote_unqualified
-    qualification_status: live_host_unverified
+    status: live_read_only_sse_qualified
+    qualification_status: passed_with_nonfatal_shutdown_warning
     entrypoint:
       mode: cli_or_service
       command: blade-ai
@@ -44,7 +44,7 @@ harnesses:
       enabled_flag: env:BLADE_AI_MCP_ENABLED
       config_path_flag: env:BLADE_AI_MCP_CONFIG_PATH
       config_path_status: declared_but_bladeai_v0_6_2_loader_uses_home_default
-      transport_status: native_sse_runtime_prepared_remote_unqualified
+      transport_status: native_sse_runtime_live_qualified_read_only
       host_native_sse_listeners:
         k8s_ro: 127.0.0.1:18181
         telemetry_ro: 127.0.0.1:18182
@@ -151,7 +151,7 @@ harnesses:
 
   deepseek-harness:
     kind: official_deepseek_harness
-    status: pinned_developer_preview
+    status: remote_runtime_installed_model_smoke_pending
     version_pin:
       upstream: "@deepseek-ai/dsh"
       distribution: npm
@@ -163,7 +163,7 @@ harnesses:
       runtime_lock_sha256: 3fd8d9fe3f91cc780d70dc443977edf077e054c756c1eb248b63fe2e64ad9f72
       git_tag: dsh-v0.1.0-rc.7
       commit: 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
-      verification_status: source_top_level_integrity_and_transitive_lock_recorded_remote_install_pending
+      verification_status: source_top_level_integrity_transitive_lock_and_remote_identity_passed
       note: Developer preview pin supplied by environment-prep inventory; install exactly this version and integrity for repeatable trials.
     entrypoint:
       mode: headless_cli

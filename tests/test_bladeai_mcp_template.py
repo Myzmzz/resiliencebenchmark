@@ -95,7 +95,7 @@ def test_bladeai_qualification_records_real_version_boundary():
     assert contract["enabled_flag"] == "BLADE_AI_MCP_ENABLED"
     assert contract["config_path_flag"] == "BLADE_AI_MCP_CONFIG_PATH"
     assert contract["config_path_status"] == "declared_but_loader_uses_default_home_path"
-    assert contract["runtime_transport_status"] == "native_sse_runtime_prepared_remote_unqualified"
+    assert contract["runtime_transport_status"] == "native_sse_runtime_live_qualified_read_only"
     assert contract["host_native_sse_listeners"] == {
         "k8s_ro": "127.0.0.1:18181",
         "telemetry_ro": "127.0.0.1:18182",
@@ -104,6 +104,12 @@ def test_bladeai_qualification_records_real_version_boundary():
     assert set(contract["allowed_attach_to"]) == ALLOWED_ATTACH_TO
     assert set(template["read_only_servers"]) == set(EXPECTED_READ_ONLY)
     assert template["controlled_write_servers"]["chaos_control"]["enabled"] is False
+    assert qualification["bladeai"]["live_evidence"]["connectedTools"] == {
+        "k8s_ro": 5,
+        "telemetry_ro": 10,
+        "source_ro": 5,
+    }
+    assert qualification["bladeai"]["live_evidence"]["chaosControlConnected"] is False
 
 
 def test_harness_registry_points_bladeai_to_template_and_boundary():
@@ -112,7 +118,7 @@ def test_harness_registry_points_bladeai_to_template_and_boundary():
 
     assert bladeai["mcp"]["template"] == "bladeai/mcp.json.template"
     assert bladeai["mcp"]["qualification"] == "bladeai/qualification.yaml"
-    assert bladeai["mcp"]["transport_status"] == "native_sse_runtime_prepared_remote_unqualified"
+    assert bladeai["mcp"]["transport_status"] == "native_sse_runtime_live_qualified_read_only"
     assert bladeai["mcp"]["host_native_sse_listeners"] == {
         "k8s_ro": "127.0.0.1:18181",
         "telemetry_ro": "127.0.0.1:18182",

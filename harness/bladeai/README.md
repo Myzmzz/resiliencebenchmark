@@ -12,8 +12,9 @@ parses a Claude-style `mcp.json` with BladeAI extensions:
 
 The important boundary is transport. BladeAI v0.6.2's `http` client uses the
 MCP SDK SSE client. The benchmark host runtime prepares native authenticated SSE
-listeners for BladeAI on loopback ports `18181-18183`; the adapter remains
-unqualified until those listeners are verified on the live deployment host.
+listeners for BladeAI on loopback ports `18181-18183`. Live qualification
+connected all three read-only clients to `verifier`; `chaos_control` remained
+disabled and unconnected.
 
 ## Template
 
@@ -49,5 +50,6 @@ For a trial-local BladeAI run:
    `telemetry_ro`, and `source_ro`.
 7. Verify no BladeAI-visible `chaos_control` tools are connected.
 
-The adapter remains unqualified until those checks pass against the live
-deployment host.
+The live host passed these read-only checks with BladeAI v0.6.2. The timed
+server smoke emitted a non-fatal cancel-scope warning while disconnecting after
+successful startup; scored trials still need complete BladeAI trajectory export.

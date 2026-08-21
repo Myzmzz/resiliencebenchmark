@@ -12,7 +12,7 @@
 - Seven model aliases are registered; transport capability probes are implemented but have not been executed with a rotated runtime gateway credential. Long-context, tool-error recovery, Oracle-refusal, and OpenAI Responses behavior remain mandatory pre-matrix checks.
 - DeepSeek Harness has an exact top-level package/integrity pin, a complete integrity-bearing npm lock that forces all observed DSH modules to rc.7, an idempotent `npm ci` host installer, and post-install dependency-tree validation. The remote root and `resbench` identities both report `0.1.0-rc.7`; complete tool-trace export still must be qualified before matrix freeze.
 - Prometheus MCP Chart objects are installed with a pinned chart/image and restricted ServiceAccount, but its Deployment is scaled to zero because cluster nodes cannot pull the GHCR image; Harbor mirroring is required before qualification.
-- Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`. Seven hardened loopback systemd units are deployed with per-service Unix identities, Episode-scoped RBAC/kubeconfigs, and 11 verified source locks. All four authenticated HTTP endpoints passed post-recovery qualification; the three BladeAI SSE listeners are active but the live BladeAI v0.6.1/v0.6.2 adapter mismatch remains unqualified.
+- Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`. Seven hardened loopback systemd units are deployed with per-service Unix identities, Episode-scoped RBAC/kubeconfigs, and 11 verified source locks. All four authenticated HTTP endpoints passed post-recovery qualification. BladeAI v0.6.2 connected all three read-only SSE clients to `verifier`; Chaos control was disabled and unconnected.
 - The current read-only cluster state has all three nodes Ready. Remaining intentional hard gates are Sock Shop scale-zero and 157 historical cluster-scoped ChaosBlade resources.
 
 ## Recovered host incident
@@ -86,6 +86,6 @@
 1. Supply rotated Harbor Robot credentials at runtime, mirror Sock Shop digests, scale up, and qualify its business paths and signals.
 2. Renew kubelet serving certificates using the cluster distribution runbook.
 3. Reconcile the historical ChaosBlade resources with their owning platform.
-4. Resolve the live BladeAI v0.6.1 versus repository adapter v0.6.2 mismatch and qualify its three read-only SSE clients.
-5. Supply a rotated model-gateway credential, execute the seven-model capability probe, and run Codex/Claude Code/DeepSeek smoke trials.
+4. Supply a rotated model-gateway credential, execute the seven-model capability probe, and run Codex/Claude Code/DeepSeek smoke trials.
+5. Qualify complete BladeAI and DeepSeek trajectory export for scored trials.
 6. Freeze source-commit-to-runtime-image mappings and only then unlock the first 6–10 Episodes.

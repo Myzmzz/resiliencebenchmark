@@ -15,7 +15,7 @@ bladeai:
     config_path_flag: BLADE_AI_MCP_CONFIG_PATH
     config_path_status: declared_but_loader_uses_default_home_path
     default_path: ~/.blade-ai/mcp.json
-    runtime_transport_status: native_sse_runtime_prepared_remote_unqualified
+    runtime_transport_status: native_sse_runtime_live_qualified_read_only
     host_native_sse_listeners:
       k8s_ro: 127.0.0.1:18181
       telemetry_ro: 127.0.0.1:18182
@@ -53,3 +53,14 @@ bladeai:
       - render URLs to host-native authenticated SSE listeners on loopback ports 18181-18183
       - verify startup logs contain MCP connected for k8s_ro, telemetry_ro, and source_ro
       - verify chaos_control is not connected from BladeAI
+  live_evidence:
+    status: qualified-read-only
+    bladeAiVersion: 0.6.2
+    serverReady: true
+    connectedTools:
+      k8s_ro: 5
+      telemetry_ro: 10
+      source_ro: 5
+    chaosControlConnected: false
+    attachTo: verifier
+    shutdownBoundary: Timed smoke emitted a non-fatal cancel-scope disconnect warning after successful startup.
