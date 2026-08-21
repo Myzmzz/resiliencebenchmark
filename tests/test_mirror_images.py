@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts import mirror_images
 
@@ -51,6 +52,16 @@ def test_load_image_pins_reads_all_sock_shop_pins():
     assert len(pins) == 14
     assert {pin.source_name for pin in pins} >= {"weaveworksdemos/front-end", "mongo", "rabbitmq"}
     assert all(pin.source_ref.endswith(pin.digest) for pin in pins)
+
+
+def test_multiarch_sources_record_index_provenance_and_pin_amd64_manifests():
+    config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))["spec"]
+    by_source = {item["source"]: item for item in config["imagePins"]}
+
+    assert config["imagePlatform"] == "linux/amd64"
+    for name in ("mongo", "redis", "kbudde/rabbitmq-exporter"):
+        assert by_source[name]["sourceIndexDigest"].startswith("sha256:")
+        assert not by_source[name]["target"].endswith(by_source[name]["sourceIndexDigest"])
 
 
 def test_dry_run_returns_pinned_harbor_image_map_without_runner():

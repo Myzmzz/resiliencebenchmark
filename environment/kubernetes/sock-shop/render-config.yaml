@@ -8,6 +8,7 @@ spec:
     url: https://raw.githubusercontent.com/microservices-demo/microservices-demo/9dff06fae4981921caec6a62393a6ebfce4b3e3f/deploy/kubernetes/complete-demo.yaml
     commit: 9dff06fae4981921caec6a62393a6ebfce4b3e3f
     sha256: 02d70d2c7b576ea8b18fc436e18b9158d5b662e50180998b82127d8050813771
+  imagePlatform: linux/amd64
   allowedObjects:
     - apiVersion: v1
       kind: Namespace
@@ -37,10 +38,13 @@ spec:
     - source: weaveworksdemos/user-db
       target: docker.io/weaveworksdemos/user-db@sha256:695bc22c11396c7ae747118c56e619f3b3295d9d4cbec999d30230b3f399a389
     - source: mongo
-      target: docker.io/library/mongo@sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
+      sourceIndexDigest: sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
+      target: docker.io/library/mongo@sha256:41afd6e1183f57e4e4d03ab733070671fca8553da2b36f15d6e3fc9760494d17
     - source: redis
-      target: docker.io/library/redis@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
+      sourceIndexDigest: sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
+      target: docker.io/library/redis@sha256:9c3ecc609a8087c0f11c494fefaf37a8f7bf9a967631d4a0da8967a9810be354
     - source: rabbitmq
       target: docker.io/library/rabbitmq@sha256:0297618bd60270f03665448b02b3b1110dfc51fae60a3c6804005169f0904dad
     - source: kbudde/rabbitmq-exporter
-      target: docker.io/kbudde/rabbitmq-exporter@sha256:12f27d6d84e6dbdd72c6bc2605e48af9910517394483c1dfa3230e49d3e32107
+      sourceIndexDigest: sha256:12f27d6d84e6dbdd72c6bc2605e48af9910517394483c1dfa3230e49d3e32107
+      target: docker.io/kbudde/rabbitmq-exporter@sha256:f8d2a74b54132842fc9fc958a0cf838399f69088cbb795f3be81d84902c1e74c
