@@ -41,6 +41,7 @@ def harbor_config() -> mirror_images.HarborConfig:
         project="sock-shop",
         username="robot$benchmark",
         robot_credential="not-a-real-token",
+        insecure=True,
     )
 
 
@@ -81,6 +82,8 @@ def test_execute_uses_crane_copy_and_verifies_digest_without_printing_secret(mon
     assert len([command for command in runner.commands if command[:2] == ["crane", "digest"]]) == 14
     assert runner.commands[0][:4] == ["crane", "auth", "login", "harbor.example:85"]
     assert "--password-stdin" in runner.commands[0]
+    assert "--insecure" in runner.commands[0]
+    assert all("--insecure" in command for command in runner.commands[1:])
     assert "not-a-real-token" not in output
     assert "not-a-real-token" not in " ".join(" ".join(command) for command in runner.commands)
     assert all("HARBOR_ROBOT_TOKEN" not in env for env in runner.envs)
@@ -117,6 +120,26 @@ def test_load_harbor_config_allows_dry_run_without_credentials(monkeypatch):
     assert config.project == "sock-shop"
     assert config.username is None
     assert config.robot_credential is None
+    assert config.insecure is False
+
+
+def test_load_harbor_config_accepts_explicit_insecure_boolean(monkeypatch):
+    monkeypatch.setenv("HARBOR_REGISTRY", "harbor.example:85")
+    monkeypatch.setenv("HARBOR_PROJECT_SOCK_SHOP", "sock-shop")
+    monkeypatch.setenv("HARBOR_INSECURE", "true")
+
+    config = mirror_images.load_harbor_config(require_credentials=False)
+
+    assert config.insecure is True
+
+
+def test_load_harbor_config_rejects_ambiguous_insecure_value(monkeypatch):
+    monkeypatch.setenv("HARBOR_REGISTRY", "harbor.example:85")
+    monkeypatch.setenv("HARBOR_PROJECT_SOCK_SHOP", "sock-shop")
+    monkeypatch.setenv("HARBOR_INSECURE", "yes")
+
+    with pytest.raises(mirror_images.MirrorError, match="exactly true or false"):
+        mirror_images.load_harbor_config(require_credentials=False)
 
 
 @pytest.mark.parametrize(

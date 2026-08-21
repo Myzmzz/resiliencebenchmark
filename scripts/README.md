@@ -34,7 +34,7 @@ python3 scripts/benchmark_prepare.py qualify-cluster \
 - `probe_models.py`：使用运行时网关变量探测七个模型的协议、流式、结构化输出和工具调用能力；`--dry-run` 不联网。
 - `materialize_sources.py`：按 `source-locks.yaml` 的 commit 与归档 SHA-256 生成只读源码快照；不会覆盖非空目录。
 - `render_sock_shop.py`：从固定上游 SHA 渲染 Sock Shop，只允许受控对象类型并强制镜像 digest。
-- `mirror_images.py`：默认 dry-run；显式 `--execute` 后使用临时 Docker 配置和 Harbor Robot Account 复制固定镜像，不在输出中保留凭据。
+- `mirror_images.py`：默认 dry-run；显式 `--execute` 后使用临时 Docker 配置和 Harbor Robot Account 复制固定镜像，不在输出中保留凭据。仅当 Harbor 明确是 HTTP registry 时设置 `HARBOR_INSECURE=true`；其他值或默认均保持 TLS 校验。
 - `train_ticket_workload.py`：渲染和管理 controller-owned Train-Ticket Job；真实 start 要求 Secret 引用、host allowlist、PVC 和 digest-pinned workload image。
 - `deploy_deepseek_harness.py`：默认 dry-run；真实安装仅允许 strict known_hosts 与公钥 BatchMode SSH，不支持 password 或 `sshpass`。
 - `inventory_runtime_images.py`：显式 kubeconfig 的只读 Pod 镜像盘点；输出脱敏 repository tail、运行时 digest、readiness 和逐 namespace 资格状态，用于建立 source commit 与部署镜像之间的证据链。

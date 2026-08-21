@@ -45,6 +45,7 @@ class HarborConfig:
     project: str
     username: str | None
     robot_credential: str | None
+    insecure: bool = False
 
 
 class CommandRunner(Protocol):
@@ -128,6 +129,9 @@ def load_harbor_config(*, require_credentials: bool) -> HarborConfig:
 
     username = os.environ.get("HARBOR_ROBOT_USERNAME")
     robot_credential = os.environ.get("HARBOR_ROBOT_TOKEN")
+    insecure_raw = os.environ.get("HARBOR_INSECURE", "false").strip().lower()
+    if insecure_raw not in {"true", "false"}:
+        raise MirrorError("HARBOR_INSECURE must be exactly true or false")
     if require_credentials:
         if not username:
             missing.append("HARBOR_ROBOT_USERNAME")
@@ -140,6 +144,7 @@ def load_harbor_config(*, require_credentials: bool) -> HarborConfig:
         project=project,
         username=username,
         robot_credential=robot_credential,
+        insecure=insecure_raw == "true",
     )
 
 
@@ -218,7 +223,16 @@ def mirror_images(
         env.pop("HARBOR_ROBOT_TOKEN", None)
         env["DOCKER_CONFIG"] = docker_config
         runner.run(
-            ["crane", "auth", "login", config.registry, "-u", config.username, "--password-stdin"],
+            [
+                "crane",
+                "auth",
+                "login",
+                config.registry,
+                "-u",
+                config.username,
+                "--password-stdin",
+                *(["--insecure"] if config.insecure else []),
+            ],
             env=env,
             stdin=config.robot_credential,
         )
@@ -226,10 +240,21 @@ def mirror_images(
         for pin in pins:
             tagged_destination = tag_ref_for(pin, config)
             runner.run(
-                ["crane", "copy", "--platform", "linux/amd64", pin.source_ref, tagged_destination],
+                [
+                    "crane",
+                    "copy",
+                    "--platform",
+                    "linux/amd64",
+                    pin.source_ref,
+                    tagged_destination,
+                    *(["--insecure"] if config.insecure else []),
+                ],
                 env=env,
             )
-            target_digest = runner.run(["crane", "digest", tagged_destination], env=env).strip()
+            target_digest = runner.run(
+                ["crane", "digest", tagged_destination, *(["--insecure"] if config.insecure else [])],
+                env=env,
+            ).strip()
             if target_digest != pin.digest:
                 raise MirrorError(
                     f"digest verification failed for {pin.source_name}: expected {pin.digest}, got {target_digest}"
