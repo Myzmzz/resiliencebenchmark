@@ -220,6 +220,24 @@ def test_p95_uses_nearest_rank_at_exact_twenty_sample_boundary():
     assert state.abort_reason == "maxP95LatencyMs exceeded: 2180"
 
 
+@pytest.mark.parametrize(
+    ("max_error_rate", "expected"),
+    [(0.02, 50), (0.01, 100), (0.5, 20), (1.0, 20), (0.0, 20)],
+)
+def test_default_abort_sample_floor_matches_error_rate_resolution(max_error_rate, expected):
+    generator = load_generator()
+    thresholds = {"maxErrorRate": max_error_rate}
+
+    assert generator.default_abort_min_samples(1, thresholds) == expected
+
+
+def test_default_abort_sample_floor_rejects_non_numeric_error_rate():
+    generator = load_generator()
+
+    with pytest.raises(generator.WorkloadRuntimeError, match="maxErrorRate must be numeric"):
+        generator.default_abort_min_samples(1, {"maxErrorRate": "two percent"})
+
+
 def test_generator_marks_train_ticket_application_status_failures(tmp_path, train_ticket_server):
     generator = load_generator()
     result_path = tmp_path / "train-ticket.jtl"

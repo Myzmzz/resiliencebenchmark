@@ -495,6 +495,18 @@ def record_samples(state: RunState, samples: list[Sample], thresholds: dict[str,
             state.abort_reason = f"maxP95LatencyMs exceeded: {elapsed[index]}"
 
 
+def default_abort_min_samples(concurrency: int, thresholds: dict[str, Any]) -> int:
+    """Avoid sequentially rejecting a window before its error-rate resolution is meaningful."""
+    minimum = max(20, concurrency * 2)
+    try:
+        max_error_rate = float(thresholds.get("maxErrorRate", 1.0))
+    except (TypeError, ValueError) as exc:
+        raise WorkloadRuntimeError("maxErrorRate must be numeric") from exc
+    if 0 < max_error_rate < 1:
+        minimum = max(minimum, math.ceil(1 / max_error_rate))
+    return minimum
+
+
 def write_jtl_header(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("w", encoding="utf-8", newline="")
@@ -528,7 +540,12 @@ def run_workload(
         raise WorkloadRuntimeError("workload.json missing abortThresholds object")
     connect_timeout_ms = parse_int_env("CONNECT_TIMEOUT_MS", 3000, minimum=100, maximum=60000)
     response_timeout_ms = parse_int_env("RESPONSE_TIMEOUT_MS", 10000, minimum=100, maximum=120000)
-    min_samples = parse_int_env("ABORT_MIN_SAMPLES", max(20, concurrency * 2), minimum=1, maximum=100000)
+    min_samples = parse_int_env(
+        "ABORT_MIN_SAMPLES",
+        default_abort_min_samples(concurrency, thresholds),
+        minimum=1,
+        maximum=100000,
+    )
 
     allowed_hosts = parse_allowed_hosts(allowed_hosts_raw)
     client = HttpClient(base_url, connect_timeout_ms, response_timeout_ms, allowed_hosts)
