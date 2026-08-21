@@ -1,8 +1,8 @@
 target:
-  base_url: http://ts-ui-dashboard.train-ticket.svc.cluster.local
+  base_url: http://ts-gateway-service.train-ticket.svc.cluster.local:18888
   base_url_ref: runtime://train-ticket/base-url
   allowed_hosts:
-    - ts-ui-dashboard.train-ticket.svc.cluster.local
+    - ts-gateway-service.train-ticket.svc.cluster.local
 credentials:
   kubernetes_secret_ref:
     name: train-ticket-workload-user

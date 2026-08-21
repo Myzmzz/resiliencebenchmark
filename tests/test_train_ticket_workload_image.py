@@ -186,6 +186,27 @@ def test_generator_abort_threshold_returns_nonzero(tmp_path):
     assert result_path.read_text(encoding="utf-8").splitlines()[0] == ",".join(generator.JTL_FIELDS)
 
 
+def test_generator_evaluates_short_window_when_early_abort_floor_is_not_reached(tmp_path):
+    generator = load_generator()
+    result_path = tmp_path / "train-ticket.jtl"
+    config = workload_config("search")
+    config["abortThresholds"]["maxConsecutiveFailures"] = 100
+    config["abortThresholds"]["maxErrorRate"] = 0.02
+
+    code = generator.run_workload(
+        config,
+        "http://127.0.0.1:1",
+        "runtime-user",
+        "runtime-password",
+        result_path,
+        "127.0.0.1",
+    )
+
+    rows = result_path.read_text(encoding="utf-8").splitlines()
+    assert 1 < len(rows) < 51
+    assert code == 3
+
+
 def test_p95_uses_nearest_rank_at_exact_twenty_sample_boundary():
     generator = load_generator()
 

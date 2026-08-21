@@ -479,6 +479,13 @@ def record_samples(state: RunState, samples: list[Sample], thresholds: dict[str,
             return
     if len(state.samples) < min_samples:
         return
+
+    evaluate_aggregate_thresholds(state, thresholds)
+
+
+def evaluate_aggregate_thresholds(state: RunState, thresholds: dict[str, Any]) -> None:
+    if state.abort_reason or not state.samples:
+        return
     failures = sum(1 for sample in state.samples if not sample.success)
     max_error_rate = float(thresholds.get("maxErrorRate", 1.0))
     if failures / len(state.samples) > max_error_rate:
@@ -585,6 +592,10 @@ def run_workload(
             thread.join()
     finally:
         handle.close()
+    # The minimum sample count governs only early termination. The completed
+    # window must always be evaluated so a short smoke run cannot return zero
+    # after recording threshold-breaking failures or latency.
+    evaluate_aggregate_thresholds(state, thresholds)
     if state.abort_reason:
         print(f"ABORT: {state.abort_reason}", file=sys.stderr)
         return 3

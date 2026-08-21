@@ -45,8 +45,9 @@ spec:
         digest: "{{IMAGE_DIGEST_TRAIN_TICKET_TSDB_MYSQL}}"
   workloads:
     primaryEntry:
-      service: ts-ui-dashboard
+      service: ts-gateway-service
       protocol: http
+      port: 18888
       baseUrl: "{{TRAIN_TICKET_BASE_URL}}"
     criticalPaths:
       - id: search-trips
@@ -87,6 +88,7 @@ spec:
         - ts-order-service
         - ts-travel-service
         - ts-route-service
+        - ts-gateway-service
         - ts-ui-dashboard
     loki:
       sharedRef: shared/observability.yaml#loki

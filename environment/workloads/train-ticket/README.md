@@ -11,10 +11,10 @@ Runtime fixture shape:
 
 ```yaml
 target:
-  base_url: http://ts-ui-dashboard.train-ticket.svc.cluster.local
+  base_url: http://ts-gateway-service.train-ticket.svc.cluster.local:18888
   base_url_ref: runtime://train-ticket/base-url
   allowed_hosts:
-    - ts-ui-dashboard.train-ticket.svc.cluster.local
+    - ts-gateway-service.train-ticket.svc.cluster.local
 credentials:
   kubernetes_secret_ref:
     name: train-ticket-workload-user
@@ -35,6 +35,11 @@ Only secret references are rendered into Kubernetes objects. Literal credential
 values are rejected. `target.base_url` must be `http` or `https`, must not
 contain userinfo, and its hostname must exactly match `target.allowed_hosts` so
 runtime credentials cannot be sent to an unintended host.
+
+The synthetic workload uses `ts-gateway-service:18888` as its API boundary.
+`ts-ui-dashboard` remains the browser-facing UI, but routing benchmark traffic
+through the dedicated Gateway exposes the same service-discovery path used by
+the application while avoiding an extra Nginx proxy layer.
 
 The workload image is now a small Python generator under `image/`. It is based
 on the previously verified Train-Ticket login, travel search, preserve, and

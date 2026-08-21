@@ -12,7 +12,8 @@ from scripts import train_ticket_workload
 
 PROFILE = Path("environment/workloads/train-ticket/profiles.yaml")
 EXAMPLE_FIXTURE = Path("environment/workloads/train-ticket/runtime-fixture.example.yaml")
-TARGET_HOST = "ts-ui-dashboard.train-ticket.svc.cluster.local"
+TARGET_HOST = "ts-gateway-service.train-ticket.svc.cluster.local"
+TARGET_BASE_URL = f"http://{TARGET_HOST}:18888"
 
 
 class FakeRunner:
@@ -57,7 +58,7 @@ def fixture_file(
         yaml.safe_dump(
             {
                 "target": {
-                    "base_url": base_url or f"http://{TARGET_HOST}",
+                    "base_url": base_url or TARGET_BASE_URL,
                     "base_url_ref": "runtime://fixture/base-url",
                     "allowed_hosts": allowed_hosts or [TARGET_HOST],
                 },
@@ -105,7 +106,7 @@ def test_render_is_deterministic_and_has_controller_labels(tmp_path):
 def test_repository_example_fixture_is_valid():
     fixture = train_ticket_workload.load_fixture(EXAMPLE_FIXTURE)
 
-    assert fixture.base_url == f"http://{TARGET_HOST}"
+    assert fixture.base_url == TARGET_BASE_URL
     assert fixture.allowed_hosts == (TARGET_HOST,)
     assert fixture.pvc_claim == "train-ticket-workload-results"
 
