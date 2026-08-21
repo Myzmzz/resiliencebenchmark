@@ -79,6 +79,12 @@ def test_dry_run_never_calls_runner_or_exposes_runtime_values(tmp_path):
     assert env[qualify.IDENTITY_ENV] not in encoded
 
 
+def test_remote_script_uses_current_source_materialization_contract():
+    assert "spec = p.get('spec', {})" in qualify.REMOTE_CHECK_SCRIPT
+    assert "spec.get('mode') in {'materialize', 'verify-existing'}" in qualify.REMOTE_CHECK_SCRIPT
+    assert "len(sources) == 11" in qualify.REMOTE_CHECK_SCRIPT
+
+
 def test_execute_qualifies_current_node_and_remote_runtime(tmp_path):
     kubeconfig = tmp_path / "kubeconfig"
     kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")

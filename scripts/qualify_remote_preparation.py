@@ -134,7 +134,14 @@ source_summary="$(/opt/resiliencebenchmark/repo/.venv/bin/python - <<'PY'
 import json
 from pathlib import Path
 p = json.loads(Path('/var/lib/resiliencebenchmark/source/source-materialization.json').read_text())
-print(f"{p.get('status')}:{len(p.get('sources', []))}")
+spec = p.get('spec', {})
+sources = spec.get('sources', [])
+valid = (
+    spec.get('mode') in {'materialize', 'verify-existing'}
+    and len(sources) == 11
+    and all(item.get('id') and item.get('commit') and item.get('archiveSha256') for item in sources)
+)
+print(f"{'ok' if valid else 'invalid'}:{len(sources)}")
 PY
 )"
 active_units=0
