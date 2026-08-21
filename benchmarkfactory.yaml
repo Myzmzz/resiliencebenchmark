@@ -73,6 +73,7 @@ spec:
     outputSchema: harness/schemas/agent-result.schema.json
     runTraceSchema: harness/schemas/run-trace.schema.json
     deepSeekDeploymentStatus: harness/deepseek-harness/deployment-status.yaml
+    deepSeekRuntimeLock: harness/deepseek-harness/runtime-lock/package-lock.json
     trialRunner: scripts/run_harness_trial.py
     clientTemplates:
       bladeAi: harness/bladeai/mcp.json.template

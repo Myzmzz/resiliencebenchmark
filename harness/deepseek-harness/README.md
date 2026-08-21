@@ -11,12 +11,13 @@ Pinned upstream:
 
 The package is a developer preview. Do not replace the exact version with `latest` or `next` during a benchmark campaign.
 
-The published package declares many transitive dependencies with semver ranges.
-The installer verifies the top-level package and exact DSH version, then records
-the actual `npm ls --all --json` tree on the host. That record makes drift
-visible but is not a pre-install dependency lock. Before DeepSeek Harness
-results enter a comparable matrix, review and freeze that tree with a complete
-package lock or a qualified container image digest.
+The published package declares many transitive dependencies with semver ranges,
+which otherwise resolve rc.7 modules to newer release candidates. The committed
+`runtime-lock/package.json` overrides every observed `@deepseek-ai/dsh-*`
+module to `0.1.0-rc.7`; `runtime-lock/package-lock.json` freezes every resolved
+package and integrity. The installer verifies the lock SHA-256, installs with
+`npm ci`, rejects any non-rc.7 DSH module, and records the actual
+`npm ls --all --json` tree for post-install comparison.
 
 The pinned package contract has been inspected directly: `dsh --profile
 headless "<task>"` runs one non-interactive session, prints the final assistant

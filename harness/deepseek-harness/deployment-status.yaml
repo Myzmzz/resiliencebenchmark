@@ -19,7 +19,9 @@ spec:
     - node-version-compatible
     - npm-integrity-check-pass
     - exact-dsh-version-installed
-    - transitive-dependency-tree-recorded-before-matrix-freeze
+    - runtime-package-lock-sha256-pass
+    - all-installed-dsh-packages-rc7-pass
+    - dependency-tree-recorded-before-matrix-freeze
     - fresh-dsh-home-per-trial
     - no-provider-secret-persisted
     - headless-read-only-mcp-smoke-pass

@@ -9,11 +9,15 @@ redacted so benchmark artifacts do not capture infrastructure details.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
+import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
@@ -27,6 +31,8 @@ PACKAGE_NAME = "@deepseek-ai/dsh"
 PACKAGE_VERSION = "0.1.0-rc.7"
 PACKAGE_SPEC = f"{PACKAGE_NAME}@{PACKAGE_VERSION}"
 INSTALL_SCRIPT = Path("harness/deepseek-harness/install.sh")
+RUNTIME_LOCK_DIR = Path("harness/deepseek-harness/runtime-lock")
+RUNTIME_LOCK_SHA256 = "3fd8d9fe3f91cc780d70dc443977edf077e054c756c1eb248b63fe2e64ad9f72"
 INSTALL_ROOT = "/opt/resiliencebenchmark/deepseek-harness"
 DSH_BINARY = f"{INSTALL_ROOT}/node_modules/.bin/dsh"
 DEPENDENCY_TREE_FILE = "/var/lib/resiliencebenchmark/deepseek-harness-dependency-tree.json"
@@ -72,6 +78,7 @@ def dry_run_report(env: Mapping[str, str]) -> dict[str, Any]:
             "name": PACKAGE_NAME,
             "version": PACKAGE_VERSION,
             "spec": PACKAGE_SPEC,
+            "runtimeLockSha256": RUNTIME_LOCK_SHA256,
         },
         "requirements": [
             {"name": HOST_ENV, "status": "present" if env.get(HOST_ENV) else "required_for_execute"},
@@ -83,7 +90,7 @@ def dry_run_report(env: Mapping[str, str]) -> dict[str, Any]:
         ],
         "plannedSteps": [
             "ssh_preflight_true",
-            "stdin_install_script_to_remote_bash",
+            "stdin_locked_install_bundle_to_remote_bash",
             "verify_dsh_version",
             "verify_dependency_tree_recorded",
         ],
@@ -160,16 +167,69 @@ def ssh_base_argv(host: str, identity: str, known_hosts: str) -> list[str]:
     ]
 
 
-def load_install_script(repo_root: Path) -> tuple[bytes | None, list[dict[str, str]]]:
-    path = repo_root / INSTALL_SCRIPT
+def build_install_bundle(repo_root: Path) -> tuple[bytes | None, list[dict[str, str]]]:
+    script_path = repo_root / INSTALL_SCRIPT
+    package_path = repo_root / RUNTIME_LOCK_DIR / "package.json"
+    lock_path = repo_root / RUNTIME_LOCK_DIR / "package-lock.json"
     issues: list[dict[str, str]] = []
-    if not path.is_file():
+    if not script_path.is_file():
         return None, [{"severity": "ERROR", "message": "fixed install script is missing"}]
-    content = path.read_bytes()
-    text = content.decode("utf-8", errors="replace")
+    if not package_path.is_file() or not lock_path.is_file():
+        return None, [{"severity": "ERROR", "message": "complete DeepSeek runtime lock is missing"}]
+    script = script_path.read_bytes()
+    text = script.decode("utf-8", errors="replace")
     if PACKAGE_SPEC not in text:
         issues.append({"severity": "ERROR", "message": "fixed install script does not contain the pinned package spec"})
-    return content, issues
+    lock_bytes = lock_path.read_bytes()
+    if hashlib.sha256(lock_bytes).hexdigest() != RUNTIME_LOCK_SHA256:
+        issues.append({"severity": "ERROR", "message": "DeepSeek runtime lock SHA-256 does not match the deploy pin"})
+    try:
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        lock = json.loads(lock_bytes)
+    except json.JSONDecodeError:
+        issues.append({"severity": "ERROR", "message": "DeepSeek runtime lock JSON is invalid"})
+        return None, issues
+    if package.get("dependencies", {}).get(PACKAGE_NAME) != PACKAGE_VERSION:
+        issues.append({"severity": "ERROR", "message": "DeepSeek package.json does not pin the expected top-level version"})
+    for path, info in lock.get("packages", {}).items():
+        if re.search(r"(^|/)node_modules/@deepseek-ai/dsh(?:$|[^/]+$)", path):
+            if info.get("version") != PACKAGE_VERSION:
+                issues.append({"severity": "ERROR", "message": "DeepSeek runtime lock contains a non-pinned DSH package"})
+                break
+        if path and info.get("resolved") and not info.get("link") and not info.get("integrity"):
+            issues.append({"severity": "ERROR", "message": "DeepSeek runtime lock contains a package without integrity"})
+            break
+    if issues:
+        return None, issues
+
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w") as archive:
+        members = (
+            ("install.sh", script, 0o755),
+            ("runtime-lock/package.json", package_path.read_bytes(), 0o644),
+            ("runtime-lock/package-lock.json", lock_bytes, 0o644),
+        )
+        for name, data, mode in members:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = mode
+            info.mtime = 0
+            archive.addfile(info, io.BytesIO(data))
+    return output.getvalue(), []
+
+
+def install_bundle_ssh_argv(ssh_base: list[str]) -> list[str]:
+    remote_script = r'''set -eu
+tmp="/opt/resiliencebenchmark/.dsh-install-$$"
+cleanup() { rm -rf -- "$tmp"; }
+trap cleanup EXIT
+mkdir -m 0700 "$tmp"
+tar -xf - -C "$tmp"
+/bin/bash "$tmp/install.sh" --lock-dir "$tmp/runtime-lock"
+trap - EXIT
+cleanup'''
+    remote_command = f"/bin/sh -c {shlex.quote(remote_script)} resbench-dsh-install"
+    return [*ssh_base, remote_command]
 
 
 def step_result(name: str, result: CommandResult, sensitive: Mapping[str, str]) -> dict[str, Any]:
@@ -218,7 +278,12 @@ def run_deploy(
         "schemaVersion": "resiliencebenchmark.deepseek_harness_deploy/v1",
         "mode": "execute",
         "status": "pending",
-        "pinnedPackage": {"name": PACKAGE_NAME, "version": PACKAGE_VERSION, "spec": PACKAGE_SPEC},
+        "pinnedPackage": {
+            "name": PACKAGE_NAME,
+            "version": PACKAGE_VERSION,
+            "spec": PACKAGE_SPEC,
+            "runtimeLockSha256": RUNTIME_LOCK_SHA256,
+        },
         "steps": [],
         "issues": [],
     }
@@ -235,20 +300,20 @@ def run_deploy(
         return report
 
     runtime, issues = validate_runtime_env(env)
-    script, script_issues = load_install_script(repo)
-    issues.extend(script_issues)
+    bundle, bundle_issues = build_install_bundle(repo)
+    issues.extend(bundle_issues)
     if issues:
         report["status"] = "blocked"
         report["issues"] = issues
         return report
-    assert script is not None
+    assert bundle is not None
 
     active_runner = runner or subprocess_runner
     ssh_base = ssh_base_argv(runtime[HOST_ENV], runtime[IDENTITY_ENV], runtime[KNOWN_HOSTS_ENV])
     sensitive = runtime
     commands = [
         ("ssh_preflight_true", [*ssh_base, "true"], None),
-        ("install_deepseek_harness", [*ssh_base, "/bin/bash", "-s"], script),
+        ("install_deepseek_harness", install_bundle_ssh_argv(ssh_base), bundle),
         ("verify_dsh_version", [*ssh_base, DSH_BINARY, "--version"], None),
         ("verify_dependency_tree_recorded", [*ssh_base, "test", "-s", DEPENDENCY_TREE_FILE], None),
     ]
