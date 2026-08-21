@@ -57,3 +57,9 @@ already executable in the cluster.
 Real starts write `/results/train-ticket.jtl` to the fixture-provided PVC.
 `stop --execute` removes only this run's Job and ConfigMap by `run_id`; it never
 deletes the result PVC.
+
+The repository provides `results-pvc.yaml` for the current shared-cluster
+adapter. It explicitly selects the already-qualified `nfs-client` storage
+class instead of relying on the cluster's ambiguous set of default storage
+classes. Applying it creates only the controller-owned result volume; workload
+credentials remain a separately managed runtime Secret.

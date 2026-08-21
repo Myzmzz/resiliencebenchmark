@@ -184,6 +184,40 @@ def test_generator_abort_threshold_returns_nonzero(tmp_path):
     assert result_path.read_text(encoding="utf-8").splitlines()[0] == ",".join(generator.JTL_FIELDS)
 
 
+def test_p95_uses_nearest_rank_at_exact_twenty_sample_boundary():
+    generator = load_generator()
+
+    def sample(elapsed_ms: int):
+        return generator.Sample(
+            timestamp_ms=1,
+            elapsed_ms=elapsed_ms,
+            label="search-trips",
+            response_code="200",
+            response_message="OK",
+            thread_name="test",
+            success=True,
+            failure_message="",
+            response_bytes=2,
+            sent_bytes=2,
+            url="http://example.invalid",
+            latency_ms=elapsed_ms,
+            connect_ms=1,
+        )
+
+    thresholds = {
+        "maxErrorRate": 0.02,
+        "maxP95LatencyMs": 2000,
+        "maxConsecutiveFailures": 20,
+    }
+    state = generator.RunState()
+    generator.record_samples(state, [sample(100) for _ in range(19)] + [sample(2180)], thresholds, 20)
+    assert state.abort_reason is None
+
+    state = generator.RunState()
+    generator.record_samples(state, [sample(100) for _ in range(18)] + [sample(2180), sample(2200)], thresholds, 20)
+    assert state.abort_reason == "maxP95LatencyMs exceeded: 2180"
+
+
 def test_generator_marks_train_ticket_application_status_failures(tmp_path, train_ticket_server):
     generator = load_generator()
     result_path = tmp_path / "train-ticket.jtl"

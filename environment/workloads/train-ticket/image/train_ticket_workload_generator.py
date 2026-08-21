@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import socket
 import ssl
@@ -486,7 +487,10 @@ def record_samples(state: RunState, samples: list[Sample], thresholds: dict[str,
     max_p95 = int(thresholds.get("maxP95LatencyMs", 0) or 0)
     if max_p95:
         elapsed = sorted(sample.elapsed_ms for sample in state.samples)
-        index = min(len(elapsed) - 1, int(len(elapsed) * 0.95))
+        # Nearest-rank percentile uses a one-based rank. Subtracting one after
+        # ceil is important at exact boundaries: for 20 samples p95 is the
+        # 19th value, not the maximum (20th) value.
+        index = max(0, math.ceil(len(elapsed) * 0.95) - 1)
         if elapsed[index] > max_p95:
             state.abort_reason = f"maxP95LatencyMs exceeded: {elapsed[index]}"
 
