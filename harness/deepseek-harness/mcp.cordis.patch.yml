@@ -7,28 +7,12 @@
         url: !!js process.env.RESBENCH_K8S_MCP_URL
         headers:
           Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
-    - id: mcp-prometheus-ro
+    - id: mcp-telemetry-ro
       name: '@deepseek-ai/dsh-mcp-client'
       config:
-        serverName: prometheus_ro
+        serverName: telemetry_ro
         transport: streamable-http
-        url: !!js process.env.RESBENCH_PROMETHEUS_MCP_URL
-        headers:
-          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
-    - id: mcp-jaeger-ro
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: jaeger_ro
-        transport: streamable-http
-        url: !!js process.env.RESBENCH_JAEGER_MCP_URL
-        headers:
-          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
-    - id: mcp-loki-ro
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: loki_ro
-        transport: streamable-http
-        url: !!js process.env.RESBENCH_LOKI_MCP_URL
+        url: !!js process.env.RESBENCH_TELEMETRY_MCP_URL
         headers:
           Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
     - id: mcp-source-ro

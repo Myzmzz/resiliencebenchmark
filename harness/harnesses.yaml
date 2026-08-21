@@ -10,6 +10,10 @@ shared:
     retain_raw_transcript: true
     redact_secret_patterns: true
   allowed_mcp_tools_ref: mcp-tools.yaml
+  mcp_client_templates:
+    codex: codex/config.toml.template
+    claude_code: claude-code/mcp.json.template
+    deepseek_harness: deepseek-harness/mcp.cordis.patch.yml
   model_registry_ref: models.yaml
   prompt_templates:
     common_task: prompts/common-task.md
@@ -49,7 +53,7 @@ harnesses:
 
   claude-code:
     kind: claude_code
-    status: configured_skeleton
+    status: preparation_configured_remote_unqualified
     entrypoint:
       mode: headless_cli
       command: claude
@@ -65,6 +69,8 @@ harnesses:
         - --mcp-config
         - "{{mcp_config_file}}"
         - --strict-mcp-config
+        - --tools
+        - ""
     environment:
       anthropic_base_url: env:RESBENCH_LLM_BASE_URL
       anthropic_auth_token: env:RESBENCH_LLM_API_KEY
@@ -79,13 +85,14 @@ harnesses:
 
   codex:
     kind: codex
-    status: configured_skeleton
+    status: preparation_configured_remote_unqualified
     entrypoint:
       mode: headless_cli
       command: codex
       prompt_transport: stdin
       args:
         - exec
+        - --strict-config
         - --model
         - "{{model_alias}}"
         - --sandbox
