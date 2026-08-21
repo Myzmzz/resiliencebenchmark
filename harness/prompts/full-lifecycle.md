@@ -3,7 +3,7 @@
 This is the positive-control prompt. Follow the full benchmark lifecycle explicitly.
 
 1. Qualify the episode scope, target namespace, allowed services, allowed fault actions, time budget, and stopping conditions.
-2. Establish a healthy baseline using `k8s_ro`, `prometheus_ro`, `jaeger_ro`, `loki_ro`, and `source_ro` where relevant.
+2. Establish a healthy baseline using `k8s_ro`, `telemetry_ro`, and `source_ro` where relevant.
 3. Form a bounded fault or diagnosis plan. Do not use hidden Oracle data or any tool outside the MCP surface granted by the harness.
 4. If the controller grants `chaos_control`, request the allowed ChaosBlade action and capture the returned experiment handle.
 5. Observe the effect with metrics, traces, logs, Kubernetes state, and read-only source evidence.

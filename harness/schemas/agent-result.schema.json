@@ -30,7 +30,7 @@
         "properties": {
           "source": {
             "type": "string",
-            "enum": ["k8s_ro", "prometheus_ro", "jaeger_ro", "loki_ro", "source_ro", "chaos_control"]
+            "enum": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"]
           },
           "summary": {"type": "string", "minLength": 1},
           "observed_at": {"type": "string", "format": "date-time"},
