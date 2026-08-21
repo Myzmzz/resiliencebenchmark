@@ -11,6 +11,21 @@ Pinned upstream:
 
 The package is a developer preview. Do not replace the exact version with `latest` or `next` during a benchmark campaign.
 
+The published package declares many transitive dependencies with semver ranges.
+The installer verifies the top-level package and exact DSH version, then records
+the actual `npm ls --all --json` tree on the host. That record makes drift
+visible but is not a pre-install dependency lock. Before DeepSeek Harness
+results enter a comparable matrix, review and freeze that tree with a complete
+package lock or a qualified container image digest.
+
+The pinned package contract has been inspected directly: `dsh --profile
+headless "<task>"` runs one non-interactive session, prints the final assistant
+text, and exits nonzero when the run does not complete. Trial preparation writes
+the selected gateway model to `$DSH_HOME/settings.yaml` and the four MCP clients
+to `$DSH_HOME/cordis.patch.yml`. The benchmark patch disables the base bundle's
+shell, filesystem mutation, web, editor, workflow, and subagent tools so the
+tested Agent receives only the explicit MCP surface.
+
 ## Host install
 
 Run `install.sh` as root on the authorized benchmark host. The script creates a dedicated `resbench` system user and installs the package under `/opt/resiliencebenchmark/deepseek-harness`; it does not start a shared Web Host and does not persist provider keys.

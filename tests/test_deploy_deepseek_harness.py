@@ -22,6 +22,7 @@ def write_install_script(repo_root: Path) -> None:
                 "#!/usr/bin/env bash",
                 "set -euo pipefail",
                 f"npm install --prefix /opt/resiliencebenchmark/deepseek-harness --omit=dev {deploy.PACKAGE_SPEC}",
+                "npm list --all --json",
             ]
         ),
         encoding="utf-8",
@@ -110,8 +111,9 @@ def test_execute_uses_fixed_ssh_argv_and_stdin_install_script(tmp_path):
         "ssh_preflight_true",
         "install_deepseek_harness",
         "verify_dsh_version",
+        "verify_dependency_tree_recorded",
     ]
-    assert len(fake.calls) == 3
+    assert len(fake.calls) == 4
     first_argv = fake.calls[0]["argv"]
     assert first_argv[:10] == [
         "ssh",
@@ -131,6 +133,7 @@ def test_execute_uses_fixed_ssh_argv_and_stdin_install_script(tmp_path):
     assert fake.calls[1]["argv"][12:] == ["/bin/bash", "-s"]
     assert deploy.PACKAGE_SPEC.encode("utf-8") in fake.calls[1]["stdin"]
     assert fake.calls[2]["argv"][12:] == [deploy.DSH_BINARY, "--version"]
+    assert fake.calls[3]["argv"][12:] == ["test", "-s", deploy.DEPENDENCY_TREE_FILE]
     assert all(call["timeout"] == 17 for call in fake.calls)
 
 

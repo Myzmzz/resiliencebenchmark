@@ -103,15 +103,15 @@ def validate_profile(profile: dict[str, Any]) -> None:
     profile_id = profile.get("id")
     if profile_id not in SAFE_PROFILE_IDS:
         raise WorkloadError(f"profile id is not controller-approved: {profile_id}")
-    for key in ("targetQps", "concurrency", "durationSeconds", "steps", "abortThresholds", "generator"):
+    for key in ("targetFlowQps", "concurrency", "durationSeconds", "steps", "abortThresholds", "generator"):
         if key not in profile:
             raise WorkloadError(f"profile {profile_id} missing {key}")
     if not isinstance(profile["concurrency"], int) or not 1 <= profile["concurrency"] <= 200:
         raise WorkloadError("concurrency must be between 1 and 200")
     if not isinstance(profile["durationSeconds"], int) or not 60 <= profile["durationSeconds"] <= 21600:
         raise WorkloadError("durationSeconds must be between 60 and 21600")
-    if not isinstance(profile["targetQps"], (int, float)) or not 0 < float(profile["targetQps"]) <= 100:
-        raise WorkloadError("targetQps must be between 0 and 100")
+    if not isinstance(profile["targetFlowQps"], (int, float)) or not 0 < float(profile["targetFlowQps"]) <= 100:
+        raise WorkloadError("targetFlowQps must be between 0 and 100")
     if not isinstance(profile["steps"], list) or not profile["steps"]:
         raise WorkloadError("steps must be a non-empty list")
     thresholds = profile["abortThresholds"]
@@ -288,10 +288,11 @@ def workload_config(profile: dict[str, Any], fixture: RuntimeFixture) -> dict[st
         "targetUrlRef": fixture.base_url_ref,
         "scenario": fixture.scenario,
         "steps": profile["steps"],
-        "targetQps": profile["targetQps"],
+        "targetFlowQps": profile["targetFlowQps"],
         "concurrency": profile["concurrency"],
         "durationSeconds": profile["durationSeconds"],
         "abortThresholds": profile["abortThresholds"],
+        "cleanupCreatedOrders": bool(profile.get("cleanupCreatedOrders", True)),
     }
 
 
@@ -303,6 +304,7 @@ def render_manifest(run_id: str, namespace: str, profile: dict[str, Any], fixtur
     env = [
         {"name": "TRAIN_TICKET_BASE_URL", "value": fixture.base_url},
         {"name": "TRAIN_TICKET_BASE_URL_REF", "value": fixture.base_url_ref},
+        {"name": "TRAIN_TICKET_ALLOWED_HOSTS", "value": ",".join(fixture.allowed_hosts)},
         {"name": "WORKLOAD_CONFIG_PATH", "value": "/etc/train-ticket-workload/workload.json"},
         {"name": "RESULT_ARTIFACT", "value": result_artifact},
     ]
@@ -358,7 +360,7 @@ def render_manifest(run_id: str, namespace: str, profile: dict[str, Any], fixtur
                     "restartPolicy": "Never",
                     "containers": [
                         {
-                            "name": "jmeter",
+                            "name": "workload-generator",
                             "image": profile["generator"]["image"],
                             "imagePullPolicy": "IfNotPresent",
                             "command": profile["generator"]["command"],
@@ -394,7 +396,7 @@ def render_plan(run_id: str, namespace: str, profile: dict[str, Any], fixture: R
         "profile": profile["id"],
         "targetUrlRef": fixture.base_url_ref,
         "targetUrlSha256": hashlib.sha256(fixture.base_url.encode("utf-8")).hexdigest(),
-        "qps": profile["targetQps"],
+        "targetFlowQps": profile["targetFlowQps"],
         "concurrency": profile["concurrency"],
         "durationSeconds": profile["durationSeconds"],
         "abortThresholds": profile["abortThresholds"],
@@ -530,7 +532,7 @@ def summarized_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "owner": plan["owner"],
         "profile": plan["profile"],
         "targetUrlRef": plan["targetUrlRef"],
-        "qps": plan["qps"],
+        "targetFlowQps": plan["targetFlowQps"],
         "concurrency": plan["concurrency"],
         "durationSeconds": plan["durationSeconds"],
         "abortThresholds": plan["abortThresholds"],

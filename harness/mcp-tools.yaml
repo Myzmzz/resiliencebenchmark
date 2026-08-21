@@ -39,21 +39,23 @@ tools:
     mode: read_only
     purpose: Query scoped Prometheus metrics, Jaeger traces, and Loki logs for baseline, fault effect, diagnosis, and recovery evidence.
     allowed_operations:
-      - telemetry_prom_query_instant
-      - telemetry_prom_query_range
+      - telemetry_prom_metric_instant
+      - telemetry_prom_metric_range
+      - telemetry_prom_metric_series
       - telemetry_prom_list_labels
-      - telemetry_prom_list_series
       - telemetry_jaeger_list_services
       - telemetry_jaeger_list_operations
       - telemetry_jaeger_find_traces
-      - telemetry_jaeger_get_trace
       - telemetry_loki_list_labels
-      - telemetry_loki_query
-      - telemetry_loki_query_range
+      - telemetry_loki_logs
+      - telemetry_loki_logs_range
     denied_operations:
       - upstream_url_override
       - unbounded_time_window
       - cross_namespace_result
+      - arbitrary_promql
+      - arbitrary_logql
+      - arbitrary_trace_id_lookup
       - telemetry_admin
       - write
       - delete

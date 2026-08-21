@@ -1,0 +1,55 @@
+version: resiliencebenchmark.harness.bladeai.qualification/v1
+bladeai:
+  version: 0.6.2
+  capability_source: local_source_and_tests
+  source_contract:
+    mcp_role: client
+    config_file: mcp.json
+    config_root: mcpServers
+    supported_transports:
+      - stdio
+      - http_sse
+    unsupported_transports:
+      - streamable_http_client
+    enabled_flag: BLADE_AI_MCP_ENABLED
+    config_path_flag: BLADE_AI_MCP_CONFIG_PATH
+    config_path_status: declared_but_loader_uses_default_home_path
+    default_path: ~/.blade-ai/mcp.json
+    runtime_transport_status: native_sse_runtime_prepared_remote_unqualified
+    host_native_sse_listeners:
+      k8s_ro: 127.0.0.1:18181
+      telemetry_ro: 127.0.0.1:18182
+      source_ro: 127.0.0.1:18183
+    allowed_attach_to:
+      - clarification
+      - phase1
+      - phase2
+      - verifier
+  benchmark_template:
+    file: mcp.json.template
+    read_only_servers:
+      - k8s_ro
+      - telemetry_ro
+      - source_ro
+    attach_to:
+      k8s_ro:
+        - verifier
+      telemetry_ro:
+        - verifier
+      source_ro:
+        - verifier
+    controlled_write_servers:
+      chaos_control:
+        enabled: false
+        reason: >
+          BladeAI v0.6.2 cannot classify dynamic MCP tool scope for the target
+          guard. ChaosBlade write actions must be executed by the benchmark
+          controller after budget, UID, baseline, and cleanup gates pass.
+  gates:
+    before_qualifying_bladeai:
+      - render template with runtime-only token
+      - copy or symlink rendered file to ~/.blade-ai/mcp.json
+      - set BLADE_AI_MCP_ENABLED=true
+      - render URLs to host-native authenticated SSE listeners on loopback ports 18181-18183
+      - verify startup logs contain MCP connected for k8s_ro, telemetry_ro, and source_ro
+      - verify chaos_control is not connected from BladeAI

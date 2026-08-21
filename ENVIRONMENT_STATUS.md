@@ -10,9 +10,9 @@
 - Controller safety checks and independent Evaluator logic have unit tests.
 - Repository validation, secret/path scanning, dry-run, and read-only cluster qualification are available.
 - Seven model aliases are registered; transport capability probes are implemented but have not been executed with a rotated runtime gateway credential. Long-context, tool-error recovery, Oracle-refusal, and OpenAI Responses behavior remain mandatory pre-matrix checks.
-- DeepSeek Harness is pinned and has an idempotent host installer, but the target host has not authorized the deployment SSH key.
+- DeepSeek Harness has an exact top-level package/integrity pin, an idempotent host installer, and post-install dependency-tree recording, but the target host has not authorized the deployment SSH key. Its semver-ranged transitive tree still must be frozen by package lock or qualified image digest, and a complete tool-trace export must be qualified, before matrix freeze.
 - Prometheus MCP Chart objects are installed with a pinned chart/image and restricted ServiceAccount, but its Deployment is scaled to zero because cluster nodes cannot pull the GHCR image; Harbor mirroring is required before qualification.
-- Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`, with authenticated HTTP runtime templates and unit tests. These are not yet deployed or qualified as remote endpoints on the target host.
+- Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`. Pinned-release host deployment, seven hardened loopback systemd units (four Streamable HTTP plus three read-only BladeAI SSE listeners), per-service Unix identities and credential groups, strict endpoint qualification, and per-Episode scope configuration are repository-prepared. Local authenticated HTTP qualification passed for all four tool surfaces and a BladeAI-compatible Source SSE smoke passed; none of these endpoints is yet deployed or qualified on the target host.
 - The latest read-only cluster qualification is intentionally failing: two hard errors remain (Sock Shop scaled to zero and historical ChaosBlade state), plus workload warnings for Train-Ticket and Sock Shop. Nodes and the shared observability workloads are Ready.
 
 ## Source evidence
@@ -29,8 +29,8 @@
 - All 48 Deployments are currently Ready.
 - `ts-order-service` was restored from 0/2 to 2/2 Ready by a scoped rolling restart.
 - The original runtime failure included a full accept queue, thousands of file descriptors, and accumulated `CLOSE_WAIT` connections; recurrence under sustained load is not yet excluded.
-- A controller-owned repeatable workload and full business SLO baseline remain pending.
-- A controller-owned Train-Ticket workload renderer now exists with fixed profiles, host allowlist validation, Kubernetes Secret references, and PVC-backed result artifacts. The JMeter image still needs to be built, mirrored, and digest-pinned before a real workload run.
+- A controller-owned repeatable workload image source and renderer now exist with fixed flow profiles, application-status validation, host allowlisting, Kubernetes Secret references, created-order cleanup, and PVC-backed JTL artifacts. The image still needs to be built, pushed to Harbor, digest-pinned, and exercised against a healthy baseline before the workload is qualified.
+- The latest read-only runtime image inventory observed 85 application/init containers; all were Ready or successfully completed and had runtime SHA-256 digests. This does not yet prove the deployed image-to-source mapping.
 
 ### OTel Demo
 
@@ -39,6 +39,7 @@
 - Recent application traces are visible in shared Jaeger.
 - `namespace=otel-demo` log streams are visible in Loki.
 - Kubeletstats is incomplete because node serving certificates are expired; node-exporter, cAdvisor, and kube-state-metrics remain available.
+- The latest read-only runtime image inventory observed 30 application/init containers; all were Ready or successfully completed and had runtime SHA-256 digests.
 
 ### Sock Shop
 
@@ -46,6 +47,7 @@
 - The Deployments and Services were created in the target namespace.
 - Cluster nodes cannot currently pull the pinned Docker Hub images; all 14 Deployments are intentionally scaled to zero to stop repeated external pulls.
 - A Harbor Robot Account supplied through a runtime secret is required to mirror the 14 digests before scale-up and application qualification.
+- The runtime image inventory has zero active Sock Shop containers, so the three-application image qualification remains failed by design.
 
 ## Shared observability
 
@@ -69,4 +71,5 @@
 3. Renew kubelet serving certificates using the cluster distribution runbook.
 4. Reconcile the historical ChaosBlade resources with their owning platform.
 5. Execute the seven-model capability probe and freeze the comparable Harness × Model matrix.
-6. Deploy and qualify the real MCP endpoints and then unlock the first 6–10 Episodes.
+6. Activate one Episode-scoped MCP environment on the target host, qualify all four HTTP endpoints plus BladeAI read-only SSE, then execute Codex/Claude Code/DeepSeek Harness smoke trials.
+7. Freeze source-commit-to-runtime-image mappings and only then unlock the first 6–10 Episodes.

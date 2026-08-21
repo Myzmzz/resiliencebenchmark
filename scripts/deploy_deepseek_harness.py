@@ -29,6 +29,7 @@ PACKAGE_SPEC = f"{PACKAGE_NAME}@{PACKAGE_VERSION}"
 INSTALL_SCRIPT = Path("harness/deepseek-harness/install.sh")
 INSTALL_ROOT = "/opt/resiliencebenchmark/deepseek-harness"
 DSH_BINARY = f"{INSTALL_ROOT}/node_modules/.bin/dsh"
+DEPENDENCY_TREE_FILE = "/var/lib/resiliencebenchmark/deepseek-harness-dependency-tree.json"
 DEFAULT_TIMEOUT_SECONDS = 120
 MIN_TIMEOUT_SECONDS = 5
 MAX_TIMEOUT_SECONDS = 600
@@ -84,6 +85,7 @@ def dry_run_report(env: Mapping[str, str]) -> dict[str, Any]:
             "ssh_preflight_true",
             "stdin_install_script_to_remote_bash",
             "verify_dsh_version",
+            "verify_dependency_tree_recorded",
         ],
     }
 
@@ -137,6 +139,7 @@ def redact_text(text: bytes | str, sensitive_values: Mapping[str, str]) -> str:
             redacted = redacted.replace(value, "<redacted>")
     redacted = redacted.replace(INSTALL_ROOT, "<install-root>")
     redacted = redacted.replace(DSH_BINARY, "<dsh-binary>")
+    redacted = redacted.replace(DEPENDENCY_TREE_FILE, "<dependency-tree-file>")
     return redacted.strip()
 
 
@@ -247,6 +250,7 @@ def run_deploy(
         ("ssh_preflight_true", [*ssh_base, "true"], None),
         ("install_deepseek_harness", [*ssh_base, "/bin/bash", "-s"], script),
         ("verify_dsh_version", [*ssh_base, DSH_BINARY, "--version"], None),
+        ("verify_dependency_tree_recorded", [*ssh_base, "test", "-s", DEPENDENCY_TREE_FILE], None),
     ]
     for name, argv, stdin in commands:
         result, command_result = run_checked_step(active_runner, name, argv, stdin, timeout_seconds, sensitive)

@@ -1,0 +1,45 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeImageLockPolicy
+metadata:
+  name: benchmark-runtime-image-locks
+spec:
+  inventory:
+    implementation: scripts/inventory_runtime_images.py
+    source: kubernetes-pod-container-status
+    mode: read-only
+    outputRef: artifacts/qualification/runtime-images.json
+    publicOutputRedaction:
+      hideRegistryEndpoint: true
+      keepRuntimeDigest: true
+      keepComponentAndPodIdentity: true
+  qualification:
+    everyActiveContainerReady: true
+    everyActiveContainerHasRuntimeSha256: true
+    everyEpisodeNamespaceHasAtLeastOneActiveContainer: true
+    mutableTagIsNotProof: true
+  sourceMapping:
+    applicationImageRequiredFields:
+      - application
+      - component
+      - runtimeDigest
+      - sourceLockId
+      - sourceCommit
+      - buildRecipeRef
+      - verificationStatus
+    acceptedVerificationStatus:
+      - rebuilt-and-digest-matched
+      - signed-provenance-matched
+    nonApplicationImages:
+      sourceMappingStatus: not-applicable
+      examples:
+        - database
+        - message-broker
+        - telemetry-sidecar
+        - platform-controller
+  gates:
+    beforeEpisodeFreeze:
+      - runtime-image-inventory-qualified
+      - all-application-images-mapped-to-source-locks
+      - no-tag-only-application-image
+      - workload-image-digest-pinned
+    failurePolicy: block-episode

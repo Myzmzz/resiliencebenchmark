@@ -31,7 +31,7 @@ ISSUER_URL_ENV = "RESBENCH_MCP_ISSUER_URL"
 RESOURCE_URL_ENV = "RESBENCH_MCP_RESOURCE_URL"
 SCOPE_ENV = "RESBENCH_MCP_SCOPE"
 CLIENT_ID_ENV = "RESBENCH_MCP_CLIENT_ID"
-TransportName = Literal["stdio", "streamable-http"]
+TransportName = Literal["stdio", "streamable-http", "sse"]
 
 
 class MCPRuntimeConfigError(ValueError):
@@ -55,11 +55,19 @@ class MCPHttpRuntimeConfig:
     auth: AuthSettings
     token_verifier: TokenVerifier
 
-    def run_kwargs(self) -> dict[str, object]:
+    def streamable_http_kwargs(self) -> dict[str, object]:
         return {
             "host": self.host,
             "port": self.port,
             "streamable_http_path": self.path,
+        }
+
+    def sse_kwargs(self) -> dict[str, object]:
+        return {
+            "host": self.host,
+            "port": self.port,
+            "sse_path": self.path,
+            "message_path": "/messages/",
         }
 
 
@@ -99,7 +107,9 @@ def read_transport(env: Mapping[str, str] | None = None) -> TransportName:
         return "stdio"
     if raw in {"http", "streamable-http", "streamable_http"}:
         return "streamable-http"
-    raise MCPRuntimeConfigError(f"{TRANSPORT_ENV} must be stdio or streamable-http")
+    if raw == "sse":
+        return "sse"
+    raise MCPRuntimeConfigError(f"{TRANSPORT_ENV} must be stdio, streamable-http, or sse")
 
 
 def build_http_runtime_config(env: Mapping[str, str] | None = None) -> MCPHttpRuntimeConfig:
@@ -149,7 +159,10 @@ def run_mcp_server(factory: MCPServerFactory, *, env: Mapping[str, str] | None =
         server.run("stdio")
         return
     assert config is not None
-    server.run("streamable-http", **config.run_kwargs())
+    if transport == "sse":
+        server.run("sse", **config.sse_kwargs())
+        return
+    server.run("streamable-http", **config.streamable_http_kwargs())
 
 
 def verify_static_token(verifier: TokenVerifier, token: str) -> AccessToken | None:

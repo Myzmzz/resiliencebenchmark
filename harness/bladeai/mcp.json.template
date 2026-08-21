@@ -1,0 +1,47 @@
+{
+  "mcpServers": {
+    "k8s_ro": {
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_K8S_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      },
+      "attach_to": [
+        "verifier"
+      ],
+      "timeout_seconds": 30
+    },
+    "telemetry_ro": {
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_TELEMETRY_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      },
+      "attach_to": [
+        "verifier"
+      ],
+      "timeout_seconds": 30
+    },
+    "source_ro": {
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_SOURCE_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      },
+      "attach_to": [
+        "verifier"
+      ],
+      "timeout_seconds": 30
+    },
+    "chaos_control": {
+      "enabled": false,
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      },
+      "attach_to": [],
+      "timeout_seconds": 30
+    }
+  }
+}

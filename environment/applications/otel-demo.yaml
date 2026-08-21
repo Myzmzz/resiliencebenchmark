@@ -23,6 +23,7 @@ spec:
       hideHealthyDiff: true
       removeFeatureFlagHints: true
   imageLock:
+    runtimeInventoryPolicyRef: ../shared/runtime-image-lock-policy.yaml
     registry: "{{HARBOR_REGISTRY}}"
     project: "{{HARBOR_PROJECT_OTEL_DEMO}}"
     policy: digest-required

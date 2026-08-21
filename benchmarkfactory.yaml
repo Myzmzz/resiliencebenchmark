@@ -26,6 +26,8 @@ spec:
         profiles: environment/workloads/train-ticket/profiles.yaml
         fixtureExample: environment/workloads/train-ticket/runtime-fixture.example.yaml
         controller: scripts/train_ticket_workload.py
+        imageContext: environment/workloads/train-ticket/image
+        imageBuilder: scripts/build_train_ticket_workload.py
     observability: environment/shared/observability.yaml
     observabilityPlans:
       - environment/observability/prometheus-otlp-receiver.yaml
@@ -37,6 +39,11 @@ spec:
     mcpDeployments:
       runtimeContract: environment/mcp/runtime-contract.yaml
       httpRuntime: mcp_servers/http_runtime.py
+      hostInstaller: environment/mcp/host/install.sh
+      hostDeployer: scripts/deploy_mcp_host.py
+      episodeActivator: scripts/activate_mcp_episode.py
+      endpointQualifier: scripts/qualify_mcp_endpoints.py
+      bladeAiSseRuntime: environment/mcp/host/systemd
       implementations:
         k8s_ro: mcp_servers/k8s_ro/server.py
         telemetry_ro: mcp_servers/telemetry_ro/server.py
@@ -53,6 +60,8 @@ spec:
         role: optional-third-party-adapter
     sourceSnapshots: environment/shared/source-snapshots.yaml
     sourceLocks: environment/shared/source-locks.yaml
+    runtimeImageInventory: scripts/inventory_runtime_images.py
+    runtimeImageLockPolicy: environment/shared/runtime-image-lock-policy.yaml
     repairPlans:
       - environment/repairs/observability-node-exporter-pin.yaml
       - environment/repairs/otel-demo-load-generator-enable.yaml
@@ -64,7 +73,9 @@ spec:
     outputSchema: harness/schemas/agent-result.schema.json
     runTraceSchema: harness/schemas/run-trace.schema.json
     deepSeekDeploymentStatus: harness/deepseek-harness/deployment-status.yaml
+    trialRunner: scripts/run_harness_trial.py
     clientTemplates:
+      bladeAi: harness/bladeai/mcp.json.template
       codex: harness/codex/config.toml.template
       claudeCode: harness/claude-code/mcp.json.template
       deepSeekHarness: harness/deepseek-harness/mcp.cordis.patch.yml
@@ -85,6 +96,7 @@ spec:
       - model-transport-capability-probes-pass
       - model-behavioral-qualification-probes-pass
       - mcp-endpoints-read-only-qualified
+      - complete-harness-tool-trace-qualified
     beforeFaultExecution:
       - live-cluster-qualification-pass
       - healthy-baseline-window-pass
@@ -101,10 +113,13 @@ spec:
       - static and read-only cluster qualification tools
       - authenticated source telemetry Kubernetes and gated ChaosBlade MCP implementations
       - Codex and Claude Code trial-local MCP client templates
+      - BladeAI native SSE verifier adapter and DeepSeek headless MCP contract
+      - pinned MCP host release installer endpoint qualifier and trial runner
+      - buildable controller-owned Train-Ticket workload image source
     notYetClaimed:
       - runnable locked Episode bundle
       - deployed MCP endpoints for every Harness
       - qualified seven-model matrix
       - clean reproducible baseline for all three applications
-      - automatic defect implantation and image build pipeline
+      - automatic defect implantation and defective application image pipeline
       - formal experiment results

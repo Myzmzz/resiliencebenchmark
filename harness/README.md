@@ -23,7 +23,9 @@ harness/
 ├── mcp-tools.yaml              # MCP tool surface exposed to agents
 ├── codex/                      # Trial-local Codex MCP config template
 ├── claude-code/                # Strict Claude Code MCP config template
+├── bladeai/                    # v0.6.2 native-SSE verifier adapter
 ├── deepseek-harness/           # Pinned DSH installer and Cordis MCP patch
+├── runner/                     # Uniform dry-run-first trial launcher contract
 ├── schemas/
 │   ├── agent-result.schema.json # Common structured final result
 │   └── run-trace.schema.json    # Replayable trial trace contract

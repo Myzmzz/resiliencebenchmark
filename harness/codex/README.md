@@ -33,6 +33,13 @@ CODEX_HOME="$trial_codex_home" RESBENCH_MCP_TOKEN="$runtime_token" \
   codex exec --sandbox read-only --ephemeral ...
 ```
 
+The trial template disables shell, workspace-dependency, app, browser,
+computer-use, image, goal, hook, plugin-sharing, and multi-agent features. The
+read-only sandbox remains a second boundary, but it is not treated as a
+substitute for removing non-MCP tools. Qualification must confirm those feature
+flags are effective in the exact installed Codex version before its results
+enter the comparison matrix.
+
 The runner owns model/API-key configuration separately. This template only wires
 the MCP client surface and must not contain endpoint values, bearer tokens,
 kubeconfig contents, source paths, or Oracle data.

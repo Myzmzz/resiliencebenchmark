@@ -28,6 +28,7 @@ CLAUDE_CONFIG_DIR="$trial_claude_config_dir" RESBENCH_MCP_TOKEN="$runtime_token"
 
 Use print mode for trials and keep the config directory trial-local. The runner
 owns model/API-key configuration separately from this MCP template. The harness
-registry passes `--tools ""` so built-in Bash/Edit/Read tools are unavailable;
-the trial evidence and controlled action surface comes only from the four
-explicit MCP servers.
+registry passes `--tools ""` so built-in Bash/Edit/Read tools are unavailable,
+then explicitly allows the four server names with `--allowedTools`. Claude Code
+requires that explicit permission in non-interactive MCP trials; no other MCP
+server or built-in tool is placed on the trial surface.

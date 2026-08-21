@@ -37,5 +37,10 @@ python3 scripts/benchmark_prepare.py qualify-cluster \
 - `mirror_images.py`：默认 dry-run；显式 `--execute` 后使用临时 Docker 配置和 Harbor Robot Account 复制固定镜像，不在输出中保留凭据。
 - `train_ticket_workload.py`：渲染和管理 controller-owned Train-Ticket Job；真实 start 要求 Secret 引用、host allowlist、PVC 和 digest-pinned workload image。
 - `deploy_deepseek_harness.py`：默认 dry-run；真实安装仅允许 strict known_hosts 与公钥 BatchMode SSH，不支持 password 或 `sshpass`。
+- `inventory_runtime_images.py`：显式 kubeconfig 的只读 Pod 镜像盘点；输出脱敏 repository tail、运行时 digest、readiness 和逐 namespace 资格状态，用于建立 source commit 与部署镜像之间的证据链。
+- `build_train_ticket_workload.py`：默认 dry-run 的固定 buildx 入口，构建 controller-owned Python workload，并在 push 后返回可固定的 manifest digest。
+- `deploy_mcp_host.py`：把当前已提交 HEAD 作为受管 release 传到目标主机，物化锁定源码并安装 4 个 Streamable HTTP 与 3 个 BladeAI SSE systemd unit；不创建或覆盖运行时 secret。
+- `qualify_mcp_endpoints.py`：验证四个 loopback MCP 的 bearer 拒绝、initialize、精确 tool set、schema 边界与 destructive/read-only annotation。
+- `run_harness_trial.py`：Codex、Claude Code 与 DeepSeek Harness 的 dry-run-first 单 trial runner，负责隔离 Home、提示词组装、环境白名单、输出脱敏和 run-trace/agent-result schema 校验。
 
 仓库自有 MCP 使用锁定的 Python 环境。先运行 `make sync`，再用 `make test-mcp` 验证 tool schema、scope、脱敏和 ChaosBlade 门禁。

@@ -17,6 +17,7 @@ LOKI_URL_ENV = "RESBENCH_LOKI_URL"
 TIMEOUT_ENV = "RESBENCH_TELEMETRY_TIMEOUT_SECONDS"
 NAMESPACE_ALLOWLIST_ENV = "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES"
 JAEGER_SERVICE_ALLOWLIST_ENV = "RESBENCH_JAEGER_ALLOWED_SERVICES"
+ALLOW_RAW_QUERIES_ENV = "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES"
 
 MAX_OUTPUT_CHARS = 25_000
 MAX_RESPONSE_BYTES = 2_000_000
@@ -30,7 +31,28 @@ MAX_SERVICE_LENGTH = 256
 MAX_TIME_WINDOW_SECONDS = 6 * 60 * 60
 MIN_STEP_SECONDS = 1
 MAX_STEP_SECONDS = 3_600
+MAX_FILTERS = 12
+MAX_FILTER_VALUE_LENGTH = 256
+MAX_LITERAL_CONTAINS_LENGTH = 200
 NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace")
+PROMETHEUS_GROUP_BY_ALLOWLIST = frozenset(
+    {
+        "namespace",
+        "pod",
+        "service",
+        "job",
+        "deployment",
+        "container",
+        "app",
+        "app_kubernetes_io_name",
+        "k8s_pod_name",
+        "service_name",
+        "http_route",
+        "http_method",
+        "code",
+        "status",
+    }
+)
 SCOPE_WARNING = (
     "Some telemetry items were removed because they did not carry an allowed namespace label. "
     "Prometheus and Loki queries used by agents must preserve one of: namespace, "
@@ -88,6 +110,26 @@ class RuntimeConfig:
     namespace_allowlist: frozenset[str] = frozenset()
     jaeger_service_allowlist: frozenset[str] = frozenset()
     timeout_seconds: float = 5.0
+    allow_raw_queries: bool = False
+
+    def __post_init__(self) -> None:
+        if len(self.namespace_allowlist) != 1:
+            raise TelemetryROError(
+                "invalid_namespace_scope",
+                "telemetry_ro requires exactly one Kubernetes namespace.",
+                f"Set {NAMESPACE_ALLOWLIST_ENV} to one benchmark Episode namespace.",
+            )
+        invalid = [item for item in self.namespace_allowlist if not _NAMESPACE_RE.fullmatch(item)]
+        if invalid:
+            raise TelemetryROError(
+                "invalid_namespace_allowlist",
+                f"{NAMESPACE_ALLOWLIST_ENV} contains an invalid Kubernetes namespace.",
+                "Use one valid Kubernetes namespace name.",
+            )
+
+    @property
+    def namespace(self) -> str:
+        return next(iter(self.namespace_allowlist))
 
     @classmethod
     def from_env(cls) -> "RuntimeConfig":
@@ -113,6 +155,7 @@ class RuntimeConfig:
             namespace_allowlist=_parse_namespace_allowlist(os.environ.get(NAMESPACE_ALLOWLIST_ENV)),
             jaeger_service_allowlist=_parse_service_allowlist(os.environ.get(JAEGER_SERVICE_ALLOWLIST_ENV)),
             timeout_seconds=timeout,
+            allow_raw_queries=_parse_bool_env(os.environ.get(ALLOW_RAW_QUERIES_ENV), ALLOW_RAW_QUERIES_ENV),
         )
 
 
@@ -223,28 +266,8 @@ class TelemetryROService:
         self.transport = transport if transport is not None else UrlLibTelemetryTransport()
 
     async def prometheus_query_instant(self, *, query: str, time: int, limit: int = DEFAULT_LIMIT) -> dict[str, Any]:
-        _validate_query(query)
-        time = _bounded_time(time, "time")
-        limit = _bounded_limit(limit)
-        data = await self._request("prometheus", "/api/v1/query", {"query": query, "time": time})
-        prometheus_data = _expect_mapping(data.get("data"), "Prometheus data")
-        scoped = _scope_filter_metric_items(prometheus_data.get("result"), self.config.namespace_allowlist)
-        result = _limited_result(scoped.items, limit)
-        return envelope(
-            {
-                "service": "prometheus",
-                "operation": "query_instant",
-                "time": time,
-                "status": data.get("status"),
-                "resultType": prometheus_data.get("resultType"),
-                "returned": len(result["items"]),
-                "limit": limit,
-                "hasMore": result["hasMore"],
-                "scopedOutCount": scoped.scoped_out_count,
-                "scopeWarning": SCOPE_WARNING if scoped.scoped_out_count else None,
-                "result": result["items"],
-            }
-        )
+        _ensure_raw_queries_allowed(self.config)
+        return await self._prometheus_query_instant_raw(query=query, time=time, limit=limit, constructed=False)
 
     async def prometheus_query_range(
         self,
@@ -255,35 +278,72 @@ class TelemetryROService:
         step: int,
         limit: int = DEFAULT_LIMIT,
     ) -> dict[str, Any]:
-        _validate_query(query)
-        start, end = _bounded_window(start, end)
-        step = _bounded_step(step)
-        limit = _bounded_limit(limit)
-        data = await self._request(
-            "prometheus",
-            "/api/v1/query_range",
-            {"query": query, "start": start, "end": end, "step": step},
+        _ensure_raw_queries_allowed(self.config)
+        return await self._prometheus_query_range_raw(query=query, start=start, end=end, step=step, limit=limit, constructed=False)
+
+    async def prometheus_metric_instant(
+        self,
+        *,
+        metric: str,
+        time: int,
+        labels: Mapping[str, str] | None = None,
+        transform: str | None = None,
+        window: int = 60,
+        group_by: Sequence[str] | None = None,
+        limit: int = DEFAULT_LIMIT,
+    ) -> dict[str, Any]:
+        query = _build_prometheus_metric_query(
+            namespace=self.config.namespace,
+            metric=metric,
+            labels=labels,
+            transform=transform,
+            window=window,
+            group_by=group_by,
         )
-        prometheus_data = _expect_mapping(data.get("data"), "Prometheus data")
-        scoped = _scope_filter_metric_items(prometheus_data.get("result"), self.config.namespace_allowlist)
-        result = _limited_result(scoped.items, limit)
-        return envelope(
-            {
-                "service": "prometheus",
-                "operation": "query_range",
-                "start": start,
-                "end": end,
-                "step": step,
-                "status": data.get("status"),
-                "resultType": prometheus_data.get("resultType"),
-                "returned": len(result["items"]),
-                "limit": limit,
-                "hasMore": result["hasMore"],
-                "scopedOutCount": scoped.scoped_out_count,
-                "scopeWarning": SCOPE_WARNING if scoped.scoped_out_count else None,
-                "result": result["items"],
-            }
+        return await self._prometheus_query_instant_raw(query=query, time=time, limit=limit, constructed=True)
+
+    async def prometheus_metric_range(
+        self,
+        *,
+        metric: str,
+        start: int,
+        end: int,
+        step: int,
+        labels: Mapping[str, str] | None = None,
+        transform: str | None = None,
+        window: int = 60,
+        group_by: Sequence[str] | None = None,
+        limit: int = DEFAULT_LIMIT,
+    ) -> dict[str, Any]:
+        query = _build_prometheus_metric_query(
+            namespace=self.config.namespace,
+            metric=metric,
+            labels=labels,
+            transform=transform,
+            window=window,
+            group_by=group_by,
         )
+        return await self._prometheus_query_range_raw(
+            query=query,
+            start=start,
+            end=end,
+            step=step,
+            limit=limit,
+            constructed=True,
+        )
+
+    async def prometheus_metric_series(
+        self,
+        *,
+        metric: str,
+        start: int,
+        end: int,
+        labels: Mapping[str, str] | None = None,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        match = _build_prometheus_selector(namespace=self.config.namespace, metric=metric, labels=labels)
+        return await self._prometheus_list_series_raw(match=[match], start=start, end=end, limit=limit, offset=offset, constructed=True)
 
     async def prometheus_list_labels(
         self,
@@ -314,6 +374,90 @@ class TelemetryROService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
+        _ensure_raw_queries_allowed(self.config)
+        return await self._prometheus_list_series_raw(match=match, start=start, end=end, limit=limit, offset=offset, constructed=False)
+
+    async def _prometheus_query_instant_raw(
+        self,
+        *,
+        query: str,
+        time: int,
+        limit: int = DEFAULT_LIMIT,
+        constructed: bool = False,
+    ) -> dict[str, Any]:
+        _validate_query(query)
+        time = _bounded_time(time, "time")
+        limit = _bounded_limit(limit)
+        data = await self._request("prometheus", "/api/v1/query", {"query": query, "time": time})
+        prometheus_data = _expect_mapping(data.get("data"), "Prometheus data")
+        scoped = _scope_filter_metric_items(prometheus_data.get("result"), self.config.namespace_allowlist)
+        result = _limited_result(scoped.items, limit)
+        return envelope(
+            {
+                "service": "prometheus",
+                "operation": "metric_instant" if constructed else "query_instant",
+                "time": time,
+                "status": data.get("status"),
+                "resultType": prometheus_data.get("resultType"),
+                "returned": len(result["items"]),
+                "limit": limit,
+                "hasMore": result["hasMore"],
+                **_scope_metadata(self.config, scoped.scoped_out_count),
+                "query": query if constructed else None,
+                "result": result["items"],
+            }
+        )
+
+    async def _prometheus_query_range_raw(
+        self,
+        *,
+        query: str,
+        start: int,
+        end: int,
+        step: int,
+        limit: int = DEFAULT_LIMIT,
+        constructed: bool = False,
+    ) -> dict[str, Any]:
+        _validate_query(query)
+        start, end = _bounded_window(start, end)
+        step = _bounded_step(step)
+        limit = _bounded_limit(limit)
+        data = await self._request(
+            "prometheus",
+            "/api/v1/query_range",
+            {"query": query, "start": start, "end": end, "step": step},
+        )
+        prometheus_data = _expect_mapping(data.get("data"), "Prometheus data")
+        scoped = _scope_filter_metric_items(prometheus_data.get("result"), self.config.namespace_allowlist)
+        result = _limited_result(scoped.items, limit)
+        return envelope(
+            {
+                "service": "prometheus",
+                "operation": "metric_range" if constructed else "query_range",
+                "start": start,
+                "end": end,
+                "step": step,
+                "status": data.get("status"),
+                "resultType": prometheus_data.get("resultType"),
+                "returned": len(result["items"]),
+                "limit": limit,
+                "hasMore": result["hasMore"],
+                **_scope_metadata(self.config, scoped.scoped_out_count),
+                "query": query if constructed else None,
+                "result": result["items"],
+            }
+        )
+
+    async def _prometheus_list_series_raw(
+        self,
+        *,
+        match: Sequence[str],
+        start: int,
+        end: int,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+        constructed: bool = False,
+    ) -> dict[str, Any]:
         start, end = _bounded_window(start, end)
         limit = _bounded_limit(limit)
         offset = _bounded_offset(offset)
@@ -324,11 +468,11 @@ class TelemetryROService:
         return envelope(
             {
                 "service": "prometheus",
-                "operation": "series",
+                "operation": "metric_series" if constructed else "series",
                 "start": start,
                 "end": end,
-                "scopedOutCount": scoped.scoped_out_count,
-                "scopeWarning": SCOPE_WARNING if scoped.scoped_out_count else None,
+                "match": matches if constructed else None,
+                **_scope_metadata(self.config, scoped.scoped_out_count),
                 **page,
             }
         )
@@ -344,8 +488,11 @@ class TelemetryROService:
             {
                 "service": "jaeger",
                 "operation": "services",
-                "scopedOutCount": len(services) - len(scoped_items),
-                "scopeWarning": "Only Jaeger services in the configured allowlist are returned.",
+                **_scope_metadata(
+                    self.config,
+                    len(services) - len(scoped_items),
+                    warning="Only Jaeger services in the configured allowlist are returned.",
+                ),
                 **page,
             }
         )
@@ -411,15 +558,17 @@ class TelemetryROService:
                 "returned": len(traces["items"]),
                 "limit": limit,
                 "hasMore": traces["hasMore"],
-                "scopedOutCount": scoped.scoped_out_count,
-                "scopeWarning": "Traces containing services outside the Jaeger allowlist are removed."
-                if scoped.scoped_out_count
-                else None,
+                **_scope_metadata(
+                    self.config,
+                    scoped.scoped_out_count,
+                    warning="Traces containing services outside the Jaeger allowlist are removed.",
+                ),
                 "traces": traces["items"],
             }
         )
 
     async def jaeger_get_trace(self, *, trace_id: str) -> dict[str, Any]:
+        _ensure_raw_queries_allowed(self.config)
         if not _TRACE_ID_RE.fullmatch(trace_id):
             raise TelemetryROError(
                 "invalid_trace_id",
@@ -460,6 +609,73 @@ class TelemetryROService:
         limit: int = DEFAULT_LIMIT,
         direction: str = "backward",
     ) -> dict[str, Any]:
+        _ensure_raw_queries_allowed(self.config)
+        return await self._loki_query_raw(query=query, time=time, limit=limit, direction=direction, constructed=False)
+
+    async def loki_logs(
+        self,
+        *,
+        time: int,
+        labels: Mapping[str, str] | None = None,
+        contains: str | None = None,
+        limit: int = DEFAULT_LIMIT,
+        direction: str = "backward",
+    ) -> dict[str, Any]:
+        query = _build_loki_query(namespace=self.config.namespace, labels=labels, contains=contains)
+        return await self._loki_query_raw(query=query, time=time, limit=limit, direction=direction, constructed=True)
+
+    async def loki_query_range(
+        self,
+        *,
+        query: str,
+        start: int,
+        end: int,
+        step: int,
+        limit: int = DEFAULT_LIMIT,
+        direction: str = "backward",
+    ) -> dict[str, Any]:
+        _ensure_raw_queries_allowed(self.config)
+        return await self._loki_query_range_raw(
+            query=query,
+            start=start,
+            end=end,
+            step=step,
+            limit=limit,
+            direction=direction,
+            constructed=False,
+        )
+
+    async def loki_logs_range(
+        self,
+        *,
+        start: int,
+        end: int,
+        step: int,
+        labels: Mapping[str, str] | None = None,
+        contains: str | None = None,
+        limit: int = DEFAULT_LIMIT,
+        direction: str = "backward",
+    ) -> dict[str, Any]:
+        query = _build_loki_query(namespace=self.config.namespace, labels=labels, contains=contains)
+        return await self._loki_query_range_raw(
+            query=query,
+            start=start,
+            end=end,
+            step=step,
+            limit=limit,
+            direction=direction,
+            constructed=True,
+        )
+
+    async def _loki_query_raw(
+        self,
+        *,
+        query: str,
+        time: int,
+        limit: int = DEFAULT_LIMIT,
+        direction: str = "backward",
+        constructed: bool = False,
+    ) -> dict[str, Any]:
         _validate_query(query)
         time = _bounded_time(time, "time")
         limit = _bounded_limit(limit, cap=MAX_LOG_LIMIT)
@@ -475,19 +691,19 @@ class TelemetryROService:
         return envelope(
             {
                 "service": "loki",
-                "operation": "query",
+                "operation": "logs" if constructed else "query",
                 "time": time,
                 "resultType": loki_data.get("resultType"),
                 "returned": len(result["items"]),
                 "limit": limit,
                 "hasMore": result["hasMore"],
-                "scopedOutCount": scoped.scoped_out_count,
-                "scopeWarning": SCOPE_WARNING if scoped.scoped_out_count else None,
+                **_scope_metadata(self.config, scoped.scoped_out_count),
+                "query": query if constructed else None,
                 "result": result["items"],
             }
         )
 
-    async def loki_query_range(
+    async def _loki_query_range_raw(
         self,
         *,
         query: str,
@@ -496,6 +712,7 @@ class TelemetryROService:
         step: int,
         limit: int = DEFAULT_LIMIT,
         direction: str = "backward",
+        constructed: bool = False,
     ) -> dict[str, Any]:
         _validate_query(query)
         start, end = _bounded_window(start, end)
@@ -520,7 +737,7 @@ class TelemetryROService:
         return envelope(
             {
                 "service": "loki",
-                "operation": "query_range",
+                "operation": "logs_range" if constructed else "query_range",
                 "start": start,
                 "end": end,
                 "step": step,
@@ -528,8 +745,8 @@ class TelemetryROService:
                 "returned": len(result["items"]),
                 "limit": limit,
                 "hasMore": result["hasMore"],
-                "scopedOutCount": scoped.scoped_out_count,
-                "scopeWarning": SCOPE_WARNING if scoped.scoped_out_count else None,
+                **_scope_metadata(self.config, scoped.scoped_out_count),
+                "query": query if constructed else None,
                 "result": result["items"],
             }
         )
@@ -597,6 +814,21 @@ def _clean_base_url(value: str | None, env_name: str) -> str | None:
     return clean
 
 
+def _parse_bool_env(value: str | None, env_name: str) -> bool:
+    if value is None or not value.strip():
+        return False
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise TelemetryROError(
+        "invalid_boolean",
+        f"{env_name} must be true or false.",
+        "Use true only in development or explicit raw-query qualification runs.",
+    )
+
+
 def _parse_namespace_allowlist(value: str | None) -> frozenset[str]:
     namespaces = _parse_allowlist(value, NAMESPACE_ALLOWLIST_ENV)
     invalid = [item for item in namespaces if not _NAMESPACE_RE.fullmatch(item)]
@@ -605,6 +837,12 @@ def _parse_namespace_allowlist(value: str | None) -> frozenset[str]:
             "invalid_namespace_allowlist",
             f"{NAMESPACE_ALLOWLIST_ENV} contains an invalid Kubernetes namespace.",
             "Use comma or whitespace separated Kubernetes namespace names.",
+        )
+    if len(namespaces) != 1:
+        raise TelemetryROError(
+            "invalid_namespace_scope",
+            f"{NAMESPACE_ALLOWLIST_ENV} must contain exactly one Kubernetes namespace.",
+            "Run one benchmark Episode per namespace; do not share one telemetry_ro runtime across namespaces.",
         )
     return frozenset(namespaces)
 
@@ -662,6 +900,234 @@ def _validate_query(query: str) -> None:
             "query appears to include a credential-like key.",
             "Do not search for or pass secrets through telemetry MCP tools.",
         )
+
+
+def _ensure_raw_queries_allowed(config: RuntimeConfig) -> None:
+    if config.allow_raw_queries:
+        return
+    raise TelemetryROError(
+        "raw_queries_disabled",
+        "raw PromQL and LogQL tools are disabled in production strict mode.",
+        f"Use structured telemetry tools, or set {ALLOW_RAW_QUERIES_ENV}=true only for explicit development qualification.",
+    )
+
+
+def _scope_metadata(config: RuntimeConfig, scoped_out_count: int, *, warning: str = SCOPE_WARNING) -> dict[str, Any]:
+    if config.allow_raw_queries:
+        return {
+            "scopedOutCount": scoped_out_count,
+            "scopeWarning": warning if scoped_out_count else None,
+        }
+    return {"scopeFiltered": scoped_out_count > 0}
+
+
+def _build_prometheus_selector(*, namespace: str, metric: str, labels: Mapping[str, str] | None = None) -> str:
+    metric = _validate_metric_name(metric)
+    filters = {"namespace": namespace, **_validate_exact_label_filters(labels, family="prometheus")}
+    matchers = ",".join(f'{key}="{_escape_query_string(value)}"' for key, value in filters.items())
+    return f"{metric}{{{matchers}}}"
+
+
+def _build_prometheus_metric_query(
+    *,
+    namespace: str,
+    metric: str,
+    labels: Mapping[str, str] | None = None,
+    transform: str | None = None,
+    window: int = 60,
+    group_by: Sequence[str] | None = None,
+) -> str:
+    selector = _build_prometheus_selector(namespace=namespace, metric=metric, labels=labels)
+    normalized_transform = "none" if transform is None else transform.strip().lower()
+    if normalized_transform not in {"none", "rate", "increase"}:
+        raise TelemetryROError(
+            "invalid_prometheus_transform",
+            "transform must be one of: none, rate, increase.",
+            "Use rate or increase only for counter-like metrics, otherwise omit transform.",
+        )
+    if normalized_transform in {"rate", "increase"}:
+        window = _bounded_window_seconds(window)
+        expression = f"{normalized_transform}({selector}[{window}s])"
+    else:
+        expression = selector
+    groups = _validate_prometheus_group_by(group_by)
+    if groups:
+        expression = f"sum by ({','.join(groups)}) ({expression})"
+    return expression
+
+
+def _build_loki_query(
+    *,
+    namespace: str,
+    labels: Mapping[str, str] | None = None,
+    contains: str | None = None,
+) -> str:
+    filters = {"namespace": namespace, **_validate_exact_label_filters(labels, family="loki")}
+    selector = "{" + ",".join(f'{key}="{_escape_query_string(value)}"' for key, value in filters.items()) + "}"
+    literal = _validate_literal_contains(contains)
+    if literal is None:
+        return selector
+    return f'{selector} |= "{_escape_query_string(literal)}"'
+
+
+def _validate_metric_name(metric: str) -> str:
+    if not isinstance(metric, str) or not _LABEL_RE.fullmatch(metric):
+        raise TelemetryROError(
+            "invalid_metric",
+            "metric must be a valid Prometheus metric name.",
+            "Pass only a metric identifier such as http_server_duration_milliseconds_count.",
+        )
+    if _SECRET_HINT_RE.search(metric):
+        raise TelemetryROError(
+            "sensitive_metric_rejected",
+            "metric appears to contain a credential-like token.",
+            "Use telemetry metric names only, never credential material.",
+        )
+    return metric
+
+
+def _validate_exact_label_filters(labels: Mapping[str, str] | None, *, family: str) -> dict[str, str]:
+    if labels is None:
+        return {}
+    if not isinstance(labels, Mapping):
+        raise TelemetryROError(
+            f"invalid_{family}_labels",
+            "labels must be an object of exact label-name to label-value filters.",
+            "Use exact filters such as {\"pod\":\"checkout-abc\"}; regular expressions are not accepted.",
+        )
+    if len(labels) > MAX_FILTERS:
+        raise TelemetryROError(
+            f"invalid_{family}_labels",
+            f"labels must contain at most {MAX_FILTERS} exact filters.",
+            "Use a narrower set of exact labels.",
+        )
+    validated: dict[str, str] = {}
+    for raw_key, raw_value in labels.items():
+        if not isinstance(raw_key, str) or not _LABEL_RE.fullmatch(raw_key):
+            raise TelemetryROError(
+                f"invalid_{family}_label",
+                "label names must be valid Prometheus/Loki label identifiers.",
+                "Use plain label names; operators and matcher syntax are not accepted.",
+            )
+        if raw_key.startswith("__") or raw_key.endswith("__"):
+            raise TelemetryROError(
+                f"reserved_{family}_label",
+                "double-underscore label names are reserved for telemetry internals.",
+                "Do not pass reserved labels such as __name__ as caller-supplied filters.",
+            )
+        if raw_key in NAMESPACE_LABEL_KEYS:
+            raise TelemetryROError(
+                "namespace_filter_reserved",
+                "namespace labels are reserved and injected by telemetry_ro.",
+                "Do not pass namespace, kubernetes_namespace, or exported_namespace as label filters.",
+            )
+        if _SECRET_HINT_RE.search(raw_key):
+            raise TelemetryROError(
+                f"sensitive_{family}_label_rejected",
+                "label name appears to contain a credential-like token.",
+                "Use non-sensitive telemetry labels only.",
+            )
+        if not isinstance(raw_value, str):
+            raise TelemetryROError(
+                f"invalid_{family}_label_value",
+                "label values must be strings for exact matching.",
+                "Pass exact string label values only.",
+            )
+        value = raw_value.strip()
+        if (
+            not value
+            or len(value) > MAX_FILTER_VALUE_LENGTH
+            or "\x00" in value
+            or "\n" in value
+            or "\r" in value
+            or re.search(r'[{},"|]', value)
+        ):
+            raise TelemetryROError(
+                f"invalid_{family}_label_value",
+                f"label values must be non-empty strings up to {MAX_FILTER_VALUE_LENGTH} characters without query syntax characters.",
+                "Use a bounded exact label value; regexes, pipes, quotes, and selector fragments are not accepted.",
+            )
+        if _SECRET_HINT_RE.search(value):
+            raise TelemetryROError(
+                f"sensitive_{family}_label_value_rejected",
+                "label value appears to contain a credential-like token.",
+                "Do not search for or pass secrets through telemetry MCP tools.",
+            )
+        validated[raw_key] = value
+    return dict(sorted(validated.items()))
+
+
+def _validate_prometheus_group_by(group_by: Sequence[str] | None) -> list[str]:
+    if group_by is None:
+        return []
+    if not isinstance(group_by, Sequence) or isinstance(group_by, (str, bytes)):
+        raise TelemetryROError(
+            "invalid_group_by",
+            "group_by must be a list of allowed label names.",
+            "Use labels such as service, pod, or http_route.",
+        )
+    if len(group_by) > 8:
+        raise TelemetryROError("invalid_group_by", "group_by contains too many labels.", "Use at most 8 group labels.")
+    labels: list[str] = ["namespace"]
+    seen = {"namespace"}
+    for item in group_by:
+        if not isinstance(item, str) or not _LABEL_RE.fullmatch(item):
+            raise TelemetryROError(
+                "invalid_group_by",
+                "group_by labels must be valid label identifiers.",
+                "Use only allowlisted label names; operators and expressions are not accepted.",
+            )
+        if item not in PROMETHEUS_GROUP_BY_ALLOWLIST:
+            raise TelemetryROError(
+                "group_by_outside_allowlist",
+                "group_by contains a label outside the telemetry_ro allowlist.",
+                f"Allowed labels: {', '.join(sorted(PROMETHEUS_GROUP_BY_ALLOWLIST))}.",
+            )
+        if item not in seen:
+            labels.append(item)
+            seen.add(item)
+    return labels
+
+
+def _validate_literal_contains(contains: str | None) -> str | None:
+    if contains is None:
+        return None
+    if not isinstance(contains, str):
+        raise TelemetryROError(
+            "invalid_loki_contains",
+            "contains must be a literal string.",
+            "Use a short literal substring; regexes and LogQL pipeline fragments are not accepted.",
+        )
+    value = contains.strip()
+    if not value:
+        return None
+    if len(value) > MAX_LITERAL_CONTAINS_LENGTH or "\x00" in value or "\n" in value or "\r" in value or "|" in value:
+        raise TelemetryROError(
+            "invalid_loki_contains",
+            f"contains must be a one-line literal up to {MAX_LITERAL_CONTAINS_LENGTH} characters without LogQL pipeline characters.",
+            "Use a bounded literal substring; do not pass pipeline fragments.",
+        )
+    if _SECRET_HINT_RE.search(value):
+        raise TelemetryROError(
+            "sensitive_loki_contains_rejected",
+            "contains appears to include a credential-like key.",
+            "Do not search for or pass secrets through telemetry MCP tools.",
+        )
+    return value
+
+
+def _bounded_window_seconds(window: int) -> int:
+    if not isinstance(window, int) or window < MIN_STEP_SECONDS or window > MAX_STEP_SECONDS:
+        raise TelemetryROError(
+            "invalid_prometheus_window",
+            f"window must be between {MIN_STEP_SECONDS} and {MAX_STEP_SECONDS} seconds.",
+            "Use a bounded rate/increase window such as 60 or 300.",
+        )
+    return window
+
+
+def _escape_query_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace('"', '\\"')
 
 
 def _validate_name(value: str, field: str) -> None:

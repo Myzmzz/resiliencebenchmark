@@ -1,0 +1,41 @@
+[Unit]
+Description=ResilienceBenchmark MCP chaos_control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=resbench-chaos-control
+Group=resbench-chaos-control
+WorkingDirectory=/opt/resiliencebenchmark/repo
+EnvironmentFile=/etc/resiliencebenchmark/mcp/chaos_control.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=RESBENCH_MCP_TRANSPORT=streamable-http
+Environment=RESBENCH_MCP_HTTP_HOST=127.0.0.1
+Environment=RESBENCH_MCP_HTTP_PORT=18084
+Environment=RESBENCH_MCP_HTTP_PATH=/mcp
+ExecStart=/opt/resiliencebenchmark/repo/.venv/bin/python -m mcp_servers.chaos_control
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+StateDirectory=resiliencebenchmark/chaos-control/active
+ReadOnlyPaths=/opt/resiliencebenchmark/repo /etc/resiliencebenchmark -/var/lib/resiliencebenchmark/chaos-control/baseline
+ReadWritePaths=/var/lib/resiliencebenchmark/chaos-control/active
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

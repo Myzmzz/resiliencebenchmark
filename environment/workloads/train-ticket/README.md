@@ -36,10 +36,18 @@ values are rejected. `target.base_url` must be `http` or `https`, must not
 contain userinfo, and its hostname must exactly match `target.allowed_hosts` so
 runtime credentials cannot be sent to an unintended host.
 
-The JMeter workload image still has to be built, mirrored to Harbor, and pinned
-as `name@sha256:<digest>` before a real `start --execute` can run. Until that
-image is resolved, these files are a preparation contract and dry-run renderer,
-not a claim that the workload is executable in the cluster.
+The workload image is now a small Python generator under `image/`. It is based
+on the previously verified Train-Ticket login, travel search, preserve, and
+order lookup flow, but the public image does not embed private endpoints,
+accounts, passwords, kubeconfig paths, or fixed dates. Build it with
+`scripts/build_train_ticket_workload.py`; the command is dry-run by default and
+only calls `docker buildx` with `--execute`.
+
+The image must still be built, mirrored or pushed through the approved registry
+flow, and pinned as `name@sha256:<digest>` in `spec.generator.image` before a
+real `start --execute` can run. Until that digest is resolved, these files are a
+preparation contract and dry-run renderer, not a claim that the workload is
+already executable in the cluster.
 
 Real starts write `/results/train-ticket.jtl` to the fixture-provided PVC.
 `stop --execute` removes only this run's Job and ConfigMap by `run_id`; it never

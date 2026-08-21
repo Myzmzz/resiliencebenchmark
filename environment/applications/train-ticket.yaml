@@ -22,6 +22,7 @@ spec:
       hideDefectPatch: true
       hideHealthyDiff: true
   imageLock:
+    runtimeInventoryPolicyRef: ../shared/runtime-image-lock-policy.yaml
     registry: "{{HARBOR_REGISTRY}}"
     project: "{{HARBOR_PROJECT_TRAIN_TICKET}}"
     policy: digest-required
@@ -58,9 +59,9 @@ spec:
         description: Query current user order state after creation.
         syntheticLoadProfile: train-ticket-order-query
     steadyLoad:
-      generator: jmeter-or-k6
-      profileRef: "{{WORKLOAD_PROFILE_TRAIN_TICKET}}"
-      targetRps: "{{TRAIN_TICKET_TARGET_RPS}}"
+      generator: controller-owned-python-workload
+      profileRef: ../workloads/train-ticket/profiles.yaml
+      targetFlowQps: "{{TRAIN_TICKET_TARGET_FLOW_QPS}}"
   slos:
     - id: search-availability
       queryRef: prometheus:train_ticket_http_success_rate
@@ -116,12 +117,14 @@ spec:
     knownGaps:
       - observedAt: environment-preparation
         severity: blocking
-        item: No controller-owned repeatable Train-Ticket load generator and business SLO window is qualified yet.
+        item: The controller-owned workload image source is ready, but its image has not been built, pushed to Harbor, digest-pinned, or qualified against a business SLO window.
     resolvedIssues:
+      - resolvedAt: 2026-08-21
+        item: A runtime-parameterized Python workload now implements login, search, preserve, order lookup, default order cancellation, abort thresholds, and streaming JTL evidence without embedding credentials or endpoints.
       - resolvedAt: 2026-08-21
         item: ts-order-service was restored from 0/2 to 2/2 Ready by a scoped rolling restart after its accept queue stopped draining.
         residualRisk: File descriptor and CLOSE_WAIT accumulation may recur; a sustained workload window is required before qualification.
     nextChecks:
-      - Run the controller-owned workload and confirm the order service remains Ready for the full baseline window.
+      - Build and push the controller-owned workload image, record its manifest digest, then run it and confirm the order service remains Ready for the full baseline window.
       - Freeze all component images by digest before building episodes.
       - Verify order creation, query, metrics, traces, and logs under steady load.

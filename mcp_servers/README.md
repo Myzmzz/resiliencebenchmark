@@ -2,7 +2,10 @@
 
 This directory contains the repository-owned MCP servers used by benchmark
 agents. They use the official Python MCP SDK v2 and default to `stdio` for local
-development. Harness trials use authenticated Streamable HTTP on loopback.
+development. Codex, Claude Code, and DeepSeek Harness trials use authenticated
+Streamable HTTP on loopback. BladeAI v0.6.2 verifier compatibility uses three
+additional authenticated SSE listeners for the read-only servers only; Chaos
+Control is deliberately not exposed through that BladeAI path.
 
 Implemented servers:
 
@@ -24,6 +27,14 @@ environment file. HTTP mode requires a bearer token, issuer/resource URLs, and
 an explicit scope; the server binds to loopback by default. Never commit those
 runtime values. Use a separate per-Episode MCP token and a single namespace
 scope for shared clusters.
+
+`telemetry_ro` defaults to structured queries and does not register arbitrary
+PromQL, LogQL, or trace-id lookups in production. Its result filtering is a
+second boundary, not a replacement for namespace-scoped upstream credentials or
+proxy enforcement. `source_ro` similarly requires exactly one Episode
+application at startup. The host units and dry-run-first deployment tooling are
+under `environment/mcp/host/`; installing units alone does not qualify an
+endpoint.
 
 `chaos_control` is intentionally different from the three read-only servers.
 Creation is disabled by default and remains unavailable until its controller

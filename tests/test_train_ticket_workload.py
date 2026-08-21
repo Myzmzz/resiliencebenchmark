@@ -89,13 +89,17 @@ def test_render_is_deterministic_and_has_controller_labels(tmp_path):
     assert labels["resiliencebenchmark.io/run-id"] == "tt-run-001"
     assert labels["resiliencebenchmark.io/owner"] == "benchmark-controller"
     assert first["targetUrlRef"] == "runtime://fixture/base-url"
-    assert first["qps"] == 1.0
-    assert first["concurrency"] == 5
+    assert first["targetFlowQps"] == 1.0
+    assert first["concurrency"] == 1
     assert first["durationSeconds"] == 600
     assert first["abortThresholds"]["maxP95LatencyMs"] == 2500
     assert first["resultArtifact"] == "/results/train-ticket.jtl"
     assert first["artifactRef"] == "pvc://train-ticket/train-ticket-workload-results/results/train-ticket.jtl"
     assert first["artifactPvcClaim"] == "train-ticket-workload-results"
+    workload_env = first["manifest"][1]["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert {"name": "TRAIN_TICKET_ALLOWED_HOSTS", "value": TARGET_HOST} in workload_env
+    assert first["manifest"][1]["spec"]["template"]["spec"]["containers"][0]["name"] == "workload-generator"
+    assert first["workloadConfig"]["cleanupCreatedOrders"] is True
 
 
 def test_repository_example_fixture_is_valid():
@@ -266,7 +270,7 @@ def test_execute_start_renders_results_persistent_volume_claim(tmp_path, capsys)
     kubeconfig = tmp_path / "kubeconfig"
     kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
     profile = yaml.safe_load(PROFILE.read_text(encoding="utf-8"))
-    profile["spec"]["generator"]["image"] = "harbor.example/train-ticket/jmeter@sha256:" + "1" * 64
+    profile["spec"]["generator"]["image"] = "harbor.example/train-ticket/workload@sha256:" + "1" * 64
     profile_path = tmp_path / "profiles.yaml"
     profile_path.write_text(yaml.safe_dump(profile), encoding="utf-8")
     runner = FakeRunner()

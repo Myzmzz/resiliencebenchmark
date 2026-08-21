@@ -19,6 +19,8 @@ spec:
     - node-version-compatible
     - npm-integrity-check-pass
     - exact-dsh-version-installed
+    - transitive-dependency-tree-recorded-before-matrix-freeze
     - fresh-dsh-home-per-trial
     - no-provider-secret-persisted
     - headless-read-only-mcp-smoke-pass
+    - complete-redacted-tool-trace-export-pass-before-scored-use

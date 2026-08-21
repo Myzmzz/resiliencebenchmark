@@ -2,6 +2,23 @@
 # URL placeholders must be replaced by the benchmark runner; Codex TOML does not
 # perform shell-style environment expansion in URL fields.
 
+[features]
+apps = false
+browser_use = false
+browser_use_external = false
+computer_use = false
+goals = false
+hooks = false
+image_generation = false
+in_app_browser = false
+multi_agent = false
+plugin_sharing = false
+shell_tool = false
+skill_mcp_dependency_install = false
+unified_exec = false
+shell_snapshot = false
+workspace_dependencies = false
+
 [mcp_servers.k8s_ro]
 url = "__RESBENCH_K8S_MCP_URL__"
 bearer_token_env_var = "RESBENCH_MCP_TOKEN"

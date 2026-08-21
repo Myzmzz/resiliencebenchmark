@@ -1,3 +1,43 @@
+# Headless benchmark trials expose only the explicit MCP surface. The base
+# bundle's shell, filesystem mutation, web, subagent, workflow, and editor tools
+# remain unavailable to the tested Agent.
+- id: code-runtime
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-subagent-report
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: tool-str-replace-editor
+  disabled: true
+- id: tool-web
+  disabled: true
+
 - insert:
     - id: mcp-k8s-ro
       name: '@deepseek-ai/dsh-mcp-client'
@@ -7,6 +47,7 @@
         url: !!js process.env.RESBENCH_K8S_MCP_URL
         headers:
           Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+        failOnStartupError: true
     - id: mcp-telemetry-ro
       name: '@deepseek-ai/dsh-mcp-client'
       config:
@@ -15,6 +56,7 @@
         url: !!js process.env.RESBENCH_TELEMETRY_MCP_URL
         headers:
           Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+        failOnStartupError: true
     - id: mcp-source-ro
       name: '@deepseek-ai/dsh-mcp-client'
       config:
@@ -23,6 +65,7 @@
         url: !!js process.env.RESBENCH_SOURCE_MCP_URL
         headers:
           Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+        failOnStartupError: true
     - id: mcp-chaos-control
       name: '@deepseek-ai/dsh-mcp-client'
       config:
@@ -31,3 +74,4 @@
         url: !!js process.env.RESBENCH_CHAOS_CONTROL_MCP_URL
         headers:
           Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+        failOnStartupError: true

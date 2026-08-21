@@ -85,6 +85,10 @@ make test
 make test-mcp
 make dry-run
 make probe-models-dry
+make build-train-ticket-workload-dry
+make deploy-mcp-dry
+make qualify-mcp-dry
+make trial-dry
 ```
 
 Source snapshots are materialized from immutable public locks and verified by commit plus archive SHA-256:
@@ -101,12 +105,12 @@ make render-sock-shop
 make mirror-sock-shop-dry
 ```
 
-本阶段还提供四类 Agent 可用 MCP 的仓库实现：`k8s_ro` 负责受限 Kubernetes 只读对象、事件和 Pod 日志；`telemetry_ro` 负责 Prometheus、Jaeger、Loki 的限窗查询；`source_ro` 负责锁定源码快照读取；`chaos_control` 负责带 baseline ledger、目标 UID 校验和 cleanup ledger 的 ChaosBlade 控制。它们已经有本地单元测试和 HTTP runtime 模板，但远端 endpoint 部署和 Harness 资格验证仍属于下一阶段门槛。每个 Episode 必须单独收窄 namespace、Telemetry service 和 Source application；共享集群的 Telemetry 还必须有上游强制 label scope，结果后过滤本身不构成硬租户隔离。
+本阶段还提供四类 Agent 可用 MCP 的仓库实现：`k8s_ro` 负责受限 Kubernetes 只读对象、事件和 Pod 日志；`telemetry_ro` 负责 Prometheus、Jaeger、Loki 的结构化限窗查询；`source_ro` 负责锁定源码快照读取；`chaos_control` 负责带 baseline ledger、目标 UID 校验、持久截止时间和 cleanup ledger 的 ChaosBlade 控制。仓库已包含 loopback systemd 单元、固定提交部署器、端点资格检查和 Codex/Claude Code/DeepSeek Harness 单次运行器；本地的认证 HTTP/SSE 契约已通过，远端安装与 Harness 真实调用仍未资格化。每个 Episode 必须单独收窄 namespace、Telemetry service 和 Source application；共享集群的 Telemetry 还必须有上游强制 label scope，结果后过滤本身不构成硬租户隔离。
 
 ## 下一阶段
 
 1. 使用轮换后的 Harbor Robot Account 完成 Sock Shop digest 镜像同步并恢复 14 个 Deployment。
 2. 固定 SSH host key 并授权部署公钥，在目标主机运行固定版本的 DeepSeek Harness 安装脚本并执行 headless 资格检查。
-3. 按 `environment/mcp/runtime-contract.yaml` 部署并验证 k8s、telemetry、source 和 chaos-control MCP 实际端点。
+3. 按 `environment/mcp/runtime-contract.yaml` 安装 MCP host，每 Episode 渲染独立作用域，再验证 k8s、telemetry、source 和 chaos-control 实际端点。
 4. 轮换模型网关凭据后执行七模型 capability probe，冻结可比较的 Harness × Model 单元。
 5. 对历史 ChaosBlade 资源完成所有权确认和数据面残留核对，然后解锁首批 6–10 个 Episode。

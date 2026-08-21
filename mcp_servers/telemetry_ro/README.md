@@ -6,29 +6,49 @@ agents cannot pass upstream URLs as tool arguments.
 
 Required runtime scope:
 
-- `RESBENCH_TELEMETRY_ALLOWED_NAMESPACES`: comma or whitespace separated
-  Kubernetes namespaces for Prometheus and Loki result filtering.
+- `RESBENCH_TELEMETRY_ALLOWED_NAMESPACES`: exactly one Kubernetes namespace for
+  the current BenchmarkFactory Episode. A telemetry_ro runtime must not span
+  multiple namespaces.
 - `RESBENCH_JAEGER_ALLOWED_SERVICES`: comma or whitespace separated Jaeger
   service names for trace filtering.
+- `RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES`: optional development switch. Raw
+  arbitrary PromQL/LogQL tools and direct Jaeger trace-id lookup are hidden and
+  rejected by default. Set to `true` only for explicit qualification or
+  debugging runs; those tools are unqualified for shared-cluster production use.
 
-Prometheus and Loki result tools apply a fail-closed post-filter. A returned
-series or stream must carry one of these labels with an allowlisted value:
+Production-default Prometheus and Loki tools are structured. Agents provide a
+metric name, exact non-namespace label filters, optional `rate`/`increase`
+transform, allowlisted `group_by`, or a bounded literal Loki `contains` string.
+The server constructs the actual PromQL/LogQL and injects
+`namespace="<episode namespace>"`. Namespace labels are reserved; callers cannot
+override them or pass arbitrary query strings in strict mode.
+
+Returned Prometheus series and Loki streams still apply a fail-closed
+post-filter. A returned item must carry one of these labels with the configured
+Episode namespace:
 
 - `namespace`
 - `kubernetes_namespace`
 - `exported_namespace`
 
-Items without one of those labels are removed and counted in `scopedOutCount`.
-This means agent-facing PromQL and LogQL should preserve the namespace label in
-aggregations, for example by grouping with the namespace label when aggregating.
+Items without one of those labels are removed. In strict mode, responses expose
+only `scopeFiltered: true` or `false`; they do not expose the number of filtered
+items, because that count can become a shared-cluster side channel. Raw
+development mode may include diagnostic filtered counts.
 
-This post-filter is a guardrail against agent misreading and accidental
-cross-namespace evidence exposure. It is not hard tenant isolation for arbitrary
-PromQL, LogQL, or trace queries. In a production shared cluster, each benchmark
-Episode must use a single namespace allowlist and the upstream telemetry endpoint
-must point to a proxy, tenant, or query layer that enforces the same label scope
-before data reaches this MCP server. If that upstream scope is absent, the
-qualification check must not claim hard isolation.
+Jaeger `find_traces` is the default trace retrieval path and returns only traces
+whose discovered service names are within the configured allowlist. Direct
+`get_trace(trace_id)` is a raw development tool only, because arbitrary known
+trace ids can otherwise be used as an out-of-scope trace existence probe.
+
+The structured tools define the repository-level hard boundary for agent-facing
+queries in this BenchmarkFactory codebase: arbitrary PromQL/LogQL is not exposed
+by default, namespace is server-owned, query windows and result sizes are
+bounded, and payloads are redacted. True multi-tenant isolation still needs
+defense in depth upstream: a Prometheus/Loki tenant, proxy, or query layer must
+enforce the same namespace scope before data reaches this MCP server. If that
+upstream scope is absent, the qualification check must not claim infrastructure
+tenant isolation.
 
 All returned payloads are recursively redacted before leaving the MCP server.
 Fields whose key names look credential-like are replaced with `<redacted>`, and

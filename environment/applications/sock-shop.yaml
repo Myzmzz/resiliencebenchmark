@@ -22,6 +22,7 @@ spec:
       hideDefectPatch: true
       hideHealthyDiff: true
   imageLock:
+    runtimeInventoryPolicyRef: ../shared/runtime-image-lock-policy.yaml
     registry: "{{HARBOR_REGISTRY}}"
     project: "{{HARBOR_PROJECT_SOCK_SHOP}}"
     policy: digest-required

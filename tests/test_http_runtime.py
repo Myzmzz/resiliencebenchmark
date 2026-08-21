@@ -91,6 +91,24 @@ def test_stdio_transport_does_not_require_token():
     assert read_transport({}) == "stdio"
 
 
+def test_sse_transport_uses_authenticated_http_runtime():
+    server, config = create_server_for_transport(
+        lambda **kwargs: MCPServer(name="test_sse", **kwargs),
+        transport="sse",
+        env=http_env(**{HTTP_PATH_ENV: "/sse", HTTP_PORT_ENV: "18183"}),
+    )
+
+    assert server.name == "test_sse"
+    assert config is not None
+    assert config.sse_kwargs() == {
+        "host": "127.0.0.1",
+        "port": 18183,
+        "sse_path": "/sse",
+        "message_path": "/messages/",
+    }
+    assert read_transport({"RESBENCH_MCP_TRANSPORT": "sse"}) == "sse"
+
+
 def test_http_runtime_builds_auth_settings_and_safe_defaults():
     config = build_http_runtime_config(http_env())
 

@@ -1,14 +1,14 @@
 <evaluation>
    <qa_pair>
-      <question>Using only telemetry tools, for the frozen fixture window 1700000000 to 1700000300, query Prometheus for up at time 1700000000 and report the result type. Answer with one word.</question>
+      <question>Using only telemetry tools, for the frozen fixture window 1700000000 to 1700000300, query the Prometheus metric up at time 1700000000 and report the result type. Answer with one word.</question>
       <answer>vector</answer>
    </qa_pair>
    <qa_pair>
-      <question>Using only telemetry tools, for the frozen fixture window 1700000000 to 1700000300, run a Prometheus range query for rate(http_server_duration_milliseconds_count[1m]) with step 30. What result type is returned? Answer with one word.</question>
+      <question>Using only telemetry tools, for the frozen fixture window 1700000000 to 1700000300, run a Prometheus metric range query for http_server_duration_milliseconds_count with transform rate, window 60 seconds, and step 30. What result type is returned? Answer with one word.</question>
       <answer>matrix</answer>
    </qa_pair>
    <qa_pair>
-      <question>Using only telemetry tools, list Prometheus series matching up{namespace="otel-demo"} in the frozen fixture window 1700000000 to 1700000300. What is the first returned pod label? Answer with the exact string.</question>
+      <question>Using only telemetry tools, list Prometheus series for the metric up in the frozen fixture window 1700000000 to 1700000300. What is the first returned pod label? Answer with the exact string.</question>
       <answer>checkoutservice-abc123</answer>
    </qa_pair>
    <qa_pair>
@@ -28,7 +28,7 @@
       <answer>abc123</answer>
    </qa_pair>
    <qa_pair>
-      <question>Using only telemetry tools, get Jaeger trace abc123. Which process serviceName appears on the failing span in the frozen fixture? Answer with the exact service name.</question>
+      <question>Using only telemetry tools, find Jaeger traces for checkoutservice between 1700000000 and 1700000300 with operation POST /checkout and tags {"error":"true"}. In the returned trace details, which process serviceName appears on the failing span in the frozen fixture? Answer with the exact service name.</question>
       <answer>paymentservice</answer>
    </qa_pair>
    <qa_pair>
@@ -36,7 +36,7 @@
       <answer>pod</answer>
    </qa_pair>
    <qa_pair>
-      <question>Using only telemetry tools, run the Loki range query {namespace="otel-demo"} |= "deadline exceeded" for the frozen fixture window 1700000000 to 1700000300 with step 10. Which pod label is on the first returned stream? Answer with the exact string.</question>
+      <question>Using only telemetry tools, run a Loki log range query for the frozen fixture window 1700000000 to 1700000300 with literal contains deadline exceeded and step 10. Which pod label is on the first returned stream? Answer with the exact string.</question>
       <answer>checkoutservice-abc123</answer>
    </qa_pair>
 </evaluation>

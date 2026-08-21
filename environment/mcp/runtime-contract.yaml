@@ -12,6 +12,13 @@ spec:
       tokenRef: env:RESBENCH_MCP_TOKEN
       minimumTokenCharacters: 32
     lifecycle: fresh-token-and-scope-per-episode
+    compatibilityListeners:
+      bladeAiV0_6_2:
+        type: sse
+        bindAddress: loopback-only
+        path: /sse
+        servers: [k8s_ro, telemetry_ro, source_ro]
+        chaosControlExposed: false
   servers:
     - name: k8s_ro
       module: mcp_servers.k8s_ro
@@ -31,8 +38,11 @@ spec:
         - RESBENCH_LOKI_URL
         - RESBENCH_TELEMETRY_ALLOWED_NAMESPACES
         - RESBENCH_JAEGER_ALLOWED_SERVICES
+        - RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES
       scopeRule: single-namespace-upstream-enforced-query-scope
-      qualificationBoundary: result-post-filter-alone-is-not-hard-tenant-isolation
+      strictStructuredQueriesRequired: true
+      rawQueriesAllowedInProduction: false
+      qualificationBoundary: structured-query-scope-plus-upstream-defense-in-depth
     - name: source_ro
       module: mcp_servers.source_ro
       mode: read-only
@@ -73,3 +83,5 @@ spec:
     - returned-content-is-bounded-and-secret-redacted
     - chaos-create-remains-disabled-until-controller-gates-pass
     - chaos-duration-deadline-cleans-and-verifies-absence
+    - bladeai-sse-unauthenticated-request-is-rejected
+    - bladeai-sse-tools-are-read-only-only

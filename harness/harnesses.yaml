@@ -11,6 +11,7 @@ shared:
     redact_secret_patterns: true
   allowed_mcp_tools_ref: mcp-tools.yaml
   mcp_client_templates:
+    bladeai: bladeai/mcp.json.template
     codex: codex/config.toml.template
     claude_code: claude-code/mcp.json.template
     deepseek_harness: deepseek-harness/mcp.cordis.patch.yml
@@ -29,13 +30,37 @@ shared:
 harnesses:
   bladeai:
     kind: bladeai
-    status: configured_skeleton
+    status: preparation_configured_remote_unqualified
     qualification_status: live_host_unverified
     entrypoint:
       mode: cli_or_service
       command: blade-ai
       prompt_transport: adapter_owned
       args: []
+    mcp:
+      template: bladeai/mcp.json.template
+      qualification: bladeai/qualification.yaml
+      env_example: bladeai/env.example
+      enabled_flag: env:BLADE_AI_MCP_ENABLED
+      config_path_flag: env:BLADE_AI_MCP_CONFIG_PATH
+      config_path_status: declared_but_bladeai_v0_6_2_loader_uses_home_default
+      transport_status: native_sse_runtime_prepared_remote_unqualified
+      host_native_sse_listeners:
+        k8s_ro: 127.0.0.1:18181
+        telemetry_ro: 127.0.0.1:18182
+        source_ro: 127.0.0.1:18183
+      read_only_servers:
+        - k8s_ro
+        - telemetry_ro
+        - source_ro
+      attach_to:
+        k8s_ro:
+          - verifier
+        telemetry_ro:
+          - verifier
+        source_ro:
+          - verifier
+      chaos_control: disabled_in_bladeai_external_controller_only
     models:
       source: models.yaml
       candidate_aliases_requiring_probe:
@@ -71,8 +96,11 @@ harnesses:
         - --strict-mcp-config
         - --tools
         - ""
+        - --allowedTools
+        - mcp__k8s_ro,mcp__telemetry_ro,mcp__source_ro,mcp__chaos_control
     environment:
       anthropic_base_url: env:RESBENCH_LLM_BASE_URL
+      anthropic_api_key: env:RESBENCH_LLM_API_KEY
       anthropic_auth_token: env:RESBENCH_LLM_API_KEY
       claude_config_home: env:RESBENCH_CLAUDE_HOME
     models:
@@ -133,11 +161,11 @@ harnesses:
       npm_integrity: sha512-ZceDCJ8FAywih+USW/OMk9jEhunlvJBGEz4kqrhau23hPzbciOazZrywH0nBRsaalSeAJ1JGBmjtw4OSjToStw==
       git_tag: dsh-v0.1.0-rc.7
       commit: 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
-      verification_status: source_and_package_pin_recorded
+      verification_status: source_and_top_level_package_pin_recorded_transitive_tree_pending
       note: Developer preview pin supplied by environment-prep inventory; install exactly this version and integrity for repeatable trials.
     entrypoint:
       mode: headless_cli
-      command: dsh
+      command: /opt/resiliencebenchmark/deepseek-harness/node_modules/.bin/dsh
       prompt_transport: single_positional_argument
       args:
         - --profile
@@ -153,6 +181,10 @@ harnesses:
       require_empty_dsh_home: true
       cleanup_dsh_home_after_trial: true
       forbid_shared_web_host_for_trials: true
+    trace:
+      current_capture: redacted-headless-stdout-and-final-result
+      session_tool_export: pending-live-host-qualification
+      scored_trial_eligibility: blocked-until-complete-tool-trace-pass
     models:
       source: models.yaml
       default_alias: deepseek-v4-pro
