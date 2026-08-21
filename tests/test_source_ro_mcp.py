@@ -8,7 +8,15 @@ import pytest
 import yaml
 
 from mcp_servers.source_ro import core
-from mcp_servers.source_ro.core import MAX_FILE_BYTES, SourceROError, SourceROIndex
+from mcp_servers.source_ro.core import (
+    ALLOWED_APPLICATIONS_ENV,
+    ALLOWED_REPOSITORIES_ENV,
+    MAX_FILE_BYTES,
+    SOURCE_ROOT_ENV,
+    SourceROError,
+    SourceROIndex,
+    error_envelope,
+)
 
 
 def write_lockfile(path: Path, locks: list[dict]) -> None:
@@ -54,7 +62,7 @@ def make_index(tmp_path: Path) -> SourceROIndex:
             }
         ],
     )
-    return SourceROIndex(source_root=source_root, lockfile=lockfile)
+    return SourceROIndex(source_root=source_root, lockfile=lockfile, allowed_applications={"demo"})
 
 
 def make_repository(source_root: Path, lock_id: str) -> None:
@@ -111,7 +119,7 @@ def test_list_repositories_redacts_remote_credentials_queries_and_local_refs(tmp
             },
         ],
     )
-    index = SourceROIndex(source_root=source_root, lockfile=lockfile)
+    index = SourceROIndex(source_root=source_root, lockfile=lockfile, allowed_applications={"demo"})
 
     repos = {repo["id"]: repo for repo in index.list_repositories(limit=10)["repositories"]}
 
@@ -142,7 +150,11 @@ def test_list_repositories_filters_and_paginates_with_limit_cap(tmp_path):
         )
     lockfile = tmp_path / "environment" / "shared" / "source-locks.yaml"
     write_lockfile(lockfile, locks)
-    index = SourceROIndex(source_root=source_root, lockfile=lockfile)
+    index = SourceROIndex(
+        source_root=source_root,
+        lockfile=lockfile,
+        allowed_applications={"sock-shop", "otel-demo"},
+    )
 
     capped = index.list_repositories(limit=500)
     filtered = index.list_repositories(application="sock-shop", component="orders", limit=3, offset=1)
@@ -173,6 +185,121 @@ def test_list_files_paginates_and_hides_private_paths(tmp_path):
     paths = {entry["path"] for entry in result["entries"]}
     assert ".git/config" not in paths
     assert "ground-truth-private/answer.patch" not in paths
+
+
+def test_allowlist_filters_repositories_and_rejects_out_of_scope_repo(tmp_path):
+    source_root = tmp_path / "sources"
+    make_repository(source_root, "train-ticket-upstream")
+    make_repository(source_root, "otel-demo-2.2.0")
+    lockfile = tmp_path / "environment" / "shared" / "source-locks.yaml"
+    write_lockfile(
+        lockfile,
+        [
+            {
+                "id": "train-ticket-upstream",
+                "application": "train-ticket",
+                "remote": "https://example.com/train-ticket.git",
+                "commit": "a" * 40,
+                "archiveSha256": "b" * 64,
+            },
+            {
+                "id": "otel-demo-2.2.0",
+                "application": "otel-demo",
+                "remote": "https://example.com/otel-demo.git",
+                "commit": "c" * 40,
+                "archiveSha256": "d" * 64,
+            },
+        ],
+    )
+    index = SourceROIndex(
+        source_root=source_root,
+        lockfile=lockfile,
+        allowed_applications={"train-ticket"},
+    )
+
+    repositories = index.list_repositories()["repositories"]
+    assert [repo["id"] for repo in repositories] == ["train-ticket-upstream"]
+    with pytest.raises(SourceROError) as exc:
+        index.show_commit("otel-demo-2.2.0")
+    assert exc.value.code == "repository_out_of_scope"
+    structured = error_envelope(exc.value)
+    assert structured["error"]["code"] == "repository_out_of_scope"
+    assert "source_list_repositories" in structured["error"]["action"]
+
+
+def test_repository_allowlist_can_narrow_episode_application(tmp_path):
+    source_root = tmp_path / "sources"
+    for lock_id in ["orders", "catalogue"]:
+        make_repository(source_root, lock_id)
+    lockfile = tmp_path / "environment" / "shared" / "source-locks.yaml"
+    write_lockfile(
+        lockfile,
+        [
+            {
+                "id": "orders",
+                "application": "sock-shop",
+                "component": "orders",
+                "remote": "https://example.com/orders.git",
+                "commit": "a" * 40,
+                "archiveSha256": "b" * 64,
+            },
+            {
+                "id": "catalogue",
+                "application": "sock-shop",
+                "component": "catalogue",
+                "remote": "https://example.com/catalogue.git",
+                "commit": "c" * 40,
+                "archiveSha256": "d" * 64,
+            },
+        ],
+    )
+    index = SourceROIndex(
+        source_root=source_root,
+        lockfile=lockfile,
+        allowed_applications={"sock-shop"},
+        allowed_repositories={"orders"},
+    )
+
+    assert [repo["id"] for repo in index.list_repositories()["repositories"]] == ["orders"]
+    with pytest.raises(SourceROError, match="outside this episode scope"):
+        index.read_file("catalogue", "README.md")
+
+
+def test_repository_allowlist_cannot_cross_allowed_application(tmp_path):
+    source_root = tmp_path / "sources"
+    make_repository(source_root, "train-ticket-upstream")
+    make_repository(source_root, "otel-demo-2.2.0")
+    lockfile = tmp_path / "environment" / "shared" / "source-locks.yaml"
+    write_lockfile(
+        lockfile,
+        [
+            {
+                "id": "train-ticket-upstream",
+                "application": "train-ticket",
+                "remote": "https://example.com/train-ticket.git",
+                "commit": "a" * 40,
+                "archiveSha256": "b" * 64,
+            },
+            {
+                "id": "otel-demo-2.2.0",
+                "application": "otel-demo",
+                "remote": "https://example.com/otel-demo.git",
+                "commit": "c" * 40,
+                "archiveSha256": "d" * 64,
+            },
+        ],
+    )
+
+    with pytest.raises(SourceROError) as exc:
+        SourceROIndex(
+            source_root=source_root,
+            lockfile=lockfile,
+            allowed_applications={"train-ticket"},
+            allowed_repositories={"otel-demo-2.2.0"},
+        )
+
+    assert exc.value.code == "invalid_source_scope"
+    assert "outside the allowed application" in exc.value.message
 
 
 def test_read_file_caps_output_and_supports_start_line(tmp_path):
@@ -297,7 +424,7 @@ def test_missing_environment_source_root_is_actionable(monkeypatch):
     monkeypatch.delenv("RESBENCH_SOURCE_ROOT", raising=False)
 
     with pytest.raises(SourceROError) as exc:
-        SourceROIndex(lockfile=Path("does-not-matter.yaml"))
+        SourceROIndex(lockfile=Path("does-not-matter.yaml"), allowed_applications={"demo"})
 
     assert exc.value.code == "missing_source_root"
     assert "Set RESBENCH_SOURCE_ROOT" in exc.value.action
@@ -310,7 +437,7 @@ def test_invalid_lockfile_item_is_actionable(tmp_path):
     write_lockfile(lockfile, ["not-a-mapping"])
 
     with pytest.raises(SourceROError) as exc:
-        SourceROIndex(source_root=source_root, lockfile=lockfile)
+        SourceROIndex(source_root=source_root, lockfile=lockfile, allowed_applications={"demo"})
 
     assert exc.value.code == "invalid_lockfile"
     assert "must be a mapping" in exc.value.message
@@ -320,6 +447,7 @@ def test_mcp_server_annotations_when_sdk_is_available(monkeypatch, tmp_path):
     pytest.importorskip("mcp.server")
     index = make_index(tmp_path)
     monkeypatch.setenv("RESBENCH_SOURCE_ROOT", str(index.source_root))
+    monkeypatch.setenv(ALLOWED_APPLICATIONS_ENV, "demo")
     monkeypatch.chdir(tmp_path)
     os.makedirs("environment/shared", exist_ok=True)
     (tmp_path / "environment/shared/source-locks.yaml").write_text(index.lockfile.read_text(encoding="utf-8"), encoding="utf-8")
@@ -353,6 +481,75 @@ def test_source_ro_stdio_server_creation_does_not_require_mcp_token(monkeypatch)
 
     assert server.name == "source_ro"
     assert config is None
+
+
+def test_from_environment_requires_episode_application_scope(monkeypatch, tmp_path):
+    index = make_index(tmp_path)
+    monkeypatch.setenv(SOURCE_ROOT_ENV, str(index.source_root))
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("environment/shared", exist_ok=True)
+    (tmp_path / "environment/shared/source-locks.yaml").write_text(index.lockfile.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.delenv(ALLOWED_APPLICATIONS_ENV, raising=False)
+
+    with pytest.raises(SourceROError) as exc:
+        SourceROIndex.from_environment()
+
+    assert exc.value.code == "missing_source_scope"
+
+
+def test_from_environment_rejects_multiple_episode_applications(monkeypatch, tmp_path):
+    index = make_index(tmp_path)
+    monkeypatch.setenv(SOURCE_ROOT_ENV, str(index.source_root))
+    monkeypatch.setenv(ALLOWED_APPLICATIONS_ENV, "demo,other")
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("environment/shared", exist_ok=True)
+    (tmp_path / "environment/shared/source-locks.yaml").write_text(index.lockfile.read_text(encoding="utf-8"), encoding="utf-8")
+
+    with pytest.raises(SourceROError) as exc:
+        SourceROIndex.from_environment()
+
+    assert exc.value.code == "invalid_source_scope"
+
+
+def test_server_tool_calls_apply_episode_scope(monkeypatch, tmp_path):
+    source_root = tmp_path / "sources"
+    make_repository(source_root, "train-ticket-upstream")
+    make_repository(source_root, "otel-demo-2.2.0")
+    lockfile = tmp_path / "environment" / "shared" / "source-locks.yaml"
+    write_lockfile(
+        lockfile,
+        [
+            {
+                "id": "train-ticket-upstream",
+                "application": "train-ticket",
+                "remote": "https://example.com/train-ticket.git",
+                "commit": "a" * 40,
+                "archiveSha256": "b" * 64,
+            },
+            {
+                "id": "otel-demo-2.2.0",
+                "application": "otel-demo",
+                "remote": "https://example.com/otel-demo.git",
+                "commit": "c" * 40,
+                "archiveSha256": "d" * 64,
+            },
+        ],
+    )
+    monkeypatch.setenv(SOURCE_ROOT_ENV, str(source_root))
+    monkeypatch.setenv(ALLOWED_APPLICATIONS_ENV, "train-ticket")
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("environment/shared", exist_ok=True)
+    (tmp_path / "environment/shared/source-locks.yaml").write_text(lockfile.read_text(encoding="utf-8"), encoding="utf-8")
+
+    from mcp_servers.source_ro.server import create_server
+
+    server = create_server()
+    listed = asyncio.run(server.call_tool("source_list_repositories", {}))
+    denied = asyncio.run(server.call_tool("source_show_commit", {"repo_id": "otel-demo-2.2.0"}))
+
+    assert listed.structured_content["repositories"][0]["id"] == "train-ticket-upstream"
+    assert denied.structured_content["ok"] is False
+    assert denied.structured_content["error"]["code"] == "repository_out_of_scope"
 
 
 def test_source_ro_http_server_creation_requires_token(monkeypatch):

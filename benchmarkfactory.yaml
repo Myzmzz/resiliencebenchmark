@@ -35,6 +35,8 @@ spec:
       - environment/observability/kubelet-certificate-expiry.yaml
       - environment/observability/prometheus-pvc.yaml
     mcpDeployments:
+      runtimeContract: environment/mcp/runtime-contract.yaml
+      httpRuntime: mcp_servers/http_runtime.py
       implementations:
         k8s_ro: mcp_servers/k8s_ro/server.py
         telemetry_ro: mcp_servers/telemetry_ro/server.py
@@ -48,6 +50,7 @@ spec:
       prometheus:
         chartLock: environment/mcp/prometheus-chart-lock.yaml
         values: environment/mcp/prometheus-values.yaml
+        role: optional-third-party-adapter
     sourceSnapshots: environment/shared/source-snapshots.yaml
     sourceLocks: environment/shared/source-locks.yaml
     repairPlans:
@@ -61,6 +64,10 @@ spec:
     outputSchema: harness/schemas/agent-result.schema.json
     runTraceSchema: harness/schemas/run-trace.schema.json
     deepSeekDeploymentStatus: harness/deepseek-harness/deployment-status.yaml
+    clientTemplates:
+      codex: harness/codex/config.toml.template
+      claudeCode: harness/claude-code/mcp.json.template
+      deepSeekHarness: harness/deepseek-harness/mcp.cordis.patch.yml
   controller:
     planSchema: controller/schemas/controller-plan.schema.json
     safetyModule: controller/safety.py
@@ -92,6 +99,8 @@ spec:
       - controller safety validation
       - independent evaluator contracts
       - static and read-only cluster qualification tools
+      - authenticated source telemetry Kubernetes and gated ChaosBlade MCP implementations
+      - Codex and Claude Code trial-local MCP client templates
     notYetClaimed:
       - runnable locked Episode bundle
       - deployed MCP endpoints for every Harness

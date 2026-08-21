@@ -504,10 +504,11 @@ class KubectlBackendCommandTest(unittest.TestCase):
 class ChaosControlMcpServerTest(unittest.TestCase):
     def test_tool_annotations_are_accurate(self):
         try:
-            from mcp_servers.chaos_control.server import mcp
+            from mcp_servers.chaos_control.server import create_server
         except ModuleNotFoundError as exc:
             self.skipTest(f"MCP SDK is not installed in this interpreter: {exc}")
 
+        mcp = create_server(service=self.service_for_mcp())
         tools = run(mcp.list_tools())
         by_name = {tool.name: tool for tool in tools}
 
@@ -517,6 +518,28 @@ class ChaosControlMcpServerTest(unittest.TestCase):
         self.assertFalse(by_name["chaos_create_experiment"].annotations.destructive_hint)
         self.assertTrue(by_name["chaos_destroy_experiment"].annotations.destructive_hint)
         self.assertTrue(by_name["chaos_destroy_experiment"].annotations.idempotent_hint)
+
+    def test_mcp_tool_schemas_do_not_expose_kubeconfig(self):
+        try:
+            from mcp_servers.chaos_control.server import create_server
+        except ModuleNotFoundError as exc:
+            self.skipTest(f"MCP SDK is not installed in this interpreter: {exc}")
+
+        mcp = create_server(service=self.service_for_mcp())
+        tools = run(mcp.list_tools())
+        for tool in tools:
+            schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema")
+            properties = schema.get("properties", {})
+            self.assertNotIn("kubeconfig", properties, tool.name)
+
+    def service_for_mcp(self):
+        config = RuntimeConfig(
+            kubeconfig="/tmp/controller.kubeconfig",
+            namespace_allowlist=frozenset({"otel-demo"}),
+            controller_token_ref="k8s://resbench/controller-token#token",
+            controller_pod_uid="controller-pod-uid",
+        )
+        return ChaosControlService(config, InMemoryChaosBackend())
 
 
 if __name__ == "__main__":

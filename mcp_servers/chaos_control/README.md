@@ -36,3 +36,7 @@ same-process races but is not a distributed lock; run at most one
 `chaos_control` MCP instance per benchmark controller. Create writes a pending
 cleanup ledger before `kubectl apply` and marks it active only after readback,
 so an apply crash still leaves a cleanup handle for recovery.
+
+Agents never provide the kubeconfig path through MCP tool arguments. The path is
+only read from the server process environment via `RESBENCH_CHAOS_KUBECONFIG`;
+if it is missing, the service fails closed.

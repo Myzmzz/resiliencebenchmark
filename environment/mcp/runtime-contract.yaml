@@ -1,0 +1,73 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: McpEndpointSet
+metadata:
+  name: benchmarkfactory-runtime-mcp
+spec:
+  transport:
+    type: streamable-http
+    bindAddress: loopback-only
+    path: /mcp
+    authentication:
+      type: bearer
+      tokenRef: env:RESBENCH_MCP_TOKEN
+      minimumTokenCharacters: 32
+    lifecycle: fresh-token-and-scope-per-episode
+  servers:
+    - name: k8s_ro
+      module: mcp_servers.k8s_ro
+      mode: read-only
+      endpointRef: env:RESBENCH_K8S_MCP_URL
+      requiredRuntimeEnv:
+        - RESBENCH_K8S_RO_KUBECONFIG
+        - RESBENCH_K8S_RO_NAMESPACE_ALLOWLIST
+      scopeRule: exactly-one-episode-namespace
+    - name: telemetry_ro
+      module: mcp_servers.telemetry_ro
+      mode: read-only
+      endpointRef: env:RESBENCH_TELEMETRY_MCP_URL
+      requiredRuntimeEnv:
+        - RESBENCH_PROMETHEUS_URL
+        - RESBENCH_JAEGER_URL
+        - RESBENCH_LOKI_URL
+        - RESBENCH_TELEMETRY_ALLOWED_NAMESPACES
+        - RESBENCH_JAEGER_ALLOWED_SERVICES
+      scopeRule: single-namespace-upstream-enforced-query-scope
+      qualificationBoundary: result-post-filter-alone-is-not-hard-tenant-isolation
+    - name: source_ro
+      module: mcp_servers.source_ro
+      mode: read-only
+      endpointRef: env:RESBENCH_SOURCE_MCP_URL
+      requiredRuntimeEnv:
+        - RESBENCH_SOURCE_ROOT
+        - RESBENCH_SOURCE_ALLOWED_APPLICATIONS
+      scopeRule: current-episode-application-and-optional-repository-subset
+    - name: chaos_control
+      module: mcp_servers.chaos_control
+      mode: controller-gated-write
+      endpointRef: env:RESBENCH_CHAOS_CONTROL_MCP_URL
+      requiredRuntimeEnv:
+        - RESBENCH_CHAOS_KUBECONFIG
+        - RESBENCH_CHAOS_NAMESPACE_ALLOWLIST
+        - RESBENCH_CHAOS_CONTROLLER_TOKEN_REF
+        - RESBENCH_CHAOS_CONTROLLER_POD_UID
+        - RESBENCH_CHAOS_BASELINE_LEDGER_DIR
+        - RESBENCH_CHAOS_LEDGER_DIR
+      executionDefault: disabled
+      singletonRequired: true
+      scopeRule: one-controller-one-active-experiment
+  commonHttpRuntimeEnv:
+    - RESBENCH_MCP_TRANSPORT
+    - RESBENCH_MCP_HTTP_HOST
+    - RESBENCH_MCP_HTTP_PORT
+    - RESBENCH_MCP_HTTP_PATH
+    - RESBENCH_MCP_ISSUER_URL
+    - RESBENCH_MCP_RESOURCE_URL
+    - RESBENCH_MCP_SCOPE
+    - RESBENCH_MCP_TOKEN
+  qualification:
+    - server-starts-with-runtime-only-configuration
+    - unauthenticated-request-is-rejected
+    - tool-schema-does-not-accept-upstream-url-or-kubeconfig
+    - namespace-application-and-service-scope-is-enforced
+    - returned-content-is-bounded-and-secret-redacted
+    - chaos-create-remains-disabled-until-controller-gates-pass
