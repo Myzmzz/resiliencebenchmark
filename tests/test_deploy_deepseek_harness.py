@@ -69,6 +69,16 @@ def test_installer_creates_path_independent_node_and_dsh_wrapper():
     assert "exec /opt/resiliencebenchmark/deepseek-harness/bin/node" in text
 
 
+def test_installer_bounds_memory_and_deprioritizes_npm_ci():
+    text = (REPO_ROOT / deploy.INSTALL_SCRIPT).read_text(encoding="utf-8")
+
+    assert "DSH_MIN_AVAILABLE_MEMORY_KIB=4194304" in text
+    assert "DSH_NODE_MAX_OLD_SPACE_MIB=2048" in text
+    assert "MemAvailable:" in text
+    assert 'export NODE_OPTIONS="--max-old-space-size=$DSH_NODE_MAX_OLD_SPACE_MIB"' in text
+    assert "ionice -c 2 -n 7 nice -n 10 npm ci" in text
+
+
 def test_dry_run_does_not_call_runner_or_expose_env_values(tmp_path):
     fake = FakeRunner()
     env = runtime_env(tmp_path)

@@ -24,6 +24,11 @@ and creates `/opt/resiliencebenchmark/deepseek-harness/bin/dsh` with absolute
 Node and package-entry paths. Trial execution as `resbench` therefore does not
 depend on root's NVM directory, the host's older system Node, or ambient `PATH`.
 
+Before installation, the script requires at least 4 GiB `MemAvailable`, caps
+the npm Node heap at 2 GiB, and runs `npm ci` with lower CPU/I/O priority. These
+guards protect a shared worker from dependency-install pressure; they do not
+replace a campaign-level host capacity check.
+
 The pinned package contract has been inspected directly: `dsh --profile
 headless "<task>"` runs one non-interactive session, prints the final assistant
 text, and exits nonzero when the run does not complete. Trial preparation writes

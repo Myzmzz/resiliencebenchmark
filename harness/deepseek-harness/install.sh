@@ -10,6 +10,8 @@ readonly DSH_BINARY="$DSH_INSTALL_ROOT/bin/dsh"
 readonly DSH_STATE_ROOT='/var/lib/resiliencebenchmark'
 readonly DSH_DEPENDENCY_TREE_FILE="$DSH_STATE_ROOT/deepseek-harness-dependency-tree.json"
 readonly DSH_RUN_USER='resbench'
+readonly DSH_MIN_AVAILABLE_MEMORY_KIB=4194304
+readonly DSH_NODE_MAX_OLD_SPACE_MIB=2048
 LOCK_DIR=''
 
 usage() {
@@ -35,7 +37,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 2
 fi
 
-for command_name in node npm getent groupadd useradd install mktemp sha256sum; do
+for command_name in node npm getent groupadd useradd install mktemp sha256sum awk nice; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "required command is missing: $command_name" >&2
     exit 2
@@ -77,6 +79,13 @@ if (( node_major < 24 )) && ! (( node_major == 22 && node_minor >= 19 )); then
   exit 2
 fi
 
+available_memory_kib="$(awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo)"
+if [[ -z "$available_memory_kib" || "$available_memory_kib" -lt "$DSH_MIN_AVAILABLE_MEMORY_KIB" ]]; then
+  echo 'at least 4 GiB MemAvailable is required before DeepSeek Harness installation' >&2
+  exit 2
+fi
+export NODE_OPTIONS="--max-old-space-size=$DSH_NODE_MAX_OLD_SPACE_MIB"
+
 if ! getent group "$DSH_RUN_USER" >/dev/null; then
   groupadd --system "$DSH_RUN_USER"
 fi
@@ -90,7 +99,11 @@ install -d -o "$DSH_RUN_USER" -g "$DSH_RUN_USER" -m 0750 "$DSH_STATE_ROOT" "$DSH
 install -o root -g root -m 0644 "$LOCK_DIR/package.json" "$DSH_INSTALL_ROOT/package.json"
 install -o root -g root -m 0644 "$LOCK_DIR/package-lock.json" "$DSH_INSTALL_ROOT/package-lock.json"
 
-npm ci --prefix "$DSH_INSTALL_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
+if command -v ionice >/dev/null 2>&1; then
+  ionice -c 2 -n 7 nice -n 10 npm ci --prefix "$DSH_INSTALL_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
+else
+  nice -n 10 npm ci --prefix "$DSH_INSTALL_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
+fi
 
 readonly dsh_package_entry="$DSH_INSTALL_ROOT/node_modules/@deepseek-ai/dsh/lib/bin.js"
 if [[ ! -f "$dsh_package_entry" ]]; then
