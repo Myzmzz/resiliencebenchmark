@@ -4,23 +4,21 @@ description: >
   tools and permissions only; endpoint wiring is supplied by the runtime.
 
 runtime_refs:
-  kubeconfig: credential:RESBENCH_KUBECONFIG_REF
-  source_index: credential:RESBENCH_SOURCE_INDEX_REF
   k8s: service_ref:k8s_ro
-  prometheus: service_ref:prometheus_ro
-  jaeger: service_ref:jaeger_ro
-  loki: service_ref:loki_ro
+  telemetry: service_ref:telemetry_ro
+  source: service_ref:source_ro
+  chaos: service_ref:chaos_control
 
 tools:
   k8s_ro:
     mode: read_only
     purpose: Inspect Kubernetes objects, events, pod status, service topology, and logs metadata.
     allowed_operations:
-      - get
-      - list
-      - list_events
-      - pod_logs
-      - cluster_inventory
+      - k8s_get_resource
+      - k8s_list_resources
+      - k8s_list_events
+      - k8s_pod_logs
+      - k8s_cluster_inventory
     denied_operations:
       - create
       - update
@@ -37,75 +35,62 @@ tools:
       cluster_scoped_reads: limited_inventory_only
       kubeconfig_from_server_runtime_only: true
 
-  prometheus_ro:
+  telemetry_ro:
     mode: read_only
-    purpose: Query metrics for baseline, fault effect, SLO impact, and recovery evidence.
+    purpose: Query scoped Prometheus metrics, Jaeger traces, and Loki logs for baseline, fault effect, diagnosis, and recovery evidence.
     allowed_operations:
-      - instant_query
-      - range_query
-      - label_values
-      - series_metadata
+      - telemetry_prom_query_instant
+      - telemetry_prom_query_range
+      - telemetry_prom_list_labels
+      - telemetry_prom_list_series
+      - telemetry_jaeger_list_services
+      - telemetry_jaeger_list_operations
+      - telemetry_jaeger_find_traces
+      - telemetry_jaeger_get_trace
+      - telemetry_loki_list_labels
+      - telemetry_loki_query
+      - telemetry_loki_query_range
     denied_operations:
-      - admin
-      - config_reload
-      - remote_write
+      - upstream_url_override
+      - unbounded_time_window
+      - cross_namespace_result
+      - telemetry_admin
+      - write
+      - delete
     scope:
       query_time_window_from_controller: true
-
-  jaeger_ro:
-    mode: read_only
-    purpose: Query traces and service dependency evidence visible to the Agent.
-    allowed_operations:
-      - find_traces
-      - get_trace
-      - list_services
-      - list_operations
-    denied_operations:
-      - storage_admin
-      - retention_changes
-    scope:
+      one_namespace_per_episode: true
       service_allowlist_from_episode: true
-
-  loki_ro:
-    mode: read_only
-    purpose: Query application and platform logs for Agent-visible evidence.
-    allowed_operations:
-      - label_values
-      - query
-      - query_range
-    denied_operations:
-      - delete
-      - retention_changes
-      - tenant_admin
-    scope:
-      namespace_allowlist_from_episode: true
+      upstream_label_scope_required_for_shared_cluster: true
 
   source_ro:
     mode: read_only
     purpose: Read service source code snapshots mapped by service name, image digest, and commit.
     allowed_operations:
-      - list_repositories
-      - list_files
-      - read_file
-      - search_text
-      - show_commit
+      - source_list_repositories
+      - source_list_files
+      - source_read_file
+      - source_search_text
+      - source_show_commit
     denied_operations:
       - write_file
       - git_commit
       - git_push
       - reveal_hidden_ground_truth
     scope:
-      source_index_ref: credential:RESBENCH_SOURCE_INDEX_REF
+      source_root_from_server_runtime_only: true
+      application_allowlist_from_episode: true
 
   chaos_control:
     mode: controlled_write
     purpose: Request controller-approved ChaosBlade experiments and recovery actions.
     allowed_operations:
-      - dry_run
-      - create_experiment
-      - get_experiment
-      - delete_experiment
-      - wait_recovered
+      - chaos_validate_plan
+      - chaos_inventory_run
+      - chaos_create_experiment
+      - chaos_get_experiment
+      - chaos_destroy_experiment
+      - chaos_recovery_status
     denied_operations:
       - arbitrary_shell
       - unbounded_namespace
@@ -116,6 +101,9 @@ tools:
       require_controller_budget_token: true
       require_preflight_baseline_passed: true
       require_cleanup_handle: true
+      require_live_target_pod_uid: true
+      require_global_chaosblade_inventory_clear: true
+      baseline_capability_one_time_use: true
 
 not_exposed_to_agent:
   oracle:
