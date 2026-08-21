@@ -130,7 +130,11 @@ def test_execute_uses_fixed_ssh_argv_stdin_install_and_read_only_verify(tmp_path
     assert first_argv[10] == env[deploy.IDENTITY_ENV]
     assert first_argv[11] == f"root@{env[deploy.HOST_ENV]}"
     assert first_argv[12:] == ["/bin/sh", "-c", deploy.preflight_command()]
-    assert fake.calls[1]["argv"][12:] == ["/bin/sh", "-s", "--", head]
+    materialize_argv = fake.calls[1]["argv"][12:]
+    assert len(materialize_argv) == 1
+    assert materialize_argv[0].startswith("/bin/sh -c ")
+    assert "resbench-materialize" in materialize_argv[0]
+    assert materialize_argv[0].endswith(head)
     with tarfile.open(fileobj=io.BytesIO(fake.calls[1]["stdin"]), mode="r:*") as archive:
         member = archive.getmember(".resbench-head")
         content = archive.extractfile(member).read().decode("utf-8")
@@ -268,6 +272,19 @@ def test_materialize_release_command_fails_closed_for_unmanaged_repo_paths():
     assert '"$releases"/*) ;;' in command
     assert "exit 43" in command
     assert 'mv -Tf "$link_tmp" "$repo"' in command
+
+
+def test_materialize_release_ssh_argv_keeps_tar_on_stdin_not_shell_script():
+    base = ["ssh", "root@example.invalid"]
+    head = "a" * 40
+
+    argv = deploy.materialize_release_ssh_argv(base, head)
+
+    assert argv[:2] == base
+    assert len(argv) == 3
+    assert "/bin/sh -s" not in argv[2]
+    assert "tar -xf -" in argv[2]
+    assert argv[2].endswith(head)
 
 
 def test_systemd_units_are_explicit_loopback_hardened_and_non_enabling():

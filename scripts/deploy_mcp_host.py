@@ -13,6 +13,7 @@ import io
 import json
 import os
 import re
+import shlex
 import subprocess
 import tarfile
 from dataclasses import dataclass
@@ -344,6 +345,18 @@ trap - EXIT
 cleanup"""
 
 
+def materialize_release_ssh_argv(ssh_base: list[str], head: str) -> list[str]:
+    """Keep the release script in remote argv while reserving stdin for the tar archive."""
+
+    if not HEAD_PATTERN.fullmatch(head):
+        raise ValueError("git head must be a hex revision")
+    remote_command = (
+        f"/bin/sh -c {shlex.quote(materialize_release_command())} "
+        f"resbench-materialize {shlex.quote(head)}"
+    )
+    return [*ssh_base, remote_command]
+
+
 def verify_units_command() -> str:
     units = " ".join(UNIT_NAMES)
     return f"set -eu; for unit in {units}; do systemctl cat \"$unit\" >/dev/null; done"
@@ -410,7 +423,7 @@ def run_deploy(
         install_argv.append("--materialize-sources")
     commands = [
         ("ssh_preflight_tools", [*ssh_base, "/bin/sh", "-c", preflight_command()], None),
-        ("materialize_pinned_release", [*ssh_base, "/bin/sh", "-s", "--", head], archive),
+        ("materialize_pinned_release", materialize_release_ssh_argv(ssh_base, head), archive),
         ("install_mcp_host_units_and_sources_from_stdin", install_argv, script),
         ("verify_mcp_unit_files", [*ssh_base, "/bin/sh", "-c", verify_units_command()], None),
     ]
