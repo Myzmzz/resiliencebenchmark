@@ -5,6 +5,8 @@ readonly DSH_PACKAGE='@deepseek-ai/dsh@0.1.0-rc.7'
 readonly DSH_EXPECTED_INTEGRITY='sha512-ZceDCJ8FAywih+USW/OMk9jEhunlvJBGEz4kqrhau23hPzbciOazZrywH0nBRsaalSeAJ1JGBmjtw4OSjToStw=='
 readonly DSH_LOCK_SHA256='3fd8d9fe3f91cc780d70dc443977edf077e054c756c1eb248b63fe2e64ad9f72'
 readonly DSH_INSTALL_ROOT='/opt/resiliencebenchmark/deepseek-harness'
+readonly DSH_NODE_BINARY="$DSH_INSTALL_ROOT/bin/node"
+readonly DSH_BINARY="$DSH_INSTALL_ROOT/bin/dsh"
 readonly DSH_STATE_ROOT='/var/lib/resiliencebenchmark'
 readonly DSH_DEPENDENCY_TREE_FILE="$DSH_STATE_ROOT/deepseek-harness-dependency-tree.json"
 readonly DSH_RUN_USER='resbench'
@@ -83,17 +85,28 @@ if ! getent passwd "$DSH_RUN_USER" >/dev/null; then
 fi
 
 install -d -o root -g root -m 0755 "$DSH_INSTALL_ROOT"
+install -d -o root -g root -m 0755 "$DSH_INSTALL_ROOT/bin"
 install -d -o "$DSH_RUN_USER" -g "$DSH_RUN_USER" -m 0750 "$DSH_STATE_ROOT" "$DSH_STATE_ROOT/trials"
 install -o root -g root -m 0644 "$LOCK_DIR/package.json" "$DSH_INSTALL_ROOT/package.json"
 install -o root -g root -m 0644 "$LOCK_DIR/package-lock.json" "$DSH_INSTALL_ROOT/package-lock.json"
 
 npm ci --prefix "$DSH_INSTALL_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
 
-readonly dsh_binary="$DSH_INSTALL_ROOT/node_modules/.bin/dsh"
-if [[ ! -x "$dsh_binary" ]]; then
-  echo "DeepSeek Harness binary was not installed at $dsh_binary" >&2
+readonly dsh_package_entry="$DSH_INSTALL_ROOT/node_modules/@deepseek-ai/dsh/lib/bin.js"
+if [[ ! -f "$dsh_package_entry" ]]; then
+  echo "DeepSeek Harness package entry was not installed" >&2
   exit 1
 fi
+install -o root -g root -m 0755 "$(readlink -f "$(command -v node)")" "$DSH_NODE_BINARY"
+wrapper_tmp="$(mktemp "$DSH_INSTALL_ROOT/.dsh-wrapper.XXXXXX")"
+trap 'rm -f -- "$wrapper_tmp"' EXIT
+printf '%s\n' \
+  '#!/bin/sh' \
+  'exec /opt/resiliencebenchmark/deepseek-harness/bin/node /opt/resiliencebenchmark/deepseek-harness/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"' \
+  >"$wrapper_tmp"
+install -o root -g root -m 0755 "$wrapper_tmp" "$DSH_BINARY"
+rm -f -- "$wrapper_tmp"
+trap - EXIT
 
 installed_version="$(npm --prefix "$DSH_INSTALL_ROOT" list @deepseek-ai/dsh --depth=0 --json | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const x=JSON.parse(s);process.stdout.write(x.dependencies["@deepseek-ai/dsh"].version)})')"
 if [[ "$installed_version" != '0.1.0-rc.7' ]]; then
@@ -121,6 +134,6 @@ install -o root -g root -m 0644 "$dependency_tree_tmp" "$DSH_DEPENDENCY_TREE_FIL
 rm -f -- "$dependency_tree_tmp"
 trap - EXIT
 
-echo "DeepSeek Harness installed: $dsh_binary ($installed_version)"
+echo "DeepSeek Harness installed: $DSH_BINARY ($installed_version)"
 echo "Installed dependency tree recorded for matrix-freeze review."
 echo 'No provider credential or shared Web Host was configured.'

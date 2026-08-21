@@ -60,6 +60,15 @@ def test_runtime_lock_pins_every_dsh_package_and_integrity():
     )
 
 
+def test_installer_creates_path_independent_node_and_dsh_wrapper():
+    text = (REPO_ROOT / deploy.INSTALL_SCRIPT).read_text(encoding="utf-8")
+
+    assert 'DSH_NODE_BINARY="$DSH_INSTALL_ROOT/bin/node"' in text
+    assert 'DSH_BINARY="$DSH_INSTALL_ROOT/bin/dsh"' in text
+    assert "install -o root -g root -m 0755 \"$(readlink -f \"$(command -v node)\")\" \"$DSH_NODE_BINARY\"" in text
+    assert "exec /opt/resiliencebenchmark/deepseek-harness/bin/node" in text
+
+
 def test_dry_run_does_not_call_runner_or_expose_env_values(tmp_path):
     fake = FakeRunner()
     env = runtime_env(tmp_path)

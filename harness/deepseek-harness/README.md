@@ -19,6 +19,11 @@ package and integrity. The installer verifies the lock SHA-256, installs with
 `npm ci`, rejects any non-rc.7 DSH module, and records the actual
 `npm ls --all --json` tree for post-install comparison.
 
+The installer copies the qualified Node binary into the dedicated install root
+and creates `/opt/resiliencebenchmark/deepseek-harness/bin/dsh` with absolute
+Node and package-entry paths. Trial execution as `resbench` therefore does not
+depend on root's NVM directory, the host's older system Node, or ambient `PATH`.
+
 The pinned package contract has been inspected directly: `dsh --profile
 headless "<task>"` runs one non-interactive session, prints the final assistant
 text, and exits nonzero when the run does not complete. Trial preparation writes

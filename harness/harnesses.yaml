@@ -167,7 +167,7 @@ harnesses:
       note: Developer preview pin supplied by environment-prep inventory; install exactly this version and integrity for repeatable trials.
     entrypoint:
       mode: headless_cli
-      command: /opt/resiliencebenchmark/deepseek-harness/node_modules/.bin/dsh
+      command: /opt/resiliencebenchmark/deepseek-harness/bin/dsh
       prompt_transport: single_positional_argument
       args:
         - --profile
