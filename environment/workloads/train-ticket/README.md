@@ -42,6 +42,10 @@ order lookup flow, but the public image does not embed private endpoints,
 accounts, passwords, kubeconfig paths, or fixed dates. Build it with
 `scripts/build_train_ticket_workload.py`; the command is dry-run by default and
 only calls `docker buildx` with `--execute`.
+The Dockerfile keeps an official digest-pinned default. When the build host
+cannot reach Docker Hub, set `TRAIN_TICKET_WORKLOAD_BASE_IMAGE` (or
+`--base-image`) to a Harbor-accessible `name@sha256:<linux/amd64 digest>`; the
+builder rejects tags or unpinned overrides.
 
 The image must still be built, mirrored or pushed through the approved registry
 flow, and pinned as `name@sha256:<digest>` in `spec.generator.image` before a

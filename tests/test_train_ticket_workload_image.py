@@ -371,7 +371,8 @@ def test_image_files_are_pinned_executable_and_do_not_embed_runtime_secrets():
     generator = GENERATOR.read_text(encoding="utf-8")
     combined = "\n".join([dockerfile, shell, generator])
 
-    assert "FROM python:3.12.5-slim-bookworm@sha256:c24c34b502635f1f7c4e99dc09a2cbd85d480b7dcfd077198c6b5af138906390" in dockerfile
+    assert "ARG PYTHON_BASE_IMAGE=python:3.12.5-slim-bookworm@sha256:c24c34b502635f1f7c4e99dc09a2cbd85d480b7dcfd077198c6b5af138906390" in dockerfile
+    assert "FROM ${PYTHON_BASE_IMAGE}" in dockerfile
     assert "pip install" not in dockerfile
     assert "chown 65532:65532 /results" in dockerfile
     assert "exec python" in shell
@@ -422,6 +423,8 @@ def test_build_script_dry_run_and_execute_use_fixed_buildx_argv(monkeypatch):
     assert dry_run["ref"] == "harbor.example:85/train-ticket/train-ticket-workload:v1"
     assert "--load" in dry_run["command"]
     assert "--push" not in dry_run["command"]
+    assert "--build-arg" in dry_run["command"]
+    assert any(part.startswith("PYTHON_BASE_IMAGE=") for part in dry_run["command"])
     assert all("/Users/" not in part for part in dry_run["command"])
 
     digest = "sha256:" + "a" * 64
@@ -432,6 +435,35 @@ def test_build_script_dry_run_and_execute_use_fixed_buildx_argv(monkeypatch):
     assert output["pinnedImage"] == f"{plan.repository}@{digest}"
     assert runner.commands[0][:3] == ["docker", "buildx", "build"]
     assert runner.commands[0][-2:] == ["--load", str(plan.context)]
+
+
+def test_build_script_accepts_only_digest_pinned_base_override(monkeypatch):
+    monkeypatch.setenv("HARBOR_REGISTRY", "harbor.example:85")
+    monkeypatch.setenv("HARBOR_PROJECT_TRAIN_TICKET", "train-ticket")
+    pinned = "harbor.example:85/train-ticket/python-base@sha256:" + "b" * 64
+
+    plan = build_train_ticket_workload.plan_build(
+        repository=None,
+        tag="v1",
+        dockerfile=DOCKERFILE,
+        context=IMAGE_DIR,
+        platform="linux/amd64",
+        push=False,
+        base_image=pinned,
+    )
+    assert plan.base_image == pinned
+    assert f"PYTHON_BASE_IMAGE={pinned}" in build_train_ticket_workload.build_argv(plan, Path("metadata.json"))
+
+    with pytest.raises(build_train_ticket_workload.BuildError, match="base image"):
+        build_train_ticket_workload.plan_build(
+            repository=None,
+            tag="v1",
+            dockerfile=DOCKERFILE,
+            context=IMAGE_DIR,
+            platform="linux/amd64",
+            push=False,
+            base_image="harbor.example:85/train-ticket/python-base:latest",
+        )
 
 
 def test_build_script_push_requires_manifest_digest(monkeypatch):

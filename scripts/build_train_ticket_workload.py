@@ -27,6 +27,8 @@ DEFAULT_CONTEXT = Path("environment/workloads/train-ticket/image")
 DEFAULT_DOCKERFILE = DEFAULT_CONTEXT / "Dockerfile"
 DEFAULT_TAG = "train-ticket-workload"
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+BASE_IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$")
+BASE_IMAGE_ARG = "PYTHON_BASE_IMAGE"
 
 
 class BuildError(Exception):
@@ -41,6 +43,7 @@ class BuildPlan:
     context: Path
     platform: str
     push: bool
+    base_image: str
 
 
 class CommandRunner(Protocol):
@@ -131,6 +134,8 @@ def build_argv(plan: BuildPlan, metadata_path: Path) -> list[str]:
         build_ref(plan),
         "--metadata-file",
         str(metadata_path),
+        "--build-arg",
+        f"{BASE_IMAGE_ARG}={plan.base_image}",
     ]
     argv.append("--push" if plan.push else "--load")
     argv.append(str(plan.context))
@@ -165,10 +170,17 @@ def safe_command(argv: list[str], *, root: Path | None = None) -> list[str]:
 
 def inspect_base_image(dockerfile: Path) -> str:
     content = dockerfile.read_text(encoding="utf-8")
+    arg_prefix = f"ARG {BASE_IMAGE_ARG}="
+    default_image = next(
+        (line[len(arg_prefix) :].strip() for line in content.splitlines() if line.startswith(arg_prefix)),
+        "",
+    )
     for line in content.splitlines():
         if line.startswith("FROM "):
             image = line.split(None, 1)[1].strip()
-            if "@sha256:" not in image:
+            if image == f"${{{BASE_IMAGE_ARG}}}":
+                image = default_image
+            if not BASE_IMAGE_RE.fullmatch(image):
                 raise BuildError("Dockerfile base image must be pinned by sha256 digest")
             return image
     raise BuildError("Dockerfile missing FROM")
@@ -182,6 +194,7 @@ def plan_build(
     context: Path,
     platform: str,
     push: bool,
+    base_image: str | None = None,
 ) -> BuildPlan:
     dockerfile = dockerfile.resolve()
     context = context.resolve()
@@ -191,7 +204,9 @@ def plan_build(
         raise BuildError(f"context directory does not exist: {display_path(context)}")
     if not str(dockerfile).startswith(str(context)):
         raise BuildError("Dockerfile must live inside the build context")
-    inspect_base_image(dockerfile)
+    resolved_base_image = (base_image or inspect_base_image(dockerfile)).strip()
+    if not BASE_IMAGE_RE.fullmatch(resolved_base_image):
+        raise BuildError("base image must be an image reference pinned by sha256 digest")
     if platform != "linux/amd64":
         raise BuildError("only linux/amd64 is currently supported")
     return BuildPlan(
@@ -201,6 +216,7 @@ def plan_build(
         context=context,
         platform=platform,
         push=push,
+        base_image=resolved_base_image,
     )
 
 
@@ -230,7 +246,7 @@ def build_image(plan: BuildPlan, *, execute: bool, runner: CommandRunner | None 
             "ref": build_ref(plan),
             "platform": plan.platform,
             "push": plan.push,
-            "baseImage": inspect_base_image(plan.dockerfile),
+            "baseImage": plan.base_image,
             "command": safe_command(argv),
             "digest": None,
             "pinnedImage": None,
@@ -261,6 +277,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--context", type=Path, default=DEFAULT_CONTEXT)
     parser.add_argument("--dockerfile", type=Path, default=DEFAULT_DOCKERFILE)
     parser.add_argument("--platform", default="linux/amd64")
+    parser.add_argument(
+        "--base-image",
+        default=os.environ.get("TRAIN_TICKET_WORKLOAD_BASE_IMAGE"),
+        help="Optional Harbor-accessible base image pinned by sha256 digest.",
+    )
     parser.add_argument("--execute", action="store_true", help="Run docker buildx. Default is dry-run.")
     parser.add_argument("--push", action="store_true", help="Push the built image. Requires --execute and prior registry login.")
     return parser
@@ -278,6 +299,7 @@ def run(argv: list[str] | None = None) -> int:
             context=args.context,
             platform=args.platform,
             push=args.push,
+            base_image=args.base_image,
         )
         sys.stdout.write(write_json(build_image(plan, execute=args.execute)))
     except BuildError as exc:
