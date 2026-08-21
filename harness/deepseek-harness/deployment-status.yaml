@@ -5,6 +5,7 @@ metadata:
 spec:
   targetHostRef: env:RESBENCH_HARNESS_HOST
   bootstrapIdentityRef: env:RESBENCH_SSH_BOOTSTRAP_IDENTITY
+  bootstrapKnownHostsRef: env:RESBENCH_SSH_KNOWN_HOSTS
   requestedPublicKeyFingerprint: SHA256:v2dwQu07KnY7LxfIq+4adT7ZV+MLrl8vkIPyBal6WRQ
   installScript: harness/deepseek-harness/install.sh
   installRoot: /opt/resiliencebenchmark/deepseek-harness
@@ -14,6 +15,7 @@ spec:
   currentStatus: awaiting-public-key-authorization
   acceptance:
     - ssh-batch-mode-key-authentication-pass
+    - strict-host-key-verification-pass
     - node-version-compatible
     - npm-integrity-check-pass
     - exact-dsh-version-installed

@@ -61,6 +61,18 @@ def test_runtime_config_requires_absolute_existing_kubeconfig(monkeypatch, tmp_p
     assert exc.value.code == "invalid_kubeconfig"
 
 
+def test_runtime_config_requires_exactly_one_episode_namespace(monkeypatch, tmp_path):
+    kubeconfig = tmp_path / "config"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    monkeypatch.setenv("RESBENCH_K8S_RO_KUBECONFIG", str(kubeconfig))
+    monkeypatch.setenv("RESBENCH_K8S_RO_NAMESPACE_ALLOWLIST", "train-ticket,otel-demo")
+
+    with pytest.raises(K8sROError) as exc:
+        RuntimeConfig.from_env()
+
+    assert exc.value.code == "invalid_namespace_scope"
+
+
 def test_list_resources_uses_fixed_argv_and_paginates():
     argv = (
         "kubectl",
@@ -118,7 +130,8 @@ def test_get_configmap_redacts_content_and_last_applied():
             argv: (
                 '{"metadata":{"name":"tt-config","managedFields":[{}],'
                 '"annotations":{"kubectl.kubernetes.io/last-applied-configuration":"secret",'
-                '"safe":"ok"}},"data":{"password":"x"},"binaryData":{"a":"b"}}'
+                '"safe":"ok","diagnostic":"Bearer abcdefghijklmnop"}},'
+                '"data":{"password":"x"},"binaryData":{"a":"b"}}'
             )
         }
     )
@@ -129,7 +142,7 @@ def test_get_configmap_redacts_content_and_last_applied():
     assert "data" not in obj
     assert "binaryData" not in obj
     assert "managedFields" not in obj["metadata"]
-    assert obj["metadata"]["annotations"] == {"safe": "ok"}
+    assert obj["metadata"]["annotations"] == {"safe": "ok", "diagnostic": "Bearer <redacted>"}
 
 
 def test_pod_env_values_are_redacted():

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from typing import Any
 
 from mcp import types
@@ -15,6 +17,7 @@ from .service import ChaosControlError, ChaosControlService, RuntimeConfig
 
 
 _SERVICE = ChaosControlService(RuntimeConfig.from_env())
+WATCHDOG_INTERVAL_SECONDS = 2.0
 
 
 def set_service_for_tests(service: ChaosControlService) -> None:
@@ -38,7 +41,7 @@ def _write_annotations(title: str) -> types.ToolAnnotations:
     return types.ToolAnnotations(
         title=title,
         read_only_hint=False,
-        destructive_hint=False,
+        destructive_hint=True,
         idempotent_hint=False,
         open_world_hint=True,
     )
@@ -74,12 +77,26 @@ def create_server(
     """Create a ChaosBlade MCP server for stdio or authenticated streamable HTTP."""
 
     chaos = service if service is not None else _SERVICE
+
+    @asynccontextmanager
+    async def lifespan(server: MCPServer):
+        task = asyncio.create_task(_deadline_watchdog(chaos), name="chaos-control-deadline-watchdog")
+        try:
+            yield
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     server = MCPServer(
         "chaos_control_mcp",
         description="Safety-gated ChaosBlade control tools for resilience benchmark runs.",
         version="0.1.0",
         auth=auth,
         token_verifier=token_verifier,
+        lifespan=lifespan,
     )
 
     @server.tool(
@@ -199,6 +216,15 @@ mcp = create_server()
 
 def main() -> None:
     run_mcp_server(create_server)
+
+
+async def _deadline_watchdog(service: ChaosControlService) -> None:
+    while True:
+        try:
+            await service.cleanup_expired_leases()
+        except Exception:
+            pass
+        await asyncio.sleep(WATCHDOG_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":

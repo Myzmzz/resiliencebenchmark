@@ -33,9 +33,24 @@ stores `baseline_gate_token_sha256`.
 
 Create and destroy are serialized by an in-process async lock. This removes
 same-process races but is not a distributed lock; run at most one
-`chaos_control` MCP instance per benchmark controller. Create writes a pending
-cleanup ledger before `kubectl apply` and marks it active only after readback,
-so an apply crash still leaves a cleanup handle for recovery.
+`chaos_control` MCP instance per benchmark controller. In production, run it as
+a single systemd-managed controller process with restart enabled; do not run
+multiple replicas against the same cleanup ledger.
+
+Create writes a pending cleanup ledger before `kubectl create -f -` and marks it
+active only after readback, so a create crash still leaves a cleanup handle for
+recovery. The ledger stores `duration_seconds` and a UTC `deadline_at`; the
+server treats this as the durable lease deadline. It does not rely on a
+ChaosBlade matcher timeout for cleanup.
+
+The MCP server lifespan starts a watchdog that immediately reconciles deadline
+ledgers, then repeats every few seconds. It scans `active`, pending create,
+failed create, and retryable cleanup-error ledger entries. When `deadline_at`
+has passed, it deletes exactly the ledger-owned cluster-scoped ChaosBlade
+resource, verifies absence, and marks the ledger `expired_cleaned`; a failed
+attempt records `cleanup_error` and is retried on the next watchdog pass. After
+a process restart, the same private ledger directory is scanned again, so
+expired leases can still be recovered without an Agent calling a cleanup tool.
 
 Agents never provide the kubeconfig path through MCP tool arguments. The path is
 only read from the server process environment via `RESBENCH_CHAOS_KUBECONFIG`;

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -165,7 +165,14 @@ class KubectlChaosBackend:
         payload = json.dumps(manifest, separators=(",", ":")).encode()
         namespace = str(manifest["metadata"]["labels"][NAMESPACE_LABEL])
         name = str(manifest["metadata"]["name"])
-        await self._kubectl(["--kubeconfig", kubeconfig, "apply", "-f", "-"], stdin=payload)
+        existing = await self._get_experiment_by_name(name, kubeconfig)
+        if existing is not None:
+            raise ChaosControlError(
+                "CHAOSBLADE_NAME_ALREADY_EXISTS",
+                "A cluster-scoped ChaosBlade resource with the deterministic experiment name already exists.",
+                next_step="Do not overwrite terminal or historical CRs. Use a fresh run_id or reconcile the existing resource manually.",
+            )
+        await self._kubectl(["--kubeconfig", kubeconfig, "create", "-f", "-"], stdin=payload)
         created = await self.get_experiment(namespace, name, kubeconfig)
         if created is None:
             raise ChaosControlError(
@@ -174,6 +181,15 @@ class KubectlChaosBackend:
                 next_step="Run chaos_inventory_run and check the ChaosBlade operator event stream.",
             )
         return created
+
+    async def _get_experiment_by_name(self, name: str, kubeconfig: str) -> ExperimentRecord | None:
+        try:
+            output = await self._kubectl(["--kubeconfig", kubeconfig, "get", "chaosblades.chaosblade.io", name, "-o", "json"])
+        except ChaosControlError as exc:
+            if exc.code == "KUBECTL_NOT_FOUND":
+                return None
+            raise
+        return _record_from_resource(json.loads(output or "{}"))
 
     async def delete_experiment(self, namespace: str, name: str, kubeconfig: str) -> None:
         await self._kubectl(["--kubeconfig", kubeconfig, "delete", "chaosblades.chaosblade.io", name, "--ignore-not-found=true"])
@@ -408,10 +424,12 @@ class ChaosControlService:
 
         name = _experiment_name(run_id, fault_type)
         manifest = _manifest(name, action)
+        created_at = _now_utc()
+        deadline_at = created_at + _duration_delta(duration_seconds)
         ledger = {
             "version": LEDGER_VERSION,
-            "created_at": _now_iso(),
-            "updated_at": _now_iso(),
+            "created_at": _datetime_iso(created_at),
+            "updated_at": _datetime_iso(created_at),
             "state": "pending_apply",
             "experiment_name": name,
             "namespace": namespace,
@@ -419,6 +437,8 @@ class ChaosControlService:
             "target_name": target_name,
             "target_uid": target_uid,
             "fault_type": fault_type,
+            "duration_seconds": duration_seconds,
+            "deadline_at": _datetime_iso(deadline_at),
             "controller_token_ref": controller_token_ref,
             "baseline_gate_token_sha256": baseline_token_hash,
             "cleanup_handle": cleanup_handle,
@@ -459,22 +479,55 @@ class ChaosControlService:
         ledger = self._read_ledger(cleanup_handle)
         namespace = ledger["namespace"]
         name = ledger["experiment_name"]
-        existing = await self.backend.get_experiment(namespace, name, kubeconfig)
-        if existing and not _record_matches_ledger(existing, ledger):
-            raise ChaosControlError(
-                "LEDGER_TARGET_MISMATCH",
-                "The live ChaosBlade resource no longer matches this server ledger handle.",
-                next_step="Do not delete it through this handle. Run chaos_inventory_run and reconcile ownership manually.",
-            )
-        await self.backend.delete_experiment(namespace, name, kubeconfig)
-        after = await self.backend.get_experiment(namespace, name, kubeconfig)
-        if after is not None:
-            raise ChaosControlError(
-                "DESTROY_VERIFY_ABSENCE_FAILED",
-                "ChaosBlade delete was issued but the resource is still present.",
-                next_step="Wait for the operator to settle, then call chaos_destroy_experiment with the same handle again.",
-            )
+        await self._delete_and_verify_from_ledger(ledger, kubeconfig)
         return {"ok": True, "destroyed": name, "namespace": namespace, "verified_absent": True, "idempotent": True}
+
+    async def cleanup_expired_leases(self, *, now: datetime | None = None) -> dict[str, Any]:
+        async with self._mutation_lock:
+            return await self._cleanup_expired_leases_locked(now=now)
+
+    async def _cleanup_expired_leases_locked(self, *, now: datetime | None = None) -> dict[str, Any]:
+        current_time = _as_utc(now or _now_utc())
+        kubeconfig = self._resolve_kubeconfig(None)
+        inspected = 0
+        cleaned: list[str] = []
+        errors: list[dict[str, str]] = []
+        for path in self._iter_cleanup_ledger_paths():
+            payload: dict[str, Any] | None = None
+            try:
+                payload = _read_private_json_file(
+                    path,
+                    label="cleanup ledger entry",
+                    missing_code="CLEANUP_LEDGER_UNREADABLE",
+                    missing_message="A cleanup ledger entry disappeared while scanning expired leases.",
+                    missing_next_step="Retry cleanup after checking the private cleanup ledger directory.",
+                )
+                state = str(payload.get("state", ""))
+                if state not in {"active", "pending", "pending_apply", "create_failed", "cleanup_error"}:
+                    continue
+                deadline_at = _parse_datetime(payload.get("deadline_at"))
+                if deadline_at is None or deadline_at > current_time:
+                    continue
+                inspected += 1
+                await self._delete_and_verify_from_ledger(payload, kubeconfig)
+                updated = {**payload, "state": "expired_cleaned", "cleanup_error": None, "updated_at": _now_iso()}
+                self._write_ledger(str(payload["cleanup_handle"]), updated)
+                cleaned.append(str(payload["cleanup_handle"]))
+            except Exception as exc:  # noqa: BLE001 - watchdog cleanup must keep scanning
+                handle = path.stem if path.name.endswith(".json") else path.name
+                errors.append({"cleanup_handle": handle, "code": _error_code(exc)})
+                try:
+                    if payload and payload.get("cleanup_handle"):
+                        updated = {
+                            **payload,
+                            "state": "cleanup_error",
+                            "cleanup_error": _error_code(exc),
+                            "updated_at": _now_iso(),
+                        }
+                        self._write_ledger(str(payload["cleanup_handle"]), updated)
+                except Exception:
+                    pass
+        return {"ok": not errors, "inspected": inspected, "cleaned": cleaned, "errors": errors}
 
     async def recovery_status(self, *, cleanup_handle: str, kubeconfig: str | None = None) -> dict[str, Any]:
         cfg_kubeconfig = self._resolve_kubeconfig(kubeconfig)
@@ -490,6 +543,25 @@ class ChaosControlService:
             "terminal": True if record is None else record.terminal,
             "phase": "Absent" if record is None else record.phase,
         }
+
+    async def _delete_and_verify_from_ledger(self, ledger: Mapping[str, Any], kubeconfig: str) -> None:
+        namespace = str(ledger["namespace"])
+        name = str(ledger["experiment_name"])
+        existing = await self.backend.get_experiment(namespace, name, kubeconfig)
+        if existing and not _record_matches_ledger(existing, ledger):
+            raise ChaosControlError(
+                "LEDGER_TARGET_MISMATCH",
+                "The live ChaosBlade resource no longer matches this server ledger handle.",
+                next_step="Do not delete it through this handle. Run chaos_inventory_run and reconcile ownership manually.",
+            )
+        await self.backend.delete_experiment(namespace, name, kubeconfig)
+        after = await self.backend.get_experiment(namespace, name, kubeconfig)
+        if after is not None:
+            raise ChaosControlError(
+                "DESTROY_VERIFY_ABSENCE_FAILED",
+                "ChaosBlade delete was issued but the resource is still present.",
+                next_step="Wait for the operator to settle, then retry cleanup.",
+            )
 
     def _assert_create_runtime_gates(
         self,
@@ -631,6 +703,12 @@ class ChaosControlService:
                     "Baseline capability token was already consumed by a prior create attempt.",
                     next_step="Run a fresh baseline and use the new controller-issued capability token.",
                 )
+
+    def _iter_cleanup_ledger_paths(self) -> list[Path]:
+        if not self.config.ledger_dir.exists():
+            return []
+        _assert_private_directory(self.config.ledger_dir, "cleanup ledger")
+        return sorted(self.config.ledger_dir.glob("*.json"))
 
     def _assert_destroy_runtime_gates(self, *, kubeconfig: str, cleanup_handle: str) -> None:
         if not kubeconfig or kubeconfig != self.config.kubeconfig:
@@ -1012,5 +1090,29 @@ def _parse_datetime(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _duration_delta(duration_seconds: int) -> timedelta:
+    return timedelta(seconds=duration_seconds)
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _datetime_iso(value: datetime) -> str:
+    return _as_utc(value).isoformat()
+
+
+def _error_code(exc: BaseException) -> str:
+    if isinstance(exc, ChaosControlError):
+        return exc.code
+    return type(exc).__name__
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return _now_utc().isoformat()

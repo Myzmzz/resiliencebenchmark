@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -88,14 +89,33 @@ def test_materialize_clones_detached_commit_and_writes_redacted_manifest(tmp_pat
     assert str(tmp_path) not in output.read_text(encoding="utf-8")
 
 
-def test_https_remote_ref_removes_userinfo_credentials():
-    remote = "https://private-user:private-token@example.com/org/repo.git?ref=locked"
+def test_https_remote_ref_removes_userinfo_query_and_fragment_credentials():
+    remote = "https://private-user:private-token@example.com/org/repo.git;params?access_token=secret#private"
 
     redacted = materialize_sources.redacted_remote_ref(remote)
 
-    assert redacted == "https://example.com/org/repo.git?ref=locked"
+    assert redacted == "https://example.com/org/repo.git"
     assert "private-user" not in redacted
     assert "private-token" not in redacted
+    assert "access_token" not in redacted
+
+
+def test_git_failure_redacts_remote_from_command_and_stderr(monkeypatch):
+    remote = "https://private-user:private-token@example.com/org/repo.git?access_token=secret"
+
+    def fail_run(*args, **kwargs):
+        return SimpleNamespace(returncode=1, stdout=b"", stderr=f"fatal: unable to access {remote}".encode())
+
+    monkeypatch.setattr(materialize_sources.subprocess, "run", fail_run)
+
+    with pytest.raises(materialize_sources.SourceMaterializationError) as exc:
+        materialize_sources.run_git(["clone", remote, "/tmp/destination"])
+
+    message = str(exc.value)
+    assert "private-user" not in message
+    assert "private-token" not in message
+    assert "access_token" not in message
+    assert "https://example.com/org/repo.git" in message
 
 
 def test_refuses_existing_non_empty_destination_by_default(tmp_path):

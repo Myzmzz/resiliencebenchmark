@@ -406,6 +406,20 @@ def test_credential_like_queries_are_rejected_before_network_call():
     assert transport.calls == []
 
 
+@pytest.mark.parametrize(
+    "tags",
+    ['{"http.authorization":"Bearer example-value"}', '{"api_key":"example-value"}', '{"tag":"secret-value"}'],
+)
+def test_jaeger_secret_like_tags_are_rejected_before_network_call(tags):
+    svc, transport = service({})
+
+    with pytest.raises(TelemetryROError) as exc:
+        run(svc.jaeger_find_traces(service="checkoutservice", start=100, end=200, tags=tags))
+
+    assert exc.value.code == "sensitive_tags_rejected"
+    assert transport.calls == []
+
+
 def test_mcp_tools_are_all_read_only_and_url_free():
     from mcp_servers.telemetry_ro.server import create_server
 

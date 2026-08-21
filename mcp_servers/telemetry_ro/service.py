@@ -41,7 +41,10 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9_.:/@+=,\- ]{1,256}$")
 _LABEL_RE = re.compile(r"^[A-Za-z_:][A-Za-z0-9_:]{0,127}$")
 _NAMESPACE_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 _TRACE_ID_RE = re.compile(r"^[A-Fa-f0-9]{1,32}$")
-_SECRET_HINT_RE = re.compile(r"(token|secret|password|passwd|apikey|api_key|access_key)", re.IGNORECASE)
+_SECRET_HINT_RE = re.compile(
+    r"(token|secret|password|passwd|apikey|api_key|access_key|authorization|credential)",
+    re.IGNORECASE,
+)
 _SECRET_KEY_RE = re.compile(r"(token|secret|password|passwd|apikey|api_key|access_key)", re.IGNORECASE)
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE)
 _SK_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}")
@@ -702,6 +705,12 @@ def _validate_tags(tags: str) -> None:
         ) from exc
     if not isinstance(parsed, dict):
         raise TelemetryROError("invalid_tags", "tags must decode to a JSON object.", "Use a JSON object string.")
+    if any(_SECRET_HINT_RE.search(str(key)) or _SECRET_HINT_RE.search(str(value)) for key, value in parsed.items()):
+        raise TelemetryROError(
+            "sensitive_tags_rejected",
+            "tags appear to contain a credential-like key or value.",
+            "Use non-sensitive trace attributes such as error, span.kind, or http.status_code.",
+        )
 
 
 def _validate_duration(value: str, field: str) -> str:

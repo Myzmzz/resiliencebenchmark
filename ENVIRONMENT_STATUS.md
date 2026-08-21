@@ -13,6 +13,7 @@
 - DeepSeek Harness is pinned and has an idempotent host installer, but the target host has not authorized the deployment SSH key.
 - Prometheus MCP Chart objects are installed with a pinned chart/image and restricted ServiceAccount, but its Deployment is scaled to zero because cluster nodes cannot pull the GHCR image; Harbor mirroring is required before qualification.
 - Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`, with authenticated HTTP runtime templates and unit tests. These are not yet deployed or qualified as remote endpoints on the target host.
+- The latest read-only cluster qualification is intentionally failing: two hard errors remain (Sock Shop scaled to zero and historical ChaosBlade state), plus workload warnings for Train-Ticket and Sock Shop. Nodes and the shared observability workloads are Ready.
 
 ## Source evidence
 
@@ -56,8 +57,9 @@
 ## Blocking safety state
 
 - 157 pre-existing cluster-scoped ChaosBlade resources are owned by the existing fault platform, not this benchmark. They have no Kubernetes owner references or benchmark run IDs and must not be deleted automatically.
+- The live CRD is cluster-scoped `chaosblade.io/v1alpha1`; the running operator reports version 1.8.0. Current CR phases are 104 `Running` and 53 `Error`.
 - Formal fault execution remains blocked until their owner confirms the supported recovery path and target-side residue is checked.
-- The local `chaos_control` MCP service treats ChaosBlade as cluster-scoped, verifies live target Pod UID before create, requires a baseline ledger token, blocks on unsafe unowned global ChaosBlade state, and deletes only ledger-owned experiments. Because the 157 historical resources are still present, real fault execution remains blocked.
+- The local `chaos_control` MCP service treats ChaosBlade as cluster-scoped, verifies live target Pod UID before create, requires a one-time baseline capability, blocks on unsafe unowned global ChaosBlade state, and deletes only ledger-owned experiments. A durable deadline ledger and independent watchdog enforce `duration_seconds` and retry failed cleanup. Because the 157 historical resources are still present, real fault execution remains blocked.
 - Previously supplied access credentials were removed from the workspace preparation document and must be rotated before remote deployment or model/Harbor qualification.
 
 ## Next completion gates

@@ -171,6 +171,21 @@ def test_run_kubectl_refuses_mutating_verbs(tmp_path):
         )
 
 
+def test_collect_cluster_issues_supports_qualification_summary():
+    report = {
+        "issues": [],
+        "checks": {
+            "namespaces": {"sock-shop": {"issues": [{"severity": "ERROR", "message": "scaled to zero"}]}},
+            "observability": {"observability": {"issues": []}},
+            "chaosblade": {"issues": [{"severity": "ERROR", "message": "unsafe resources"}]},
+        },
+    }
+
+    issues = benchmark_prepare.collect_cluster_issues(report)
+
+    assert len([item for item in issues if item["severity"] == "ERROR"]) == 2
+
+
 def test_qualify_namespace_summarizes_ready_deployments(monkeypatch, tmp_path):
     kubeconfig = tmp_path / "kubeconfig"
     kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")

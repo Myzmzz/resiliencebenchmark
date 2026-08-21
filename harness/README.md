@@ -21,6 +21,9 @@ harness/
 ├── harnesses.yaml              # Agent/Harness adapter registry
 ├── models.yaml                 # LLM alias registry and capability probes
 ├── mcp-tools.yaml              # MCP tool surface exposed to agents
+├── codex/                      # Trial-local Codex MCP config template
+├── claude-code/                # Strict Claude Code MCP config template
+├── deepseek-harness/           # Pinned DSH installer and Cordis MCP patch
 ├── schemas/
 │   ├── agent-result.schema.json # Common structured final result
 │   └── run-trace.schema.json    # Replayable trial trace contract
@@ -38,8 +41,8 @@ Expected runtime references:
 
 - `RESBENCH_LLM_BASE_URL`: OpenAI/NewAPI-compatible gateway base URL.
 - `RESBENCH_LLM_API_KEY`: gateway credential.
-- `RESBENCH_KUBECONFIG_REF`: runtime credential reference for the benchmark kubeconfig.
-- `RESBENCH_SOURCE_INDEX_REF`: runtime credential/reference for the service-to-source index.
+- `RESBENCH_K8S_MCP_URL`, `RESBENCH_TELEMETRY_MCP_URL`, `RESBENCH_SOURCE_MCP_URL`, `RESBENCH_CHAOS_CONTROL_MCP_URL`: per-trial loopback MCP endpoints.
+- `RESBENCH_MCP_TOKEN`: per-trial bearer token; templates reference its variable name and never store its value.
 
 ## Lifecycle
 

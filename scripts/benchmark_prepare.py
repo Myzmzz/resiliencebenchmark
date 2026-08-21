@@ -315,7 +315,17 @@ def run_kubectl(kubeconfig: Path, args: list[str]) -> Any:
     if not args or args[0] != "get":
         raise RuntimeError("refusing kubectl invocation outside the read-only get allowlist")
     cmd = ["kubectl", "--kubeconfig", str(kubeconfig), *args]
-    proc = subprocess.run(cmd, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        proc = subprocess.run(
+            cmd,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("kubectl read-only qualification timed out after 30 seconds") from exc
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or f"kubectl failed: {' '.join(args)}")
     if "-o" in args and "json" in args:
@@ -353,7 +363,14 @@ def qualify_cluster(args: argparse.Namespace) -> int:
 
     report["checks"]["chaosblade"] = qualify_chaosblade(kubeconfig)
 
-    issue_count = sum(1 for item in collect_cluster_issues(report) if item.get("severity") == "ERROR")
+    collected_issues = collect_cluster_issues(report)
+    issue_count = sum(1 for item in collected_issues if item.get("severity") == "ERROR")
+    warning_count = sum(1 for item in collected_issues if item.get("severity") == "WARN")
+    report["qualification"] = {
+        "passed": issue_count == 0,
+        "errorCount": issue_count,
+        "warningCount": warning_count,
+    }
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)

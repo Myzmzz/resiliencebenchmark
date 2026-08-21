@@ -117,7 +117,13 @@ class RuntimeConfig:
             raise K8sROError(
                 "missing_namespace_allowlist",
                 f"{NAMESPACE_ALLOWLIST_ENV} is empty.",
-                "Set a comma-separated namespace allowlist such as train-ticket,sock-shop,otel-demo.",
+                "Set the single namespace assigned to this Episode, such as train-ticket.",
+            )
+        if len(namespaces) != 1:
+            raise K8sROError(
+                "invalid_namespace_scope",
+                f"{NAMESPACE_ALLOWLIST_ENV} must contain exactly one Episode namespace.",
+                "Start a separate k8s_ro process with a fresh token for each benchmark Episode.",
             )
         for namespace in namespaces:
             _validate_k8s_name(namespace, "namespace")
@@ -426,7 +432,11 @@ def _sanitize(obj: Any) -> Any:
         if key in {"managedFields", "data", "binaryData", "stringData"}:
             continue
         if key == "annotations" and isinstance(value, dict):
-            out[key] = {k: v for k, v in value.items() if k != "kubectl.kubernetes.io/last-applied-configuration" and not SENSITIVE_RE.search(k)}
+            out[key] = {
+                k: _sanitize(v)
+                for k, v in value.items()
+                if k != "kubectl.kubernetes.io/last-applied-configuration" and not SENSITIVE_RE.search(k)
+            }
             continue
         if key == "env" and isinstance(value, list):
             out[key] = [_sanitize_env(item) for item in value]

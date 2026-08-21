@@ -14,7 +14,7 @@
 
 这些文件是环境准备配置，不是 Benchmark 结果。完整实时摘要见根目录 `ENVIRONMENT_STATUS.md`，各应用细节见 `readiness`：
 
-- `train-ticket`: 工作负载当前 Ready；订单服务的连接堆积复发风险和正式业务基线仍待验证。
+- `train-ticket`: 应用 Deployment 当前 Ready；可重复负载镜像尚未构建并固定 digest，订单服务连接堆积复发风险和正式业务基线仍待验证。
 - `sock-shop`: 固定清单已创建，但节点不能访问 Docker Hub；14 个 Deployment 暂时缩容为 0，等待 Harbor digest 镜像同步。
 - `otel-demo`: load-generator 已启用，Prometheus/Jaeger/Loki 三信号已接通；kubeletstats 仍受节点证书过期影响。
 

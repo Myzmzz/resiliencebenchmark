@@ -119,6 +119,23 @@ def test_load_harbor_config_allows_dry_run_without_credentials(monkeypatch):
     assert config.robot_credential is None
 
 
+@pytest.mark.parametrize(
+    "registry",
+    [
+        "https://user:password@harbor.example:85",
+        "https://harbor.example:85/project",
+        "https://harbor.example:85?token=secret",
+        "https://harbor.example:85#secret",
+    ],
+)
+def test_harbor_registry_rejects_userinfo_paths_queries_and_fragments(monkeypatch, registry):
+    monkeypatch.setenv("HARBOR_REGISTRY", registry)
+    monkeypatch.setenv("HARBOR_PROJECT_SOCK_SHOP", "sock-shop")
+
+    with pytest.raises(mirror_images.MirrorError):
+        mirror_images.load_harbor_config(require_credentials=False)
+
+
 def test_cli_defaults_to_dry_run(monkeypatch):
     monkeypatch.setenv("HARBOR_REGISTRY", "harbor.example:85")
     monkeypatch.setenv("HARBOR_PROJECT_SOCK_SHOP", "sock-shop")

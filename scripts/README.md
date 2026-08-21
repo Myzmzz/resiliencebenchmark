@@ -35,3 +35,7 @@ python3 scripts/benchmark_prepare.py qualify-cluster \
 - `materialize_sources.py`：按 `source-locks.yaml` 的 commit 与归档 SHA-256 生成只读源码快照；不会覆盖非空目录。
 - `render_sock_shop.py`：从固定上游 SHA 渲染 Sock Shop，只允许受控对象类型并强制镜像 digest。
 - `mirror_images.py`：默认 dry-run；显式 `--execute` 后使用临时 Docker 配置和 Harbor Robot Account 复制固定镜像，不在输出中保留凭据。
+- `train_ticket_workload.py`：渲染和管理 controller-owned Train-Ticket Job；真实 start 要求 Secret 引用、host allowlist、PVC 和 digest-pinned workload image。
+- `deploy_deepseek_harness.py`：默认 dry-run；真实安装仅允许 strict known_hosts 与公钥 BatchMode SSH，不支持 password 或 `sshpass`。
+
+仓库自有 MCP 使用锁定的 Python 环境。先运行 `make sync`，再用 `make test-mcp` 验证 tool schema、scope、脱敏和 ChaosBlade 门禁。

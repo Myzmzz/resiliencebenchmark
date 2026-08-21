@@ -54,6 +54,7 @@ spec:
         - RESBENCH_CHAOS_LEDGER_DIR
       executionDefault: disabled
       singletonRequired: true
+      durableDeadlineWatchdogRequired: true
       scopeRule: one-controller-one-active-experiment
   commonHttpRuntimeEnv:
     - RESBENCH_MCP_TRANSPORT
@@ -71,3 +72,4 @@ spec:
     - namespace-application-and-service-scope-is-enforced
     - returned-content-is-bounded-and-secret-redacted
     - chaos-create-remains-disabled-until-controller-gates-pass
+    - chaos-duration-deadline-cleans-and-verifies-absence

@@ -18,6 +18,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlparse
 
 import yaml
 
@@ -143,16 +144,30 @@ def load_harbor_config(*, require_credentials: bool) -> HarborConfig:
 
 
 def normalize_registry(value: str) -> str:
-    value = value.strip()
-    if value.startswith("http://"):
-        value = value[len("http://") :]
-    elif value.startswith("https://"):
-        value = value[len("https://") :]
-    return value.strip("/")
+    raw = value.strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw if "://" in raw else f"//{raw}")
+    if parsed.scheme and parsed.scheme not in {"http", "https"}:
+        raise MirrorError("HARBOR_REGISTRY must use http or https when a scheme is supplied")
+    if not parsed.hostname or parsed.username or parsed.password:
+        raise MirrorError("HARBOR_REGISTRY must be a hostname with optional port and no userinfo")
+    if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+        raise MirrorError("HARBOR_REGISTRY must not contain a path, parameters, query, or fragment")
+    if not re.fullmatch(r"[A-Za-z0-9.-]+", parsed.hostname):
+        raise MirrorError("HARBOR_REGISTRY hostname contains unsupported characters")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise MirrorError("HARBOR_REGISTRY port is invalid") from exc
+    return f"{parsed.hostname}:{port}" if port is not None else parsed.hostname
 
 
 def normalize_project(value: str) -> str:
-    return value.strip().strip("/")
+    project = value.strip().strip("/")
+    if project and not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", project):
+        raise MirrorError("HARBOR_PROJECT_SOCK_SHOP must be one lowercase Harbor project name")
+    return project
 
 
 def destination_tag(source_name: str, digest: str) -> str:

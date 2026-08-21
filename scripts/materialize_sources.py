@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -26,6 +27,10 @@ import yaml
 DEFAULT_LOCKFILE = Path("environment/shared/source-locks.yaml")
 DEFAULT_OUTPUT = Path("artifacts/source-materialization-manifest.json")
 DESTINATION_ROOT_ENV = "RESBENCH_SOURCE_ROOT"
+HTTP_URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
+SECRET_TEXT_RE = re.compile(
+    r"(?i)(access[_-]?token|api[_-]?key|password|secret)(\s*[:=]\s*)([^\s,;]+)"
+)
 
 
 class SourceMaterializationError(RuntimeError):
@@ -69,10 +74,25 @@ def run_git(
         stderr=subprocess.PIPE,
     )
     if check and result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace").strip()
-        command = "git " + " ".join(args)
+        stderr = redact_git_text(result.stderr.decode("utf-8", errors="replace").strip())
+        command = "git " + " ".join(redact_git_arg(arg) for arg in args)
         raise SourceMaterializationError(f"{command} failed: {stderr}")
     return result
+
+
+def redact_git_arg(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"}:
+        return redacted_remote_ref(value)
+    return value
+
+
+def redact_git_text(value: str) -> str:
+    def replace_url(match: re.Match[str]) -> str:
+        return redacted_remote_ref(match.group(0).rstrip(".!,"))
+
+    redacted = HTTP_URL_RE.sub(replace_url, value)
+    return SECRET_TEXT_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}<redacted>", redacted)
 
 
 def load_lockfile(path: Path) -> list[SourceLock]:
@@ -222,7 +242,7 @@ def redacted_remote_ref(remote: str) -> str:
         hostname = parsed.hostname or "<redacted-host>"
         if parsed.port is not None:
             hostname = f"{hostname}:{parsed.port}"
-        return urlunparse((parsed.scheme, hostname, parsed.path, parsed.params, parsed.query, parsed.fragment))
+        return urlunparse((parsed.scheme, hostname, parsed.path, "", "", ""))
     return "<redacted-local-or-private-remote>"
 
 

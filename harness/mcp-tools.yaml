@@ -104,6 +104,7 @@ tools:
       require_live_target_pod_uid: true
       require_global_chaosblade_inventory_clear: true
       baseline_capability_one_time_use: true
+      require_durable_deadline_watchdog: true
 
 not_exposed_to_agent:
   oracle:

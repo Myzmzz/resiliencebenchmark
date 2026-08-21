@@ -248,6 +248,95 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertNotIn("baseline-ok-token", file_text)
         self.assertEqual(hashlib.sha256(self.baseline_token.encode()).hexdigest(), payload["baseline_gate_token_sha256"])
         self.assertEqual("active", payload["state"])
+        self.assertEqual(120, payload["duration_seconds"])
+        self.assertGreater(datetime.fromisoformat(payload["deadline_at"]).timestamp(), datetime.now(timezone.utc).timestamp())
+
+    def test_cleanup_expired_leases_does_not_delete_before_deadline(self):
+        create_result = run(self.service.create_experiment(**self.create_kwargs()))
+        name = create_result["created"]["name"]
+        ledger = json.loads((self.ledger_dir / "cleanup-episode-e2e-001-r001.json").read_text())
+        before_deadline = datetime.fromisoformat(ledger["deadline_at"]) - timedelta(seconds=1)
+
+        result = run(self.service.cleanup_expired_leases(now=before_deadline))
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual([], result["cleaned"])
+        self.assertIn(("otel-demo", name), self.backend.experiments)
+
+    def test_cleanup_expired_leases_deletes_and_marks_expired_cleaned(self):
+        create_result = run(self.service.create_experiment(**self.create_kwargs()))
+        name = create_result["created"]["name"]
+        ledger_path = self.ledger_dir / "cleanup-episode-e2e-001-r001.json"
+        ledger = json.loads(ledger_path.read_text())
+        after_deadline = datetime.fromisoformat(ledger["deadline_at"]) + timedelta(seconds=1)
+
+        result = run(self.service.cleanup_expired_leases(now=after_deadline))
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(["cleanup-episode-e2e-001-r001"], result["cleaned"])
+        self.assertEqual([("otel-demo", name)], self.backend.deleted)
+        self.assertEqual("expired_cleaned", json.loads(ledger_path.read_text())["state"])
+
+    def test_cleanup_expired_leases_recovers_after_service_restart(self):
+        create_result = run(self.service.create_experiment(**self.create_kwargs()))
+        name = create_result["created"]["name"]
+        ledger_path = self.ledger_dir / "cleanup-episode-e2e-001-r001.json"
+        ledger = json.loads(ledger_path.read_text())
+        after_deadline = datetime.fromisoformat(ledger["deadline_at"]) + timedelta(seconds=1)
+        restarted = ChaosControlService(self.config, self.backend)
+
+        result = run(restarted.cleanup_expired_leases(now=after_deadline))
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(["cleanup-episode-e2e-001-r001"], result["cleaned"])
+        self.assertEqual([("otel-demo", name)], self.backend.deleted)
+
+    def test_cleanup_expired_leases_records_cleanup_error(self):
+        class StickyBackend(InMemoryChaosBackend):
+            async def delete_experiment(self, namespace, name, kubeconfig):
+                self.deleted.append((namespace, name))
+
+        backend = StickyBackend(pod_uids={("otel-demo", "checkoutservice-abc123"): "pod-uid-1"})
+        service = ChaosControlService(self.config, backend)
+        run(service.create_experiment(**self.create_kwargs()))
+        ledger_path = self.ledger_dir / "cleanup-episode-e2e-001-r001.json"
+        ledger = json.loads(ledger_path.read_text())
+        after_deadline = datetime.fromisoformat(ledger["deadline_at"]) + timedelta(seconds=1)
+
+        result = run(service.cleanup_expired_leases(now=after_deadline))
+
+        self.assertFalse(result["ok"])
+        updated = json.loads(ledger_path.read_text())
+        self.assertEqual("cleanup_error", updated["state"])
+        self.assertEqual("DESTROY_VERIFY_ABSENCE_FAILED", updated["cleanup_error"])
+
+    def test_cleanup_expired_leases_retries_cleanup_error_until_absent(self):
+        class OnceStickyBackend(InMemoryChaosBackend):
+            def __init__(self):
+                super().__init__(pod_uids={("otel-demo", "checkoutservice-abc123"): "pod-uid-1"})
+                self.sticky_once = True
+
+            async def delete_experiment(self, namespace, name, kubeconfig):
+                if self.sticky_once:
+                    self.sticky_once = False
+                    self.deleted.append((namespace, name))
+                    return
+                await super().delete_experiment(namespace, name, kubeconfig)
+
+        backend = OnceStickyBackend()
+        service = ChaosControlService(self.config, backend)
+        run(service.create_experiment(**self.create_kwargs()))
+        ledger_path = self.ledger_dir / "cleanup-episode-e2e-001-r001.json"
+        ledger = json.loads(ledger_path.read_text())
+        after_deadline = datetime.fromisoformat(ledger["deadline_at"]) + timedelta(seconds=1)
+
+        first = run(service.cleanup_expired_leases(now=after_deadline))
+        second = run(service.cleanup_expired_leases(now=after_deadline + timedelta(seconds=1)))
+
+        self.assertFalse(first["ok"])
+        self.assertTrue(second["ok"], second)
+        self.assertEqual(["cleanup-episode-e2e-001-r001"], second["cleaned"])
+        self.assertEqual("expired_cleaned", json.loads(ledger_path.read_text())["state"])
 
     def test_create_rejects_replayed_baseline_token(self):
         first = run(self.service.create_experiment(**self.create_kwargs()))
@@ -407,10 +496,12 @@ class RecordingKubectlBackend(KubectlChaosBackend):
     def __init__(self) -> None:
         super().__init__("kubectl")
         self.calls = []
+        self.named_get_missing = False
+        self.named_get_phase = "Running"
 
     async def _kubectl(self, args, *, stdin=None):
         self.calls.append(list(args))
-        if "apply" in args:
+        if "create" in args:
             return ""
         if "pod" in args:
             return json.dumps({"metadata": {"uid": "pod-uid-1"}})
@@ -441,6 +532,11 @@ class RecordingKubectlBackend(KubectlChaosBackend):
                             ]
                         }
                     )
+                if self.named_get_missing:
+                    from mcp_servers.chaos_control.service import ChaosControlError
+
+                    self.named_get_missing = False
+                    raise ChaosControlError("KUBECTL_NOT_FOUND", "not found", next_step="continue")
                 return json.dumps(
                     {
                         "metadata": {"name": args[4], "labels": {LOGICAL_NAMESPACE_LABEL: "otel-demo"}},
@@ -456,7 +552,7 @@ class RecordingKubectlBackend(KubectlChaosBackend):
                                 }
                             ]
                         },
-                        "status": {"phase": "Running"},
+                        "status": {"phase": self.named_get_phase},
                     }
                 )
         return "{}"
@@ -486,6 +582,7 @@ class KubectlBackendCommandTest(unittest.TestCase):
 
         records = run(backend.list_experiments("/tmp/kubeconfig"))
         record = run(backend.get_experiment("otel-demo", "blade-1", "/tmp/kubeconfig"))
+        backend.named_get_missing = True
         run(backend.create_experiment(manifest, "/tmp/kubeconfig"))
         run(backend.delete_experiment("otel-demo", "blade-1", "/tmp/kubeconfig"))
         uid = run(backend.get_pod_uid("otel-demo", "checkoutservice-abc123", "/tmp/kubeconfig"))
@@ -493,12 +590,43 @@ class KubectlBackendCommandTest(unittest.TestCase):
         self.assertEqual("otel-demo", records[0].namespace)
         self.assertEqual("otel-demo", record.namespace)
         self.assertEqual("pod-uid-1", uid)
-        chaosblade_calls = [call for call in backend.calls if "chaosblades.chaosblade.io" in call or "apply" in call]
+        chaosblade_calls = [call for call in backend.calls if "chaosblades.chaosblade.io" in call or "create" in call]
         self.assertTrue(chaosblade_calls)
         for call in chaosblade_calls:
             self.assertNotIn("-n", call)
+        self.assertTrue(any("create" in call for call in chaosblade_calls))
+        self.assertFalse(any("apply" in call for call in chaosblade_calls))
         pod_calls = [call for call in backend.calls if "pod" in call]
         self.assertEqual([["--kubeconfig", "/tmp/kubeconfig", "-n", "otel-demo", "get", "pod", "checkoutservice-abc123", "-o", "json"]], pod_calls)
+
+    def test_kubectl_create_rejects_existing_cluster_scoped_name_even_if_terminal(self):
+        backend = RecordingKubectlBackend()
+        backend.named_get_missing = False
+        backend.named_get_phase = "Destroyed"
+        manifest = {
+            "apiVersion": "chaosblade.io/v1alpha1",
+            "kind": "ChaosBlade",
+            "metadata": {"name": "blade-1", "labels": {LOGICAL_NAMESPACE_LABEL: "otel-demo"}},
+            "spec": {
+                "experiments": [
+                    {
+                        "scope": "pod",
+                        "target": "network",
+                        "action": "delay",
+                        "matchers": [
+                            {"name": "names", "value": ["checkoutservice-abc123"]},
+                            {"name": "namespace", "value": ["otel-demo"]},
+                        ],
+                    }
+                ]
+            },
+        }
+
+        result = call(backend.create_experiment(manifest, "/tmp/kubeconfig"))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("CHAOSBLADE_NAME_ALREADY_EXISTS", result["error"]["code"])
+        self.assertFalse(any("create" in item for item in backend.calls))
 
 
 class ChaosControlMcpServerTest(unittest.TestCase):
@@ -515,7 +643,7 @@ class ChaosControlMcpServerTest(unittest.TestCase):
         self.assertTrue(by_name["chaos_validate_plan"].annotations.read_only_hint)
         self.assertTrue(by_name["chaos_inventory_run"].annotations.read_only_hint)
         self.assertFalse(by_name["chaos_create_experiment"].annotations.read_only_hint)
-        self.assertFalse(by_name["chaos_create_experiment"].annotations.destructive_hint)
+        self.assertTrue(by_name["chaos_create_experiment"].annotations.destructive_hint)
         self.assertTrue(by_name["chaos_destroy_experiment"].annotations.destructive_hint)
         self.assertTrue(by_name["chaos_destroy_experiment"].annotations.idempotent_hint)
 
