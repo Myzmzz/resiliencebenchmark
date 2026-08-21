@@ -140,7 +140,13 @@ def contains_secret_material(text: str) -> bool:
         normalized = value.strip("'\"").lower()
         if normalized.startswith(("env:", "${", "$", "<")):
             continue
-        if normalized.startswith(("str", "env.get(", "os.getenv(", "os.environ", "process.env")):
+        if normalized.startswith(("env.get(", "os.getenv(", "os.environ", "process.env")):
+            continue
+        if re.fullmatch(r"str(?:[,)]|$)", normalized):
+            continue
+        if re.match(r"^[a-z_][a-z0-9_.]*\(", normalized):
+            continue
+        if re.fullmatch(r"[a-z_][a-z0-9_]*[,)]", normalized):
             continue
         if normalized in {"changeme", "placeholder", "example", "unset", "none", "null"}:
             continue

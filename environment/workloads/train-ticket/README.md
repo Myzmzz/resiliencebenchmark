@@ -1,0 +1,46 @@
+# Train-Ticket Workloads
+
+This directory contains the public, controller-owned workload definitions for
+Train-Ticket benchmark preparation.
+
+The profile file intentionally excludes the live target URL, account names,
+passwords, station choices, and kubeconfig paths. Those values must be supplied
+at runtime through a fixture consumed by `scripts/train_ticket_workload.py`.
+
+Runtime fixture shape:
+
+```yaml
+target:
+  base_url: http://ts-ui-dashboard.train-ticket.svc.cluster.local
+  base_url_ref: runtime://train-ticket/base-url
+  allowed_hosts:
+    - ts-ui-dashboard.train-ticket.svc.cluster.local
+credentials:
+  kubernetes_secret_ref:
+    name: train-ticket-workload-user
+    username_key: username
+    password_key: password
+artifacts:
+  pvc_claim: train-ticket-workload-results
+cluster:
+  allowed_namespaces:
+    - train-ticket
+scenario:
+  from_station: Shang Hai
+  to_station: Su Zhou
+  travel_date: "2026-08-22"
+```
+
+Only secret references are rendered into Kubernetes objects. Literal credential
+values are rejected. `target.base_url` must be `http` or `https`, must not
+contain userinfo, and its hostname must exactly match `target.allowed_hosts` so
+runtime credentials cannot be sent to an unintended host.
+
+The JMeter workload image still has to be built, mirrored to Harbor, and pinned
+as `name@sha256:<digest>` before a real `start --execute` can run. Until that
+image is resolved, these files are a preparation contract and dry-run renderer,
+not a claim that the workload is executable in the cluster.
+
+Real starts write `/results/train-ticket.jtl` to the fixture-provided PVC.
+`stop --execute` removes only this run's Job and ConfigMap by `run_id`; it never
+deletes the result PVC.

@@ -78,10 +78,11 @@ find . -maxdepth 2 -type f | sort
 环境准备阶段可以执行静态验证、dry-run 和显式 kubeconfig 的只读集群资格检查；在 `benchmarkfactory.yaml` 的故障执行门槛全部通过前，不应执行真实故障注入。
 
 ```bash
-python3 scripts/benchmark_prepare.py validate-repo --repo .
-python3 -m pytest
-python3 scripts/benchmark_prepare.py dry-run --repo .
-python3 scripts/probe_models.py --models-config harness/models.yaml --dry-run
+make sync
+make validate
+make test
+make dry-run
+make probe-models-dry
 ```
 
 Source snapshots are materialized from immutable public locks and verified by commit plus archive SHA-256:
@@ -97,6 +98,8 @@ Sock Shop is rendered from a pinned archived manifest. Its images can be mirrore
 make render-sock-shop
 make mirror-sock-shop-dry
 ```
+
+本阶段还提供四类 Agent 可用 MCP 的仓库实现：`k8s_ro` 负责受限 Kubernetes 只读对象、事件和 Pod 日志；`telemetry_ro` 负责 Prometheus、Jaeger、Loki 的限窗查询；`source_ro` 负责锁定源码快照读取；`chaos_control` 负责带 baseline ledger、目标 UID 校验和 cleanup ledger 的 ChaosBlade 控制。它们已经有本地单元测试和 HTTP runtime 模板，但远端 endpoint 部署和 Harness 资格验证仍属于下一阶段门槛。
 
 ## 下一阶段
 

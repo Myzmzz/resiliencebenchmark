@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Use source_list_repositories filtered by application=train-ticket, then source_show_commit on the returned repository id. What is the locked commit?</question>
+    <answer>313886e99befb94be6cd45f085c98e0019f59829</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_list_repositories filtered by application=otel-demo, then source_show_commit on its lock. What tag is pinned?</question>
+    <answer>2.2.0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_list_repositories filtered by application=sock-shop and component=orders, then source_show_commit. What is the repository id?</question>
+    <answer>sock-shop-orders-0.4.7</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_list_repositories filtered by application=sock-shop and component=payment, then source_show_commit. What archive SHA-256 is locked?</question>
+    <answer>442829357642a3d23c4d29f1df8ff99f2d12fe72d4d4c56efa64bdc6f96762c0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use paginated source_list_repositories for sock-shop components, then show the deployment lock. What runtime mapping status is reported for sock-shop-deployment?</question>
+    <answer>component-source-locks-and-image-digests-pending</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_list_repositories to find the Sock Shop front-end component, then source_show_commit. What tag is pinned?</question>
+    <answer>0.3.12</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_list_repositories to locate the otel-demo lock, then source_list_files or source_search_text under that repository to confirm the source tree is accessible. What sourceRootRef should be reported?</question>
+    <answer>${RESBENCH_SOURCE_ROOT}/otel-demo-2.2.0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_list_repositories with limit and offset until the Sock Shop queue-master component is found, then source_show_commit. What commit is locked?</question>
+    <answer>ca72773d51ca4676306e6c5f25835990f3753748</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_list_repositories filtered by component=shipping, then source_show_commit. What application owns that lock?</question>
+    <answer>sock-shop</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use source_read_file on .git/config for any locked repository and report the structured refusal code. What code is returned?</question>
+    <answer>restricted_path</answer>
+  </qa_pair>
+</evaluation>

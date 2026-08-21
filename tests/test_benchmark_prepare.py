@@ -61,6 +61,10 @@ def test_secret_scan_allows_typed_and_environment_credential_references():
     assert benchmark_prepare.contains_secret_material("token: resbench_actualtokenvalue")
     assert benchmark_prepare.contains_secret_material("password: resbench_actualpassword")
     assert not benchmark_prepare.contains_secret_material("if not api_key:\n    report['status'] = 'missing'")
+    assert not benchmark_prepare.contains_secret_material("token = _required(values, TOKEN_ENV)")
+    assert not benchmark_prepare.contains_secret_material("token_verifier=token,")
+    assert benchmark_prepare.contains_secret_material("token = hardcoded_runtime_value")
+    assert benchmark_prepare.contains_secret_material("token = stronghardcodedvalue")
 
 
 def test_validate_repo_rejects_agent_visible_ground_truth_keys(tmp_path):

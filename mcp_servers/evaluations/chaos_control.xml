@@ -1,0 +1,42 @@
+<evaluation>
+  <qa_pair>
+    <question>Use only read-only tools. Validate a network-delay plan in namespace otel-demo for one Pod with target_uid pod-uid-1, duration 120 seconds, and delay_ms 250. What is the boolean ok value? Answer true or false.</question>
+    <answer>true</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Validate the same single-Pod network-delay plan but include a selector map. Which validation code proves selector targeting is forbidden?</question>
+    <answer>SELECTOR_TARGET_FORBIDDEN</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Validate a plan for namespace sock-shop when only otel-demo is allowlisted. Which validation code identifies the namespace problem?</question>
+    <answer>NAMESPACE_NOT_ALLOWED</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Validate a network-loss plan with loss_percent 50. Which validation code shows the intensity is outside budget?</question>
+    <answer>INTENSITY_BUDGET_EXCEEDED</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Validate a database-stop fault type for an otherwise valid Pod plan. Which validation code says the fault type is outside the allowed action space?</question>
+    <answer>FAULT_TYPE_NOT_ALLOWED</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Validate a pod-kill plan with pod_count 1 and duration 60 seconds. What is the boolean ok value? Answer true or false.</question>
+    <answer>true</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Inventory a logical namespace while ChaosBlade CRs are cluster-scoped. What boolean field states that the CR inventory is cluster scoped?</question>
+    <answer>cluster_scoped</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Inventory a cluster containing an unowned ChaosBlade CR in phase Error outside the requested logical namespace. Which count field shows this global unsafe resource would block create?</question>
+    <answer>global_unsafe_unowned_count</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Get an experiment by name that does not exist in an allowlisted namespace. What boolean field indicates whether it was found?</question>
+    <answer>found</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Check recovery status for a cleanup handle whose ledger experiment is absent from Kubernetes. What boolean field is true when the resource is absent?</question>
+    <answer>resource_absent</answer>
+  </qa_pair>
+</evaluation>

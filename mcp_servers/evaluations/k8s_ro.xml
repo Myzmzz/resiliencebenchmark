@@ -1,0 +1,42 @@
+<evaluation>
+  <qa_pair>
+    <question>Use k8s_list_resources to list pods in an allowlisted benchmark namespace with a simple app label selector. What fields show bounded pagination?</question>
+    <answer>total, returned, limit, offset, and hasMore.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use k8s_get_resource on a ConfigMap. What content must not be returned?</question>
+    <answer>data, binaryData, stringData, managedFields, and last-applied configuration content must not be returned.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Attempt to list secrets through k8s_list_resources. What structured refusal code should be returned?</question>
+    <answer>resource_forbidden.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Attempt to read kube-system pods when the namespace is not in the allowlist. What structured refusal code should be returned?</question>
+    <answer>namespace_not_allowed.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use k8s_pod_logs for a current Pod. Which kubectl capability is intentionally not exposed?</question>
+    <answer>previous logs, exec, and port-forward are intentionally not exposed.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use k8s_cluster_inventory. Which cluster-scope resources are allowed?</question>
+    <answer>nodes, namespaces, and crds.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Inspect k8s_ro tool schemas. Can an agent pass a kubeconfig path to a tool?</question>
+    <answer>No. The kubeconfig path is fixed in the MCP service environment.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use k8s_list_events with an involved object filter. Which Kubernetes API object is queried?</question>
+    <answer>Namespace Events are queried with a bounded field selector.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Inspect Pod env values returned by k8s_get_resource. How are literal env values represented?</question>
+    <answer>Literal env values are replaced with &lt;redacted-value&gt;.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use k8s_list_resources with a suspicious label selector containing spaces or shell fragments. What structured refusal code should be returned?</question>
+    <answer>invalid_label_selector.</answer>
+  </qa_pair>
+</evaluation>

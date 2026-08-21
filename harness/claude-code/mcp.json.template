@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "k8s_ro": {
+      "type": "http",
+      "url": "${RESBENCH_K8S_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      }
+    },
+    "telemetry_ro": {
+      "type": "http",
+      "url": "${RESBENCH_TELEMETRY_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      }
+    },
+    "source_ro": {
+      "type": "http",
+      "url": "${RESBENCH_SOURCE_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      }
+    },
+    "chaos_control": {
+      "type": "http",
+      "url": "${RESBENCH_CHAOS_CONTROL_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      }
+    }
+  }
+}

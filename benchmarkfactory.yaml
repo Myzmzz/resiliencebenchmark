@@ -21,6 +21,11 @@ spec:
       sockShop:
         renderConfig: environment/kubernetes/sock-shop/render-config.yaml
         renderer: scripts/render_sock_shop.py
+    workloads:
+      trainTicket:
+        profiles: environment/workloads/train-ticket/profiles.yaml
+        fixtureExample: environment/workloads/train-ticket/runtime-fixture.example.yaml
+        controller: scripts/train_ticket_workload.py
     observability: environment/shared/observability.yaml
     observabilityPlans:
       - environment/observability/prometheus-otlp-receiver.yaml
@@ -30,6 +35,16 @@ spec:
       - environment/observability/kubelet-certificate-expiry.yaml
       - environment/observability/prometheus-pvc.yaml
     mcpDeployments:
+      implementations:
+        k8s_ro: mcp_servers/k8s_ro/server.py
+        telemetry_ro: mcp_servers/telemetry_ro/server.py
+        source_ro: mcp_servers/source_ro/server.py
+        chaos_control: mcp_servers/chaos_control/server.py
+      evaluations:
+        k8s_ro: mcp_servers/evaluations/k8s_ro.xml
+        telemetry_ro: mcp_servers/evaluations/telemetry_ro.xml
+        source_ro: mcp_servers/evaluations/source_ro.xml
+        chaos_control: mcp_servers/evaluations/chaos_control.xml
       prometheus:
         chartLock: environment/mcp/prometheus-chart-lock.yaml
         values: environment/mcp/prometheus-values.yaml

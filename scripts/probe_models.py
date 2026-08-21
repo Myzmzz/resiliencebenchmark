@@ -9,6 +9,7 @@ never persists endpoints, API keys, or request transcripts.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import sys
@@ -19,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import yaml
 
@@ -27,6 +28,7 @@ import yaml
 BASE_URL_ENV = "RESBENCH_LLM_BASE_URL"
 API_KEY_ENV = "RESBENCH_LLM_API_KEY"
 DEFAULT_MODELS_CONFIG = Path("harness/models.yaml")
+MAX_RESPONSE_BYTES = 2_000_000
 
 
 @dataclass
@@ -53,13 +55,15 @@ class UrllibTransport:
         request = urllib.request.Request(url, data=body, headers=dict(headers), method=method)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - explicit runtime URL.
-                data = response.read()
+                data = response.read(MAX_RESPONSE_BYTES + 1)
                 status = int(response.status)
                 response_headers = {key.lower(): value for key, value in response.headers.items()}
         except urllib.error.HTTPError as exc:
-            data = exc.read()
+            data = exc.read(MAX_RESPONSE_BYTES + 1)
             status = int(exc.code)
             response_headers = {key.lower(): value for key, value in exc.headers.items()}
+        if len(data) > MAX_RESPONSE_BYTES:
+            raise ValueError(f"gateway response exceeded {MAX_RESPONSE_BYTES} bytes")
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return HttpResponse(status=status, headers=response_headers, body=data, elapsed_ms=elapsed_ms)
 
@@ -91,6 +95,27 @@ def redacted_env_source(name: str, value: str | None) -> dict[str, Any]:
 
 def join_endpoint(base_url: str, path: str) -> str:
     return urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
+
+
+def validate_gateway_base_url(base_url: str) -> None:
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError(f"{BASE_URL_ENV} must be an explicit http(s) URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError(f"{BASE_URL_ENV} must not contain userinfo, a query, or a fragment")
+    if parsed.scheme == "http":
+        is_loopback = parsed.hostname.lower() == "localhost"
+        if not is_loopback:
+            try:
+                is_loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+            except ValueError:
+                is_loopback = False
+        if not is_loopback:
+            raise ValueError(f"{BASE_URL_ENV} must use HTTPS unless it targets loopback")
+
+
+def transport_error_message(exc: Exception) -> str:
+    return f"gateway request failed ({type(exc).__name__}); verify runtime connectivity and protocol support"
 
 
 def json_bytes(payload: dict[str, Any]) -> bytes:
@@ -229,7 +254,7 @@ def model_alias_probe(
             "status": "failed",
             "endpoint": "/models",
             "errorType": type(exc).__name__,
-            "message": str(exc),
+            "message": transport_error_message(exc),
         }
     data, error = decode_json(response)
     ids = extract_model_ids(data) if error is None else []
@@ -270,7 +295,7 @@ def openai_chat_probe(
             "status": "failed",
             "endpoint": "/chat/completions",
             "errorType": type(exc).__name__,
-            "message": str(exc),
+            "message": transport_error_message(exc),
         }
     status = probe_status_for_http(response.status)
     data, error = decode_json(response)
@@ -337,7 +362,7 @@ def openai_stream_probe(
             "status": "failed",
             "endpoint": "/chat/completions",
             "errorType": type(exc).__name__,
-            "message": str(exc),
+            "message": transport_error_message(exc),
         }
     status = probe_status_for_http(response.status)
     chunks = decode_sse_chunks(response.body) if 200 <= response.status < 300 else []
@@ -384,7 +409,7 @@ def anthropic_messages_probe(
             "modelFailureImpact": "protocol_only",
             "endpoint": "/messages",
             "errorType": type(exc).__name__,
-            "message": str(exc),
+            "message": transport_error_message(exc),
         }
     status = probe_status_for_http(response.status)
     data, error = decode_json(response)
@@ -608,6 +633,16 @@ def run_probe(
         return report
     if not api_key:
         report["issues"].append({"severity": "ERROR", "message": f"{API_KEY_ENV} is required"})
+        return report
+    try:
+        validate_gateway_base_url(base_url)
+    except ValueError as exc:
+        report["issues"].append({"severity": "ERROR", "message": str(exc)})
+        return report
+    if not 0.5 <= timeout_seconds <= 300:
+        report["issues"].append(
+            {"severity": "ERROR", "message": "probe timeout must be between 0.5 and 300 seconds"}
+        )
         return report
 
     active_transport = transport or UrllibTransport()

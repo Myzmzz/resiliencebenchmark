@@ -1,0 +1,74 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: TrainTicketWorkloadProfileSet
+metadata:
+  name: train-ticket-controller-workloads
+  visibility: public-agent-readable
+spec:
+  generator:
+    kind: jmeter
+    image: "{{TRAIN_TICKET_JMETER_IMAGE_REPOSITORY}}@{{TRAIN_TICKET_JMETER_IMAGE_DIGEST}}"
+    command:
+      - /opt/resiliencebenchmark/train-ticket/run-workload.sh
+    resultArtifact: /results/train-ticket.jtl
+  profiles:
+    - id: search
+      description: Search direct travel options without creating orders.
+      targetQps: 2.0
+      concurrency: 4
+      durationSeconds: 600
+      steps:
+        - name: search-trips
+          method: POST
+          path: /api/v1/travelservice/trips/left
+          weight: 1.0
+          requiresAuthentication: false
+      abortThresholds:
+        maxErrorRate: 0.02
+        maxP95LatencyMs: 2000
+        maxConsecutiveFailures: 20
+    - id: login
+      description: Authenticate a runtime-supplied user and refresh the session.
+      targetQps: 0.2
+      concurrency: 1
+      durationSeconds: 600
+      steps:
+        - name: login
+          method: POST
+          path: /api/v1/users/login
+          weight: 1.0
+          requiresAuthentication: false
+      abortThresholds:
+        maxErrorRate: 0.01
+        maxP95LatencyMs: 1500
+        maxConsecutiveFailures: 5
+    - id: order
+      description: Search, preserve, and query orders for a runtime-supplied user.
+      targetQps: 1.0
+      concurrency: 5
+      durationSeconds: 600
+      steps:
+        - name: login
+          method: POST
+          path: /api/v1/users/login
+          weight: 0.1
+          requiresAuthentication: false
+        - name: search-trips
+          method: POST
+          path: /api/v1/travelservice/trips/left
+          weight: 0.5
+          requiresAuthentication: true
+        - name: preserve-order
+          method: POST
+          path: /api/v1/preserveservice/preserve
+          alternatePath: /api/v1/preserveotherservice/preserveOther
+          weight: 0.3
+          requiresAuthentication: true
+        - name: query-order
+          method: GET
+          path: /api/v1/orderservice/order
+          weight: 0.1
+          requiresAuthentication: true
+      abortThresholds:
+        maxErrorRate: 0.02
+        maxP95LatencyMs: 2500
+        maxConsecutiveFailures: 20

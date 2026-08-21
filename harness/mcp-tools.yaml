@@ -6,6 +6,7 @@ description: >
 runtime_refs:
   kubeconfig: credential:RESBENCH_KUBECONFIG_REF
   source_index: credential:RESBENCH_SOURCE_INDEX_REF
+  k8s: service_ref:k8s_ro
   prometheus: service_ref:prometheus_ro
   jaeger: service_ref:jaeger_ro
   loki: service_ref:loki_ro
@@ -17,8 +18,9 @@ tools:
     allowed_operations:
       - get
       - list
-      - watch
-      - describe
+      - list_events
+      - pod_logs
+      - cluster_inventory
     denied_operations:
       - create
       - update
@@ -26,9 +28,14 @@ tools:
       - delete
       - exec
       - port_forward
+      - watch
+      - describe_shell
+      - read_secrets
+      - read_configmap_data
     scope:
       namespaces_from_episode: true
       cluster_scoped_reads: limited_inventory_only
+      kubeconfig_from_server_runtime_only: true
 
   prometheus_ro:
     mode: read_only

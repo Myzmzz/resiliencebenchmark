@@ -1,0 +1,19 @@
+target:
+  base_url: http://ts-ui-dashboard.train-ticket.svc.cluster.local
+  base_url_ref: runtime://train-ticket/base-url
+  allowed_hosts:
+    - ts-ui-dashboard.train-ticket.svc.cluster.local
+credentials:
+  kubernetes_secret_ref:
+    name: train-ticket-workload-user
+    username_key: username
+    password_key: password
+artifacts:
+  pvc_claim: train-ticket-workload-results
+cluster:
+  allowed_namespaces:
+    - train-ticket
+scenario:
+  from_station: Shang Hai
+  to_station: Su Zhou
+  travel_date: "2026-08-22"

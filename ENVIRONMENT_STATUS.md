@@ -12,6 +12,7 @@
 - Seven model aliases are registered; transport capability probes are implemented but have not been executed with a rotated runtime gateway credential. Long-context, tool-error recovery, Oracle-refusal, and OpenAI Responses behavior remain mandatory pre-matrix checks.
 - DeepSeek Harness is pinned and has an idempotent host installer, but the target host has not authorized the deployment SSH key.
 - Prometheus MCP Chart objects are installed with a pinned chart/image and restricted ServiceAccount, but its Deployment is scaled to zero because cluster nodes cannot pull the GHCR image; Harbor mirroring is required before qualification.
+- Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`, with authenticated HTTP runtime templates and unit tests. These are not yet deployed or qualified as remote endpoints on the target host.
 
 ## Source evidence
 
@@ -28,6 +29,7 @@
 - `ts-order-service` was restored from 0/2 to 2/2 Ready by a scoped rolling restart.
 - The original runtime failure included a full accept queue, thousands of file descriptors, and accumulated `CLOSE_WAIT` connections; recurrence under sustained load is not yet excluded.
 - A controller-owned repeatable workload and full business SLO baseline remain pending.
+- A controller-owned Train-Ticket workload renderer now exists with fixed profiles, host allowlist validation, Kubernetes Secret references, and PVC-backed result artifacts. The JMeter image still needs to be built, mirrored, and digest-pinned before a real workload run.
 
 ### OTel Demo
 
@@ -55,6 +57,7 @@
 
 - 157 pre-existing cluster-scoped ChaosBlade resources are owned by the existing fault platform, not this benchmark. They have no Kubernetes owner references or benchmark run IDs and must not be deleted automatically.
 - Formal fault execution remains blocked until their owner confirms the supported recovery path and target-side residue is checked.
+- The local `chaos_control` MCP service treats ChaosBlade as cluster-scoped, verifies live target Pod UID before create, requires a baseline ledger token, blocks on unsafe unowned global ChaosBlade state, and deletes only ledger-owned experiments. Because the 157 historical resources are still present, real fault execution remains blocked.
 - Previously supplied access credentials were removed from the workspace preparation document and must be rotated before remote deployment or model/Harbor qualification.
 
 ## Next completion gates

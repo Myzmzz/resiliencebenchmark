@@ -166,6 +166,45 @@ def test_missing_env_is_structured_error_and_no_probe(tmp_path):
     assert fake.calls == []
 
 
+def test_probe_rejects_remote_plain_http_before_sending_key(tmp_path):
+    config = tmp_path / "models.yaml"
+    write_models_config(config)
+    fake = FakeTransport()
+
+    report = probe_models.run_probe(
+        config,
+        {probe_models.BASE_URL_ENV: "http://gateway.example/v1", probe_models.API_KEY_ENV: "runtime-key"},
+        transport=fake,
+    )
+
+    assert report["issues"] == [
+        {"severity": "ERROR", "message": "RESBENCH_LLM_BASE_URL must use HTTPS unless it targets loopback"}
+    ]
+    assert fake.calls == []
+
+
+def test_transport_errors_do_not_echo_gateway_or_key(tmp_path):
+    config = tmp_path / "models.yaml"
+    write_models_config(config)
+    gateway = "https://private-gateway.example/v1"
+    key = "runtime-key-that-must-not-leak"
+
+    def failing_transport(method, url, headers, body, timeout):
+        raise RuntimeError(f"failed at {url} using {headers.get('authorization')}")
+
+    report = probe_models.run_probe(
+        config,
+        {probe_models.BASE_URL_ENV: gateway, probe_models.API_KEY_ENV: key},
+        aliases=["gpt-5.6"],
+        transport=failing_transport,
+    )
+    encoded = json.dumps(report)
+
+    assert gateway not in encoded
+    assert key not in encoded
+    assert "Bearer" not in encoded
+
+
 def test_cli_outputs_redacted_json(tmp_path, monkeypatch, capsys):
     config = tmp_path / "models.yaml"
     write_models_config(config)
