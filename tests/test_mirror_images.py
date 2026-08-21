@@ -70,9 +70,10 @@ def test_dry_run_returns_pinned_harbor_image_map_without_runner():
 
     assert len(image_map) == 14
     assert image_map["weaveworksdemos/front-end"].startswith(
-        "harbor.example:85/sock-shop/weaveworksdemos/front-end@sha256:"
+        "harbor.example:85/sock-shop/weaveworksdemos/front-end:pinned-"
     )
     assert all("@sha256:" in target for target in image_map.values())
+    assert all(":pinned-" in target for target in image_map.values())
 
 
 def test_execute_uses_crane_copy_and_verifies_digest_without_printing_secret(monkeypatch, capsys):

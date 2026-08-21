@@ -191,8 +191,7 @@ def destination_repo(config: HarborConfig, source_name: str) -> str:
 def plan_image_map(pins: list[ImagePin], config: HarborConfig) -> dict[str, str]:
     image_map: dict[str, str] = {}
     for pin in pins:
-        repo = destination_repo(config, pin.source_name)
-        image_map[pin.source_name] = f"{repo}@{pin.digest}"
+        image_map[pin.source_name] = f"{tag_ref_for(pin, config)}@{pin.digest}"
     return image_map
 
 
@@ -259,7 +258,7 @@ def mirror_images(
                 raise MirrorError(
                     f"digest verification failed for {pin.source_name}: expected {pin.digest}, got {target_digest}"
                 )
-            verified[pin.source_name] = f"{destination_repo(config, pin.source_name)}@{target_digest}"
+            verified[pin.source_name] = f"{tagged_destination}@{target_digest}"
         return verified
 
 
