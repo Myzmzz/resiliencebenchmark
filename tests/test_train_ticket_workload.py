@@ -239,6 +239,57 @@ def test_execute_start_requires_resolved_digest(tmp_path, capsys):
     assert "resolved image pinned as name@sha256" in captured.err
 
 
+def test_execute_start_accepts_runtime_tag_and_digest_image_override(tmp_path, capsys):
+    fixture = fixture_file(tmp_path)
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    image = "harbor.example/train-ticket/workload:commit@sha256:" + "2" * 64
+    runner = FakeRunner()
+
+    code = train_ticket_workload.run(
+        [
+            "start",
+            "--execute",
+            "--fixture",
+            str(fixture),
+            "--profile-file",
+            str(PROFILE),
+            "--run-id",
+            "tt-run-image-override",
+            "--kubeconfig",
+            str(kubeconfig),
+            "--image",
+            image,
+        ],
+        runner=runner,
+    )
+
+    rendered = list(yaml.safe_load_all(runner.inputs[0]))
+    assert code == 0
+    assert rendered[1]["spec"]["template"]["spec"]["containers"][0]["image"] == image
+    assert json.loads(capsys.readouterr().out)["dryRun"] is False
+
+
+def test_runtime_image_override_rejects_unpinned_tag(tmp_path, capsys):
+    fixture = fixture_file(tmp_path)
+
+    code = train_ticket_workload.run(
+        [
+            "render",
+            "--fixture",
+            str(fixture),
+            "--profile-file",
+            str(PROFILE),
+            "--image",
+            "harbor.example/train-ticket/workload:latest",
+        ],
+        runner=FakeRunner(),
+    )
+
+    assert code == 2
+    assert "--image must be" in capsys.readouterr().err
+
+
 def test_execute_start_rejects_indirect_environment_credentials(tmp_path, capsys):
     fixture = fixture_file(tmp_path, secret_ref=False)
     kubeconfig = tmp_path / "kubeconfig"

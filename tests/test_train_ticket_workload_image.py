@@ -432,7 +432,7 @@ def test_build_script_dry_run_and_execute_use_fixed_buildx_argv(monkeypatch):
     output = build_train_ticket_workload.build_image(plan, execute=True, runner=runner)
     assert output["dryRun"] is False
     assert output["digest"] == digest
-    assert output["pinnedImage"] == f"{plan.repository}@{digest}"
+    assert output["pinnedImage"] == f"{plan.repository}:{plan.tag}@{digest}"
     assert runner.commands[0][:3] == ["docker", "buildx", "build"]
     assert runner.commands[0][-2:] == ["--load", str(plan.context)]
 

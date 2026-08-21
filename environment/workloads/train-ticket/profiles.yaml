@@ -6,7 +6,7 @@ metadata:
 spec:
   generator:
     kind: python
-    image: "{{TRAIN_TICKET_WORKLOAD_IMAGE_REPOSITORY}}@{{TRAIN_TICKET_WORKLOAD_IMAGE_DIGEST}}"
+    image: "{{TRAIN_TICKET_WORKLOAD_IMAGE_REPOSITORY}}:{{TRAIN_TICKET_WORKLOAD_IMAGE_TAG}}@{{TRAIN_TICKET_WORKLOAD_IMAGE_DIGEST}}"
     command:
       - /opt/resiliencebenchmark/train-ticket/run-workload.sh
     resultArtifact: /results/train-ticket.jtl

@@ -262,7 +262,7 @@ def build_image(plan: BuildPlan, *, execute: bool, runner: CommandRunner | None 
         result["digest"] = digest
         result["imageId"] = image_id
         if digest:
-            result["pinnedImage"] = f"{plan.repository}@{digest}"
+            result["pinnedImage"] = f"{build_ref(plan)}@{digest}"
         return result
 
 

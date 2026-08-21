@@ -48,8 +48,9 @@ cannot reach Docker Hub, set `TRAIN_TICKET_WORKLOAD_BASE_IMAGE` (or
 builder rejects tags or unpinned overrides.
 
 The image must still be built, mirrored or pushed through the approved registry
-flow, and pinned as `name@sha256:<digest>` in `spec.generator.image` before a
-real `start --execute` can run. Until that digest is resolved, these files are a
+flow, and pinned as `name:tag@sha256:<digest>` in `spec.generator.image` (or
+passed through the controller's `--image` runtime override) before a real
+`start --execute` can run. Until that digest is resolved, these files are a
 preparation contract and dry-run renderer, not a claim that the workload is
 already executable in the cluster.
 

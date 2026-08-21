@@ -419,6 +419,15 @@ def ensure_executable_image(profile: dict[str, Any]) -> None:
         raise WorkloadError("real start requires a resolved image pinned as name@sha256:digest")
 
 
+def apply_image_override(profile: dict[str, Any], image: str | None) -> None:
+    if image is None:
+        return
+    resolved = image.strip()
+    if not IMAGE_DIGEST_RE.match(resolved):
+        raise WorkloadError("--image must be a concrete image reference pinned by sha256 digest")
+    profile["generator"]["image"] = resolved
+
+
 def manifest_yaml(manifest: list[dict[str, Any]]) -> str:
     return "---\n".join(yaml.safe_dump(item, sort_keys=True) for item in manifest)
 
@@ -472,6 +481,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--run-id", default="tt-baseline")
     parser.add_argument("--namespace", default="train-ticket")
+    parser.add_argument("--image", help="Runtime workload image as repository:tag@sha256:digest")
     parser.add_argument("--kubeconfig", type=Path)
     parser.add_argument("--execute", action="store_true", help="Perform the Kubernetes action. Default is dry-run.")
     return parser
@@ -485,6 +495,7 @@ def run(argv: list[str] | None = None, runner: CommandRunner | None = None) -> i
         fixture = load_fixture(args.fixture)
         assert_namespace_allowed(args.namespace, fixture)
         profile = load_profile(args.profile_file, args.profile)
+        apply_image_override(profile, args.image)
         plan = render_plan(run_id, args.namespace, profile, fixture)
 
         if args.command == "validate":
