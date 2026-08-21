@@ -1,4 +1,4 @@
-.PHONY: sync validate test test-mcp dry-run qualify inventory-images qualify-mcp-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-deepseek-dry trial-dry
+.PHONY: sync validate test test-mcp dry-run qualify inventory-images qualify-mcp-dry qualify-remote-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-deepseek-dry trial-dry
 
 sync:
 	uv sync --extra test
@@ -20,6 +20,9 @@ probe-models-dry:
 
 qualify-mcp-dry:
 	uv run python scripts/qualify_mcp_endpoints.py
+
+qualify-remote-dry:
+	uv run python scripts/qualify_remote_preparation.py
 
 render-sock-shop:
 	uv run python scripts/render_sock_shop.py --config environment/kubernetes/sock-shop/render-config.yaml

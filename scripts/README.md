@@ -41,6 +41,7 @@ python3 scripts/benchmark_prepare.py qualify-cluster \
 - `build_train_ticket_workload.py`：默认 dry-run 的固定 buildx 入口，构建 controller-owned Python workload，并在 push 后返回可固定的 manifest digest。
 - `deploy_mcp_host.py`：把当前已提交 HEAD 作为受管 release 传到目标主机，物化锁定源码并安装 4 个 Streamable HTTP 与 3 个 BladeAI SSE systemd unit；不创建或覆盖运行时 secret。
 - `qualify_mcp_endpoints.py`：验证四个 loopback MCP 的 bearer 拒绝、initialize、精确 tool set、schema 边界与 destructive/read-only annotation。
+- `qualify_remote_preparation.py`：主机恢复后以严格 SSH 公钥和显式 kubeconfig 验证 Node Lease、固定提交、源码 manifest、DeepSeek 运行身份、7 个 MCP unit/listener、Chaos 禁用和内存余量。
 - `run_harness_trial.py`：Codex、Claude Code 与 DeepSeek Harness 的 dry-run-first 单 trial runner，负责隔离 Home、提示词组装、环境白名单、输出脱敏和 run-trace/agent-result schema 校验。
 
 仓库自有 MCP 使用锁定的 Python 环境。先运行 `make sync`，再用 `make test-mcp` 验证 tool schema、scope、脱敏和 ChaosBlade 门禁。

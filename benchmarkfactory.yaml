@@ -44,6 +44,7 @@ spec:
       hostDeployer: scripts/deploy_mcp_host.py
       episodeActivator: scripts/activate_mcp_episode.py
       endpointQualifier: scripts/qualify_mcp_endpoints.py
+      remoteRecoveryQualifier: scripts/qualify_remote_preparation.py
       bladeAiSseRuntime: environment/mcp/host/systemd
       implementations:
         k8s_ro: mcp_servers/k8s_ro/server.py
