@@ -115,18 +115,28 @@ spec:
     minimumHealthyWindow: 10m
     failurePolicy: block-episode
   readiness:
-    currentStatus: application-workloads-ready-business-baseline-pending
+    currentStatus: workload-smoke-qualified-business-baseline-pending
     knownGaps:
-      - observedAt: environment-preparation
+      - observedAt: 2026-08-22
         severity: blocking
-        item: The controller-owned workload image source is ready, but its image has not been built, pushed to Harbor, digest-pinned, or qualified against a business SLO window.
+        item: The final 60-second business smoke passed, but the required 10-minute healthy baseline window has not yet been executed and archived.
+      - observedAt: 2026-08-22
+        severity: warning
+        item: Nacos replica-to-replica registry equality was verified after repair but is not yet an automated reset/qualification gate.
     resolvedIssues:
       - resolvedAt: 2026-08-21
         item: A runtime-parameterized Python workload now implements login, search, preserve, order lookup, default order cancellation, abort thresholds, and streaming JTL evidence without embedding credentials or endpoints.
       - resolvedAt: 2026-08-21
         item: ts-order-service was restored from 0/2 to 2/2 Ready by a scoped rolling restart after its accept queue stopped draining.
         residualRisk: File descriptor and CLOSE_WAIT accumulation may recur; a sustained workload window is required before qualification.
+      - resolvedAt: 2026-08-22
+        item: The controller-owned workload image was built from commit 05685b72045d, pushed to Harbor, and pinned by manifest digest sha256:1f767740be52f0fd681bc16ef359c86a4989c67c5678d602239a52163a1018e0.
+      - resolvedAt: 2026-08-22
+        item: A 60-second Gateway-based order smoke completed 60 login, search, contact, preserve, query, and cancellation flows with 360/360 successful samples and 280 ms p95 latency.
+      - resolvedAt: 2026-08-22
+        item: Stale Nacos order, preserve, and Gateway registrations were removed by a rolling Nacos restart; all three Nacos replicas returned equal live instance sets before Gateway restart and smoke qualification.
     nextChecks:
-      - Build and push the controller-owned workload image, record its manifest digest, then run it and confirm the order service remains Ready for the full baseline window.
+      - Run and archive the full 10-minute order baseline while confirming application readiness and SLO queries for the complete window.
+      - Automate Nacos replica equality and Kubernetes Pod-IP reconciliation as a fail-closed qualification check.
       - Freeze all component images by digest before building episodes.
       - Verify order creation, query, metrics, traces, and logs under steady load.

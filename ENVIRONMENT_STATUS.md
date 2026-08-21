@@ -1,6 +1,6 @@
 # Environment Preparation Status
 
-> Snapshot date: 2026-08-21
+> Snapshot date: 2026-08-22
 > This is environment-preparation evidence, not a benchmark result.
 
 ## Repository contracts
@@ -13,7 +13,7 @@
 - DeepSeek Harness has an exact top-level package/integrity pin, a complete integrity-bearing npm lock that forces all observed DSH modules to rc.7, an idempotent `npm ci` host installer, and post-install dependency-tree validation. The remote root and `resbench` identities both report `0.1.0-rc.7`; complete tool-trace export still must be qualified before matrix freeze.
 - Prometheus MCP Chart objects are installed with a pinned chart/image and restricted ServiceAccount, but its Deployment is scaled to zero because cluster nodes cannot pull the GHCR image; Harbor mirroring is required before qualification.
 - Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`. Seven hardened loopback systemd units are deployed with per-service Unix identities, Episode-scoped RBAC/kubeconfigs, and 11 verified source locks. All four authenticated HTTP endpoints passed post-recovery qualification. BladeAI v0.6.2 connected all three read-only SSE clients to `verifier`; Chaos control was disabled and unconnected.
-- The current read-only cluster state has all three nodes Ready. Remaining intentional hard gates are Sock Shop scale-zero and 157 historical cluster-scoped ChaosBlade resources.
+- The current read-only cluster state has all three nodes Ready. Sock Shop is no longer scaled to zero; the remaining cluster-wide fault-execution hard gate is 157 historical cluster-scoped ChaosBlade resources.
 
 ## Recovered host incident
 
@@ -36,7 +36,9 @@
 - All 48 Train-Ticket Deployments are Ready after worker recovery.
 - `ts-order-service` was restored from 0/2 to 2/2 Ready by a scoped rolling restart.
 - The original runtime failure included a full accept queue, thousands of file descriptors, and accumulated `CLOSE_WAIT` connections; recurrence under sustained load is not yet excluded.
-- A controller-owned repeatable workload image source and renderer now exist with fixed flow profiles, application-status validation, host allowlisting, Kubernetes Secret references, created-order cleanup, and PVC-backed JTL artifacts. The image still needs to be built, pushed to Harbor, digest-pinned, and exercised against a healthy baseline before the workload is qualified.
+- The controller-owned workload image was built from commit `05685b72045d`, pushed to Harbor, and pinned by manifest digest `sha256:1f767740be52f0fd681bc16ef359c86a4989c67c5678d602239a52163a1018e0`. Its runtime account is held only in `train-ticket-workload-user`, and JTL evidence is stored on the Bound `train-ticket-workload-results` PVC.
+- A 60-second Gateway-based order smoke completed 60 login, search, contact, preserve, query, and cancellation flows: 360/360 samples succeeded, p50 was 93 ms, p95 was 280 ms, and p99 was 473 ms. This is smoke evidence; the required 10-minute healthy baseline remains pending.
+- Nacos replicas had diverged and advertised deleted order, preserve, and Gateway Pod IPs as healthy. A rolling Nacos restart, Distro-initialization wait, three-replica registry equality check, and subsequent Gateway restart removed the stale targets. Replica equality is not yet an automated qualification gate.
 - The latest read-only runtime image inventory observed 85 application/init containers; all were Ready or successfully completed and had runtime SHA-256 digests. This does not yet prove the deployed image-to-source mapping.
 
 ### OTel Demo
@@ -46,15 +48,14 @@
 - Recent application traces are visible in shared Jaeger.
 - `namespace=otel-demo` log streams are visible in Loki.
 - Kubeletstats is incomplete because node serving certificates are expired; node-exporter, cAdvisor, and kube-state-metrics remain available.
-- The latest read-only runtime image inventory observed 30 application/init containers; all were Ready or successfully completed and had runtime SHA-256 digests.
+- The latest three-application runtime image inventory observed 29 OTel Demo application/init containers; all were Ready or successfully completed and had runtime SHA-256 digests.
 
 ### Sock Shop
 
-- Canonical objects render safely and server-side dry-run passes with every image pinned by digest.
-- The Deployments and Services were created in the target namespace.
-- Cluster nodes cannot currently pull the pinned Docker Hub images; all 14 Deployments are intentionally scaled to zero to stop repeated external pulls.
-- A Harbor Robot Account supplied through a runtime secret is required to mirror the 14 digests before scale-up and application qualification.
-- The runtime image inventory has zero active Sock Shop containers, so the three-application image qualification remains failed by design.
+- All 14 source images were relayed to Harbor for `linux/amd64`, verified by manifest digest, and rendered in the cluster-required `repository:tag@digest` form. Multi-architecture source indexes were resolved to platform manifest digests before pinning.
+- All 14 Deployments are Ready. The front-end root, catalogue, tags, and customers paths returned HTTP 200.
+- The latest runtime inventory observed 15 Sock Shop containers; every container was Ready or successfully completed and digest-qualified. The combined Train-Ticket, Sock Shop, and OTel Demo inventory qualified 129 containers with no missing runtime digest and no unready container.
+- Prometheus namespace series and a recent Loki stream were observed. Sock Shop trace attribution in Jaeger and a repeatable 10-minute load profile remain blocking qualification gaps.
 
 ## Shared observability
 
@@ -79,13 +80,13 @@
 - The live CRD is cluster-scoped `chaosblade.io/v1alpha1`; the running operator reports version 1.8.0. Current CR phases are 104 `Running` and 53 `Error`.
 - Formal fault execution remains blocked until their owner confirms the supported recovery path and target-side residue is checked.
 - The local `chaos_control` MCP service treats ChaosBlade as cluster-scoped, verifies live target Pod UID before create, requires a one-time baseline capability, blocks on unsafe unowned global ChaosBlade state, and deletes only ledger-owned experiments. A durable deadline ledger and independent watchdog enforce `duration_seconds` and retry failed cleanup. Because the 157 historical resources are still present, real fault execution remains blocked.
-- Previously supplied access credentials were removed from the workspace preparation document and must be rotated before remote deployment or model/Harbor qualification.
+- Harbor runtime credentials are now supplied through root-owned mode-600 files and were used without persisting values in the repository. A rotated model-gateway credential is still required before model and Harness qualification.
 
 ## Next completion gates
 
-1. Supply rotated Harbor Robot credentials at runtime, mirror Sock Shop digests, scale up, and qualify its business paths and signals.
-2. Renew kubelet serving certificates using the cluster distribution runbook.
-3. Reconcile the historical ChaosBlade resources with their owning platform.
-4. Supply a rotated model-gateway credential, execute the seven-model capability probe, and run Codex/Claude Code/DeepSeek smoke trials.
-5. Qualify complete BladeAI and DeepSeek trajectory export for scored trials.
-6. Freeze source-commit-to-runtime-image mappings and only then unlock the first 6–10 Episodes.
+1. Run and archive the required 10-minute Train-Ticket baseline; add fail-closed Nacos replica/Kubernetes Pod-IP reconciliation to reset qualification.
+2. Add a repeatable Sock Shop steady-load profile and prove Jaeger trace attribution for its critical paths.
+3. Renew kubelet serving certificates using the cluster distribution runbook.
+4. Reconcile the historical ChaosBlade resources with their owning platform.
+5. Supply a rotated model-gateway credential, execute the seven-model capability probe, and run Codex/Claude Code/DeepSeek smoke trials.
+6. Qualify complete BladeAI and DeepSeek trajectory export, freeze source-to-image mappings, and only then unlock the first 6–10 Episodes.

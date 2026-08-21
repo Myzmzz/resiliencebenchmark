@@ -1,0 +1,37 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentRepairPlan
+metadata:
+  name: sock-shop-harbor-mirror-20260822
+spec:
+  status: live-applied-business-smoke-qualified
+  observedFailure:
+    reason: ExternalRegistryPullTimeout
+    message: Cluster nodes could not pull the 14 digest-pinned source images from Docker Hub.
+  repair:
+    registryProjectRef: runtime-harbor://sock-shop
+    imageCount: 14
+    targetPlatform: linux/amd64
+    referenceForm: repository:tag@sha256
+    runtimeMapRef: runtime-host:///var/lib/resiliencebenchmark/sock-shop-image-map.json
+    multiArchResolution:
+      - component: mongo
+        platformManifestDigest: sha256:41afd6e1183f57e4e4d03ab733070671fca8553da2b36f15d6e3fc9760494d17
+      - component: redis
+        platformManifestDigest: sha256:9c3ecc609a8087c0f11c494fefaf37a8f7bf9a967631d4a0da8967a9810be354
+      - component: rabbitmq-exporter
+        platformManifestDigest: sha256:f8d2a74b54132842fc9fc958a0cf838399f69088cbb795f3be81d84902c1e74c
+  verification:
+    harborDigestMatches: 14
+    deploymentsReady: 14
+    runtimeContainersDigestQualified: 15
+    businessHttp200:
+      - /
+      - /catalogue
+      - /tags
+      - /customers
+    prometheusNamespaceSeriesObserved: true
+    recentLokiStreamObserved: true
+  boundary:
+    - The business endpoint smoke is not the required 10-minute steady baseline.
+    - Recent Jaeger services were visible, but Sock Shop critical-path trace attribution was not yet proven.
+    - Database and third-party infrastructure images intentionally have no application-source mapping.

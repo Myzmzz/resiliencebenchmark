@@ -1,0 +1,66 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentRepairPlan
+metadata:
+  name: train-ticket-nacos-workload-qualification-20260822
+spec:
+  status: live-applied-smoke-qualified-baseline-pending
+  observedFailure:
+    reason: NacosReplicaRegistryDivergence
+    message: Gateway and service clients selected non-existent Pod IPs that stale Nacos replicas still marked healthy.
+    staleInstances:
+      - service: ts-order-service
+        podIp: 10.0.2.124
+        port: 12031
+      - service: ts-preserve-service
+        podIp: 10.0.2.194
+        port: 14568
+      - service: ts-gateway-service
+        podIp: 10.0.2.1
+        port: 18888
+      - service: ts-gateway-service
+        podIp: 10.0.2.93
+        port: 18888
+  repairs:
+    - Rolling restart the three-replica Nacos StatefulSet one Pod at a time.
+    - Wait for Nacos Distro snapshot initialization, not Kubernetes readiness alone.
+    - Verify all three Nacos replicas return equal live order, preserve, seat, and Gateway instance sets.
+    - Roll the three Gateway replicas after Nacos convergence so every Ribbon cache starts from the repaired registry.
+    - Use ts-gateway-service:18888 as the synthetic workload API boundary.
+    - Correct order lookup to query the primary ts-order-service written by ts-preserve-service.
+    - Use nearest-rank p95, threshold-aware early-stop sample floors, and mandatory end-of-window threshold evaluation.
+  workloadImage:
+    sourceCommit: 05685b72045da2a9c4c40a26f3e29cdbcd1280cf
+    imageRef: runtime-harbor://train-ticket/train-ticket-workload:05685b72045d
+    manifestDigest: sha256:1f767740be52f0fd681bc16ef359c86a4989c67c5678d602239a52163a1018e0
+    baseImageRef: runtime-harbor://train-ticket/python-base:3.12.5-slim-bookworm-eac7a234d332
+    baseManifestDigest: sha256:eac7a234d33269f362593c31d2ff1db7b116fbd794929f1f6015f5ea812ff254
+  runtimeObjects:
+    credentialSecretRef: kubernetes://train-ticket/secret/train-ticket-workload-user
+    resultPvcRef: kubernetes://train-ticket/pvc/train-ticket-workload-results
+    credentialValuesRecorded: false
+  finalSmoke:
+    durationSeconds: 60
+    profile: order
+    samples: 360
+    failures: 0
+    errorRate: 0.0
+    p50LatencyMs: 93
+    p95LatencyMs: 280
+    p99LatencyMs: 473
+    perStepSamples:
+      login: 60
+      search-trips: 60
+      contacts: 60
+      preserve-order: 60
+      query-order: 60
+      cleanup-order: 60
+    responseCodes:
+      "200": 360
+  cleanup:
+    earlierNonCancelledOrdersFound: 9
+    earlierNonCancelledOrdersCancelled: 9
+    remainingNonCancelledOrders: 0
+  boundary:
+    - This qualifies a 60-second business smoke, not the required 10-minute healthy baseline.
+    - Nacos replica equality is verified live but is not yet implemented as an automated fail-closed qualification script.
+    - Train-Ticket deployed images are not yet proven to originate from the locked public source commit.
