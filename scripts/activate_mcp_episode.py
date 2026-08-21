@@ -27,7 +27,8 @@ DEFAULT_KUBECONFIG_ROOT = Path("/etc/resiliencebenchmark/kubeconfigs")
 DEFAULT_SOURCE_ROOT = "/opt/resiliencebenchmark/sources"
 DEFAULT_BASELINE_LEDGER_DIR = "/var/lib/resiliencebenchmark/chaos-control/baseline"
 DEFAULT_ACTIVE_LEDGER_DIR = "/var/lib/resiliencebenchmark/chaos-control/active"
-DEFAULT_SCHEMA = Path("tasks/schemas/episode-public.schema.json")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SCHEMA = REPO_ROOT / "tasks/schemas/episode-public.schema.json"
 UNIT_NAMES = (
     "resbench-mcp-k8s-ro.service",
     "resbench-mcp-telemetry-ro.service",

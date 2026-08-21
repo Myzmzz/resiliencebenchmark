@@ -41,6 +41,18 @@ class FakeRunner:
         )
 
 
+def test_default_schema_is_repository_relative_not_current_working_directory(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    episode, issues = activate.load_episode(
+        REPO_ROOT / "tasks/examples/public/episode.timeout-missing.v0.1.yaml",
+        activate.DEFAULT_SCHEMA,
+    )
+
+    assert issues == []
+    assert episode == {"application": "otel-demo", "namespace": "otel-demo"}
+
+
 def write_episode(tmp_path: Path, *, name: str = "otel-demo", namespace: str = "otel-demo") -> Path:
     episode = {
         "schema_version": "episode-public.v0.1",
