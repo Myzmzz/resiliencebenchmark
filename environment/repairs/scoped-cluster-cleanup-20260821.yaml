@@ -1,0 +1,51 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentRepairPlan
+metadata:
+  name: scoped-cluster-cleanup-20260821
+spec:
+  status: live-applied-and-verified
+  backup:
+    ref: runtime-backup://cleanup-20260821T114446Z
+    archiveSha256: 8dd573932de0811d08b150b86cfdf970800d2b80fcff1bb9b4caf9ec521b3780
+    manifestChecksumsVerified: true
+    archiveReadbackVerified: true
+    volumeBoundary: Only three residual default/model NFS directories were data-backed-up; other deleted PVC contents were not snapshotted.
+  deletedNamespaces:
+    - ai-obs
+    - aiops
+    - apitest
+    - bliyun-ecs
+    - chaos-mesh
+    - fault-test
+    - xlang-beyla
+  defaultNamespacePrefixes:
+    - mocker-
+    - model-
+    - ts-
+  deletedCounts:
+    defaultObjects: 40
+    persistentVolumes: 19
+    pvcRequestedBytes: 117815363584
+    pvcRequestedGiB: 109.72
+    chaosMeshWorkflows: 13
+    chaosMeshWorkflowNodes: 13
+    chaosMeshCrds: 44
+  nfsCleanup:
+    serverRef: cluster-internal-nfs
+    backedUpAndDeletedDirectories: 3
+    actualBytes: 207655206
+  preserved:
+    namespaces:
+      - ischaos
+      - observability
+    chaosBladeResources: 157
+    reason: ischaos owns the historical fault-control path; observability is the active Benchmark telemetry backend.
+  verification:
+    - deleted-namespace-count-remaining-zero
+    - default-prefixed-object-count-remaining-zero
+    - target-persistent-volume-count-remaining-zero
+    - chaos-mesh-crd-count-remaining-zero
+    - target-cluster-rbac-and-webhook-count-remaining-zero
+    - target-helm-release-count-remaining-zero
+    - nfs-target-directory-count-remaining-zero
+    - all-three-nodes-ready

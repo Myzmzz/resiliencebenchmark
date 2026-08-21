@@ -1,0 +1,24 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentRepairPlan
+metadata:
+  name: metrics-server-image-cache-recovery
+spec:
+  status: live-applied-temporary
+  observedFailure:
+    deployment: kube-system/metrics-server
+    reason: ErrImagePull
+    effect: metrics.k8s.io APIService had no endpoints and namespace deletion discovery failed.
+  currentRepair:
+    image: rancher/mirrored-metrics-server:v0.7.2
+    imagePullPolicy: IfNotPresent
+    nodeSelector:
+      kubernetes.io/hostname: tcse-v100-03
+    rationale: The recovered worker retained the image while another worker could not pull it.
+  verification:
+    - metrics-server-ready-1-of-1
+    - metrics-api-service-available-true
+    - terminating-chaos-mesh-helper-namespace-deleted
+  completionRequired:
+    - mirror-and-digest-pin-the-metrics-server-image-in-runtime-harbor
+    - remove-the-single-node-selector
+    - verify-rollout-on-a-different-worker

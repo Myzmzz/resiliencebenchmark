@@ -10,16 +10,16 @@
 - Controller safety checks and independent Evaluator logic have unit tests.
 - Repository validation, secret/path scanning, dry-run, and read-only cluster qualification are available.
 - Seven model aliases are registered; transport capability probes are implemented but have not been executed with a rotated runtime gateway credential. Long-context, tool-error recovery, Oracle-refusal, and OpenAI Responses behavior remain mandatory pre-matrix checks.
-- DeepSeek Harness has an exact top-level package/integrity pin, a complete integrity-bearing npm lock that forces all observed DSH modules to rc.7, an idempotent `npm ci` host installer, and post-install dependency-tree validation. Remote installation and a complete tool-trace export must still be qualified before matrix freeze.
+- DeepSeek Harness has an exact top-level package/integrity pin, a complete integrity-bearing npm lock that forces all observed DSH modules to rc.7, an idempotent `npm ci` host installer, and post-install dependency-tree validation. The remote root and `resbench` identities both report `0.1.0-rc.7`; complete tool-trace export still must be qualified before matrix freeze.
 - Prometheus MCP Chart objects are installed with a pinned chart/image and restricted ServiceAccount, but its Deployment is scaled to zero because cluster nodes cannot pull the GHCR image; Harbor mirroring is required before qualification.
-- Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`. Pinned-release host deployment, seven hardened loopback systemd units (four Streamable HTTP plus three read-only BladeAI SSE listeners), per-service Unix identities and credential groups, strict endpoint qualification, and per-Episode scope configuration are repository-prepared. Local authenticated HTTP qualification passed for all four tool surfaces and a BladeAI-compatible Source SSE smoke passed; none of these endpoints is yet deployed or qualified on the target host.
-- The pre-incident read-only cluster qualification was intentionally failing on Sock Shop scale-zero and historical ChaosBlade state, plus workload warnings. Its healthy node/observability observations are superseded by the current host recovery incident below.
+- Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`. Seven hardened loopback systemd units are deployed with per-service Unix identities, Episode-scoped RBAC/kubeconfigs, and 11 verified source locks. All four authenticated HTTP endpoints passed post-recovery qualification; the three BladeAI SSE listeners are active but the live BladeAI v0.6.1/v0.6.2 adapter mismatch remains unqualified.
+- The current read-only cluster state has all three nodes Ready. Remaining intentional hard gates are Sock Shop scale-zero and 157 historical cluster-scoped ChaosBlade resources.
 
-## Current host recovery incident
+## Recovered host incident
 
 - At `2026-08-21T08:50:30Z`, worker `tcse-v100-03` stopped renewing its Node Lease after a recorded `SystemOOM`. The kernel selected an existing `all-in-one-linu` process as the OOM victim; the initial unlocked npm dependency resolution also consumed about 3.4 GiB and increased host pressure.
-- SSH and kubelet are currently unreachable, so the node remains `NotReady`. No benchmark fault was injected, and `RESBENCH_CHAOS_EXECUTE_ENABLED` remained false.
-- Before the node loss, the MCP host units, 11 verified source snapshots, Episode-scoped RBAC/kubeconfigs, all four authenticated HTTP endpoints, all three read-only SSE listeners, and the locked DeepSeek Harness runtime were installed. Post-incident qualification must be repeated after console-level host recovery.
+- The worker recovered at `2026-08-21T09:06:46Z`; SSH, kubelet, and Node Lease are current, and all three nodes are Ready. No benchmark fault was injected, and `RESBENCH_CHAOS_EXECUTE_ENABLED` remained false.
+- Post-recovery qualification passed for the MCP host units, 11 source snapshots, DeepSeek runtime, all four authenticated HTTP endpoints, and all seven loopback listeners.
 - The DeepSeek installer now uses a complete npm lock, rejects non-rc.7 DSH packages, requires 4 GiB available memory, caps the Node heap at 2 GiB, and lowers npm CPU/I/O priority.
 
 ## Source evidence
@@ -33,7 +33,7 @@
 
 ### Train-Ticket
 
-- All 48 Deployments were Ready before the current worker outage. The latest control-plane snapshot reports 23 Train-Ticket Deployments below desired readiness; this is incident state, not a healthy benchmark baseline.
+- All 48 Train-Ticket Deployments are Ready after worker recovery.
 - `ts-order-service` was restored from 0/2 to 2/2 Ready by a scoped rolling restart.
 - The original runtime failure included a full accept queue, thousands of file descriptors, and accumulated `CLOSE_WAIT` connections; recurrence under sustained load is not yet excluded.
 - A controller-owned repeatable workload image source and renderer now exist with fixed flow profiles, application-status validation, host allowlisting, Kubernetes Secret references, created-order cleanup, and PVC-backed JTL artifacts. The image still needs to be built, pushed to Harbor, digest-pinned, and exercised against a healthy baseline before the workload is qualified.
@@ -41,8 +41,7 @@
 
 ### OTel Demo
 
-- The standard load generator was 1/1 Ready before the current worker outage.
-- The latest control-plane snapshot reports 8 OTel Demo Deployments below desired readiness after the worker outage; the previous healthy statement must not be used as a current baseline until recovery qualification passes.
+- All 23 OTel Demo Deployments are Ready after worker recovery; the standard load generator is 1/1 Ready.
 - Application metrics are visible in shared Prometheus under `otel-demo/*` jobs.
 - Recent application traces are visible in shared Jaeger.
 - `namespace=otel-demo` log streams are visible in Loki.
@@ -59,11 +58,20 @@
 
 ## Shared observability
 
-- Prometheus, Jaeger, Loki, OTel Collector, Promtail, kube-state-metrics, and both node-exporter instances were Ready before the current worker outage.
-- The latest control-plane snapshot reports 4 observability Deployments below desired readiness after the worker outage; the prior ready inventory is historical until requalified.
+- Prometheus, Jaeger, Loki, OTel Collector, Promtail, kube-state-metrics, and both node-exporter instances are Ready after worker recovery.
+- Four private Harbor images had a non-executable `/wrapper.sh`; the live Deployments now bypass it with verified native binary paths and use `repository:tag@digest` pins. Prometheus, Jaeger, and Loki readiness endpoints return HTTP 200.
+- `metrics-server` is temporarily pinned to the recovered worker because another worker could not pull its image. The aggregated API is Available again; Harbor digest mirroring and removal of this node pin remain required.
 - Mutable Harbor tags caused different image contents on different nodes for node-exporter and Prometheus. Both workloads now use explicit upstream digest references; runtime versions must be recorded independently of tags.
 - Prometheus now uses a protected 20 GiB PVC with 15-day / 15 GiB retention. A one-shot OTLP sentinel remained queryable after a controlled restart.
 - Promtail collects `train-ticket`, `sock-shop`, and `otel-demo` pod logs and drops entries outside the Loki retention window.
+
+## Scoped cleanup
+
+- Deleted namespaces: `ai-obs`, `aiops`, `apitest`, `bliyun-ecs`, `chaos-mesh`, `fault-test`, and `xlang-beyla`.
+- Deleted 40 `default` namespace objects with `mocker-`, `model-`, or `ts-` names; 19 associated PVs are gone. Declared PVC requests totaled 109.72 GiB.
+- Deleted 13 Chaos Mesh Workflows, 13 WorkflowNodes, 44 Chaos Mesh CRDs, their Helm releases, webhooks, and orphan cluster RBAC.
+- Three residual default/model NFS directories (about 198 MiB of data) were archived with SHA-256 verification before deletion; all target NFS paths are absent.
+- `ischaos`, `observability`, and all 157 historical ChaosBlade resources were intentionally preserved. The cleanup backup is tracked by `runtime-backup://cleanup-20260821T114446Z`; Kubernetes manifests are recoverable, while PVC data not included in the NFS archive is not.
 
 ## Blocking safety state
 
@@ -75,10 +83,9 @@
 
 ## Next completion gates
 
-1. Authorize the dedicated deployment SSH public key and install/qualify DeepSeek Harness on the target host.
-2. Supply rotated Harbor Robot credentials at runtime, mirror Sock Shop digests, scale up, and qualify its business paths and signals.
-3. Renew kubelet serving certificates using the cluster distribution runbook.
-4. Reconcile the historical ChaosBlade resources with their owning platform.
-5. Execute the seven-model capability probe and freeze the comparable Harness × Model matrix.
-6. Activate one Episode-scoped MCP environment on the target host, qualify all four HTTP endpoints plus BladeAI read-only SSE, then execute Codex/Claude Code/DeepSeek Harness smoke trials.
-7. Freeze source-commit-to-runtime-image mappings and only then unlock the first 6–10 Episodes.
+1. Supply rotated Harbor Robot credentials at runtime, mirror Sock Shop digests, scale up, and qualify its business paths and signals.
+2. Renew kubelet serving certificates using the cluster distribution runbook.
+3. Reconcile the historical ChaosBlade resources with their owning platform.
+4. Resolve the live BladeAI v0.6.1 versus repository adapter v0.6.2 mismatch and qualify its three read-only SSE clients.
+5. Supply a rotated model-gateway credential, execute the seven-model capability probe, and run Codex/Claude Code/DeepSeek smoke trials.
+6. Freeze source-commit-to-runtime-image mappings and only then unlock the first 6–10 Episodes.

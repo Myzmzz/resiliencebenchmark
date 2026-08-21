@@ -68,6 +68,9 @@ spec:
       - environment/repairs/observability-node-exporter-pin.yaml
       - environment/repairs/otel-demo-load-generator-enable.yaml
       - environment/repairs/historical-chaosblade-reconciliation.yaml
+      - environment/repairs/observability-wrapper-entrypoint-pin.yaml
+      - environment/repairs/metrics-server-image-cache-recovery.yaml
+      - environment/repairs/scoped-cluster-cleanup-20260821.yaml
   harness:
     adapters: harness/harnesses.yaml
     models: harness/models.yaml

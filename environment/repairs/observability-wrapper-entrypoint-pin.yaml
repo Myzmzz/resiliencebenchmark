@@ -1,0 +1,41 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentRepairPlan
+metadata:
+  name: observability-wrapper-entrypoint-pin
+spec:
+  status: live-applied-and-qualified
+  observedFailure:
+    reason: ContainerCannotRun
+    message: Harbor images declared /wrapper.sh as Entrypoint, but the file mode was 0644.
+  repairs:
+    - deployment: jaeger
+      container: jaeger
+      command: /go/bin/all-in-one-linux
+      imageRef: runtime-harbor://train-ticket/jaeger-all-in-one:1.57
+      digest: sha256:d8b87c36133ce920cda4f5ec15363362f84eac9f78cb1c232191914a103750d4
+    - deployment: kube-state-metrics
+      container: kube-state-metrics
+      command: /kube-state-metrics
+      imageRef: runtime-harbor://train-ticket/kube-state-metrics:v2.12.0
+      digest: sha256:79aa5d25600ea821e39d166aeed5af0917a253be7f0d8114a39f71c3f80f2c8f
+    - deployment: loki
+      container: loki
+      command: /usr/bin/loki
+      imageRef: runtime-harbor://train-ticket/loki:2.9.8
+      digest: sha256:61f8be4305d470c6bf88bf5b280bafa446478854ca9e362bf6bb408e78ec78f2
+    - deployment: otel-collector
+      container: otel-collector
+      command: /otelcol-contrib
+      imageRef: runtime-harbor://train-ticket/otel-collector-contrib:0.102.1
+      digest: sha256:8ed15eb7cd783259f1c08d80284d9960785c858d320f6d85b38d641d81a850a2
+  verification:
+    - all-five-observability-deployments-ready
+    - both-node-exporter-and-promtail-daemonsets-ready
+    - prometheus-ready-http-200
+    - jaeger-services-http-200
+    - loki-ready-http-200
+    - all-four-http-mcp-endpoints-qualified-post-recovery
+  boundary:
+    - The command override bypasses the broken wrapper but does not repair the image layer.
+    - Rebuilt signed images without wrapper.sh remain the preferred long-term replacement.
+    - The Harbor registry requires repository:tag@digest form; repository@digest incorrectly falls back to latest.
