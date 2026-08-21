@@ -1,0 +1,29 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeRepairPlan
+metadata:
+  name: otel-demo-enable-baseline-load-generator
+spec:
+  reason: The standard OTel Demo load generator is scaled to zero, so no repeatable baseline workload is present.
+  target:
+    namespace: otel-demo
+    kind: Deployment
+    name: load-generator
+  desiredState:
+    replicas: 1
+  preconditions:
+    - all-non-load-generator-deployments-ready
+    - load-generator-current-replicas-zero
+    - application-entrypoint-reachable
+  applyPolicy:
+    strategy: scale-deployment
+    requireExplicitKubeconfig: true
+    preserveImageAndConfiguration: true
+  verification:
+    - deployment-ready-equals-one
+    - load-generator-pod-has-zero-restarts
+    - application-request-rate-becomes-nonzero
+    - recent-traces-present
+    - recent-application-logs-present
+  rollback:
+    strategy: scale-deployment-zero
+    requirePostRollbackQualification: true

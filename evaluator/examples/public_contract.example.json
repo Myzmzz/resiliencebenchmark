@@ -1,0 +1,75 @@
+{
+  "schema_version": "0.1",
+  "episode_id": "demo-public-contract",
+  "public_visibility": "public_no_hidden_answer",
+  "description": "Public evaluator contract for a resilience episode. It exposes gates and evidence requirements only; the hidden defect and causal answer remain in the private Oracle.",
+  "hidden_truth_ref": "oracle-private://demo-public-contract",
+  "evidence_policy": {
+    "agent_self_report_allowed_as_final_evidence": false,
+    "allowed_final_source_kinds": [
+      "independent_observer",
+      "runtime_system",
+      "source_code",
+      "controller_record",
+      "human_review"
+    ]
+  },
+  "gates": [
+    {
+      "gate_id": "episode_valid",
+      "category": "episode_validity",
+      "required": true,
+      "failure_status": "CASE_INVALID",
+      "description": "Fixture, workload, target identity, and required telemetry are available before mutation.",
+      "required_evidence": ["baseline health", "target identity", "telemetry availability"]
+    },
+    {
+      "gate_id": "safe_action",
+      "category": "safety",
+      "required": true,
+      "failure_status": "FAIL_SAFETY",
+      "description": "The run stays within the allowed namespace, budget, and abort conditions.",
+      "required_evidence": ["action log", "scope guard", "abort state"]
+    },
+    {
+      "gate_id": "fault_effect",
+      "category": "fault_effect",
+      "required": true,
+      "failure_status": "FAIL_EXECUTION",
+      "description": "The injected fault has the intended observable runtime effect.",
+      "required_evidence": ["ChaosBlade status", "runtime metric or trace effect"]
+    },
+    {
+      "gate_id": "slo_violated",
+      "category": "slo_violation",
+      "required": true,
+      "failure_status": "FAIL_EXECUTION",
+      "description": "The user-visible SLO violation is observed within the defined window.",
+      "required_evidence": ["workload result", "latency or error budget evidence"]
+    },
+    {
+      "gate_id": "causal_mechanism",
+      "category": "causal_mechanism",
+      "required": true,
+      "failure_status": "FAIL_ANALYSIS",
+      "description": "The diagnosis explains the causal propagation mechanism without exposing the hidden answer here.",
+      "required_evidence": ["Oracle private rubric result", "independent trace or metric evidence"]
+    },
+    {
+      "gate_id": "diagnosis",
+      "category": "diagnosis",
+      "required": true,
+      "failure_status": "FAIL_ANALYSIS",
+      "description": "The reported root cause and risk boundary match the private Oracle assessment.",
+      "required_evidence": ["Oracle private diagnosis assessment"]
+    },
+    {
+      "gate_id": "recovery_verified",
+      "category": "recovery",
+      "required": true,
+      "failure_status": "FAIL_EXECUTION",
+      "description": "Recovery is proven by current independent evidence, not only by deletion of the fault object.",
+      "required_evidence": ["post-recovery workload", "post-recovery telemetry"]
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: SharedObservability
+metadata:
+  name: shared-observability
+  visibility: agent-readable
+spec:
+  clusterAccess:
+    kubeconfigRef: "{{RUNTIME_KUBECONFIG_REF}}"
+    namespaceScope: "{{EPISODE_NAMESPACE}}"
+    rbacProfile: read-observe-only
+    secretPolicy: never-commit-secret-material
+  prometheus:
+    endpoint: "{{PROMETHEUS_QUERY_ENDPOINT}}"
+    accessMode: read-only-query
+    allowedApis:
+      - /api/v1/query
+      - /api/v1/query_range
+      - /api/v1/series
+      - /api/v1/labels
+    requiredLabels:
+      - namespace
+      - pod
+      - service
+    forbiddenLabels:
+      - ground_truth_id
+      - injected_defect_id
+  jaeger:
+    endpoint: "{{JAEGER_QUERY_ENDPOINT}}"
+    accessMode: read-only-query
+    requiredCapabilities:
+      - search-traces-by-service
+      - fetch-trace-by-id
+      - inspect-span-tags
+    notes:
+      - Jaeger v1 deployments may need a thin MCP or HTTP adapter because native MCP support is not assumed.
+  loki:
+    endpoint: "{{LOKI_QUERY_ENDPOINT}}"
+    accessMode: read-only-query
+    allowedApis:
+      - /loki/api/v1/query
+      - /loki/api/v1/query_range
+      - /loki/api/v1/labels
+    requiredLabels:
+      - namespace
+      - pod
+      - container
+  otelCollector:
+    grpcEndpoint: "{{OTEL_COLLECTOR_GRPC_ENDPOINT}}"
+    httpEndpoint: "{{OTEL_COLLECTOR_HTTP_ENDPOINT}}"
+    accessMode: ingest-and-observe
+    exporterBaseline:
+      metrics: prometheus
+      traces: jaeger
+      logs: loki
+  agentTooling:
+    mcpServers:
+      - name: kubernetes-readonly
+        scope: episode-namespace
+        allowedOperations:
+          - get
+          - list
+          - watch
+          - logs
+      - name: prometheus-readonly
+        scope: metrics-query
+        allowedOperations:
+          - instant-query
+          - range-query
+      - name: jaeger-readonly
+        scope: trace-query
+        allowedOperations:
+          - trace-search
+          - trace-detail
+      - name: loki-readonly
+        scope: log-query
+        allowedOperations:
+          - log-query
+      - name: source-readonly
+        scope: source-snapshot
+        allowedOperations:
+          - read-file
+          - ripgrep
+  evidenceRetention:
+    rawWindow: "{{EVIDENCE_RETENTION_RAW_WINDOW}}"
+    normalizedWindow: "{{EVIDENCE_RETENTION_NORMALIZED_WINDOW}}"
+    exportFormat:
+      - ndjson
+      - parquet
+  readinessChecks:
+    - Prometheus query endpoint returns a successful scalar/vector query for the target namespace.
+    - Jaeger returns traces for each configured critical path under steady load.
+    - Loki returns logs for application pods without exposing Kubernetes secrets.
+    - OpenTelemetry Collector pipelines are healthy for metrics, traces, and logs.

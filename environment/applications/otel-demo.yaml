@@ -1,0 +1,141 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: ApplicationEnvironment
+metadata:
+  name: otel-demo
+  displayName: OpenTelemetry Demo
+  benchmarkRole: observability-positive-control
+  visibility: agent-readable
+spec:
+  namespace:
+    template: rb-otel-demo-{{episode_id}}
+    liveReference: otel-demo
+    lifecycle: per-episode-or-reused-namespace
+  sourceSnapshot:
+    repository: opentelemetry-demo
+    lockRef: shared/source-locks.yaml#otel-demo-2.2.0
+    remote: https://github.com/open-telemetry/opentelemetry-demo.git
+    commit: b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+    agentMountPath: /workspace/src/otel-demo
+    readOnly: true
+    leakControls:
+      hideGroundTruth: true
+      hideDefectPatch: true
+      hideHealthyDiff: true
+      removeFeatureFlagHints: true
+  imageLock:
+    registry: "{{HARBOR_REGISTRY}}"
+    project: "{{HARBOR_PROJECT_OTEL_DEMO}}"
+    policy: digest-required
+    images:
+      - component: frontend
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_OTEL_DEMO}}/frontend"
+        tag: "{{IMAGE_TAG_OTEL_DEMO_FRONTEND}}"
+        digest: "{{IMAGE_DIGEST_OTEL_DEMO_FRONTEND}}"
+      - component: checkoutservice
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_OTEL_DEMO}}/checkoutservice"
+        tag: "{{IMAGE_TAG_OTEL_DEMO_CHECKOUTSERVICE}}"
+        digest: "{{IMAGE_DIGEST_OTEL_DEMO_CHECKOUTSERVICE}}"
+      - component: productcatalogservice
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_OTEL_DEMO}}/productcatalogservice"
+        tag: "{{IMAGE_TAG_OTEL_DEMO_PRODUCTCATALOGSERVICE}}"
+        digest: "{{IMAGE_DIGEST_OTEL_DEMO_PRODUCTCATALOGSERVICE}}"
+      - component: cartservice
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_OTEL_DEMO}}/cartservice"
+        tag: "{{IMAGE_TAG_OTEL_DEMO_CARTSERVICE}}"
+        digest: "{{IMAGE_DIGEST_OTEL_DEMO_CARTSERVICE}}"
+      - component: load-generator
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_OTEL_DEMO}}/load-generator"
+        tag: "{{IMAGE_TAG_OTEL_DEMO_LOAD_GENERATOR}}"
+        digest: "{{IMAGE_DIGEST_OTEL_DEMO_LOAD_GENERATOR}}"
+  workloads:
+    primaryEntry:
+      service: frontend
+      protocol: http
+      baseUrl: "{{OTEL_DEMO_BASE_URL}}"
+    criticalPaths:
+      - id: browse-products
+        description: Browse products through frontend and product catalogue.
+        syntheticLoadProfile: otel-demo-browse
+      - id: add-to-cart
+        description: Add product to cart and verify cart state.
+        syntheticLoadProfile: otel-demo-cart
+      - id: checkout
+        description: Checkout path through cart, checkout, payment, and shipping services.
+        syntheticLoadProfile: otel-demo-checkout
+    steadyLoad:
+      generator: built-in-load-generator-or-k6
+      profileRef: "{{WORKLOAD_PROFILE_OTEL_DEMO}}"
+      targetRps: "{{OTEL_DEMO_TARGET_RPS}}"
+  slos:
+    - id: frontend-availability
+      queryRef: prometheus:otel_demo_frontend_success_rate
+      objective: ">= 0.99"
+      window: 5m
+    - id: checkout-p95-latency
+      queryRef: prometheus:otel_demo_checkout_p95_seconds
+      objective: "<= 1.0"
+      window: 5m
+    - id: traces-ingested
+      queryRef: jaeger:otel_demo_checkout_trace_count
+      objective: "> 0"
+      window: 5m
+  observability:
+    prometheus:
+      sharedRef: shared/observability.yaml#prometheus
+      serviceSelectors:
+        appNamespace: "{{APPLICATION_NAMESPACE}}"
+        serviceNames:
+          - frontend
+          - checkoutservice
+          - productcatalogservice
+          - cartservice
+          - load-generator
+    jaeger:
+      sharedRef: shared/observability.yaml#jaeger
+      traceServiceNames:
+        - frontend
+        - checkoutservice
+        - productcatalogservice
+        - cartservice
+    loki:
+      sharedRef: shared/observability.yaml#loki
+      labelSelectors:
+        namespace: "{{APPLICATION_NAMESPACE}}"
+  resetContract:
+    idempotent: true
+    strategy:
+      - restore-feature-flags-to-baseline
+      - delete-episode-chaosblade-crs
+      - restart-application-deployments
+      - ensure-load-generator-profile
+      - wait-for-readiness
+      - run-qualify
+    protectedResources:
+      - shared-observability-stack
+      - external-harbor-projects
+  qualifyContract:
+    requiredSignals:
+      - kubernetes-rollout-ready
+      - prometheus-slo-window-healthy
+      - jaeger-traces-present-for-critical-paths
+      - workload-smoke-test-pass
+    minimumHealthyWindow: 10m
+    failurePolicy: block-episode
+  readiness:
+    currentStatus: application-and-three-signal-routing-ready-node-signal-gap-remains
+    knownGaps:
+      - observedAt: 2026-08-21
+        severity: blocking
+        item: kubeletstats remains incomplete because node serving certificates are expired; node-exporter, cAdvisor, and kube-state-metrics remain available alternatives.
+      - observedAt: adapter-design
+        severity: warning
+        item: Built-in feature flags can reveal injected defects and must be scrubbed from agent-readable context.
+    resolvedIssues:
+      - resolvedAt: 2026-08-21
+        item: Standard load-generator scaled from 0 to 1 and became Ready with zero restarts.
+      - resolvedAt: 2026-08-21
+        item: OTel Demo metrics are present in shared Prometheus under otel-demo jobs, traces are present in shared Jaeger, and otel-demo log streams are present in Loki.
+    nextChecks:
+      - Freeze the built-in load-generator profile and calibrate the steady baseline window.
+      - Freeze demo version, feature flag baseline, and image digests.
+      - Verify metrics, traces, and logs remain available after feature-flag scrubbing.

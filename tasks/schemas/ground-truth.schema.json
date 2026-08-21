@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/resiliencebenchmark/tasks/schemas/ground-truth.schema.json",
+  "title": "Resilience Benchmark GroundTruth",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "episode_id",
+    "visibility",
+    "defect_binding",
+    "causal_chain",
+    "oracle_gates",
+    "recovery_oracle",
+    "leakage_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ground-truth.v0.1"
+    },
+    "episode_id": {
+      "type": "string",
+      "pattern": "^EPI-[A-Z0-9-]+$"
+    },
+    "visibility": {
+      "const": "evaluator_only"
+    },
+    "defect_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defect_id",
+        "affected_component",
+        "implanted_change_ref"
+      ],
+      "properties": {
+        "defect_id": {
+          "type": "string",
+          "pattern": "^RBD-[0-9]{3}$"
+        },
+        "affected_component": {
+          "type": "string"
+        },
+        "implanted_change_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "causal_chain": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "string"
+      }
+    },
+    "oracle_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gate",
+          "criterion"
+        ],
+        "properties": {
+          "gate": {
+            "enum": [
+              "episode_validity",
+              "safety",
+              "fault_effect",
+              "slo_violation",
+              "causal_mechanism",
+              "diagnosis",
+              "recovery"
+            ]
+          },
+          "criterion": {
+            "type": "string"
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "recovery_oracle": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "leakage_policy": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

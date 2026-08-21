@@ -1,0 +1,140 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: ApplicationEnvironment
+metadata:
+  name: sock-shop
+  displayName: Sock Shop
+  benchmarkRole: ecommerce-reference-microservice
+  visibility: agent-readable
+spec:
+  namespace:
+    template: rb-sock-shop-{{episode_id}}
+    liveReference: sock-shop
+    lifecycle: per-episode-namespace
+  sourceSnapshot:
+    repository: sock-shop
+    lockRef: shared/source-locks.yaml#sock-shop-deployment
+    remote: https://github.com/microservices-demo/microservices-demo.git
+    commit: 9dff06fae4981921caec6a62393a6ebfce4b3e3f
+    agentMountPath: /workspace/src/sock-shop
+    readOnly: true
+    leakControls:
+      hideGroundTruth: true
+      hideDefectPatch: true
+      hideHealthyDiff: true
+  imageLock:
+    registry: "{{HARBOR_REGISTRY}}"
+    project: "{{HARBOR_PROJECT_SOCK_SHOP}}"
+    policy: digest-required
+    images:
+      - component: front-end
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_SOCK_SHOP}}/front-end"
+        tag: "{{IMAGE_TAG_SOCK_SHOP_FRONT_END}}"
+        digest: "{{IMAGE_DIGEST_SOCK_SHOP_FRONT_END}}"
+      - component: catalogue
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_SOCK_SHOP}}/catalogue"
+        tag: "{{IMAGE_TAG_SOCK_SHOP_CATALOGUE}}"
+        digest: "{{IMAGE_DIGEST_SOCK_SHOP_CATALOGUE}}"
+      - component: carts
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_SOCK_SHOP}}/carts"
+        tag: "{{IMAGE_TAG_SOCK_SHOP_CARTS}}"
+        digest: "{{IMAGE_DIGEST_SOCK_SHOP_CARTS}}"
+      - component: orders
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_SOCK_SHOP}}/orders"
+        tag: "{{IMAGE_TAG_SOCK_SHOP_ORDERS}}"
+        digest: "{{IMAGE_DIGEST_SOCK_SHOP_ORDERS}}"
+      - component: payment
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_SOCK_SHOP}}/payment"
+        tag: "{{IMAGE_TAG_SOCK_SHOP_PAYMENT}}"
+        digest: "{{IMAGE_DIGEST_SOCK_SHOP_PAYMENT}}"
+      - component: shipping
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_SOCK_SHOP}}/shipping"
+        tag: "{{IMAGE_TAG_SOCK_SHOP_SHIPPING}}"
+        digest: "{{IMAGE_DIGEST_SOCK_SHOP_SHIPPING}}"
+  workloads:
+    primaryEntry:
+      service: front-end
+      protocol: http
+      baseUrl: "{{SOCK_SHOP_BASE_URL}}"
+    criticalPaths:
+      - id: browse-catalogue
+        description: Browse the product catalogue from the front end.
+        syntheticLoadProfile: sock-shop-browse
+      - id: add-to-cart
+        description: Add a product to a user cart.
+        syntheticLoadProfile: sock-shop-cart
+      - id: checkout-order
+        description: Complete checkout through order, payment, and shipping services.
+        syntheticLoadProfile: sock-shop-checkout
+    steadyLoad:
+      generator: locust-or-k6
+      profileRef: "{{WORKLOAD_PROFILE_SOCK_SHOP}}"
+      targetRps: "{{SOCK_SHOP_TARGET_RPS}}"
+  slos:
+    - id: front-end-availability
+      queryRef: prometheus:sock_shop_front_end_success_rate
+      objective: ">= 0.99"
+      window: 5m
+    - id: checkout-p95-latency
+      queryRef: prometheus:sock_shop_checkout_p95_seconds
+      objective: "<= 1.5"
+      window: 5m
+    - id: cart-error-rate
+      queryRef: prometheus:sock_shop_cart_error_rate
+      objective: "<= 0.01"
+      window: 5m
+  observability:
+    prometheus:
+      sharedRef: shared/observability.yaml#prometheus
+      serviceSelectors:
+        appNamespace: "{{APPLICATION_NAMESPACE}}"
+        serviceNames:
+          - front-end
+          - catalogue
+          - carts
+          - orders
+          - payment
+          - shipping
+    jaeger:
+      sharedRef: shared/observability.yaml#jaeger
+      traceServiceNames:
+        - front-end
+        - catalogue
+        - carts
+        - orders
+        - payment
+        - shipping
+    loki:
+      sharedRef: shared/observability.yaml#loki
+      labelSelectors:
+        namespace: "{{APPLICATION_NAMESPACE}}"
+  resetContract:
+    idempotent: true
+    strategy:
+      - delete-episode-namespace
+      - recreate-namespace-from-locked-manifests
+      - wait-for-readiness
+      - run-qualify
+    protectedResources:
+      - shared-observability-stack
+      - external-harbor-projects
+  qualifyContract:
+    requiredSignals:
+      - kubernetes-rollout-ready
+      - prometheus-slo-window-healthy
+      - jaeger-traces-present-for-critical-paths
+      - workload-smoke-test-pass
+    minimumHealthyWindow: 10m
+    failurePolicy: block-episode
+  readiness:
+    currentStatus: manifests-applied-scaled-zero-awaiting-harbor-mirror
+    knownGaps:
+      - observedAt: 2026-08-21
+        severity: blocking
+        item: All pinned Docker Hub image pulls timed out from cluster nodes; Deployments are retained but intentionally scaled to zero until the digests are mirrored to Harbor.
+    resolvedIssues:
+      - resolvedAt: 2026-08-21
+        item: Canonical commit, 8 component source commits, archive hashes, 14 image pins, object allowlist, and stable Kubernetes node selector are recorded and server-side dry-run passed.
+    nextChecks:
+      - Mirror all pinned source digests to Harbor with a Robot Account supplied through a runtime secret.
+      - Re-render against Harbor digests, server-side dry-run, and scale the 14 Deployments to one.
+      - Verify catalogue, cart, checkout, metrics, traces, and logs before qualification.

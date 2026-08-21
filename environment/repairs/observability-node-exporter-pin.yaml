@@ -1,0 +1,35 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeRepairPlan
+metadata:
+  name: observability-node-exporter-digest-pin
+spec:
+  reason: Mutable image tag resolved to different digests across nodes; one digest cannot execute its entrypoint.
+  target:
+    namespace: observability
+    kind: DaemonSet
+    name: node-exporter
+    container: node-exporter
+  desiredImage:
+    repository: quay.io/prometheus/node-exporter
+    digest: sha256:e91be75cf2b242f73fc28a609c4a09f5f0409e03c03456e2bfc224b98730d286
+    provenance: official-upstream-linux-amd64-and-observed-running-on-existing-node
+  preconditions:
+    - target-daemonset-exists
+    - at-least-one-pod-running-desired-digest
+    - failing-pod-reports-entrypoint-permission-denied
+    - official-upstream-manifest-maps-linux-amd64-to-desired-digest
+    - rollout-max-unavailable-is-one
+  applyPolicy:
+    strategy: set-image-by-digest
+    requireExplicitKubeconfig: true
+    forbidTagOnlyImage: true
+    preserveServiceAndStorage: true
+  verification:
+    - daemonset-ready-equals-desired
+    - all-pods-use-same-image-digest
+    - restart-count-stops-growing
+    - node-exporter-metrics-endpoint-responds
+    - prometheus-up-series-present-for-all-eligible-nodes
+  rollback:
+    strategy: restore-previous-daemonset-revision
+    requirePostRollbackQualification: true

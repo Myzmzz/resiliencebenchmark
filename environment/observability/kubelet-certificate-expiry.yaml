@@ -1,0 +1,24 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeBlockingIssue
+metadata:
+  name: kubelet-serving-certificates-expired
+spec:
+  severity: blocking-for-complete-node-evidence
+  observedState:
+    symptom: OTel kubeletstats receiver rejects node stats with x509 certificate expiry errors.
+    affectedSignal: kubeletstats
+    unaffectedAlternatives:
+      - node-exporter
+      - kubernetes-cadvisor-scrape
+      - kube-state-metrics
+  constraints:
+    - forbid-insecure-tls-bypass-in-formal-runs
+    - follow-the-cluster-distribution-certificate-renewal-runbook
+    - back-up-current-certificates-and-kubeconfigs-before-renewal
+    - renew-and-verify-one-node-at-a-time
+  acceptance:
+    - kubelet-serving-certificate-validity-window-current
+    - kubeletstats-receiver-has-no-x509-errors
+    - node-ready-count-preserved
+    - application-and-observability-workloads-remain-ready
+  currentStatus: requires-authorized-host-access

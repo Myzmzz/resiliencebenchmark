@@ -2,7 +2,9 @@
 
 面向 AI Agent 的端到端韧性测试 Benchmark 仓库。项目将题目、被测环境、Agent 接入、运行时控制、独立评价和批量运行拆分为可独立演进的模块。
 
-> 当前状态：仓库骨架已初始化，尚未提供可运行的 Episode、Harness 或评分器。
+> 当前状态：环境准备配置与最小安全/判定工具已实现；正式锁定 Episode、远端 Harness/MCP 部署和实验结果尚未完成。
+
+当前真实环境进度与阻塞项见 [`ENVIRONMENT_STATUS.md`](ENVIRONMENT_STATUS.md)。
 
 ## 核心目标
 
@@ -14,6 +16,7 @@ Benchmark 不仅判断 Agent 是否成功执行一条故障命令，而是评估
 
 ```text
 resiliencebenchmark/
+├── benchmarkfactory.yaml # 根级模块清单与准备门槛
 ├── tasks/          # 题目、Episode 定义与 Ground Truth 契约
 ├── environment/    # 被测系统、观测数据与环境重置
 ├── harness/        # Agent 接入、工具接口与运行记录
@@ -72,12 +75,33 @@ cd resiliencebenchmark
 find . -maxdepth 2 -type f | sort
 ```
 
-当前只能检查仓库骨架，还不应执行真实故障注入。
+环境准备阶段可以执行静态验证、dry-run 和显式 kubeconfig 的只读集群资格检查；在 `benchmarkfactory.yaml` 的故障执行门槛全部通过前，不应执行真实故障注入。
+
+```bash
+python3 scripts/benchmark_prepare.py validate-repo --repo .
+python3 -m pytest
+python3 scripts/benchmark_prepare.py dry-run --repo .
+python3 scripts/probe_models.py --models-config harness/models.yaml --dry-run
+```
+
+Source snapshots are materialized from immutable public locks and verified by commit plus archive SHA-256:
+
+```bash
+make materialize-sources SOURCE_DESTINATION=/runtime/source-root
+make verify-sources SOURCE_DESTINATION=/runtime/source-root
+```
+
+Sock Shop is rendered from a pinned archived manifest. Its images can be mirrored to Harbor without persisting registry credentials:
+
+```bash
+make render-sock-shop
+make mirror-sock-shop-dry
+```
 
 ## 下一阶段
 
-1. 定义 Episode、Agent 输出和运行轨迹的版本化 schema。
-2. 实现一个可重复、可恢复的最小 Episode，并标定无 Agent 对照组。
-3. 实现 Harness 和 Controller 状态机，先打通超时、停止和兜底清理。
-4. 实现独立 Oracle，分别验证 Episode 有效性、安全性、故障效果、SLO、因果机制和恢复。
-5. 增加单次运行、批量运行和结果导出脚本，再进行跨 Agent/模型对比。
+1. 使用轮换后的 Harbor Robot Account 完成 Sock Shop digest 镜像同步并恢复 14 个 Deployment。
+2. 授权部署 SSH 公钥，在目标主机运行固定版本的 DeepSeek Harness 安装脚本并执行 headless 资格检查。
+3. 部署并验证 Prometheus、Jaeger、Loki、Kubernetes、source 和 chaos-control MCP 的实际端点。
+4. 轮换模型网关凭据后执行七模型 capability probe，冻结可比较的 Harness × Model 单元。
+5. 对历史 ChaosBlade 资源完成所有权确认和数据面残留核对，然后解锁首批 6–10 个 Episode。

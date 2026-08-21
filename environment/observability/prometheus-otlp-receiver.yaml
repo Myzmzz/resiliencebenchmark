@@ -1,0 +1,35 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeRepairPlan
+metadata:
+  name: shared-prometheus-enable-otlp-write-receiver
+spec:
+  target:
+    namespace: observability
+    kind: Deployment
+    name: prometheus
+    container: prometheus
+  desiredImage:
+    repository: quay.io/prometheus/prometheus
+    digest: sha256:60f8194a41d3229b9e70684965ebdaa8f5a265f042d9de3d2079ba2ce677ec78
+    provenance: official-upstream-linux-amd64-and-observed-running-on-existing-node
+  desiredArgs:
+    ensure:
+      - --web.enable-otlp-receiver
+      - --enable-feature=otlp-deltatocumulative
+    forbid:
+      - --web.enable-admin-api
+      - --enable-feature=otlp-write-receiver
+  preconditions:
+    - prometheus-binary-help-lists-web-enable-otlp-receiver
+    - prometheus-deployment-currently-ready
+    - official-upstream-manifest-maps-linux-amd64-to-desired-digest
+  verification:
+    - prometheus-rollout-ready
+    - health-endpoint-ready
+    - otlp-metrics-ingestion-succeeds
+    - delta-temporality-is-converted-to-cumulative
+    - existing-scrape-target-health-preserved
+    - all-new-pods-use-pinned-image-reference
+    - runtime-version-recorded-independently-from-image-tag
+  rollback:
+    strategy: restore-previous-deployment-revision

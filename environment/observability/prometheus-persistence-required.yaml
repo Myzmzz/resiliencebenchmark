@@ -1,0 +1,38 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeBlockingIssue
+metadata:
+  name: shared-prometheus-tsdb-is-ephemeral
+spec:
+  severity: blocking-before-formal-evidence
+  observedState:
+    namespace: observability
+    workload: deployment/prometheus
+    storageType: emptyDir
+    consequence: Pod replacement discards the local TSDB and historical benchmark metrics.
+  requiredResolution:
+    - apply-environment-observability-prometheus-pvc-yaml
+    - mount-pvc-at-prometheus-tsdb-path
+    - set-explicit-retention-time-and-size
+    - verify-restart-preserves-sentinel-series
+    - document-backup-and-restore-procedure
+  acceptance:
+    - prometheus-ready-before-and-after-controlled-restart
+    - pre-restart-sentinel-series-queryable-after-restart
+    - pvc-not-deleted-by-episode-cleanup
+    - storage-capacity-alert-configured
+  resolutionEvidence:
+    resolvedAt: 2026-08-21
+    pvc:
+      name: prometheus-tsdb
+      storageClass: nfs-client
+      capacity: 20Gi
+    retention:
+      time: 15d
+      size: 15GB
+    restartProof:
+      sentinelMetric: resbench_persistence_sentinel
+      sentinelLabels:
+        run: envprep-20260821
+      querySucceededAfterControlledRestart: true
+      otelDemoMetricsPresentAfterRestart: true
+  currentStatus: resolved

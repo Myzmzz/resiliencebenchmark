@@ -1,0 +1,22 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: HelmChartLock
+metadata:
+  name: prometheus-mcp-server
+spec:
+  chart: oci://ghcr.io/tjhop/charts/prometheus-mcp-server
+  version: 0.18.0
+  digest: sha256:f90202f558de5f53ce67f0bdd4fd577c9b2a074ec0f9db79d2f2050d2b5ac15b
+  appVersion: 0.18.0
+  values: environment/mcp/prometheus-values.yaml
+  namespace: resilience-benchmark-system
+  transport: streamable-http
+  exposure: cluster-ip-and-controller-owned-port-forward-only
+  dangerousTsdbAdminTools: false
+  deploymentEvidence:
+    attemptedAt: 2026-08-21
+    helmRevision: 1
+    serviceCreated: true
+    serviceAccountTokenAutomount: false
+    failure: Cluster node could not complete the pinned GHCR image pull within the five-minute qualification window.
+    containment: Deployment intentionally scaled to zero; release objects retained for Harbor-based retry.
+  status: installed-objects-scaled-zero-awaiting-harbor-mirror

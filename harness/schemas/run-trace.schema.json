@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/schemas/harness/run-trace.schema.json",
+  "title": "HarnessRunTrace",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "trial_id",
+    "episode_id",
+    "harness",
+    "model_alias",
+    "prompt_ref",
+    "started_at",
+    "events",
+    "final_output"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "resiliencebenchmark.harness.run-trace/v1"
+    },
+    "trial_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "harness": {
+      "type": "string",
+      "enum": [
+        "bladeai",
+        "claude-code",
+        "codex",
+        "deepseek-harness"
+      ]
+    },
+    "model_alias": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ts",
+          "kind"
+        ],
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent_message",
+              "tool_call",
+              "tool_result",
+              "controller_gate",
+              "budget_update",
+              "error"
+            ]
+          },
+          "tool": {
+            "type": "string"
+          },
+          "redacted": {
+            "type": "boolean",
+            "default": false
+          },
+          "payload_ref": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "final_output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "agent_report_ref"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "failed",
+            "timeout",
+            "aborted_by_controller"
+          ]
+        },
+        "agent_report_ref": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

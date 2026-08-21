@@ -1,0 +1,55 @@
+schema_version: episode-public.v0.1
+episode_id: EPI-PUBLIC-TIMEOUT-001
+title: Public smoke episode for missing outbound timeout
+status: example
+application:
+  name: otel-demo
+  namespace: otel-demo
+  candidate_services: ["frontend", "checkoutservice", "cartservice"]
+  release_ref: public-demo-snapshot
+agent_goal: Determine whether a bounded downstream latency experiment exposes a user-visible resilience defect, then report the causal evidence without relying on hidden answers.
+environment_snapshot:
+  snapshot_id: public-smoke-snapshot
+  health_prerequisites:
+    - All candidate services are Ready before the experiment starts.
+    - Baseline workload meets the public latency and error-rate SLO.
+  reset_contract:
+    - Remove all active fault triggers created during the episode.
+    - Confirm the application returns to the baseline SLO window.
+workload:
+  profile: steady checkout-like synthetic workload with read-only or synthetic test data
+  slo:
+    - User-facing p95 latency stays within the calibrated baseline threshold.
+    - User-facing 5xx rate stays within the calibrated baseline threshold.
+observability:
+  metrics: ["Prometheus-compatible request, saturation, and Kubernetes metrics"]
+  traces: ["Jaeger-compatible service traces"]
+  logs: ["Loki-compatible application and Kubernetes logs"]
+  kubernetes: ["read-only namespace status and events"]
+source_access:
+  mode: read_only
+  allowed_paths: ["/workspace/src/otel-demo"]
+  forbidden_paths: ["/workspace/private", "/workspace/ground_truth"]
+action_space:
+  allowed_trigger_classes: ["latency"]
+  allowed_target_scope: ["one service dependency at a time", "namespace-local application resources"]
+  forbidden_actions:
+    - Do not modify source code or deployment manifests.
+    - Do not access Ground Truth or evaluator-only paths.
+    - Do not run more than one active fault at a time.
+budget:
+  max_experiments: 3
+  max_duration_minutes: 30
+  max_concurrent_faults: 1
+safety_constraints:
+  - Each experiment must declare target, duration, expected signal, and stop condition before execution.
+  - Controller cleanup must complete before the next experiment starts.
+  - The Agent must distinguish control-plane success from application-level fault effect.
+expected_agent_output:
+  - Confirmed or rejected defect hypothesis.
+  - Fault parameters and target scope.
+  - Metrics, trace, log, Kubernetes, and source evidence references.
+  - Recovery status after cleanup.
+leakage_controls:
+  - This public example is unlocked; locked episodes must remove defect-class names from Agent-visible prompts.
+  - Exact hidden target mapping and private Ground Truth are not present in this file.

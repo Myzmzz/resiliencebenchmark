@@ -1,0 +1,108 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: SourceLockSet
+metadata:
+  name: benchmark-source-locks-20260821
+spec:
+  locks:
+    - id: train-ticket-upstream
+      application: train-ticket
+      remote: https://github.com/FudanSELab/train-ticket.git
+      commit: 313886e99befb94be6cd45f085c98e0019f59829
+      archiveSha256: 8b8f37b0ec572d6fe44950ce8f211b974db66f3f312f5ac4bbcde7770edddd04
+      agentMountPath: /workspace/src/train-ticket
+      runtimeMappingStatus: rebuild-and-image-digest-mapping-required
+      note: The public upstream lock is not yet proven identical to the currently deployed private Harbor images.
+    - id: otel-demo-2.2.0
+      application: otel-demo
+      remote: https://github.com/open-telemetry/opentelemetry-demo.git
+      tag: 2.2.0
+      commit: b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+      archiveSha256: 2fb6048c4004db2567edef29442cd2763e0095940ecc8ca9bdd597637e4c9777
+      agentMountPath: /workspace/src/otel-demo
+      runtimeMappingStatus: deployed-version-aligned-image-digest-map-pending
+    - id: sock-shop-deployment
+      application: sock-shop
+      remote: https://github.com/microservices-demo/microservices-demo.git
+      commit: 9dff06fae4981921caec6a62393a6ebfce4b3e3f
+      archiveSha256: 728c121790be9fd5d839ea72126ab0e3572c509b4d3b5b5309d08c74814f9800
+      agentMountPath: /workspace/src/sock-shop/deployment
+      runtimeMappingStatus: component-source-locks-and-image-digests-pending
+      note: The canonical repository is archived and the deployment references several component repositories and legacy images.
+    - id: sock-shop-front-end-0.3.12
+      application: sock-shop
+      component: front-end
+      remote: https://github.com/microservices-demo/front-end.git
+      tag: 0.3.12
+      commit: b2308a3ecc70b9ac97b93ce73985e57d5d0c186b
+      archiveSha256: 2592daa84cac049b46ea62b7ed53a63ed0f3ce44abb9d249e74b35cbf67d538b
+      agentMountPath: /workspace/src/sock-shop/front-end
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+    - id: sock-shop-carts-0.4.8
+      application: sock-shop
+      component: carts
+      remote: https://github.com/microservices-demo/carts.git
+      tag: 0.4.8
+      commit: d0a55c9f483269034ab9f2473c1a738b2d7d422b
+      archiveSha256: 6e8ea18bc51d994a7fc292f3b38f0e7b7dcb0cf30984081a4870c1e7e059fe61
+      agentMountPath: /workspace/src/sock-shop/carts
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+    - id: sock-shop-catalogue-0.3.5
+      application: sock-shop
+      component: catalogue
+      remote: https://github.com/microservices-demo/catalogue.git
+      tag: 0.3.5
+      commit: 93452255c62cac6e44f5d86376d7cb3c5409e162
+      archiveSha256: 916a3970c14fc1334f23db72d8ddce923104abcb0ec2a3f0158b2fac4074211c
+      agentMountPath: /workspace/src/sock-shop/catalogue
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+    - id: sock-shop-orders-0.4.7
+      application: sock-shop
+      component: orders
+      remote: https://github.com/microservices-demo/orders.git
+      tag: 0.4.7
+      commit: e97ec6530811c92babbcb4227cf2d77896b5c26d
+      archiveSha256: fcce10dbeaa3727cb85e976aef1c60add225f7e7efe8273dfbd2758940fc92a4
+      agentMountPath: /workspace/src/sock-shop/orders
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+    - id: sock-shop-payment-0.4.3
+      application: sock-shop
+      component: payment
+      remote: https://github.com/microservices-demo/payment.git
+      tag: 0.4.3
+      commit: 923c8b030364fd4e217c54cd1e30150b7cad4266
+      archiveSha256: 442829357642a3d23c4d29f1df8ff99f2d12fe72d4d4c56efa64bdc6f96762c0
+      agentMountPath: /workspace/src/sock-shop/payment
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+    - id: sock-shop-queue-master-0.3.1
+      application: sock-shop
+      component: queue-master
+      remote: https://github.com/microservices-demo/queue-master.git
+      tag: 0.3.1
+      commit: ca72773d51ca4676306e6c5f25835990f3753748
+      archiveSha256: 0dc1a6c3712829e4dc1518e0cfd5d3f19a7e3149e7bdee0513e9f23b44613fe4
+      agentMountPath: /workspace/src/sock-shop/queue-master
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+    - id: sock-shop-shipping-0.4.8
+      application: sock-shop
+      component: shipping
+      remote: https://github.com/microservices-demo/shipping.git
+      tag: 0.4.8
+      commit: c3bc9015fdbfce1265370502c4fd19b45120550e
+      archiveSha256: a667e76440b673236b26053dbb988ee3e77dc89d5c722911952bb4d879b9b00b
+      agentMountPath: /workspace/src/sock-shop/shipping
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+    - id: sock-shop-user-0.4.7
+      application: sock-shop
+      component: user
+      remote: https://github.com/microservices-demo/user.git
+      tag: 0.4.7
+      commit: 1968fe09635e320bb573260a27711f08f7a4a43a
+      archiveSha256: 62ecab83651b98edd142245a2f64566258e45116036aeb5e42e629b49079533b
+      agentMountPath: /workspace/src/sock-shop/user
+      runtimeMappingStatus: image-tag-aligned-digest-pin-pending
+  materialization:
+    destinationRootEnv: RESBENCH_SOURCE_ROOT
+    detachedCheckoutRequired: true
+    dirtyWorkingTreeForbidden: true
+    verifyArchiveSha256: true
+    networkAllowedOnlyDuringPreparation: true

@@ -1,0 +1,34 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeBlockingIssue
+metadata:
+  name: preexisting-chaosblade-resources-are-unowned-by-benchmark
+spec:
+  severity: blocking-before-fault-execution
+  observedState:
+    count: 157
+    createdWindow: 2025-09-03/2025-09-14
+    controllerPhases:
+      Running: 104
+      Error: 53
+    resourceSuccessStates:
+      Success: 104
+    kubernetesOwnerReferences: 0
+    finalizers: 157
+    declaredOwnerLabel: faults-api
+    createdByLabel: svc-fault-scheduler
+    benchmarkRunIdLabels: 0
+  decision:
+    automaticDeletionAllowed: false
+    reason: The resources belong to a pre-existing fault platform and cannot be attributed to this BenchmarkFactory.
+  requiredResolution:
+    - obtain-ownership-confirmation-from-fault-platform-operator
+    - export-full-resource-and-target-inventory-to-private-artifact
+    - verify-current-target-side-residual-effects
+    - use-platform-supported-recovery-or-destroy-path
+    - verify-finalizers-resources-and-data-plane-residue-cleared
+    - rerun-clean-cluster-qualification
+  acceptance:
+    - no-preexisting-nonterminal-chaosblade-resources
+    - no-unowned-tc-qdisc-stress-process-or-container-residue
+    - benchmark-controller-can-identify-every-future-resource-by-run-id-and-target-uid
+  currentStatus: awaiting-owner-authorized-reconciliation

@@ -1,0 +1,44 @@
+schema_version: defect-spec.v0.1
+defect_id: RBD-001
+title: Missing outbound request timeout
+status: candidate
+family: timeout
+summary: Public unlocked example for a missing outbound timeout defect class.
+latent_defect:
+  description: A service performs a downstream HTTP or gRPC call without an explicit request deadline.
+  mechanism: The caller keeps worker and connection capacity occupied while the dependency stalls.
+  likely_locations: ["service client wrapper", "request handler"]
+  risk_conditions: ["downstream latency", "synchronous request path", "limited worker pool"]
+fault_trigger:
+  trigger_class: latency
+  actuator_candidates: ["bounded network delay against one dependency"]
+  parameters: ["target dependency", "delay", "duration"]
+  guardrails: ["one target", "bounded duration", "cleanup before next experiment"]
+failure_outcome:
+  slo_impact: Latency SLO is violated when downstream latency is injected.
+  user_visible_symptom: The user-facing request hangs or returns a gateway timeout.
+  expected_degradation: Caller latency and in-flight requests grow before timeout errors appear.
+  invalid_outcomes: ["fault was not applied", "workload did not hit the call path"]
+app_candidates:
+  - app: train-ticket
+    fit: primary
+    candidate_targets: ["order", "travel", "ticketinfo"]
+    rationale: Train-Ticket contains synchronous service chains that can expose timeout propagation flaws.
+  - app: otel-demo
+    fit: secondary
+    candidate_targets: ["frontend", "checkoutservice"]
+    rationale: OTel Demo provides high-quality traces for an unlocked smoke case.
+observable_evidence:
+  metrics: ["request latency", "in-flight requests", "timeout counters"]
+  traces: ["slow child span under a user-facing parent span"]
+  logs: ["timeout or late response messages"]
+  kubernetes: ["pods remain Ready during the application-level SLO failure"]
+  source: ["client call site lacks explicit timeout"]
+recovery:
+  cleanup: ["remove the latency trigger"]
+  verification: ["request latency and error rate return to baseline"]
+leakage_controls:
+  agent_visible: true
+  public_hints: ["unlocked example, not a hidden evaluation answer"]
+  forbidden_disclosures: ["private service mapping", "hidden episode root cause"]
+  answer_leakage_risks: ["copying this unlocked example into a locked task"]

@@ -1,0 +1,85 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: SourceSnapshotPolicy
+metadata:
+  name: source-snapshots
+  visibility: agent-readable
+spec:
+  purpose: Provide reproducible read-only source access to agents without leaking hidden defects or answers.
+  snapshotRoot: "{{SOURCE_SNAPSHOT_ROOT}}"
+  agentMountRoot: /workspace/src
+  materialization:
+    mode: immutable-checkout
+    requireCommitSha: true
+    requireManifestSha256: true
+    allowDirtyWorkingTree: false
+    includeSubmodules: explicit-only
+  access:
+    mode: read-only
+    allowedTools:
+      - read-file
+      - ripgrep
+      - language-server-readonly
+    deniedTools:
+      - git-diff-against-hidden-baseline
+      - write-file
+      - execute-build-with-network
+  manifestFields:
+    - application
+    - repository
+    - remote
+    - commit
+    - manifestSha256
+    - agentMountPath
+    - imageDigestMap
+    - generatedAt
+  leakControls:
+    hiddenGroundTruthLocation: controller-private-store
+    hiddenPatchLocation: controller-private-store
+    agentVisibleAnnotations:
+      - application
+      - component
+      - public-version
+      - build-command
+    forbiddenAnnotations:
+      - defect_id
+      - injection_patch
+      - expected_root_cause
+      - oracle_threshold_override
+  snapshots:
+    - application: train-ticket
+      repository: train-ticket
+      sourceLockRef: source-locks.yaml#train-ticket-upstream
+      remote: https://github.com/FudanSELab/train-ticket.git
+      commit: 313886e99befb94be6cd45f085c98e0019f59829
+      manifestSha256: 8b8f37b0ec572d6fe44950ce8f211b974db66f3f312f5ac4bbcde7770edddd04
+      agentMountPath: /workspace/src/train-ticket
+      imageDigestMapRef: applications/train-ticket.yaml#spec.imageLock.images
+    - application: sock-shop
+      repository: sock-shop
+      sourceLockRefs:
+        - source-locks.yaml#sock-shop-deployment
+        - source-locks.yaml#sock-shop-front-end-0.3.12
+        - source-locks.yaml#sock-shop-carts-0.4.8
+        - source-locks.yaml#sock-shop-catalogue-0.3.5
+        - source-locks.yaml#sock-shop-orders-0.4.7
+        - source-locks.yaml#sock-shop-payment-0.4.3
+        - source-locks.yaml#sock-shop-queue-master-0.3.1
+        - source-locks.yaml#sock-shop-shipping-0.4.8
+        - source-locks.yaml#sock-shop-user-0.4.7
+      remote: https://github.com/microservices-demo/microservices-demo.git
+      commit: 9dff06fae4981921caec6a62393a6ebfce4b3e3f
+      manifestSha256: 728c121790be9fd5d839ea72126ab0e3572c509b4d3b5b5309d08c74814f9800
+      agentMountPath: /workspace/src/sock-shop
+      imageDigestMapRef: applications/sock-shop.yaml#spec.imageLock.images
+    - application: otel-demo
+      repository: opentelemetry-demo
+      sourceLockRef: source-locks.yaml#otel-demo-2.2.0
+      remote: https://github.com/open-telemetry/opentelemetry-demo.git
+      commit: b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+      manifestSha256: 2fb6048c4004db2567edef29442cd2763e0095940ecc8ca9bdd597637e4c9777
+      agentMountPath: /workspace/src/otel-demo
+      imageDigestMapRef: applications/otel-demo.yaml#spec.imageLock.images
+  readinessChecks:
+    - Every application snapshot resolves to an immutable commit SHA.
+    - Every application image reference resolves to a digest and matches the deployed manifest.
+    - Agent mount paths are read-only and contain no private oracle, answer, or patch files.

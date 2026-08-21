@@ -1,0 +1,101 @@
+version: resiliencebenchmark.harness.models/v1
+description: >
+  LLM registry for benchmark harnesses. Values here are aliases and runtime
+  credential references only; no concrete keys, endpoints, IPs, or local paths
+  belong in this file.
+
+credential_refs:
+  default_openai_compatible:
+    base_url: env:RESBENCH_LLM_BASE_URL
+    api_key: env:RESBENCH_LLM_API_KEY
+    auth_scheme: bearer
+
+defaults:
+  provider_protocol: probe_required
+  protocol_candidates:
+    - openai_responses
+    - openai_chat_completions
+    - anthropic_messages
+  credential_ref: default_openai_compatible
+  requested_sampling:
+    temperature: 0
+    unsupported_parameter_policy: omit_and_record
+  capability_probe:
+    enabled: true
+    timeout_seconds: 120
+    isolation: per_model
+    prompt_ref: prompts/common-task.md
+    transport_checks_implemented:
+      - model_alias_resolution
+      - streaming
+      - openai_chat_completions_basic
+      - structured_json_output
+      - single_tool_call
+      - parallel_tool_calls
+      - anthropic_messages_basic_when_candidate
+    behavioral_checks_required_before_matrix_freeze:
+      - openai_responses_when_required_by_harness
+      - long_context_adherence
+      - tool_error_recovery
+      - refusal_boundary_for_hidden_oracle
+    recorded_fields:
+      - resolved_model_name
+      - provider_protocol
+      - provider_reported_model
+      - streaming_supported
+      - tool_calling_supported
+      - parallel_tool_calling_supported
+      - structured_output_supported
+      - latency_ms
+      - error
+    transport_acceptance:
+      must_return_valid_json: true
+    behavioral_acceptance_pending:
+      must_not_request_hidden_oracle: true
+      must_not_request_secrets: true
+
+models:
+  gpt-5.6:
+    upstream_model: gpt-5.6
+    display_name: GPT-5.6
+    protocol_candidates: [openai_responses, openai_chat_completions]
+    capability_probe: {}
+  deepseek-v4-pro:
+    upstream_model: deepseek-v4-pro
+    display_name: DeepSeek V4 Pro
+    protocol_candidates: [openai_chat_completions, anthropic_messages]
+    capability_probe: {}
+  qwen3.8-max:
+    upstream_model: qwen3.8-max
+    display_name: Qwen 3.8 Max
+    protocol_candidates: [openai_chat_completions]
+    capability_probe: {}
+  claude-opus-5:
+    upstream_model: claude-opus-5
+    display_name: Claude Opus 5
+    protocol_candidates: [anthropic_messages, openai_chat_completions]
+    capability_probe:
+      transport_checks_required:
+        - openai_chat_completions_basic
+        - structured_json_output
+        - anthropic_messages_basic
+      behavioral_checks_required_before_matrix_freeze:
+        - long_context_adherence
+        - tool_call_intent_following
+        - refusal_boundary_for_hidden_oracle
+        - anthropic_compatibility_headers
+  MiniMax-M1:
+    upstream_model: MiniMax-M1
+    display_name: MiniMax M1
+    protocol_candidates: [openai_chat_completions]
+    capability_probe: {}
+  glm-4.5:
+    upstream_model: glm-4.5
+    display_name: GLM 4.5
+    protocol_candidates: [openai_chat_completions]
+    capability_probe: {}
+  kimi-k2.5:
+    upstream_model: kimi-k2.5
+    display_name: Kimi K2.5
+    protocol_candidates: [openai_chat_completions]
+    capability_probe: {}

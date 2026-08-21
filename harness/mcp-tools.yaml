@@ -1,0 +1,121 @@
+version: resiliencebenchmark.harness.mcp-tools/v1
+description: >
+  MCP capability surface exposed to benchmark agents. This file defines logical
+  tools and permissions only; endpoint wiring is supplied by the runtime.
+
+runtime_refs:
+  kubeconfig: credential:RESBENCH_KUBECONFIG_REF
+  source_index: credential:RESBENCH_SOURCE_INDEX_REF
+  prometheus: service_ref:prometheus_ro
+  jaeger: service_ref:jaeger_ro
+  loki: service_ref:loki_ro
+
+tools:
+  k8s_ro:
+    mode: read_only
+    purpose: Inspect Kubernetes objects, events, pod status, service topology, and logs metadata.
+    allowed_operations:
+      - get
+      - list
+      - watch
+      - describe
+    denied_operations:
+      - create
+      - update
+      - patch
+      - delete
+      - exec
+      - port_forward
+    scope:
+      namespaces_from_episode: true
+      cluster_scoped_reads: limited_inventory_only
+
+  prometheus_ro:
+    mode: read_only
+    purpose: Query metrics for baseline, fault effect, SLO impact, and recovery evidence.
+    allowed_operations:
+      - instant_query
+      - range_query
+      - label_values
+      - series_metadata
+    denied_operations:
+      - admin
+      - config_reload
+      - remote_write
+    scope:
+      query_time_window_from_controller: true
+
+  jaeger_ro:
+    mode: read_only
+    purpose: Query traces and service dependency evidence visible to the Agent.
+    allowed_operations:
+      - find_traces
+      - get_trace
+      - list_services
+      - list_operations
+    denied_operations:
+      - storage_admin
+      - retention_changes
+    scope:
+      service_allowlist_from_episode: true
+
+  loki_ro:
+    mode: read_only
+    purpose: Query application and platform logs for Agent-visible evidence.
+    allowed_operations:
+      - label_values
+      - query
+      - query_range
+    denied_operations:
+      - delete
+      - retention_changes
+      - tenant_admin
+    scope:
+      namespace_allowlist_from_episode: true
+
+  source_ro:
+    mode: read_only
+    purpose: Read service source code snapshots mapped by service name, image digest, and commit.
+    allowed_operations:
+      - list_repositories
+      - list_files
+      - read_file
+      - search_text
+      - show_commit
+    denied_operations:
+      - write_file
+      - git_commit
+      - git_push
+      - reveal_hidden_ground_truth
+    scope:
+      source_index_ref: credential:RESBENCH_SOURCE_INDEX_REF
+
+  chaos_control:
+    mode: controlled_write
+    purpose: Request controller-approved ChaosBlade experiments and recovery actions.
+    allowed_operations:
+      - dry_run
+      - create_experiment
+      - get_experiment
+      - delete_experiment
+      - wait_recovered
+    denied_operations:
+      - arbitrary_shell
+      - unbounded_namespace
+      - host_wide_without_episode_approval
+      - bypass_controller_budget
+    gates:
+      require_episode_fault_allowlist: true
+      require_controller_budget_token: true
+      require_preflight_baseline_passed: true
+      require_cleanup_handle: true
+
+not_exposed_to_agent:
+  oracle:
+    reason: Independent Oracle is evaluator-only and must not influence Agent behavior.
+    includes:
+      - hidden_ground_truth
+      - defect_manifest
+      - expected_root_cause
+      - scorer_verdict
+      - recovery_oracle_raw_signals

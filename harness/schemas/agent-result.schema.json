@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.example/schemas/agent-result.v1.json",
+  "title": "Resilience Benchmark Agent Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "suspected_defect",
+    "evidence",
+    "actions_taken",
+    "recovery_check",
+    "remaining_risk"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["completed", "blocked", "unsafe_to_continue"]
+    },
+    "suspected_defect": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "summary", "observed_at", "artifact_ref"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["k8s_ro", "prometheus_ro", "jaeger_ro", "loki_ro", "source_ro", "chaos_control"]
+          },
+          "summary": {"type": "string", "minLength": 1},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "artifact_ref": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "actions_taken": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "recovery_check": {"type": "string", "minLength": 1},
+    "remaining_risk": {"type": "string", "minLength": 1}
+  }
+}

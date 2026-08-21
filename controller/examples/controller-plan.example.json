@@ -1,0 +1,55 @@
+{
+  "schema_version": "controller-plan/v1",
+  "run_id": "episode-e2e-001-r001",
+  "lifecycle": [
+    "prepare",
+    "qualify",
+    "baseline",
+    "plan",
+    "execute",
+    "observe",
+    "recover",
+    "evaluate",
+    "cleanup"
+  ],
+  "policy": {
+    "namespace_allowlist": ["otel-demo"],
+    "max_concurrent_actions": 1,
+    "require_single_target": true,
+    "require_target_uid": true,
+    "require_run_id_label": true,
+    "abort_gate": {
+      "enabled": true,
+      "max_runtime_seconds": 900,
+      "heartbeat_timeout_seconds": 120
+    },
+    "cleanup_gate": {
+      "enabled": true,
+      "max_cleanup_seconds": 300,
+      "require_run_id_label": true,
+      "require_target_uid": true,
+      "verify_absence": true
+    }
+  },
+  "actions": [
+    {
+      "run_id": "episode-e2e-001-r001",
+      "namespace": "otel-demo",
+      "target": {
+        "namespace": "otel-demo",
+        "kind": "Pod",
+        "name": "checkoutservice-abc123",
+        "uid": "00000000-0000-0000-0000-000000000000"
+      },
+      "fault_type": "network-delay",
+      "duration_seconds": 120,
+      "intensity": {
+        "delay_ms": 250
+      },
+      "labels": {
+        "benchmark.run_id": "episode-e2e-001-r001",
+        "benchmark.controller": "resiliencebenchmark"
+      }
+    }
+  ]
+}

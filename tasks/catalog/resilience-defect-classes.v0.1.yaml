@@ -1,0 +1,1316 @@
+catalog_version: resilience-defect-catalog.v0.1
+catalog_id: resilience-defect-classes-30
+description: Public catalog of representative microservice resilience defect classes. Each item is a DefectSpec-class entry, not a hidden Ground Truth instance.
+items:
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-001
+    title: Missing outbound request timeout
+    status: candidate
+    family: timeout
+    summary: A service waits indefinitely or for the platform default when a downstream call stalls.
+    latent_defect:
+      description: Outbound HTTP, gRPC, database, or message calls are made without an explicit deadline.
+      mechanism: A slow dependency holds request threads and connection slots until upstream saturation propagates.
+      likely_locations: ["HTTP clients", "gRPC clients", "database query wrappers", "message RPC adapters"]
+      risk_conditions: ["dependency latency spike", "partial packet loss", "small worker pool", "synchronous request path"]
+    fault_trigger:
+      trigger_class: latency
+      actuator_candidates: ["network delay", "dependency slow response", "database query delay"]
+      parameters: ["target dependency", "delay duration", "duration window", "traffic profile"]
+      guardrails: ["single target service", "bounded duration", "cleanup verified before next experiment"]
+    failure_outcome:
+      slo_impact: Request p95 or error rate violates the business SLO during a bounded downstream stall.
+      user_visible_symptom: Users observe hung requests, gateway timeouts, or missing responses.
+      expected_degradation: Upstream latency and in-flight requests grow before downstream error metrics dominate.
+      invalid_outcomes: ["control-plane injection failed", "no workload during trigger", "target pod not selected"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "travel", "ticketinfo", "payment"]
+        rationale: The request graph contains many synchronous service-to-service calls.
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "checkoutservice", "cartservice"]
+        rationale: The demo has clear trace edges and baseline telemetry for latency propagation.
+    observable_evidence:
+      metrics: ["client request duration", "server request duration", "in-flight requests", "timeout/error counters"]
+      traces: ["long child span under a short parent request", "missing deadline or cancellation attributes"]
+      logs: ["late response", "context deadline absent", "connection pool wait"]
+      kubernetes: ["pod readiness remains true while request latency grows"]
+      source: ["client construction without timeout", "call sites missing context deadline"]
+    recovery:
+      cleanup: ["remove latency trigger", "wait for in-flight requests to drain"]
+      verification: ["SLO returns to baseline", "no active fault object remains", "error rate stabilizes"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["timeout-family defect class"]
+      forbidden_disclosures: ["exact locked service", "exact defective call site", "patch diff"]
+      answer_leakage_risks: ["source comments that name the benchmark defect"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-002
+    title: Deadline not propagated across calls
+    status: candidate
+    family: timeout
+    summary: An upstream request has a deadline, but downstream calls ignore or replace it with a longer budget.
+    latent_defect:
+      description: Request-scoped deadlines are not forwarded through internal service calls.
+      mechanism: Child calls continue after the user request has already failed, wasting capacity and masking cancellation.
+      likely_locations: ["context creation", "thread-local request wrappers", "async task submission", "RPC interceptors"]
+      risk_conditions: ["multi-hop request path", "slow downstream", "short external SLO", "background continuation"]
+    fault_trigger:
+      trigger_class: latency
+      actuator_candidates: ["network delay", "dependency slow response"]
+      parameters: ["parent request SLO", "child dependency delay", "duration window"]
+      guardrails: ["bounded service subset", "single injected dependency", "recovery check after trigger"]
+    failure_outcome:
+      slo_impact: The user request times out while internal work continues and consumes capacity.
+      user_visible_symptom: User sees timeout or error, followed by delayed side effects or resource saturation.
+      expected_degradation: Child spans outlive the parent span and continue after cancellation should occur.
+      invalid_outcomes: ["parent path has no deadline", "child call not exercised", "fault exceeds episode budget"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "preserve", "cancel", "payment"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "checkoutservice", "shippingservice"]
+    observable_evidence:
+      metrics: ["parent timeout count", "downstream request count after parent failure", "worker utilization"]
+      traces: ["child spans ending after parent span", "missing propagated timeout attributes"]
+      logs: ["request cancelled upstream but downstream action completed", "late write"]
+      kubernetes: ["pods remain ready while request backlog grows"]
+      source: ["new root context in handler", "lost context parameter", "async task without cancellation token"]
+    recovery:
+      cleanup: ["remove latency trigger", "drain delayed downstream work"]
+      verification: ["no child spans continue after workload stops", "request latency returns to baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["deadline propagation may matter"]
+      forbidden_disclosures: ["exact function that drops context", "hidden causal chain"]
+      answer_leakage_risks: ["trace attributes with explicit injected label"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-003
+    title: Cancellation not propagated to work units
+    status: candidate
+    family: timeout
+    summary: Expensive local or asynchronous work continues after the caller abandons the request.
+    latent_defect:
+      description: Local workers, futures, or background tasks do not observe request cancellation.
+      mechanism: Abandoned work keeps CPU, memory, locks, or downstream calls busy after the result is no longer useful.
+      likely_locations: ["executor submission", "promise/future callbacks", "bulk operations", "stream processing"]
+      risk_conditions: ["client abort", "short timeout", "expensive operation", "shared worker pool"]
+    fault_trigger:
+      trigger_class: workload_spike
+      actuator_candidates: ["client timeout workload", "request abort workload", "dependency delay"]
+      parameters: ["abort ratio", "request rate", "operation duration"]
+      guardrails: ["no data-destructive workload", "bounded concurrency", "clear recovery window"]
+    failure_outcome:
+      slo_impact: Useful throughput drops because abandoned work competes with live requests.
+      user_visible_symptom: Later users see slow responses or errors even after the original clients disconnected.
+      expected_degradation: CPU or worker queue remains elevated after the triggering workload stops.
+      invalid_outcomes: ["load generator did not abort requests", "background work is not exercised"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "route", "travel-plan"]
+      - app: sock-shop
+        fit: possible
+        candidate_targets: ["orders", "payment", "shipping"]
+    observable_evidence:
+      metrics: ["executor queue depth", "CPU usage", "request rate after client abort", "live request latency"]
+      traces: ["orphan local spans", "work spans without completed parent request"]
+      logs: ["client closed connection", "task completed after cancellation"]
+      kubernetes: ["CPU throttling", "pod restart only if resource pressure escalates"]
+      source: ["future/task without cancellation hook", "loops ignoring cancellation checks"]
+    recovery:
+      cleanup: ["stop abort workload", "wait for queue drain"]
+      verification: ["worker queue returns to baseline", "no lingering high CPU after workload stops"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["cancellation-related resilience class"]
+      forbidden_disclosures: ["hidden service", "exact async task name"]
+      answer_leakage_risks: ["benchmark-specific log message"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-004
+    title: Timeout budget inversion
+    status: candidate
+    family: timeout
+    summary: Inner calls have longer timeout budgets than the outer user-facing request.
+    latent_defect:
+      description: A downstream timeout exceeds the remaining upstream deadline.
+      mechanism: The outer request fails first while inner resources remain occupied until their longer timeout expires.
+      likely_locations: ["client timeout constants", "service config", "retry policy", "RPC wrapper"]
+      risk_conditions: ["short gateway timeout", "long dependency timeout", "burst traffic", "limited worker pool"]
+    fault_trigger:
+      trigger_class: latency
+      actuator_candidates: ["network delay", "dependency slow response"]
+      parameters: ["dependency delay below inner timeout", "duration window", "request path"]
+      guardrails: ["single dependency", "no permanent dependency outage", "hard max duration"]
+    failure_outcome:
+      slo_impact: Outer SLO fails while resource occupancy persists past user-visible failure.
+      user_visible_symptom: User sees quick failure followed by prolonged degraded throughput.
+      expected_degradation: Parent spans end before child spans, and active requests remain elevated.
+      invalid_outcomes: ["inner timeout shorter than parent", "no observable request pressure"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["gateway", "order", "seat", "payment"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "checkoutservice", "paymentservice"]
+    observable_evidence:
+      metrics: ["outer timeout rate", "downstream active calls", "latency quantiles"]
+      traces: ["child duration exceeds remaining parent budget"]
+      logs: ["gateway timeout followed by downstream completion"]
+      kubernetes: ["steady readiness despite failing SLO"]
+      source: ["timeout constants that exceed caller budget", "policy files with inverted deadlines"]
+    recovery:
+      cleanup: ["remove latency trigger", "wait at least one inner timeout period"]
+      verification: ["active calls drain", "SLO recovers without restart"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["budget ordering defect"]
+      forbidden_disclosures: ["exact timeout values of hidden case", "patch line"]
+      answer_leakage_risks: ["config key names that include defect id"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-005
+    title: Layered retries without a global budget
+    status: candidate
+    family: retry
+    summary: Multiple layers retry the same failing operation and multiply downstream load.
+    latent_defect:
+      description: Gateway, service client, SDK, and database layers retry independently.
+      mechanism: A small dependency error fan-outs into a retry storm that delays healthy traffic.
+      likely_locations: ["HTTP clients", "service mesh retry policy", "SDK config", "database driver"]
+      risk_conditions: ["transient dependency error", "high request rate", "non-shared retry budget"]
+    fault_trigger:
+      trigger_class: http_error
+      actuator_candidates: ["HTTP abort", "dependency unavailable", "packet loss"]
+      parameters: ["error ratio", "target dependency", "duration window"]
+      guardrails: ["cap error ratio", "one dependency", "stop on downstream saturation"]
+    failure_outcome:
+      slo_impact: Downstream request volume increases beyond offered load and causes wider SLO failure.
+      user_visible_symptom: Users see cascading errors even when the initial fault is partial.
+      expected_degradation: Request attempts per user operation exceed the configured budget.
+      invalid_outcomes: ["no retry policy active", "all traffic is blocked before retries occur"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "ticketinfo", "payment", "gateway"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["front-end", "orders", "payment"]
+      - app: otel-demo
+        fit: possible
+        candidate_targets: ["frontend", "checkoutservice"]
+    observable_evidence:
+      metrics: ["retry count", "downstream RPS greater than ingress RPS", "error rate", "latency"]
+      traces: ["repeated child spans for one logical operation"]
+      logs: ["retry attempt", "temporary failure", "max retries exceeded"]
+      kubernetes: ["CPU/network pressure on target dependency"]
+      source: ["nested retry decorators", "SDK default retry enabled plus caller retry"]
+    recovery:
+      cleanup: ["remove error trigger", "wait for retry backlog to stop"]
+      verification: ["attempt ratio returns near one", "downstream saturation clears"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["retry amplification class"]
+      forbidden_disclosures: ["exact layer combination", "hidden retry constants"]
+      answer_leakage_risks: ["logs that print injected case id"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-006
+    title: Retries without exponential backoff and jitter
+    status: candidate
+    family: retry
+    summary: Clients retry immediately or on the same fixed interval after transient failure.
+    latent_defect:
+      description: Retry policy lacks exponential backoff, jitter, or a shared retry throttle.
+      mechanism: Synchronized retry waves overload the recovering dependency.
+      likely_locations: ["retry policy", "client wrapper", "message consumer retry loop"]
+      risk_conditions: ["temporary outage", "many concurrent clients", "dependency recovery window"]
+    fault_trigger:
+      trigger_class: dependency_unavailable
+      actuator_candidates: ["short dependency outage", "HTTP error burst", "process kill"]
+      parameters: ["outage duration", "client concurrency", "retry window"]
+      guardrails: ["short outage", "single target", "watch retry volume"]
+    failure_outcome:
+      slo_impact: Recovery is delayed by synchronized retry traffic after the initial outage ends.
+      user_visible_symptom: Errors continue after the dependency is healthy enough to serve normal load.
+      expected_degradation: Periodic request spikes align with retry intervals.
+      invalid_outcomes: ["retry disabled", "dependency never recovers during episode"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "preserve", "payment"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["orders", "carts", "payment"]
+    observable_evidence:
+      metrics: ["retry attempts over time", "dependency RPS burst pattern", "post-recovery latency"]
+      traces: ["clustered repeat attempts with uniform spacing"]
+      logs: ["retry sleep interval", "attempt number"]
+      kubernetes: ["target pod CPU spikes after recovery"]
+      source: ["fixed sleep retry loop", "missing jitter in retry config"]
+    recovery:
+      cleanup: ["restore dependency", "allow retry wave to decay"]
+      verification: ["burst pattern disappears", "error rate returns to baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["backoff and jitter class"]
+      forbidden_disclosures: ["exact interval", "specific file in locked task"]
+      answer_leakage_risks: ["source constant named NO_JITTER"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-007
+    title: Permanent errors are retried
+    status: candidate
+    family: retry
+    summary: The system retries validation, authorization, or other permanent errors that should fail fast.
+    latent_defect:
+      description: Retry predicates do not distinguish transient failures from deterministic permanent failures.
+      mechanism: Bad requests consume resources repeatedly without any chance of success.
+      likely_locations: ["retry predicate", "HTTP status classifier", "exception mapping", "consumer error handling"]
+      risk_conditions: ["invalid input burst", "misclassified 4xx", "limited worker pool"]
+    fault_trigger:
+      trigger_class: workload_spike
+      actuator_candidates: ["invalid request workload", "synthetic 4xx response"]
+      parameters: ["bad request ratio", "request rate", "duration window"]
+      guardrails: ["use non-destructive invalid operations", "bounded traffic", "no real customer data"]
+    failure_outcome:
+      slo_impact: Healthy requests slow down because permanent failures consume retry capacity.
+      user_visible_symptom: Users with valid requests see elevated latency or errors during invalid-input bursts.
+      expected_degradation: Multiple attempts are emitted for requests that return deterministic validation errors.
+      invalid_outcomes: ["input accepted as valid", "retry attempts not observable"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "user", "payment"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["front-end", "orders", "user"]
+    observable_evidence:
+      metrics: ["retry count by status", "4xx rate", "valid request latency"]
+      traces: ["same bad request repeated", "validation error spans retried"]
+      logs: ["validation failed followed by retry", "permanent error classified as retryable"]
+      kubernetes: ["worker CPU increases without successful completions"]
+      source: ["retry on broad exception", "HTTP status classifier includes 4xx"]
+    recovery:
+      cleanup: ["stop invalid workload", "verify retry backlog cleared"]
+      verification: ["valid request SLO recovers", "no repeated attempts for validation errors"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["retry predicate class"]
+      forbidden_disclosures: ["exact invalid input field", "hidden classifier branch"]
+      answer_leakage_risks: ["test data names that reveal expected answer"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-008
+    title: Non-idempotent operation retried
+    status: candidate
+    family: retry
+    summary: A mutating operation is retried without an idempotency key or deduplication guard.
+    latent_defect:
+      description: Create, charge, reserve, or submit operations can execute more than once for one user intent.
+      mechanism: A lost response or transient error makes the caller retry and duplicate the side effect.
+      likely_locations: ["order creation", "payment", "reservation", "message producer"]
+      risk_conditions: ["response loss", "timeout after commit", "at-least-once retry", "no idempotency key"]
+    fault_trigger:
+      trigger_class: packet_loss
+      actuator_candidates: ["response packet loss", "HTTP timeout after side effect", "dependency latency"]
+      parameters: ["loss ratio", "operation endpoint", "duration window"]
+      guardrails: ["use synthetic test account", "bounded request count", "cleanup test data"]
+    failure_outcome:
+      slo_impact: Correctness SLO fails because one user action creates duplicate state.
+      user_visible_symptom: User sees duplicate orders, reservations, payments, or messages.
+      expected_degradation: Duplicate committed entities share the same logical request intent.
+      invalid_outcomes: ["operation is read-only", "test data cannot be isolated", "dedupe key present and active"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "preserve", "payment"]
+      - app: sock-shop
+        fit: primary
+        candidate_targets: ["orders", "payment"]
+      - app: otel-demo
+        fit: possible
+        candidate_targets: ["checkoutservice", "paymentservice"]
+    observable_evidence:
+      metrics: ["duplicate create count", "operation retries", "success count greater than unique intents"]
+      traces: ["timeout followed by successful repeated mutation"]
+      logs: ["created entity", "retry after timeout", "missing idempotency key"]
+      kubernetes: ["no pod failure required; correctness failure appears in app state"]
+      source: ["mutation endpoint lacks idempotency key", "retry wraps non-idempotent call"]
+    recovery:
+      cleanup: ["remove test duplicate records where supported", "stop packet loss"]
+      verification: ["no further duplicates for new test intents", "system returns to healthy baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["non-idempotent retry class"]
+      forbidden_disclosures: ["exact entity id", "hidden database table", "patch diff"]
+      answer_leakage_risks: ["fixture names that encode duplicate-order answer"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-009
+    title: Missing or misconfigured circuit breaker
+    status: candidate
+    family: isolation
+    summary: Calls continue to a failing dependency instead of opening a circuit and degrading.
+    latent_defect:
+      description: Circuit breaker is absent, too permissive, or scoped incorrectly for a dependency.
+      mechanism: Upstream services keep spending resources on calls that are very likely to fail.
+      likely_locations: ["resilience policy config", "client wrapper", "service mesh policy"]
+      risk_conditions: ["dependency error burst", "slow failure", "shared thread pool"]
+    fault_trigger:
+      trigger_class: http_error
+      actuator_candidates: ["dependency HTTP errors", "connection refusal", "process kill"]
+      parameters: ["error ratio", "breaker window", "target dependency"]
+      guardrails: ["short trigger", "single dependency", "observe fallback path"]
+    failure_outcome:
+      slo_impact: Unrelated or fallback-capable requests violate SLO because the circuit never protects capacity.
+      user_visible_symptom: Users see slow hard failures instead of fast fallback or partial response.
+      expected_degradation: Erroring dependency continues receiving calls after threshold is exceeded.
+      invalid_outcomes: ["no fallback expected for this path", "breaker opens as designed"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["travel-plan", "route", "ticketinfo"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "recommendationservice"]
+    observable_evidence:
+      metrics: ["circuit state", "calls to failing dependency", "fallback count", "latency"]
+      traces: ["continued failing child spans after threshold"]
+      logs: ["connection failure without circuit open", "fallback not used"]
+      kubernetes: ["target dependency unhealthy or erroring"]
+      source: ["missing circuit breaker wrapper", "threshold too high", "wrong exception classification"]
+    recovery:
+      cleanup: ["restore dependency", "wait for breaker state if present"]
+      verification: ["failing-call volume returns to baseline", "fallback metrics normalize"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["circuit breaker class"]
+      forbidden_disclosures: ["exact dependency", "configured hidden threshold"]
+      answer_leakage_risks: ["dashboard panel named after target answer"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-010
+    title: Missing bulkhead between request classes
+    status: candidate
+    family: isolation
+    summary: Slow or failing low-priority work consumes the same pool needed by critical requests.
+    latent_defect:
+      description: Critical and non-critical operations share thread, connection, queue, or semaphore capacity.
+      mechanism: Degraded background or optional work starves the user-facing path.
+      likely_locations: ["executor pool", "database pool", "HTTP client pool", "queue consumer"]
+      risk_conditions: ["optional dependency slowdown", "traffic mix", "small shared pool"]
+    fault_trigger:
+      trigger_class: latency
+      actuator_candidates: ["optional dependency delay", "workload spike"]
+      parameters: ["slow path target", "critical path workload", "duration window"]
+      guardrails: ["do not block all dependencies", "keep critical workload measurable", "bounded duration"]
+    failure_outcome:
+      slo_impact: Critical operation SLO fails even though its direct dependencies are healthy.
+      user_visible_symptom: Core user action slows because unrelated optional work is stuck.
+      expected_degradation: Shared pool saturation correlates with optional-path slowdown.
+      invalid_outcomes: ["critical path depends directly on the slowed dependency", "separate pools already active"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["travel-plan", "notification", "food", "order"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "recommendationservice", "adservice"]
+    observable_evidence:
+      metrics: ["pool utilization", "queue depth", "critical request latency", "optional request latency"]
+      traces: ["critical spans waiting before unrelated dependency call"]
+      logs: ["executor rejected", "pool wait timeout", "queue full"]
+      kubernetes: ["single pod resource pressure despite healthy direct dependency"]
+      source: ["shared executor definition", "shared client pool across request classes"]
+    recovery:
+      cleanup: ["remove optional dependency delay", "wait for shared pool queue drain"]
+      verification: ["critical SLO recovers", "pool utilization normalizes"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["bulkhead/isolation class"]
+      forbidden_disclosures: ["exact shared pool name", "hidden critical path"]
+      answer_leakage_risks: ["metrics label with benchmark case id"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-011
+    title: Unbounded queue or concurrency
+    status: candidate
+    family: capacity
+    summary: The service accepts more work than it can finish and stores backlog without a practical bound.
+    latent_defect:
+      description: Work queues, goroutines, futures, or request buffers are unbounded or bounded above pod capacity.
+      mechanism: Overload turns into memory growth, long tail latency, and delayed failure instead of controlled shedding.
+      likely_locations: ["executor queue", "channel/buffer", "web server queue", "async event queue"]
+      risk_conditions: ["traffic spike", "slow downstream", "limited memory", "no admission control"]
+    fault_trigger:
+      trigger_class: workload_spike
+      actuator_candidates: ["request burst", "dependency latency", "consumer slowdown"]
+      parameters: ["burst RPS", "burst duration", "target endpoint"]
+      guardrails: ["cap total requests", "monitor memory", "stop before node pressure"]
+    failure_outcome:
+      slo_impact: Latency SLO fails and the pod may restart due to memory pressure or backlog.
+      user_visible_symptom: Requests are accepted but complete too late or fail after long waits.
+      expected_degradation: Queue length and memory grow instead of immediate controlled rejection.
+      invalid_outcomes: ["admission control rejects early", "load generator cannot reach target"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "route", "travel-plan"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["front-end", "orders", "carts"]
+    observable_evidence:
+      metrics: ["queue depth", "memory usage", "request latency", "rejection count"]
+      traces: ["long server wait before business logic"]
+      logs: ["out of memory", "queue full absent", "request completed after long delay"]
+      kubernetes: ["OOMKilled", "restarts", "memory usage near limit"]
+      source: ["unbounded executor queue", "goroutine per request", "buffer without limit"]
+    recovery:
+      cleanup: ["stop burst workload", "restart only if allowed by reset contract"]
+      verification: ["queue drains", "memory returns to baseline", "pod Ready state stable"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["capacity control class"]
+      forbidden_disclosures: ["exact queue field", "hidden endpoint"]
+      answer_leakage_risks: ["source comment describing benchmark overload"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-012
+    title: Missing load shedding or rate limit
+    status: candidate
+    family: capacity
+    summary: The system keeps accepting new requests when it should reject or degrade early.
+    latent_defect:
+      description: No admission control protects critical resources under overload.
+      mechanism: Work enters the system faster than it can complete, causing collapse instead of bounded failure.
+      likely_locations: ["gateway", "front-end service", "worker admission path", "queue producer"]
+      risk_conditions: ["high burst traffic", "slow dependency", "shared pool", "no priority classes"]
+    fault_trigger:
+      trigger_class: workload_spike
+      actuator_candidates: ["traffic burst", "slow dependency plus normal load"]
+      parameters: ["burst RPS", "SLO threshold", "duration window"]
+      guardrails: ["controlled synthetic workload", "namespace-local target", "stop on safety threshold"]
+    failure_outcome:
+      slo_impact: Both latency and error SLOs degrade more than a controlled 429/503 strategy would allow.
+      user_visible_symptom: Users see long waits and cascading failures instead of quick retryable rejection.
+      expected_degradation: Rejection metrics stay low while latency and saturation grow.
+      invalid_outcomes: ["rate limiter actively rejects overload", "traffic below capacity"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["gateway", "order", "travel"]
+      - app: sock-shop
+        fit: primary
+        candidate_targets: ["front-end", "orders"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend"]
+    observable_evidence:
+      metrics: ["ingress RPS", "latency", "rejection rate", "CPU", "queue depth"]
+      traces: ["many slow full-path traces instead of fast rejection"]
+      logs: ["no rate-limit decision during overload", "request timed out"]
+      kubernetes: ["CPU throttling", "HPA lag if present"]
+      source: ["missing limiter middleware", "disabled admission control"]
+    recovery:
+      cleanup: ["stop overload workload", "wait for queues to drain"]
+      verification: ["latency and saturation return to baseline", "no active trigger remains"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["load shedding class"]
+      forbidden_disclosures: ["exact gateway route", "hidden limit value"]
+      answer_leakage_risks: ["workload name that reveals endpoint"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-013
+    title: Fanout all-or-nothing without degradation
+    status: candidate
+    family: isolation
+    summary: A fanout request fails completely when one optional branch is slow or unavailable.
+    latent_defect:
+      description: Aggregator logic treats optional branch failures as fatal for the whole response.
+      mechanism: One weak dependency expands into full user-visible failure instead of partial response.
+      likely_locations: ["API gateway aggregation", "recommendation fanout", "search composition", "travel plan builder"]
+      risk_conditions: ["optional dependency", "parallel fanout", "branch timeout", "no partial response contract"]
+    fault_trigger:
+      trigger_class: dependency_unavailable
+      actuator_candidates: ["optional service HTTP error", "latency on one branch", "process kill"]
+      parameters: ["branch dependency", "error ratio", "duration window"]
+      guardrails: ["target optional branch only", "preserve core dependency health", "bounded duration"]
+    failure_outcome:
+      slo_impact: Full request availability drops when only optional data should be missing.
+      user_visible_symptom: Users see a hard error or blank page instead of partial results.
+      expected_degradation: Aggregator returns failure while most fanout branches are healthy.
+      invalid_outcomes: ["branch is required by product contract", "fallback or partial response succeeds"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["travel-plan", "route", "food", "assurance"]
+      - app: otel-demo
+        fit: primary
+        candidate_targets: ["frontend", "recommendationservice", "adservice"]
+    observable_evidence:
+      metrics: ["aggregator error rate", "branch error rate", "partial response count"]
+      traces: ["one failed child span causes failed parent span"]
+      logs: ["optional branch exception propagated", "aggregation failed"]
+      kubernetes: ["only optional branch unhealthy"]
+      source: ["fanout join fails on any branch", "missing fallback/default value"]
+    recovery:
+      cleanup: ["restore optional branch", "clear fault"]
+      verification: ["full responses return", "optional branch error gone"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["fanout degradation class"]
+      forbidden_disclosures: ["which branch is optional in locked case", "hidden expected fallback"]
+      answer_leakage_risks: ["public docs that label benchmark branch optional"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-014
+    title: Pool exhaustion or leaked connections
+    status: candidate
+    family: capacity
+    summary: A shared connection or worker pool is too small, leaks resources, or waits without a bound.
+    latent_defect:
+      description: Connections, sessions, or threads are not released reliably or are configured below required concurrency.
+      mechanism: Once the pool is exhausted, healthy requests wait behind stuck or leaked resources.
+      likely_locations: ["database pool", "HTTP connection pool", "message channel pool", "thread pool"]
+      risk_conditions: ["slow dependency", "exception path", "burst traffic", "missing finally/close"]
+    fault_trigger:
+      trigger_class: latency
+      actuator_candidates: ["database delay", "dependency slow response", "workload burst"]
+      parameters: ["pool user endpoint", "concurrency", "duration window"]
+      guardrails: ["single pool target", "monitor saturation", "bounded workload"]
+    failure_outcome:
+      slo_impact: Request latency and errors rise after pool wait time grows.
+      user_visible_symptom: Users see slow operations or service unavailable errors.
+      expected_degradation: Pool active count reaches max while waiters grow or connections never return.
+      invalid_outcomes: ["pool has sufficient spare capacity", "no pool metric or trace evidence"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "user", "payment", "database clients"]
+      - app: sock-shop
+        fit: primary
+        candidate_targets: ["orders", "carts", "catalogue"]
+    observable_evidence:
+      metrics: ["pool active count", "pool wait time", "connection errors", "request latency"]
+      traces: ["long wait before dependency call", "pool acquisition span"]
+      logs: ["connection pool exhausted", "timeout waiting for connection"]
+      kubernetes: ["pod ready but unable to acquire pool resource"]
+      source: ["connection not closed on exception", "pool max below concurrency", "unbounded pool wait"]
+    recovery:
+      cleanup: ["remove delay or burst", "allow pool to drain", "restart only under reset contract"]
+      verification: ["pool active count normalizes", "no wait timeout logs"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["pool exhaustion class"]
+      forbidden_disclosures: ["exact pool object", "hidden leak path"]
+      answer_leakage_risks: ["metric labels with exact injected defect name"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-015
+    title: Runtime heap exceeds container memory
+    status: candidate
+    family: capacity
+    summary: Application runtime memory settings do not respect Kubernetes container limits.
+    latent_defect:
+      description: JVM, Node.js, or other runtime heap settings allow memory use near or beyond the pod limit.
+      mechanism: Under load or allocation spikes, the runtime competes with native memory and is killed by the container.
+      likely_locations: ["deployment env vars", "JVM options", "runtime flags", "Helm values"]
+      risk_conditions: ["memory burst", "large payload", "low container limit", "no headroom"]
+    fault_trigger:
+      trigger_class: memory_pressure
+      actuator_candidates: ["memory allocation workload", "large response workload", "cache warmup"]
+      parameters: ["allocation size", "request rate", "duration window"]
+      guardrails: ["single pod/service", "stop before node pressure", "allow pod restart budget"]
+    failure_outcome:
+      slo_impact: Service availability drops due to OOMKill or severe garbage collection pauses.
+      user_visible_symptom: Requests fail during restart or pause intervals.
+      expected_degradation: Memory approaches limit and restarts or GC pause time increase.
+      invalid_outcomes: ["container limit absent", "runtime correctly container-aware"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["Java services", "gateway", "order"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["Java or Node services"]
+    observable_evidence:
+      metrics: ["container memory working set", "OOM kill count", "GC pause", "restart count"]
+      traces: ["gaps during restart", "latency spikes before restart"]
+      logs: ["OutOfMemoryError", "killed", "GC overhead"]
+      kubernetes: ["last state OOMKilled", "restart count increases", "memory near limit"]
+      source: ["runtime flags exceed memory limit", "deployment env with unsafe heap"]
+    recovery:
+      cleanup: ["stop memory pressure workload", "wait for replacement pod Ready"]
+      verification: ["restart count stable after recovery", "SLO returns to baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["container memory class"]
+      forbidden_disclosures: ["exact heap flag in hidden task", "service name"]
+      answer_leakage_risks: ["deployment annotation naming benchmark defect"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-016
+    title: CPU request and limit mismatch
+    status: candidate
+    family: capacity
+    summary: CPU requests, limits, or thread counts create throttling or unfair scheduling under load.
+    latent_defect:
+      description: The pod is configured with CPU limits or requests that do not match its runtime concurrency.
+      mechanism: CPU throttling or under-scheduling turns modest load into high latency.
+      likely_locations: ["deployment resources", "thread pool settings", "runtime worker count"]
+      risk_conditions: ["CPU-bound endpoint", "low CPU limit", "high worker count", "burst load"]
+    fault_trigger:
+      trigger_class: cpu_pressure
+      actuator_candidates: ["CPU-bound workload", "CPU stress on target pod"]
+      parameters: ["target service", "load level", "duration window"]
+      guardrails: ["avoid node-wide stress", "namespace-local service", "bounded duration"]
+    failure_outcome:
+      slo_impact: Latency SLO fails while request volume remains within expected capacity.
+      user_visible_symptom: Users see slow responses without an obvious downstream fault.
+      expected_degradation: CPU throttling seconds rise and request latency tracks throttling.
+      invalid_outcomes: ["CPU load below request", "no throttling or saturation evidence"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["gateway", "route", "order"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "cartservice", "checkoutservice"]
+    observable_evidence:
+      metrics: ["CPU throttled seconds", "CPU usage", "latency", "run queue if available"]
+      traces: ["uniform service-side latency without downstream child span delay"]
+      logs: ["request timeout", "thread pool saturation"]
+      kubernetes: ["resource limits", "throttling metrics", "pod CPU usage"]
+      source: ["worker count exceeds CPU limit", "deployment resources too low"]
+    recovery:
+      cleanup: ["stop CPU trigger", "wait for latency window to clear"]
+      verification: ["throttling stops", "SLO returns to baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["CPU sizing class"]
+      forbidden_disclosures: ["exact CPU limit", "hidden target deployment"]
+      answer_leakage_risks: ["resource patch file in public path"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-017
+    title: Misconfigured autoscaling policy
+    status: candidate
+    family: capacity
+    summary: The service cannot scale at the right time or scales on a signal unrelated to user saturation.
+    latent_defect:
+      description: HPA or custom autoscaling settings use wrong metrics, thresholds, min replicas, or stabilization windows.
+      mechanism: Capacity does not increase before queueing and SLO violation occur.
+      likely_locations: ["HPA manifest", "KEDA scaler", "custom controller config", "resource requests"]
+      risk_conditions: ["traffic ramp", "cold start", "metric lag", "low min replicas"]
+    fault_trigger:
+      trigger_class: workload_spike
+      actuator_candidates: ["traffic ramp", "burst workload"]
+      parameters: ["ramp shape", "duration", "target endpoint"]
+      guardrails: ["respect cluster capacity", "single namespace", "stop after scaling window"]
+    failure_outcome:
+      slo_impact: SLO fails during demand increase because replicas do not scale or scale too late.
+      user_visible_symptom: Users see latency/errors during predictable ramp traffic.
+      expected_degradation: Saturation grows while desired replicas remain unchanged or lag excessively.
+      invalid_outcomes: ["HPA disabled by design for episode", "cluster lacks scaling resources"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["gateway", "order", "travel-plan"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "checkoutservice"]
+    observable_evidence:
+      metrics: ["desired replicas", "current replicas", "CPU or custom metric", "latency"]
+      traces: ["increasing server-side latency during ramp"]
+      logs: ["autoscaler unable to fetch metric", "scale decision events"]
+      kubernetes: ["HPA status", "deployment replica count", "events"]
+      source: ["autoscaling manifest threshold", "resource request mismatch"]
+    recovery:
+      cleanup: ["stop ramp workload", "allow scale-down under policy"]
+      verification: ["replicas and SLO return to baseline", "no pending HPA errors"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["autoscaling class"]
+      forbidden_disclosures: ["exact scaling metric flaw", "hidden target HPA"]
+      answer_leakage_risks: ["manifest filename with answer text"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-018
+    title: Liveness probe depends on slow downstream
+    status: candidate
+    family: health
+    summary: The liveness probe checks dependencies and restarts a pod that is locally healthy.
+    latent_defect:
+      description: Liveness uses a deep health check instead of a local process health check.
+      mechanism: A dependency slowdown causes restart loops and destroys useful local state.
+      likely_locations: ["Kubernetes probe path", "health endpoint implementation", "readiness/liveness config"]
+      risk_conditions: ["dependency latency", "probe timeout", "short failure threshold"]
+    fault_trigger:
+      trigger_class: latency
+      actuator_candidates: ["dependency delay", "database delay"]
+      parameters: ["dependency target", "probe timeout relation", "duration window"]
+      guardrails: ["single dependency", "avoid node disruption", "observe restarts"]
+    failure_outcome:
+      slo_impact: Availability drops due to unnecessary pod restarts during dependency slowness.
+      user_visible_symptom: Users see intermittent failures and cold-start latency.
+      expected_degradation: Restart count increases while local process would otherwise be healthy.
+      invalid_outcomes: ["readiness only changes without liveness restart", "process is actually dead"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["Java services with health endpoints"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["front-end", "orders", "catalogue"]
+    observable_evidence:
+      metrics: ["restart count", "probe failures", "dependency latency", "availability"]
+      traces: ["health-check spans reaching dependency if instrumented"]
+      logs: ["liveness probe failed", "health check dependency timeout", "startup logs repeated"]
+      kubernetes: ["pod events", "last state terminated", "probe config"]
+      source: ["liveness endpoint calls database or downstream service"]
+    recovery:
+      cleanup: ["remove dependency latency", "wait for pod Ready"]
+      verification: ["restart count stable", "liveness events stop", "SLO recovers"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["health probe class"]
+      forbidden_disclosures: ["exact probe path", "hidden dependency"]
+      answer_leakage_risks: ["probe endpoint named benchmark-liveness"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-019
+    title: Readiness probe false positive
+    status: candidate
+    family: health
+    summary: A pod receives traffic before required dependencies, caches, or migrations are ready.
+    latent_defect:
+      description: Readiness reports success too early or ignores a required local dependency.
+      mechanism: Service endpoints include pods that cannot yet serve correct traffic.
+      likely_locations: ["readiness endpoint", "startup probe", "init sequence", "deployment manifest"]
+      risk_conditions: ["pod restart", "cold cache", "dependency reconnect", "rolling update"]
+    fault_trigger:
+      trigger_class: pod_restart
+      actuator_candidates: ["delete target pod", "rollout restart", "process kill"]
+      parameters: ["target service", "traffic during warmup", "observation window"]
+      guardrails: ["respect replica budget", "single service", "verify replacement Ready"]
+    failure_outcome:
+      slo_impact: Error or latency SLO fails during startup because traffic is routed too early.
+      user_visible_symptom: Users get 500s, empty data, or slow first requests after a restart.
+      expected_degradation: Readiness is true before successful dependency checks or cache warmup.
+      invalid_outcomes: ["startup probe correctly gates readiness", "traffic not routed to new pod"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["gateway", "order", "route"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "cartservice"]
+    observable_evidence:
+      metrics: ["readiness state", "startup error rate", "first-request latency"]
+      traces: ["requests to newly started pod fail before warmup"]
+      logs: ["ready before dependency connected", "cache loading after ready"]
+      kubernetes: ["pod conditions", "endpoints include new pod", "restart event"]
+      source: ["readiness endpoint only returns process alive", "async warmup not gated"]
+    recovery:
+      cleanup: ["allow warmup to finish", "ensure no restart trigger remains"]
+      verification: ["new requests succeed", "pod Ready and dependencies initialized"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["readiness/startup class"]
+      forbidden_disclosures: ["hidden warmup condition", "exact service"]
+      answer_leakage_risks: ["startup log line with case id"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-020
+    title: Missing graceful drain on termination
+    status: candidate
+    family: health
+    summary: A pod exits or is removed before in-flight requests finish or before endpoints drain.
+    latent_defect:
+      description: Termination handlers, preStop hooks, or server shutdown logic do not drain in-flight work.
+      mechanism: Rolling updates and pod eviction interrupt active user operations.
+      likely_locations: ["SIGTERM handler", "preStop hook", "terminationGracePeriodSeconds", "server shutdown"]
+      risk_conditions: ["rolling restart", "long request", "short grace period", "load during rollout"]
+    fault_trigger:
+      trigger_class: pod_restart
+      actuator_candidates: ["rollout restart", "delete pod", "process kill"]
+      parameters: ["request duration", "replica count", "termination window"]
+      guardrails: ["respect replica budget", "use test traffic", "verify replacement"]
+    failure_outcome:
+      slo_impact: Availability or correctness SLO fails during routine termination.
+      user_visible_symptom: Users see connection resets, partial responses, or lost operations during rollout.
+      expected_degradation: In-flight requests fail at pod termination instead of completing or rerouting.
+      invalid_outcomes: ["no in-flight request during termination", "graceful drain works"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["gateway", "order", "payment"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["front-end", "orders"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "checkoutservice"]
+    observable_evidence:
+      metrics: ["5xx during termination", "connection reset count", "in-flight requests"]
+      traces: ["spans ending with cancellation or reset at pod shutdown"]
+      logs: ["SIGTERM received", "server closed connection", "request aborted"]
+      kubernetes: ["pod deletion timestamp", "endpoint removal timing", "grace period"]
+      source: ["no graceful shutdown hook", "preStop missing", "short termination grace"]
+    recovery:
+      cleanup: ["wait for replacement pod Ready", "ensure rollout stable"]
+      verification: ["no terminating pods", "SLO returns to baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["graceful termination class"]
+      forbidden_disclosures: ["exact lifecycle setting", "hidden endpoint"]
+      answer_leakage_risks: ["rollout script named after defect"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-021
+    title: Single replica without disruption protection
+    status: candidate
+    family: availability
+    summary: A critical service has one replica or no disruption policy, causing avoidable outage.
+    latent_defect:
+      description: The deployment lacks sufficient replicas, PodDisruptionBudget, or topology spreading.
+      mechanism: One pod or node disruption removes all capacity for a critical path.
+      likely_locations: ["deployment replicas", "PDB manifest", "topologySpreadConstraints", "anti-affinity"]
+      risk_conditions: ["pod restart", "node drain", "rolling update", "critical service"]
+    fault_trigger:
+      trigger_class: pod_restart
+      actuator_candidates: ["delete pod", "process kill", "node disruption where allowed"]
+      parameters: ["target workload", "traffic profile", "recovery window"]
+      guardrails: ["avoid destructive node-wide action unless explicitly allowed", "single target", "bounded recovery wait"]
+    failure_outcome:
+      slo_impact: Availability SLO fails when one replica disappears.
+      user_visible_symptom: Users see complete outage for a critical operation.
+      expected_degradation: Service endpoints drop to zero or all ready pods become unavailable.
+      invalid_outcomes: ["non-critical service", "additional replicas serve traffic", "PDB prevents disruption"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["gateway", "order", "auth", "payment"]
+      - app: sock-shop
+        fit: primary
+        candidate_targets: ["front-end", "orders", "catalogue"]
+    observable_evidence:
+      metrics: ["available replicas", "endpoint count", "availability", "restart count"]
+      traces: ["missing spans because request cannot reach service"]
+      logs: ["connection refused", "no endpoints available"]
+      kubernetes: ["deployment replicas", "PDB absence", "pod scheduling events"]
+      source: ["manifest replicas set to one", "missing PDB or topology spread"]
+    recovery:
+      cleanup: ["wait for replacement pod", "avoid repeated disruptions"]
+      verification: ["endpoint count restored", "availability returns to baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["replica/disruption protection class"]
+      forbidden_disclosures: ["exact hidden critical deployment", "private topology"]
+      answer_leakage_risks: ["public manifest patch revealing target"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-022
+    title: Asynchronous event ordering assumption
+    status: candidate
+    family: messaging
+    summary: A consumer assumes events arrive in order across partitions, services, or retry paths.
+    latent_defect:
+      description: Event handlers update state without version, sequence, or causal ordering checks.
+      mechanism: Delayed or reordered messages overwrite newer state or trigger invalid transitions.
+      likely_locations: ["message consumer", "state projection", "notification handler", "saga event handler"]
+      risk_conditions: ["message delay", "retry", "multiple partitions", "concurrent updates"]
+    fault_trigger:
+      trigger_class: message_delay
+      actuator_candidates: ["broker delay", "consumer slowdown", "network delay to broker"]
+      parameters: ["event type", "delay window", "message subset"]
+      guardrails: ["test account only", "bounded message subset", "reset state after episode"]
+    failure_outcome:
+      slo_impact: Correctness SLO fails because final state does not match the latest user action.
+      user_visible_symptom: Users see stale order, cart, or reservation state.
+      expected_degradation: Older event is applied after newer event without rejection.
+      invalid_outcomes: ["event stream preserves order by contract", "version guard rejects stale event"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order events", "payment events", "notification events"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["orders", "queue-master"]
+    observable_evidence:
+      metrics: ["consumer lag", "stale update count", "event processing latency"]
+      traces: ["message processing spans out of causal order"]
+      logs: ["applied event sequence", "state transition", "delayed message"]
+      kubernetes: ["broker and consumer pod health", "consumer restarts if any"]
+      source: ["consumer lacks version check", "last-write-wins update"]
+    recovery:
+      cleanup: ["stop delay", "drain broker", "reset test entity state"]
+      verification: ["new events apply in correct order", "lag returns to baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["event ordering class"]
+      forbidden_disclosures: ["exact event type", "hidden test entity"]
+      answer_leakage_risks: ["event payload field named benchmark_sequence"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-023
+    title: At-least-once consumer is not idempotent
+    status: candidate
+    family: messaging
+    summary: A duplicate message causes duplicate side effects because the consumer lacks deduplication.
+    latent_defect:
+      description: Consumer logic assumes exactly-once delivery from an at-least-once broker or retry mechanism.
+      mechanism: Redelivery after ack loss or consumer restart repeats a side effect.
+      likely_locations: ["message consumer", "ack handling", "outbox consumer", "notification sender"]
+      risk_conditions: ["consumer crash after commit before ack", "broker redelivery", "duplicate delivery"]
+    fault_trigger:
+      trigger_class: message_duplicate
+      actuator_candidates: ["consumer restart after commit", "broker redelivery", "duplicate test message"]
+      parameters: ["message type", "duplicate count", "test entity"]
+      guardrails: ["synthetic entity only", "bounded duplicate count", "no production side effects"]
+    failure_outcome:
+      slo_impact: Correctness SLO fails through duplicate charge, order update, notification, or inventory change.
+      user_visible_symptom: User sees repeated state changes or repeated notifications.
+      expected_degradation: Same message id or logical intent produces multiple committed side effects.
+      invalid_outcomes: ["consumer has active idempotency table", "message is naturally idempotent"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order consumer", "payment consumer", "notification consumer"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["queue-master", "orders"]
+    observable_evidence:
+      metrics: ["duplicate message count", "side-effect count per message", "consumer redelivery count"]
+      traces: ["two consumer spans for same logical message"]
+      logs: ["message redelivered", "side effect committed", "ack failure"]
+      kubernetes: ["consumer restart", "broker queue depth"]
+      source: ["no idempotency key check", "ack after side effect without dedupe"]
+    recovery:
+      cleanup: ["stop duplicate trigger", "drain queue", "remove synthetic duplicate state if supported"]
+      verification: ["new duplicate test message is not emitted", "queue depth baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["consumer idempotency class"]
+      forbidden_disclosures: ["exact message id", "hidden consumer"]
+      answer_leakage_risks: ["test fixture called duplicate-payment"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-024
+    title: Non-atomic database and message write
+    status: candidate
+    family: consistency
+    summary: A service commits database state and emits a message without an atomic outbox or recovery protocol.
+    latent_defect:
+      description: Database update and event publish can diverge when a failure occurs between the two actions.
+      mechanism: Other services observe missing events or events for uncommitted state.
+      likely_locations: ["order creation", "payment state change", "inventory update", "event publisher"]
+      risk_conditions: ["process kill between DB commit and publish", "broker unavailable", "retry ambiguity"]
+    fault_trigger:
+      trigger_class: process_kill
+      actuator_candidates: ["kill process at publish window", "broker unavailable", "network fault to broker"]
+      parameters: ["operation endpoint", "failure timing", "test entity"]
+      guardrails: ["synthetic entity only", "bounded kill count", "restore broker after test"]
+    failure_outcome:
+      slo_impact: Correctness SLO fails because state and downstream projections diverge.
+      user_visible_symptom: User sees order created without notification, payment state mismatch, or stale view.
+      expected_degradation: Primary DB commit exists while expected event or projection is missing.
+      invalid_outcomes: ["outbox pattern active", "operation not committed before failure"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["order", "payment", "preserve"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["orders", "queue-master"]
+    observable_evidence:
+      metrics: ["publish failure count", "outbox backlog if present", "projection lag"]
+      traces: ["DB commit span followed by missing publish span or publish error"]
+      logs: ["state committed", "publish failed", "process terminated"]
+      kubernetes: ["pod restart timing", "broker health"]
+      source: ["DB write and message publish in separate non-transactional steps"]
+    recovery:
+      cleanup: ["restore broker/process", "reconcile synthetic entity if needed"]
+      verification: ["new operations publish expected events", "no lingering queue divergence"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["dual-write consistency class"]
+      forbidden_disclosures: ["exact failure timing", "hidden operation"]
+      answer_leakage_risks: ["private oracle query exposed to agent"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-025
+    title: Saga compensation missing or non-idempotent
+    status: candidate
+    family: consistency
+    summary: A multi-step business transaction cannot safely compensate after a later step fails.
+    latent_defect:
+      description: Compensation action is absent, incomplete, or repeats unsafe side effects.
+      mechanism: Partial success remains after a downstream failure or recovery attempt duplicates compensation.
+      likely_locations: ["order workflow", "reservation workflow", "payment workflow", "shipping workflow"]
+      risk_conditions: ["late-step dependency failure", "retry of compensation", "multi-service transaction"]
+    fault_trigger:
+      trigger_class: dependency_unavailable
+      actuator_candidates: ["fail late workflow dependency", "payment or shipping error"]
+      parameters: ["workflow step", "test entity", "duration window"]
+      guardrails: ["synthetic account", "bounded workflow count", "cleanup partial state"]
+    failure_outcome:
+      slo_impact: Correctness SLO fails because reserved, paid, or allocated state remains inconsistent.
+      user_visible_symptom: User sees cancelled operation with remaining reservation, charge, or inventory change.
+      expected_degradation: Earlier step commits but compensation is absent, fails, or repeats incorrectly.
+      invalid_outcomes: ["workflow has verified compensating transaction", "late step not reached"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["preserve", "order", "payment", "cancel"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["orders", "payment", "shipping"]
+    observable_evidence:
+      metrics: ["compensation attempts", "workflow failure count", "inconsistent entity count"]
+      traces: ["successful early spans followed by failed late span and missing compensation"]
+      logs: ["compensation failed", "rollback not implemented", "duplicate compensation"]
+      kubernetes: ["dependency health during late-step failure"]
+      source: ["workflow lacks compensating action", "compensation not idempotent"]
+    recovery:
+      cleanup: ["restore dependency", "manually reset synthetic partial state if reset contract allows"]
+      verification: ["new failed workflow leaves no partial state", "queues drained"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["saga compensation class"]
+      forbidden_disclosures: ["exact missing compensation", "hidden business entity"]
+      answer_leakage_risks: ["database reset script that names the answer"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-026
+    title: Poison message has no dead-letter path
+    status: candidate
+    family: messaging
+    summary: One unprocessable message blocks or repeatedly crashes a consumer.
+    latent_defect:
+      description: Consumer retry has no max-attempt policy, dead-letter queue, or quarantine path.
+      mechanism: A deterministic bad message monopolizes the consumer and prevents healthy messages from progressing.
+      likely_locations: ["consumer error loop", "broker policy", "deserializer", "message validation"]
+      risk_conditions: ["malformed message", "strict parser", "ordered queue", "no DLQ"]
+    fault_trigger:
+      trigger_class: message_poison
+      actuator_candidates: ["inject malformed synthetic message", "bad payload replay"]
+      parameters: ["message type", "payload shape", "queue"]
+      guardrails: ["synthetic queue/entity", "bounded poison count", "remove poison message during cleanup"]
+    failure_outcome:
+      slo_impact: Event-processing SLO fails as healthy messages lag behind the poison message.
+      user_visible_symptom: User-facing state stops updating or notifications stop.
+      expected_degradation: Consumer retries the same message repeatedly and queue lag grows.
+      invalid_outcomes: ["DLQ catches poison message", "consumer skips invalid message as designed"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["RabbitMQ consumers", "order events", "notification events"]
+      - app: sock-shop
+        fit: primary
+        candidate_targets: ["queue-master", "orders"]
+    observable_evidence:
+      metrics: ["consumer lag", "redelivery count", "DLQ count", "healthy message delay"]
+      traces: ["repeated consumer spans for same malformed message"]
+      logs: ["deserialization error repeated", "message rejected and redelivered"]
+      kubernetes: ["consumer crash loop if exception escapes", "broker queue depth"]
+      source: ["retry forever", "no dead-letter policy", "unhandled parser exception"]
+    recovery:
+      cleanup: ["remove or dead-letter poison message", "restart consumer only if reset contract allows"]
+      verification: ["queue drains", "consumer processes healthy messages"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["poison message class"]
+      forbidden_disclosures: ["exact queue", "hidden poison payload"]
+      answer_leakage_risks: ["public payload fixture with answer name"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-027
+    title: Rolling upgrade contract drift
+    status: candidate
+    family: compatibility
+    summary: Mixed service versions are temporarily incompatible during a rolling update.
+    latent_defect:
+      description: API, schema, or shared library changes are not backward and forward compatible.
+      mechanism: Old and new pods exchange payloads or database state they cannot both understand.
+      likely_locations: ["API DTO", "database migration", "protobuf/schema", "shared client library"]
+      risk_conditions: ["rolling deploy", "mixed versions", "required field change", "non-expand-contract migration"]
+    fault_trigger:
+      trigger_class: config_rollout
+      actuator_candidates: ["rolling update", "partial config rollout", "schema migration toggle"]
+      parameters: ["version mix", "traffic path", "rollout duration"]
+      guardrails: ["use test image or config", "rollback available", "bounded rollout"]
+    failure_outcome:
+      slo_impact: Requests fail only while versions are mixed, proving deployment-time resilience defect.
+      user_visible_symptom: Users see intermittent errors during rollout.
+      expected_degradation: Errors correlate with cross-version caller/callee pairs or migrated fields.
+      invalid_outcomes: ["full restart only with no mixed traffic", "schema compatible across versions"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["shared DTO services", "order", "travel", "payment"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "checkoutservice", "cartservice"]
+    observable_evidence:
+      metrics: ["error rate by version", "rollout progress", "schema validation failures"]
+      traces: ["failed calls where caller and callee versions differ"]
+      logs: ["unknown field", "deserialization error", "migration error"]
+      kubernetes: ["ReplicaSet versions", "rollout status", "pod labels"]
+      source: ["non-compatible DTO change", "migration not expand-contract", "shared library lockstep"]
+    recovery:
+      cleanup: ["complete rollback or rollout according to reset contract", "restore stable version"]
+      verification: ["single compatible version active", "error rate baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["rolling compatibility class"]
+      forbidden_disclosures: ["exact schema field", "hidden version pair"]
+      answer_leakage_risks: ["image tag that includes defect name"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-028
+    title: Cache is an incorrect hard dependency
+    status: candidate
+    family: caching
+    summary: Cache outage fails the request even though the source of truth is still available.
+    latent_defect:
+      description: Application treats cache read/write failure as fatal on a path where degradation is possible.
+      mechanism: Optional acceleration becomes a single point of failure.
+      likely_locations: ["cache client wrapper", "repository layer", "session/cache middleware"]
+      risk_conditions: ["cache outage", "source database healthy", "no fallback or stale read"]
+    fault_trigger:
+      trigger_class: dependency_unavailable
+      actuator_candidates: ["cache service unavailable", "network block to cache", "cache process kill"]
+      parameters: ["cache target", "request path", "duration window"]
+      guardrails: ["cache only", "preserve source database", "bounded outage"]
+    failure_outcome:
+      slo_impact: Availability SLO fails because cache failure blocks otherwise servable requests.
+      user_visible_symptom: Users see hard errors instead of slower source-of-truth responses.
+      expected_degradation: Requests fail at cache access while database or backing service remains healthy.
+      invalid_outcomes: ["cache is authoritative by product contract", "fallback works with acceptable latency"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["route cache", "ticketinfo cache", "user session cache"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["catalogue", "carts", "session"]
+      - app: otel-demo
+        fit: possible
+        candidate_targets: ["cartservice cache if configured"]
+    observable_evidence:
+      metrics: ["cache error rate", "database health", "request availability", "fallback count"]
+      traces: ["failed cache span with no fallback source call"]
+      logs: ["cache connection failed", "request aborted due to cache error"]
+      kubernetes: ["cache pod/service health", "application pods ready"]
+      source: ["cache exception propagated", "no fallback to source", "cache write failure fails request"]
+    recovery:
+      cleanup: ["restore cache connectivity", "allow cache reconnect"]
+      verification: ["requests succeed", "cache error rate baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["cache dependency class"]
+      forbidden_disclosures: ["exact cache key/path", "hidden fallback contract"]
+      answer_leakage_risks: ["source comment saying cache outage benchmark"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-029
+    title: Cache stampede or cold-start amplification
+    status: candidate
+    family: caching
+    summary: Concurrent cache misses or synchronized expiry overload the backing service.
+    latent_defect:
+      description: Cache misses are not coalesced and cache entries expire at the same time without jitter.
+      mechanism: Many callers rebuild the same value concurrently and overload the source dependency.
+      likely_locations: ["cache loader", "TTL configuration", "startup warmup", "repository layer"]
+      risk_conditions: ["cache flush", "synchronized TTL", "high concurrency", "expensive backing query"]
+    fault_trigger:
+      trigger_class: cache_flush
+      actuator_candidates: ["cache flush", "pod restart with cold cache", "TTL expiry workload"]
+      parameters: ["key group", "concurrency", "warmup window"]
+      guardrails: ["bounded key set", "synthetic or read-only workload", "monitor backing service"]
+    failure_outcome:
+      slo_impact: Latency/error SLO fails immediately after cache flush or synchronized expiry.
+      user_visible_symptom: Users see slow reads or errors during cache warmup.
+      expected_degradation: Backing service query volume spikes far above unique key count.
+      invalid_outcomes: ["request coalescing active", "cache cannot be flushed in episode"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["route", "ticketinfo", "travel-plan"]
+      - app: sock-shop
+        fit: primary
+        candidate_targets: ["catalogue", "carts"]
+      - app: otel-demo
+        fit: possible
+        candidate_targets: ["productcatalogservice", "cartservice"]
+    observable_evidence:
+      metrics: ["cache hit ratio", "backing query RPS", "latency", "error rate"]
+      traces: ["many identical backing-service spans after cache miss"]
+      logs: ["cache miss", "recompute", "backing query timeout"]
+      kubernetes: ["backing service CPU and connection pressure"]
+      source: ["no singleflight/request coalescing", "fixed TTL without jitter"]
+    recovery:
+      cleanup: ["stop cache flush trigger", "allow cache warmup"]
+      verification: ["hit ratio recovers", "backing query RPS baseline"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["cache stampede class"]
+      forbidden_disclosures: ["exact key group", "hidden cache loader"]
+      answer_leakage_risks: ["load script named stampede-answer"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-030
+    title: Stale service discovery or DNS dependency
+    status: candidate
+    family: discovery
+    summary: Clients keep using stale endpoints or fail hard when DNS/service discovery is briefly impaired.
+    latent_defect:
+      description: Connection reuse, DNS caching, or discovery refresh policy ignores endpoint churn or resolver failure.
+      mechanism: Clients call removed pods or cannot recover promptly from a short discovery fault.
+      likely_locations: ["HTTP client connection pool", "DNS resolver config", "service registry client", "gRPC channel"]
+      risk_conditions: ["pod rollout", "endpoint change", "DNS latency/failure", "long-lived connections"]
+    fault_trigger:
+      trigger_class: dns_fault
+      actuator_candidates: ["DNS delay/error", "pod restart with endpoint churn", "service registry outage"]
+      parameters: ["resolver fault duration", "target service", "connection lifetime"]
+      guardrails: ["short resolver fault", "namespace-local target if possible", "avoid cluster-wide DNS blast radius"]
+    failure_outcome:
+      slo_impact: Requests fail after endpoint churn or brief resolver fault longer than the trigger window.
+      user_visible_symptom: Users see intermittent connection errors or stale-target failures.
+      expected_degradation: Client continues sending traffic to dead endpoint or fails to refresh discovery.
+      invalid_outcomes: ["client refreshes endpoints promptly", "fault affects whole cluster outside scope"]
+    app_candidates:
+      - app: train-ticket
+        fit: primary
+        candidate_targets: ["service-registry clients", "gateway", "order"]
+      - app: sock-shop
+        fit: secondary
+        candidate_targets: ["front-end", "orders", "catalogue"]
+      - app: otel-demo
+        fit: secondary
+        candidate_targets: ["frontend", "checkoutservice"]
+    observable_evidence:
+      metrics: ["DNS error rate", "connection refused", "endpoint update count", "request errors"]
+      traces: ["client errors to stale endpoint", "resolver span failures if instrumented"]
+      logs: ["no such host", "connection refused", "stale endpoint", "resolver timeout"]
+      kubernetes: ["endpoint slices", "pod IP churn", "CoreDNS metrics where allowed"]
+      source: ["long DNS TTL", "static endpoint cache", "connection pool without idle eviction"]
+    recovery:
+      cleanup: ["remove DNS/discovery fault", "wait for client refresh interval"]
+      verification: ["client calls current endpoints", "resolver errors baseline", "SLO recovers"]
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["service discovery class"]
+      forbidden_disclosures: ["exact endpoint", "hidden resolver configuration"]
+      answer_leakage_risks: ["case-specific service name embedded in prompt"]

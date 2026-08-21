@@ -1,0 +1,49 @@
+- insert:
+    - id: mcp-k8s-ro
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: k8s_ro
+        transport: streamable-http
+        url: !!js process.env.RESBENCH_K8S_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+    - id: mcp-prometheus-ro
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: prometheus_ro
+        transport: streamable-http
+        url: !!js process.env.RESBENCH_PROMETHEUS_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+    - id: mcp-jaeger-ro
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: jaeger_ro
+        transport: streamable-http
+        url: !!js process.env.RESBENCH_JAEGER_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+    - id: mcp-loki-ro
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: loki_ro
+        transport: streamable-http
+        url: !!js process.env.RESBENCH_LOKI_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+    - id: mcp-source-ro
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: source_ro
+        transport: streamable-http
+        url: !!js process.env.RESBENCH_SOURCE_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'
+    - id: mcp-chaos-control
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: chaos_control
+        transport: streamable-http
+        url: !!js process.env.RESBENCH_CHAOS_CONTROL_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'

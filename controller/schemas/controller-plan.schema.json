@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/resiliencebenchmark/controller-plan.schema.json",
+  "title": "Resilience Benchmark Controller Plan",
+  "type": "object",
+  "required": ["schema_version", "run_id", "lifecycle", "policy", "actions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "controller-plan/v1"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,62}$"
+    },
+    "lifecycle": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "enum": [
+          "prepare",
+          "qualify",
+          "baseline",
+          "plan",
+          "execute",
+          "observe",
+          "recover",
+          "evaluate",
+          "cleanup"
+        ]
+      },
+      "prefixItems": [
+        { "const": "prepare" },
+        { "const": "qualify" },
+        { "const": "baseline" },
+        { "const": "plan" },
+        { "const": "execute" },
+        { "const": "observe" },
+        { "const": "recover" },
+        { "const": "evaluate" },
+        { "const": "cleanup" }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "namespace_allowlist",
+        "max_concurrent_actions",
+        "require_single_target",
+        "require_target_uid",
+        "require_run_id_label",
+        "abort_gate",
+        "cleanup_gate"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "namespace_allowlist": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "max_concurrent_actions": {
+          "const": 1
+        },
+        "require_single_target": {
+          "const": true
+        },
+        "require_target_uid": {
+          "const": true
+        },
+        "require_run_id_label": {
+          "const": true
+        },
+        "abort_gate": {
+          "type": "object",
+          "required": ["enabled", "max_runtime_seconds", "heartbeat_timeout_seconds"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "const": true },
+            "max_runtime_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+            "heartbeat_timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 600 }
+          }
+        },
+        "cleanup_gate": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "max_cleanup_seconds",
+            "require_run_id_label",
+            "require_target_uid",
+            "verify_absence"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "const": true },
+            "max_cleanup_seconds": { "type": "integer", "minimum": 1, "maximum": 900 },
+            "require_run_id_label": { "const": true },
+            "require_target_uid": { "const": true },
+            "verify_absence": { "const": true }
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "$ref": "#/$defs/chaosblade_action"
+      }
+    }
+  },
+  "$defs": {
+    "chaosblade_action": {
+      "type": "object",
+      "required": [
+        "run_id",
+        "namespace",
+        "target",
+        "fault_type",
+        "duration_seconds",
+        "intensity",
+        "labels"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,62}$"
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "object",
+          "required": ["namespace", "kind", "name", "uid"],
+          "additionalProperties": false,
+          "properties": {
+            "namespace": { "type": "string", "minLength": 1 },
+            "kind": { "enum": ["Pod"] },
+            "name": { "type": "string", "minLength": 1 },
+            "uid": { "type": "string", "minLength": 1 },
+            "selector": false
+          }
+        },
+        "fault_type": {
+          "enum": ["cpu-load", "memory-stress", "network-delay", "network-loss", "pod-kill"]
+        },
+        "duration_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        },
+        "intensity": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "labels": {
+          "type": "object",
+          "required": ["benchmark.run_id"],
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "benchmark.run_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,127 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: ApplicationEnvironment
+metadata:
+  name: train-ticket
+  displayName: Train Ticket
+  benchmarkRole: complex-stateful-microservice
+  visibility: agent-readable
+spec:
+  namespace:
+    template: rb-train-ticket-{{episode_id}}
+    liveReference: train-ticket
+    lifecycle: per-episode-or-reused-namespace
+  sourceSnapshot:
+    repository: train-ticket
+    lockRef: shared/source-locks.yaml#train-ticket-upstream
+    remote: https://github.com/FudanSELab/train-ticket.git
+    commit: 313886e99befb94be6cd45f085c98e0019f59829
+    agentMountPath: /workspace/src/train-ticket
+    readOnly: true
+    leakControls:
+      hideGroundTruth: true
+      hideDefectPatch: true
+      hideHealthyDiff: true
+  imageLock:
+    registry: "{{HARBOR_REGISTRY}}"
+    project: "{{HARBOR_PROJECT_TRAIN_TICKET}}"
+    policy: digest-required
+    images:
+      - component: ts-order-service
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_TRAIN_TICKET}}/ts-order-service"
+        tag: "{{IMAGE_TAG_TRAIN_TICKET_TS_ORDER_SERVICE}}"
+        digest: "{{IMAGE_DIGEST_TRAIN_TICKET_TS_ORDER_SERVICE}}"
+      - component: ts-travel-service
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_TRAIN_TICKET}}/ts-travel-service"
+        tag: "{{IMAGE_TAG_TRAIN_TICKET_TS_TRAVEL_SERVICE}}"
+        digest: "{{IMAGE_DIGEST_TRAIN_TICKET_TS_TRAVEL_SERVICE}}"
+      - component: ts-route-service
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_TRAIN_TICKET}}/ts-route-service"
+        tag: "{{IMAGE_TAG_TRAIN_TICKET_TS_ROUTE_SERVICE}}"
+        digest: "{{IMAGE_DIGEST_TRAIN_TICKET_TS_ROUTE_SERVICE}}"
+      - component: tsdb-mysql
+        repository: "{{HARBOR_REGISTRY}}/{{HARBOR_PROJECT_TRAIN_TICKET}}/tsdb-mysql"
+        tag: "{{IMAGE_TAG_TRAIN_TICKET_TSDB_MYSQL}}"
+        digest: "{{IMAGE_DIGEST_TRAIN_TICKET_TSDB_MYSQL}}"
+  workloads:
+    primaryEntry:
+      service: ts-ui-dashboard
+      protocol: http
+      baseUrl: "{{TRAIN_TICKET_BASE_URL}}"
+    criticalPaths:
+      - id: search-trips
+        description: Search direct travel options between two stations.
+        syntheticLoadProfile: train-ticket-search
+      - id: preserve-order
+        description: Create and preserve an order after trip selection.
+        syntheticLoadProfile: train-ticket-order
+      - id: query-order
+        description: Query current user order state after creation.
+        syntheticLoadProfile: train-ticket-order-query
+    steadyLoad:
+      generator: jmeter-or-k6
+      profileRef: "{{WORKLOAD_PROFILE_TRAIN_TICKET}}"
+      targetRps: "{{TRAIN_TICKET_TARGET_RPS}}"
+  slos:
+    - id: search-availability
+      queryRef: prometheus:train_ticket_http_success_rate
+      objective: ">= 0.99"
+      window: 5m
+    - id: preserve-order-p95-latency
+      queryRef: prometheus:train_ticket_preserve_order_p95_seconds
+      objective: "<= 2.5"
+      window: 5m
+    - id: error-budget-burn
+      queryRef: prometheus:train_ticket_error_budget_burn_rate
+      objective: "<= 2.0"
+      window: 10m
+  observability:
+    prometheus:
+      sharedRef: shared/observability.yaml#prometheus
+      serviceSelectors:
+        appNamespace: "{{APPLICATION_NAMESPACE}}"
+        servicePrefix: ts-
+    jaeger:
+      sharedRef: shared/observability.yaml#jaeger
+      traceServiceNames:
+        - ts-order-service
+        - ts-travel-service
+        - ts-route-service
+        - ts-ui-dashboard
+    loki:
+      sharedRef: shared/observability.yaml#loki
+      labelSelectors:
+        namespace: "{{APPLICATION_NAMESPACE}}"
+  resetContract:
+    idempotent: true
+    strategy:
+      - scale-load-generator-zero
+      - delete-episode-chaosblade-crs
+      - restart-application-deployments
+      - wait-for-readiness
+      - run-qualify
+    protectedResources:
+      - persistent-volume-claims
+      - shared-observability-stack
+      - external-harbor-projects
+  qualifyContract:
+    requiredSignals:
+      - kubernetes-rollout-ready
+      - prometheus-slo-window-healthy
+      - jaeger-traces-present-for-critical-paths
+      - workload-smoke-test-pass
+    minimumHealthyWindow: 10m
+    failurePolicy: block-episode
+  readiness:
+    currentStatus: application-workloads-ready-business-baseline-pending
+    knownGaps:
+      - observedAt: environment-preparation
+        severity: blocking
+        item: No controller-owned repeatable Train-Ticket load generator and business SLO window is qualified yet.
+    resolvedIssues:
+      - resolvedAt: 2026-08-21
+        item: ts-order-service was restored from 0/2 to 2/2 Ready by a scoped rolling restart after its accept queue stopped draining.
+        residualRisk: File descriptor and CLOSE_WAIT accumulation may recur; a sustained workload window is required before qualification.
+    nextChecks:
+      - Run the controller-owned workload and confirm the order service remains Ready for the full baseline window.
+      - Freeze all component images by digest before building episodes.
+      - Verify order creation, query, metrics, traces, and logs under steady load.

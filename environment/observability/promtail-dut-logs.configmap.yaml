@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: observability
+data:
+  config.yaml: |
+    server:
+      http_listen_port: 3101
+      grpc_listen_port: 0
+
+    positions:
+      filename: /run/promtail/positions.yaml
+
+    clients:
+      - url: http://loki.observability.svc:3100/loki/api/v1/push
+
+    scrape_configs:
+      - job_name: dut-pods
+        pipeline_stages:
+          - docker: {}
+          - drop:
+              older_than: 168h
+              drop_counter_reason: outside_loki_retention_window
+          - regex:
+              source: filename
+              expression: '^/var/log/pods/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_(?P<pod_uid>[^/]+)/(?P<container>[^/]+)/[0-9]+\.log$'
+          - labels:
+              namespace:
+              pod:
+              container:
+        static_configs:
+          - targets: [localhost]
+            labels:
+              job: dut-pods
+              __path__: /var/log/pods/train-ticket_*/*/*.log
+          - targets: [localhost]
+            labels:
+              job: dut-pods
+              __path__: /var/log/pods/sock-shop_*/*/*.log
+          - targets: [localhost]
+            labels:
+              job: dut-pods
+              __path__: /var/log/pods/otel-demo_*/*/*.log

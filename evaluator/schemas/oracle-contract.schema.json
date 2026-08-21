@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/evaluator/oracle-contract.schema.json",
+  "title": "ResilienceBenchmark Oracle Contract",
+  "type": "object",
+  "required": ["schema_version", "episode_id", "public_visibility", "evidence_policy", "gates"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "public_visibility": {
+      "type": "string",
+      "enum": ["public_no_hidden_answer", "oracle_private"]
+    },
+    "description": {
+      "type": "string"
+    },
+    "hidden_truth_ref": {
+      "type": "string",
+      "description": "Opaque private Oracle reference. Do not place hidden answers in public contracts."
+    },
+    "evidence_policy": {
+      "type": "object",
+      "required": ["agent_self_report_allowed_as_final_evidence", "allowed_final_source_kinds"],
+      "additionalProperties": false,
+      "properties": {
+        "agent_self_report_allowed_as_final_evidence": {
+          "type": "boolean",
+          "const": false
+        },
+        "allowed_final_source_kinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/evidence_source_kind"
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["gate_id", "category", "required", "failure_status"],
+        "additionalProperties": false,
+        "properties": {
+          "gate_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "episode_validity",
+              "safety",
+              "fault_effect",
+              "slo_violation",
+              "causal_mechanism",
+              "diagnosis",
+              "recovery"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "failure_status": {
+            "$ref": "#/$defs/primary_status"
+          },
+          "description": {
+            "type": "string"
+          },
+          "required_evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "primary_status": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL_SELECTION",
+        "FAIL_EXECUTION",
+        "FAIL_ANALYSIS",
+        "FAIL_SAFETY",
+        "INCONCLUSIVE",
+        "CASE_INVALID"
+      ]
+    },
+    "evidence_source_kind": {
+      "type": "string",
+      "enum": [
+        "independent_observer",
+        "runtime_system",
+        "source_code",
+        "controller_record",
+        "human_review"
+      ]
+    }
+  }
+}

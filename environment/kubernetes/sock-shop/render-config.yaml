@@ -1,0 +1,46 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: SockShopRenderConfig
+metadata:
+  name: sock-shop-pinned-render
+spec:
+  namespace: sock-shop
+  source:
+    url: https://raw.githubusercontent.com/microservices-demo/microservices-demo/9dff06fae4981921caec6a62393a6ebfce4b3e3f/deploy/kubernetes/complete-demo.yaml
+    commit: 9dff06fae4981921caec6a62393a6ebfce4b3e3f
+    sha256: 02d70d2c7b576ea8b18fc436e18b9158d5b662e50180998b82127d8050813771
+  allowedObjects:
+    - apiVersion: v1
+      kind: Namespace
+    - apiVersion: v1
+      kind: Service
+    - apiVersion: apps/v1
+      kind: Deployment
+  imagePins:
+    - source: weaveworksdemos/front-end
+      target: docker.io/weaveworksdemos/front-end@sha256:26a2d9b6b291dee2dca32fca3f5bff6c2fa07bb5954359afcbc8001cc70eac71
+    - source: weaveworksdemos/catalogue
+      target: docker.io/weaveworksdemos/catalogue@sha256:0147a65b7116569439eefb1a6dbed455fe022464ef70e0c3cab75bc4a226b39b
+    - source: weaveworksdemos/payment
+      target: docker.io/weaveworksdemos/payment@sha256:5ab1c9877480a018d4dda10d6dfa382776e6bca9fc1c60bacbb80903fde8cfe0
+    - source: weaveworksdemos/orders
+      target: docker.io/weaveworksdemos/orders@sha256:b622e40e83433baf6374f15e076b53893f79958640fc6667dff597622eff03b9
+    - source: weaveworksdemos/user
+      target: docker.io/weaveworksdemos/user@sha256:2ffccc332963c89e035fea52201012208bf62df43a55fe461ad6598a5c757ab7
+    - source: weaveworksdemos/shipping
+      target: docker.io/weaveworksdemos/shipping@sha256:983305c948fded487f4a4acdeab5f898e89d577b4bc1ca3de7750076469ccad4
+    - source: weaveworksdemos/queue-master
+      target: docker.io/weaveworksdemos/queue-master@sha256:6292d3095f4c7aeed8d863527f8ef6d7a75d3128f20fc61e57f398c100142712
+    - source: weaveworksdemos/carts
+      target: docker.io/weaveworksdemos/carts@sha256:434d2f5a6e0e8beef1f253fe96f45b8437a703125fc003434c5282ecf8969a4f
+    - source: weaveworksdemos/catalogue-db
+      target: docker.io/weaveworksdemos/catalogue-db@sha256:7ba74ec9adf88f6625b8d85d3323d1ee5232b39877e1590021ea485cf9457251
+    - source: weaveworksdemos/user-db
+      target: docker.io/weaveworksdemos/user-db@sha256:695bc22c11396c7ae747118c56e619f3b3295d9d4cbec999d30230b3f399a389
+    - source: mongo
+      target: docker.io/library/mongo@sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
+    - source: redis
+      target: docker.io/library/redis@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
+    - source: rabbitmq
+      target: docker.io/library/rabbitmq@sha256:0297618bd60270f03665448b02b3b1110dfc51fae60a3c6804005169f0904dad
+    - source: kbudde/rabbitmq-exporter
+      target: docker.io/kbudde/rabbitmq-exporter@sha256:12f27d6d84e6dbdd72c6bc2605e48af9910517394483c1dfa3230e49d3e32107

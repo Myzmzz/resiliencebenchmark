@@ -1,0 +1,155 @@
+version: resiliencebenchmark.harness.adapters/v1
+description: >
+  Uniform adapter registry for Agent harnesses. Runtime launchers should merge
+  this file with environment-specific secrets supplied outside the repository.
+
+shared:
+  run_isolation:
+    workspace: ephemeral_per_trial
+    artifact_root: artifacts/harness
+    retain_raw_transcript: true
+    redact_secret_patterns: true
+  allowed_mcp_tools_ref: mcp-tools.yaml
+  model_registry_ref: models.yaml
+  prompt_templates:
+    common_task: prompts/common-task.md
+    full_lifecycle: prompts/full-lifecycle.md
+    minimal_intent: prompts/minimal-intent.md
+  hidden_from_agent:
+    - ground_truth
+    - evaluator_oracle
+    - oracle_raw_verdicts
+    - injected_defect_manifest
+    - scoring_rubric_weights
+
+harnesses:
+  bladeai:
+    kind: bladeai
+    status: configured_skeleton
+    qualification_status: live_host_unverified
+    entrypoint:
+      mode: cli_or_service
+      command: blade-ai
+      prompt_transport: adapter_owned
+      args: []
+    models:
+      source: models.yaml
+      candidate_aliases_requiring_probe:
+        - gpt-5.6
+        - deepseek-v4-pro
+        - qwen3.8-max
+        - claude-opus-5
+        - MiniMax-M1
+        - glm-4.5
+        - kimi-k2.5
+    safety:
+      require_controller_budget_token: true
+      deny_direct_oracle_access: true
+      deny_unscoped_shell: true
+
+  claude-code:
+    kind: claude_code
+    status: configured_skeleton
+    entrypoint:
+      mode: headless_cli
+      command: claude
+      prompt_transport: stdin
+      args:
+        - --print
+        - --bare
+        - --no-session-persistence
+        - --output-format
+        - stream-json
+        - --model
+        - "{{model_alias}}"
+        - --mcp-config
+        - "{{mcp_config_file}}"
+        - --strict-mcp-config
+    environment:
+      anthropic_base_url: env:RESBENCH_LLM_BASE_URL
+      anthropic_auth_token: env:RESBENCH_LLM_API_KEY
+      claude_config_home: env:RESBENCH_CLAUDE_HOME
+    models:
+      source: models.yaml
+      default_alias: claude-opus-5
+    safety:
+      require_fresh_config_home_per_trial: true
+      deny_direct_oracle_access: true
+      deny_unscoped_shell: true
+
+  codex:
+    kind: codex
+    status: configured_skeleton
+    entrypoint:
+      mode: headless_cli
+      command: codex
+      prompt_transport: stdin
+      args:
+        - exec
+        - --model
+        - "{{model_alias}}"
+        - --sandbox
+        - read-only
+        - --ephemeral
+        - --json
+        - --output-schema
+        - "{{output_schema_file}}"
+        - -
+    environment:
+      openai_base_url: env:RESBENCH_LLM_BASE_URL
+      openai_api_key: env:RESBENCH_LLM_API_KEY
+      codex_home: env:RESBENCH_CODEX_HOME
+    models:
+      source: models.yaml
+      candidate_aliases_requiring_probe:
+        - gpt-5.6
+        - deepseek-v4-pro
+        - qwen3.8-max
+        - claude-opus-5
+        - MiniMax-M1
+        - glm-4.5
+        - kimi-k2.5
+    safety:
+      require_fresh_codex_home_per_trial: true
+      deny_direct_oracle_access: true
+      deny_unscoped_shell: true
+
+  deepseek-harness:
+    kind: official_deepseek_harness
+    status: pinned_developer_preview
+    version_pin:
+      upstream: "@deepseek-ai/dsh"
+      distribution: npm
+      channel: developer_preview
+      package_version: 0.1.0-rc.7
+      npm_dist_tag_policy: do_not_use_latest
+      npm_integrity: sha512-ZceDCJ8FAywih+USW/OMk9jEhunlvJBGEz4kqrhau23hPzbciOazZrywH0nBRsaalSeAJ1JGBmjtw4OSjToStw==
+      git_tag: dsh-v0.1.0-rc.7
+      commit: 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
+      verification_status: source_and_package_pin_recorded
+      note: Developer preview pin supplied by environment-prep inventory; install exactly this version and integrity for repeatable trials.
+    entrypoint:
+      mode: headless_cli
+      command: dsh
+      prompt_transport: single_positional_argument
+      args:
+        - --profile
+        - headless
+        - "{{prompt_text}}"
+    environment:
+      base_url: env:RESBENCH_LLM_BASE_URL
+      api_key: env:RESBENCH_LLM_API_KEY
+      dsh_home: env:DSH_HOME
+    isolation:
+      headless: true
+      dsh_home_strategy: mktemp_per_trial
+      require_empty_dsh_home: true
+      cleanup_dsh_home_after_trial: true
+      forbid_shared_web_host_for_trials: true
+    models:
+      source: models.yaml
+      default_alias: deepseek-v4-pro
+    safety:
+      require_controller_budget_token: true
+      deny_direct_oracle_access: true
+      deny_unscoped_shell: true

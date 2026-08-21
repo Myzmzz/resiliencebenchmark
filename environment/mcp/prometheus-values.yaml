@@ -1,0 +1,59 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/tjhop/prometheus-mcp-server
+  tag: 0.18.0@sha256:649949f954c0bac9397e77fb17f280e0cac2fb481b1248fa536d630b9fc542b5
+  pullPolicy: IfNotPresent
+
+prometheus:
+  url: http://prometheus.observability.svc.cluster.local:9090
+  timeout: 30s
+  truncationLimit: 500
+
+mcp:
+  transport: http
+  tools:
+    - core
+  enableToonOutput: false
+  enableClientLogging: false
+
+docs:
+  autoUpdate: false
+
+tsdbAdmin:
+  enabled: false
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault

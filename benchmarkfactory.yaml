@@ -1,0 +1,86 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: BenchmarkFactoryConfig
+metadata:
+  name: resilience-benchmark-factory
+spec:
+  stage: environment-preparation
+  publicRepository: true
+  secretPolicyRef: SECURITY.md
+  taskLayer:
+    defectCatalog: tasks/catalog/resilience-defect-classes.v0.1.yaml
+    defectSchema: tasks/schemas/defect-spec.schema.json
+    episodePublicSchema: tasks/schemas/episode-public.schema.json
+    privateEvaluatorInputSchema: tasks/schemas/ground-truth.schema.json
+    privateBundlePolicy: tasks/contracts/private-evaluator-bundle.md
+  environments:
+    applicationConfigs:
+      - environment/applications/train-ticket.yaml
+      - environment/applications/sock-shop.yaml
+      - environment/applications/otel-demo.yaml
+    kubernetesDeployments:
+      sockShop:
+        renderConfig: environment/kubernetes/sock-shop/render-config.yaml
+        renderer: scripts/render_sock_shop.py
+    observability: environment/shared/observability.yaml
+    observabilityPlans:
+      - environment/observability/prometheus-otlp-receiver.yaml
+      - environment/observability/otel-demo-collector-routing.yaml
+      - environment/observability/promtail-dut-logs.configmap.yaml
+      - environment/observability/prometheus-persistence-required.yaml
+      - environment/observability/kubelet-certificate-expiry.yaml
+      - environment/observability/prometheus-pvc.yaml
+    mcpDeployments:
+      prometheus:
+        chartLock: environment/mcp/prometheus-chart-lock.yaml
+        values: environment/mcp/prometheus-values.yaml
+    sourceSnapshots: environment/shared/source-snapshots.yaml
+    sourceLocks: environment/shared/source-locks.yaml
+    repairPlans:
+      - environment/repairs/observability-node-exporter-pin.yaml
+      - environment/repairs/otel-demo-load-generator-enable.yaml
+      - environment/repairs/historical-chaosblade-reconciliation.yaml
+  harness:
+    adapters: harness/harnesses.yaml
+    models: harness/models.yaml
+    mcpTools: harness/mcp-tools.yaml
+    outputSchema: harness/schemas/agent-result.schema.json
+    runTraceSchema: harness/schemas/run-trace.schema.json
+    deepSeekDeploymentStatus: harness/deepseek-harness/deployment-status.yaml
+  controller:
+    planSchema: controller/schemas/controller-plan.schema.json
+    safetyModule: controller/safety.py
+  evaluator:
+    contractSchema: evaluator/schemas/oracle-contract.schema.json
+    observationSchema: evaluator/schemas/oracle-observation.schema.json
+    implementation: evaluator/evaluator.py
+  gates:
+    beforeRenderingRuntimeConfig:
+      - repository-validation-pass
+      - no-secret-material-in-git
+      - private-bundle-outside-agent-workspace
+    beforeHarnessQualification:
+      - source-commits-and-image-digests-frozen
+      - model-transport-capability-probes-pass
+      - model-behavioral-qualification-probes-pass
+      - mcp-endpoints-read-only-qualified
+    beforeFaultExecution:
+      - live-cluster-qualification-pass
+      - healthy-baseline-window-pass
+      - no-unowned-active-chaosblade-resources
+      - controller-plan-schema-pass
+      - cleanup-handle-issued
+  currentScope:
+    implemented:
+      - public schemas and defect catalog
+      - environment adapter configuration
+      - harness model MCP and prompt configuration
+      - controller safety validation
+      - independent evaluator contracts
+      - static and read-only cluster qualification tools
+    notYetClaimed:
+      - runnable locked Episode bundle
+      - deployed MCP endpoints for every Harness
+      - qualified seven-model matrix
+      - clean reproducible baseline for all three applications
+      - automatic defect implantation and image build pipeline
+      - formal experiment results

@@ -1,0 +1,37 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: RuntimeRepairPlan
+metadata:
+  name: otel-demo-route-signals-to-shared-observability
+spec:
+  target:
+    namespace: otel-demo
+    kind: ConfigMap
+    name: otel-collector
+    dataKey: relay
+  exporterPatch:
+    otlp/jaeger:
+      endpoint: jaeger-query.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+    otlphttp/prometheus:
+      endpoint: http://prometheus.observability.svc.cluster.local:9090/api/v1/otlp
+      tls:
+        insecure: true
+  pipelinePatch:
+    traces:
+      ensureExporters:
+        - otlp/jaeger
+    metrics:
+      ensureExporters:
+        - otlphttp/prometheus
+  applyPolicy:
+    preserveUnknownFields: true
+    restartDeploymentAfterConfigChange: otel-collector
+  verification:
+    - collector-config-check-pass
+    - collector-rollout-ready
+    - no-exporter-errors-in-recent-logs
+    - prometheus-has-recent-otel-demo-series
+    - jaeger-has-recent-otel-demo-traces
+  rollback:
+    strategy: restore-previous-configmap-and-rollout
