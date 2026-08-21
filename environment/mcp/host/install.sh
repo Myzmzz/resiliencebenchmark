@@ -95,7 +95,10 @@ install -d -m 0750 -o resbench-source-ro -g resbench-source-ro "$SOURCE_STATE_DI
 install -d -m 0700 -o resbench-chaos-control -g resbench-chaos-control "$ACTIVE_LEDGER_DIR"
 install -d -m 0700 -o resbench-chaos-control -g resbench-chaos-control "$BASELINE_LEDGER_DIR"
 
-uv --directory "$REPO_DIR" sync --locked --extra test
+# Use the host interpreter explicitly. A uv-managed interpreter under /root is
+# not traversable by the dedicated service identities and is hidden by
+# ProtectHome=yes in the systemd units.
+uv --directory "$REPO_DIR" sync --python /usr/bin/python3 --locked --extra test
 
 if [ "$MATERIALIZE_SOURCES" = true ]; then
   SOURCE_ARGS=(

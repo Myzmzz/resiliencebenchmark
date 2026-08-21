@@ -252,6 +252,7 @@ def test_install_script_uses_resbench_head_and_private_ledger_permissions():
 
     assert "--materialize-sources" in text
     assert ".resbench-head" in text
+    assert 'uv --directory "$REPO_DIR" sync --python /usr/bin/python3 --locked --extra test' in text
     assert "repository path is missing .git" not in text
     assert 'tr -d \'\\n\' < "$REPO_DIR/.resbench-head"' in text
     assert 'install -d -m 0750 -o resbench-source-ro -g resbench-source-ro "$SOURCE_STATE_DIR" "$SOURCE_ROOT"' in text
