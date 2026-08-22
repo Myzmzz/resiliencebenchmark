@@ -204,7 +204,7 @@ class K8sROService:
         if label_selector:
             argv.extend(["-l", _label_selector(label_selector)])
         data = _loads_json(await self._run(argv))
-        items = [_sanitize(item) for item in data.get("items", [])]
+        items = [_summarize_namespaced_item(item, resource) for item in data.get("items", [])]
         page = items[offset : offset + limit]
         return envelope(
             {
@@ -473,6 +473,172 @@ def _sanitize_event(item: Mapping[str, Any]) -> dict[str, Any]:
         "lastTimestamp": item.get("lastTimestamp"),
         "involvedObject": {"kind": involved.get("kind"), "name": involved.get("name")},
     }
+
+
+def _summarize_namespaced_item(item: Mapping[str, Any], resource: str) -> dict[str, Any]:
+    metadata = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
+    spec = item.get("spec", {}) if isinstance(item.get("spec"), dict) else {}
+    status = item.get("status", {}) if isinstance(item.get("status"), dict) else {}
+    summary: dict[str, Any] = {
+        "apiVersion": item.get("apiVersion"),
+        "kind": item.get("kind"),
+        "metadata": {
+            "name": metadata.get("name"),
+            "namespace": metadata.get("namespace"),
+            "labels": _sanitize(metadata.get("labels", {})),
+            "creationTimestamp": metadata.get("creationTimestamp"),
+            "deletionTimestamp": metadata.get("deletionTimestamp"),
+        },
+    }
+    key = _resource_key(resource)
+    if key == "pods":
+        summary["spec"] = {
+            "nodeName": spec.get("nodeName"),
+            "serviceAccountName": spec.get("serviceAccountName"),
+            "containers": _container_specs(spec.get("containers")),
+            "initContainers": _container_specs(spec.get("initContainers")),
+        }
+        summary["status"] = {
+            "phase": status.get("phase"),
+            "podIP": status.get("podIP"),
+            "hostIP": status.get("hostIP"),
+            "startTime": status.get("startTime"),
+            "conditions": _condition_summaries(status.get("conditions")),
+            "containerStatuses": _container_status_summaries(status.get("containerStatuses")),
+            "initContainerStatuses": _container_status_summaries(status.get("initContainerStatuses")),
+        }
+    elif key in {"deployments", "statefulsets", "daemonsets", "replicasets"}:
+        summary["spec"] = {
+            "replicas": spec.get("replicas"),
+            "selector": _sanitize(spec.get("selector", {})),
+        }
+        summary["status"] = {
+            field: status.get(field)
+            for field in (
+                "observedGeneration",
+                "replicas",
+                "readyReplicas",
+                "availableReplicas",
+                "updatedReplicas",
+                "currentReplicas",
+                "desiredNumberScheduled",
+                "numberReady",
+                "numberAvailable",
+                "numberUnavailable",
+            )
+            if field in status
+        }
+    elif key == "services":
+        summary["spec"] = {
+            "type": spec.get("type"),
+            "clusterIP": spec.get("clusterIP"),
+            "selector": _sanitize(spec.get("selector", {})),
+            "ports": [
+                {
+                    field: port.get(field)
+                    for field in ("name", "protocol", "port", "targetPort", "nodePort")
+                    if field in port
+                }
+                for port in spec.get("ports", [])
+                if isinstance(port, dict)
+            ],
+        }
+    elif key == "endpoints":
+        subsets = spec.get("subsets") if "subsets" in spec else item.get("subsets", [])
+        summary["subsets"] = _endpoint_subset_summaries(subsets)
+    elif key == "jobs":
+        summary["spec"] = {field: spec.get(field) for field in ("parallelism", "completions", "backoffLimit")}
+        summary["status"] = {
+            field: status.get(field)
+            for field in ("active", "succeeded", "failed", "startTime", "completionTime")
+            if field in status
+        }
+    return summary
+
+
+def _container_specs(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        {"name": item.get("name"), "image": item.get("image")}
+        for item in value
+        if isinstance(item, dict)
+    ]
+
+
+def _condition_summaries(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        {
+            field: item.get(field)
+            for field in ("type", "status", "reason", "lastTransitionTime")
+            if field in item
+        }
+        for item in value
+        if isinstance(item, dict)
+    ]
+
+
+def _container_status_summaries(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        state = item.get("state", {}) if isinstance(item.get("state"), dict) else {}
+        state_summary = {
+            state_name: {
+                field: state_value.get(field)
+                for field in ("reason", "exitCode", "startedAt", "finishedAt")
+                if field in state_value
+            }
+            for state_name, state_value in state.items()
+            if isinstance(state_value, dict)
+        }
+        summaries.append(
+            {
+                "name": item.get("name"),
+                "ready": item.get("ready"),
+                "restartCount": item.get("restartCount"),
+                "image": item.get("image"),
+                "imageID": item.get("imageID"),
+                "state": state_summary,
+            }
+        )
+    return summaries
+
+
+def _endpoint_subset_summaries(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for subset in value:
+        if not isinstance(subset, dict):
+            continue
+        addresses = subset.get("addresses", []) if isinstance(subset.get("addresses"), list) else []
+        not_ready = subset.get("notReadyAddresses", []) if isinstance(subset.get("notReadyAddresses"), list) else []
+        summaries.append(
+            {
+                "readyAddresses": [
+                    {"ip": item.get("ip"), "nodeName": item.get("nodeName")}
+                    for item in addresses[:50]
+                    if isinstance(item, dict)
+                ],
+                "notReadyAddresses": [
+                    {"ip": item.get("ip"), "nodeName": item.get("nodeName")}
+                    for item in not_ready[:50]
+                    if isinstance(item, dict)
+                ],
+                "ports": [
+                    {field: port.get(field) for field in ("name", "port", "protocol") if field in port}
+                    for port in subset.get("ports", [])
+                    if isinstance(port, dict)
+                ],
+            }
+        )
+    return summaries
 
 
 def _sanitize_cluster_item(item: Mapping[str, Any], resource: str) -> dict[str, Any]:

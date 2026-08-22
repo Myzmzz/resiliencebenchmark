@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+import json
 
 import pytest
 
@@ -109,6 +110,47 @@ def test_list_resources_uses_fixed_argv_and_paginates():
     assert result["items"][0]["metadata"]["name"] == "pod-b"
     assert runner.calls == [list(argv)]
     assert runner.timeouts == [5.0]
+
+
+def test_list_pods_returns_bounded_summary_for_large_single_pod():
+    argv = (
+        "kubectl",
+        "--kubeconfig",
+        "/fixed/kubeconfig",
+        "--request-timeout=5s",
+        "-n",
+        "otel-demo",
+        "get",
+        "pods",
+        "-o",
+        "json",
+    )
+    pod = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"name": "frontend", "namespace": "otel-demo", "annotations": {"large": "x" * 40_000}},
+        "spec": {
+            "nodeName": "node-a",
+            "containers": [{"name": "app", "image": "frontend@sha256:" + "a" * 64, "env": [{"name": "TOKEN", "value": "secret"}]}],
+        },
+        "status": {
+            "phase": "Running",
+            "conditions": [{"type": "Ready", "status": "True"}],
+            "containerStatuses": [{"name": "app", "ready": True, "restartCount": 2, "imageID": "sha256:" + "a" * 64}],
+        },
+    }
+    svc, _ = service({argv: json.dumps({"items": [pod]})})
+
+    result = run(svc.list_resources(namespace="otel-demo", resource="pods", limit=1))
+
+    item = result["items"][0]
+    assert result["ok"] is True
+    assert item["metadata"]["name"] == "frontend"
+    assert item["spec"]["containers"] == [{"name": "app", "image": "frontend@sha256:" + "a" * 64}]
+    assert item["status"]["phase"] == "Running"
+    assert item["status"]["containerStatuses"][0]["restartCount"] == 2
+    assert "annotations" not in item["metadata"]
+    assert len(json.dumps(result)) < 25_000
 
 
 def test_get_configmap_redacts_content_and_last_applied():
