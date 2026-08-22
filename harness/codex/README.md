@@ -12,6 +12,7 @@ Important boundary: TOML `url` values are plain strings. Codex does not expand
 `${ENV}` in those fields, so the runner must replace these placeholders before
 launch:
 
+- `__RESBENCH_LLM_BASE_URL__`
 - `__RESBENCH_K8S_MCP_URL__`
 - `__RESBENCH_TELEMETRY_MCP_URL__`
 - `__RESBENCH_SOURCE_MCP_URL__`
@@ -22,6 +23,11 @@ Do not render the token into the file. Keep:
 ```toml
 bearer_token_env_var = "RESBENCH_MCP_TOKEN"
 ```
+
+The trial-local user config also selects a custom Responses provider whose
+`base_url` is rendered from `RESBENCH_LLM_BASE_URL` and whose credential comes
+only from `OPENAI_API_KEY`. `supports_websockets = false` keeps compatible
+third-party gateways on the qualified SSE transport.
 
 Run qualification should verify the installed Codex version accepts HTTP MCP
 servers with `bearer_token_env_var`, and that `codex exec` is launched in
@@ -40,6 +46,6 @@ substitute for removing non-MCP tools. Qualification must confirm those feature
 flags are effective in the exact installed Codex version before its results
 enter the comparison matrix.
 
-The runner owns model/API-key configuration separately. This template only wires
-the MCP client surface and must not contain endpoint values, bearer tokens,
-kubeconfig contents, source paths, or Oracle data.
+The rendered config is deleted with the isolated trial home. The repository
+template must not contain concrete endpoint values, bearer tokens, kubeconfig
+contents, source paths, or Oracle data.

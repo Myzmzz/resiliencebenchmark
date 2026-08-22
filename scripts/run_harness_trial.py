@@ -328,7 +328,7 @@ def render_dsh_contract(repo_root: Path, dsh_home: Path, env: Mapping[str, str],
 
 def render_codex_config(repo_root: Path, codex_home: Path, env: Mapping[str, str]) -> Path:
     template = (repo_root / "harness" / "codex" / "config.toml.template").read_text(encoding="utf-8")
-    rendered = template
+    rendered = template.replace("__RESBENCH_LLM_BASE_URL__", env.get("RESBENCH_LLM_BASE_URL", ""))
     for placeholder, env_name in MCP_URL_ENV.items():
         rendered = rendered.replace(placeholder, env.get(env_name, ""))
     token = env.get("RESBENCH_MCP_TOKEN", "")

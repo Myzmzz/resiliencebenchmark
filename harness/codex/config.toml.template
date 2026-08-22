@@ -2,6 +2,15 @@
 # URL placeholders must be replaced by the benchmark runner; Codex TOML does not
 # perform shell-style environment expansion in URL fields.
 
+model_provider = "resbench_gateway"
+
+[model_providers.resbench_gateway]
+name = "Resilience Benchmark Gateway"
+base_url = "__RESBENCH_LLM_BASE_URL__"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+supports_websockets = false
+
 [features]
 apps = false
 browser_use = false

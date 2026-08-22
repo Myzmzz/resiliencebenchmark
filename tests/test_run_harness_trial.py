@@ -110,6 +110,19 @@ def test_dry_run_records_template_hashes_without_resolved_urls_or_homes(tmp_path
     assert planned["runtimeEnv"]["RESBENCH_MCP_TOKEN"] == {"present": True}
 
 
+def test_codex_config_renders_custom_responses_provider_without_api_key(tmp_path):
+    config_path = trial.render_codex_config(REPO_ROOT, tmp_path / "codex-home", runtime_env())
+    rendered = config_path.read_text(encoding="utf-8")
+
+    assert 'model_provider = "resbench_gateway"' in rendered
+    assert 'base_url = "https://gateway.example/v1"' in rendered
+    assert 'env_key = "OPENAI_API_KEY"' in rendered
+    assert 'wire_api = "responses"' in rendered
+    assert "supports_websockets = false" in rendered
+    assert "sk-test-secret-value-that-must-not-leak" not in rendered
+    assert "mcp-token-that-must-not-leak-000000" not in rendered
+
+
 def test_dry_run_for_claude_does_not_persist_rendered_mcp_config(tmp_path):
     report = trial.run_trial(
         REPO_ROOT,
