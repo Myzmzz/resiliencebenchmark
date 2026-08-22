@@ -152,6 +152,15 @@ def test_connectivity_smoke_prompt_is_bounded_and_non_mutating():
     assert "Do not call any create, destroy, mutation" in prompt
 
 
+def test_claude_stream_json_registry_enables_verbose_mode():
+    harnesses = yaml.safe_load((REPO_ROOT / "harness/harnesses.yaml").read_text(encoding="utf-8"))
+    args = harnesses["harnesses"]["claude-code"]["entrypoint"]["args"]
+
+    assert "--print" in args
+    assert "stream-json" in args
+    assert "--verbose" in args
+
+
 def test_execute_codex_uses_fixed_argv_stdin_and_allowlisted_env(tmp_path):
     calls = []
     final = valid_agent_result()

@@ -86,6 +86,7 @@ harnesses:
       prompt_transport: stdin
       args:
         - --print
+        - --verbose
         - --bare
         - --no-session-persistence
         - --output-format
