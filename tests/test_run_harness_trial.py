@@ -73,6 +73,7 @@ def test_codex_registry_uses_literal_stdin_marker():
 
     assert args[-1] == "-"
     assert all(isinstance(item, str) for item in args)
+    assert "--strict-config" not in args
 
 
 def test_dry_run_records_template_hashes_without_resolved_urls_or_homes(tmp_path):
@@ -155,7 +156,8 @@ def test_execute_codex_uses_fixed_argv_stdin_and_allowlisted_env(tmp_path):
     )
 
     assert report["status"] == "completed"
-    assert calls and calls[0]["argv"][:3] == ["codex", "exec", "--strict-config"]
+    assert calls and calls[0]["argv"][:3] == ["codex", "exec", "--model"]
+    assert "--strict-config" not in calls[0]["argv"]
     assert "--output-last-message" in calls[0]["argv"]
     assert isinstance(calls[0]["argv"], list)
     assert b"Public episode contract follows" in calls[0]["stdin"]

@@ -120,7 +120,6 @@ harnesses:
       prompt_transport: stdin
       args:
         - exec
-        - --strict-config
         - --model
         - "{{model_alias}}"
         - --sandbox
