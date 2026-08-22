@@ -348,6 +348,11 @@ def render_claude_config(repo_root: Path, claude_home: Path) -> Path:
     return path
 
 
+def anthropic_base_url(value: str) -> str:
+    normalized = value.rstrip("/")
+    return normalized[:-3] if normalized.endswith("/v1") else normalized
+
+
 def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], homes: Mapping[str, str]) -> dict[str, str]:
     child: dict[str, str] = {}
     if harness_name == "codex":
@@ -358,7 +363,7 @@ def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], home
         }
     elif harness_name == "claude-code":
         child = {
-            "ANTHROPIC_BASE_URL": parent_env.get("RESBENCH_LLM_BASE_URL", ""),
+            "ANTHROPIC_BASE_URL": anthropic_base_url(parent_env.get("RESBENCH_LLM_BASE_URL", "")),
             "ANTHROPIC_API_KEY": parent_env.get("RESBENCH_LLM_API_KEY", ""),
             "ANTHROPIC_AUTH_TOKEN": parent_env.get("RESBENCH_LLM_API_KEY", ""),
             "RESBENCH_K8S_MCP_URL": parent_env.get("RESBENCH_K8S_MCP_URL", ""),

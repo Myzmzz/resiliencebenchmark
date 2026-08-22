@@ -329,13 +329,25 @@ def test_execute_claude_stream_json_extracts_nested_final_json(tmp_path):
     )
 
     assert report["status"] == "completed"
-    assert calls[0]["env"]["ANTHROPIC_BASE_URL"] == runtime_env()["RESBENCH_LLM_BASE_URL"]
+    assert calls[0]["env"]["ANTHROPIC_BASE_URL"] == "https://gateway.example"
     assert calls[0]["env"]["ANTHROPIC_AUTH_TOKEN"] == runtime_env()["RESBENCH_LLM_API_KEY"]
     assert calls[0]["env"]["ANTHROPIC_API_KEY"] == runtime_env()["RESBENCH_LLM_API_KEY"]
     assert calls[0]["env"]["RESBENCH_K8S_MCP_URL"] == runtime_env()["RESBENCH_K8S_MCP_URL"]
     assert "OPENAI_API_KEY" not in calls[0]["env"]
     assert "KUBECONFIG" not in calls[0]["env"]
     assert load_json(artifact_ref_path(report, tmp_path, "agentResultRef"))["suspected_defect"] == "from claude stream-json"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("https://gateway.example/v1", "https://gateway.example"),
+        ("https://gateway.example/v1/", "https://gateway.example"),
+        ("https://gateway.example/api", "https://gateway.example/api"),
+    ],
+)
+def test_anthropic_base_url_removes_only_v1_suffix(value, expected):
+    assert trial.anthropic_base_url(value) == expected
 
 
 def test_execute_invalid_agent_result_fails_and_redacts_secrets(tmp_path):
