@@ -445,6 +445,8 @@ def extract_json_objects(text: str) -> list[dict[str, Any]]:
             collect(parsed)
         except json.JSONDecodeError:
             pass
+        for candidate in string_json_candidates(stripped):
+            collect(candidate)
     for line in text.splitlines():
         try:
             parsed = json.loads(line)

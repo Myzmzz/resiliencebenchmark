@@ -422,6 +422,15 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert not Path(calls[0]["env"]["DSH_HOME"]).exists()
 
 
+def test_extract_json_objects_accepts_multiline_fenced_agent_result():
+    final = valid_agent_result("from fenced dsh output")
+    text = "DeepSeek result follows:\n```json\n" + json.dumps(final, indent=2) + "\n```\n"
+
+    candidates = trial.extract_json_objects(text)
+
+    assert final in candidates
+
+
 def test_unknown_harness_and_model_are_rejected(tmp_path):
     with pytest.raises(ValueError, match="unknown harness"):
         trial.run_trial(REPO_ROOT, "missing", "gpt-5.6", artifact_root=tmp_path, parent_env=runtime_env())
