@@ -9,10 +9,11 @@
 - Public Episode, private Evaluator input, Controller plan, Agent result, run trace, Oracle contract, and Oracle observation schemas are present.
 - Controller safety checks and independent Evaluator logic have unit tests.
 - Repository validation, secret/path scanning, dry-run, and read-only cluster qualification are available.
-- Seven model aliases are registered; transport capability probes are implemented but have not been executed with a rotated runtime gateway credential. Long-context, tool-error recovery, Oracle-refusal, and OpenAI Responses behavior remain mandatory pre-matrix checks.
-- DeepSeek Harness has an exact top-level package/integrity pin, a complete integrity-bearing npm lock that forces all observed DSH modules to rc.7, an idempotent `npm ci` host installer, and post-install dependency-tree validation. The remote root and `resbench` identities both report `0.1.0-rc.7`; complete tool-trace export still must be qualified before matrix freeze.
+- All seven model aliases were probed through the rotated runtime gateway credential. GPT-5.6, DeepSeek V4 Pro, Qwen 3.8 Max, Claude Opus 5, and Kimi K2.5 passed every implemented transport check; MiniMax M1 did not produce valid structured JSON, and GLM 4.5 did not perform the single-tool probe. Long-context, tool-error recovery, and hidden-Oracle refusal remain mandatory pre-matrix behavioral checks.
+- DeepSeek Harness has an exact top-level package/integrity pin, a complete integrity-bearing npm lock that forces all observed DSH modules to rc.7, an idempotent `npm ci` host installer, and post-install dependency-tree validation. The remote root and `resbench` identities both report `0.1.0-rc.7`; its connectivity smoke passed, but the run trace still omits tool-call and tool-result events and therefore remains ineligible for scoring.
 - Prometheus MCP Chart objects are installed with a pinned chart/image and restricted ServiceAccount, but its Deployment is scaled to zero because cluster nodes cannot pull the GHCR image; Harbor mirroring is required before qualification.
 - Repository-local MCP implementations now exist for `k8s_ro`, `telemetry_ro`, `source_ro`, and `chaos_control`. Seven hardened loopback systemd units are deployed with per-service Unix identities, Episode-scoped RBAC/kubeconfigs, and 11 verified source locks. All four authenticated HTTP endpoints passed post-recovery qualification. BladeAI v0.6.2 connected all three read-only SSE clients to `verifier`; Chaos control was disabled and unconnected.
+- Codex 0.120.0, Claude Code 2.1.197, and DeepSeek Harness 0.1.0-rc.7 completed the bounded connectivity smoke with schema-valid Agent results. Codex and Claude emitted inspectable MCP trace events; DeepSeek reported all four evidence sources only in its final answer. The longer Codex public diagnosis trial exceeded its 300-second budget, so these are transport qualifications rather than scored diagnosis results.
 - The current read-only cluster state has all three nodes Ready. Sock Shop is no longer scaled to zero; the remaining cluster-wide fault-execution hard gate is 157 historical cluster-scoped ChaosBlade resources.
 
 ## Recovered host incident
@@ -80,7 +81,7 @@
 - The live CRD is cluster-scoped `chaosblade.io/v1alpha1`; the running operator reports version 1.8.0. Current CR phases are 104 `Running` and 53 `Error`.
 - Formal fault execution remains blocked until their owner confirms the supported recovery path and target-side residue is checked.
 - The local `chaos_control` MCP service treats ChaosBlade as cluster-scoped, verifies live target Pod UID before create, requires a one-time baseline capability, blocks on unsafe unowned global ChaosBlade state, and deletes only ledger-owned experiments. A durable deadline ledger and independent watchdog enforce `duration_seconds` and retry failed cleanup. Because the 157 historical resources are still present, real fault execution remains blocked.
-- Harbor runtime credentials are now supplied through root-owned mode-600 files and were used without persisting values in the repository. A rotated model-gateway credential is still required before model and Harness qualification.
+- Harbor and model-gateway runtime credentials are supplied through root-owned mode-600 files and were used without persisting values in the repository. The model base URL is normalized to `/v1`; reports were scanned to ensure neither the endpoint nor API key was persisted.
 
 ## Next completion gates
 
@@ -88,5 +89,5 @@
 2. Add a repeatable Sock Shop steady-load profile and prove Jaeger trace attribution for its critical paths.
 3. Renew kubelet serving certificates using the cluster distribution runbook.
 4. Reconcile the historical ChaosBlade resources with their owning platform.
-5. Supply a rotated model-gateway credential, execute the seven-model capability probe, and run Codex/Claude Code/DeepSeek smoke trials.
-6. Qualify complete BladeAI and DeepSeek trajectory export, freeze source-to-image mappings, and only then unlock the first 6–10 Episodes.
+5. Run long-context, tool-error-recovery, hidden-Oracle-refusal, and representative prompt-budget behavioral checks across the seven-model matrix.
+6. Qualify complete Codex/BladeAI/DeepSeek trajectory export, freeze source-to-image mappings, and only then unlock the first 6–10 Episodes.

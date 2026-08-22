@@ -79,7 +79,7 @@ harnesses:
 
   claude-code:
     kind: claude_code
-    status: preparation_configured_remote_unqualified
+    status: live_connectivity_smoke_qualified_full_lifecycle_pending
     entrypoint:
       mode: headless_cli
       command: claude
@@ -115,7 +115,7 @@ harnesses:
 
   codex:
     kind: codex
-    status: preparation_configured_remote_unqualified
+    status: live_connectivity_smoke_qualified_full_lifecycle-timeout
     entrypoint:
       mode: headless_cli
       command: codex
@@ -153,7 +153,7 @@ harnesses:
 
   deepseek-harness:
     kind: official_deepseek_harness
-    status: remote_runtime_installed_model_smoke_pending
+    status: live_connectivity_smoke_qualified_tool_trace_pending
     version_pin:
       upstream: "@deepseek-ai/dsh"
       distribution: npm
@@ -187,7 +187,7 @@ harnesses:
       forbid_shared_web_host_for_trials: true
     trace:
       current_capture: redacted-headless-stdout-and-final-result
-      session_tool_export: pending-live-host-qualification
+      session_tool_export: live-smoke-confirmed-absent-from-run-trace
       scored_trial_eligibility: blocked-until-complete-tool-trace-pass
     models:
       source: models.yaml
