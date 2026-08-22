@@ -129,7 +129,7 @@ harnesses:
         - --json
         - --output-schema
         - "{{output_schema_file}}"
-        - -
+        - "-"
     environment:
       openai_base_url: env:RESBENCH_LLM_BASE_URL
       openai_api_key: env:RESBENCH_LLM_API_KEY

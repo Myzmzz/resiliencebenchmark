@@ -67,6 +67,14 @@ def test_runner_tool_allowlist_matches_declared_mcp_contract():
         assert tools == set(contract["tools"][server]["allowed_operations"])
 
 
+def test_codex_registry_uses_literal_stdin_marker():
+    harnesses = yaml.safe_load((REPO_ROOT / "harness/harnesses.yaml").read_text(encoding="utf-8"))
+    args = harnesses["harnesses"]["codex"]["entrypoint"]["args"]
+
+    assert args[-1] == "-"
+    assert all(isinstance(item, str) for item in args)
+
+
 def test_dry_run_records_template_hashes_without_resolved_urls_or_homes(tmp_path):
     report = trial.run_trial(
         REPO_ROOT,
