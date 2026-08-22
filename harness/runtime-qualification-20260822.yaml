@@ -11,13 +11,17 @@ spec:
     reportSecretScan: passed
   modelProbe:
     reportRef: runtime-host:///var/lib/resiliencebenchmark/qualification/model-probes-20260822.json
+    replacementReportRef: runtime-host:///var/lib/resiliencebenchmark/qualification/model-probes-replacements-20260822.json
+    supersededAliases:
+      - glm-4.5
+      - MiniMax-M1
     models:
       gpt-5.6: supported
       deepseek-v4-pro: supported
       qwen3.8-max: supported
       claude-opus-5: supported
-      MiniMax-M1: structured-json-output-not-supported
-      glm-4.5: single-tool-call-not-supported
+      MiniMax-M3: structured-json-output-not-supported
+      glm-5.3: supported
       kimi-k2.5: supported
     commonSupported:
       - alias-resolution
