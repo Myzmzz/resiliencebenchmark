@@ -259,6 +259,28 @@ def test_default_abort_sample_floor_rejects_non_numeric_error_rate():
         generator.default_abort_min_samples(1, {"maxErrorRate": "two percent"})
 
 
+def test_baseline_schedule_is_deterministic_and_exactly_matches_mix():
+    generator = load_generator()
+    config = {
+        "randomSeed": 2026082201,
+        "trafficMix": [
+            {"flow": "search", "weightPercent": 60},
+            {"flow": "login", "weightPercent": 10},
+            {"flow": "order", "weightPercent": 30},
+        ],
+    }
+
+    first = generator.baseline_schedule(config)
+    second = generator.baseline_schedule(config)
+
+    assert first == second
+    assert len(first) == 100
+    assert first.count("search") == 60
+    assert first.count("login") == 10
+    assert first.count("order") == 30
+    assert [generator.selected_flow("baseline", first, index) for index in range(100)] == list(first)
+
+
 def test_generator_marks_train_ticket_application_status_failures(tmp_path, train_ticket_server):
     generator = load_generator()
     result_path = tmp_path / "train-ticket.jtl"

@@ -64,21 +64,25 @@ spec:
         description: Checkout path through cart, checkout, payment, and shipping services.
         syntheticLoadProfile: otel-demo-checkout
     steadyLoad:
-      generator: built-in-load-generator-or-k6
-      profileRef: "{{WORKLOAD_PROFILE_OTEL_DEMO}}"
-      targetRps: "{{OTEL_DEMO_TARGET_RPS}}"
+      generator: controller-owned-locust
+      profileRef: ../workloads/deterministic-profiles.yaml#otel-demo
+      users: 5
   slos:
-    - id: frontend-availability
-      queryRef: prometheus:otel_demo_frontend_success_rate
-      objective: ">= 0.99"
+    - id: entry-success-rate
+      queryRef: workload-summary:otel-demo-success-rate
+      objective: ">= 0.95"
       window: 5m
-    - id: checkout-p95-latency
-      queryRef: prometheus:otel_demo_checkout_p95_seconds
-      objective: "<= 1.0"
+    - id: entry-error-rate
+      queryRef: workload-summary:otel-demo-error-rate
+      objective: "<= 0.05"
       window: 5m
-    - id: traces-ingested
-      queryRef: jaeger:otel_demo_checkout_trace_count
-      objective: "> 0"
+    - id: entry-p95-latency
+      queryRef: workload-summary:otel-demo-p95-latency-ms
+      objective: "<= 1000"
+      window: 5m
+    - id: entry-throughput-ratio
+      queryRef: workload-summary:otel-demo-throughput-ratio
+      objective: ">= 0.95"
       window: 5m
   observability:
     prometheus:

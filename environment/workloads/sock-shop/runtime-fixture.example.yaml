@@ -1,0 +1,15 @@
+target:
+  base_url: http://front-end.sock-shop.svc.cluster.local:80
+  base_url_ref: runtime://sock-shop/base-url
+  allowed_hosts:
+    - front-end.sock-shop.svc.cluster.local
+credentials:
+  kubernetes_secret_ref:
+    name: sock-shop-workload-user
+    username_key: username
+    password_key: password
+artifacts:
+  pvc_claim: sock-shop-workload-results
+cluster:
+  allowed_namespaces:
+    - sock-shop

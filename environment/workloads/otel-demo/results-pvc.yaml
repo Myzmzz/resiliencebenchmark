@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: otel-demo-workload-results
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/managed-by: resiliencebenchmark
+    resiliencebenchmark.io/purpose: workload-results
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: nfs-client
+  resources:
+    requests:
+      storage: 1Gi

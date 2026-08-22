@@ -67,21 +67,25 @@ spec:
         description: Complete checkout through order, payment, and shipping services.
         syntheticLoadProfile: sock-shop-checkout
     steadyLoad:
-      generator: locust-or-k6
-      profileRef: "{{WORKLOAD_PROFILE_SOCK_SHOP}}"
-      targetRps: "{{SOCK_SHOP_TARGET_RPS}}"
+      generator: controller-owned-locust
+      profileRef: ../workloads/deterministic-profiles.yaml#sock-shop
+      users: 5
   slos:
-    - id: front-end-availability
-      queryRef: prometheus:sock_shop_front_end_success_rate
-      objective: ">= 0.99"
+    - id: entry-success-rate
+      queryRef: workload-summary:sock-shop-success-rate
+      objective: ">= 0.95"
       window: 5m
-    - id: checkout-p95-latency
-      queryRef: prometheus:sock_shop_checkout_p95_seconds
-      objective: "<= 1.5"
+    - id: entry-error-rate
+      queryRef: workload-summary:sock-shop-error-rate
+      objective: "<= 0.05"
       window: 5m
-    - id: cart-error-rate
-      queryRef: prometheus:sock_shop_cart_error_rate
-      objective: "<= 0.01"
+    - id: entry-p95-latency
+      queryRef: workload-summary:sock-shop-p95-latency-ms
+      objective: "<= 1500"
+      window: 5m
+    - id: entry-throughput-ratio
+      queryRef: workload-summary:sock-shop-throughput-ratio
+      objective: ">= 0.95"
       window: 5m
   observability:
     prometheus:

@@ -103,6 +103,18 @@ def test_render_is_deterministic_and_has_controller_labels(tmp_path):
     assert first["workloadConfig"]["cleanupCreatedOrders"] is True
 
 
+def test_baseline_profile_renders_fixed_seed_mix_and_artifact(tmp_path):
+    fixture = train_ticket_workload.load_fixture(fixture_file(tmp_path))
+    profile = train_ticket_workload.load_profile(PROFILE, "baseline")
+
+    plan = train_ticket_workload.render_plan("tt-baseline-001", "train-ticket", profile, fixture)
+
+    assert plan["randomSeed"] == 2026082201
+    assert sum(item["weightPercent"] for item in plan["trafficMix"]) == 100
+    assert plan["workloadConfig"]["randomSeed"] == 2026082201
+    assert plan["resultArtifact"] == "/results/train-ticket-baseline.jtl"
+
+
 def test_repository_example_fixture_is_valid():
     fixture = train_ticket_workload.load_fixture(EXAMPLE_FIXTURE)
 

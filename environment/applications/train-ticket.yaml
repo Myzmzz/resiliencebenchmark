@@ -61,21 +61,25 @@ spec:
         syntheticLoadProfile: train-ticket-order-query
     steadyLoad:
       generator: controller-owned-python-workload
-      profileRef: ../workloads/train-ticket/profiles.yaml
-      targetFlowQps: "{{TRAIN_TICKET_TARGET_FLOW_QPS}}"
+      profileRef: ../workloads/deterministic-profiles.yaml#train-ticket
+      targetFlowQps: 1.0
   slos:
-    - id: search-availability
-      queryRef: prometheus:train_ticket_http_success_rate
-      objective: ">= 0.99"
+    - id: entry-success-rate
+      queryRef: workload-summary:train-ticket-success-rate
+      objective: ">= 0.95"
       window: 5m
-    - id: preserve-order-p95-latency
-      queryRef: prometheus:train_ticket_preserve_order_p95_seconds
-      objective: "<= 2.5"
+    - id: entry-error-rate
+      queryRef: workload-summary:train-ticket-error-rate
+      objective: "<= 0.05"
       window: 5m
-    - id: error-budget-burn
-      queryRef: prometheus:train_ticket_error_budget_burn_rate
-      objective: "<= 2.0"
-      window: 10m
+    - id: entry-p95-latency
+      queryRef: workload-summary:train-ticket-p95-latency-ms
+      objective: "<= 2500"
+      window: 5m
+    - id: entry-throughput-ratio
+      queryRef: workload-summary:train-ticket-throughput-ratio
+      objective: ">= 0.95"
+      window: 5m
   observability:
     prometheus:
       sharedRef: shared/observability.yaml#prometheus

@@ -27,7 +27,7 @@ RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,62}$")
 K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 IMAGE_DIGEST_RE = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
 IMAGE_DIGEST_PLACEHOLDER_RE = re.compile(r"^.+@\{\{[A-Z0-9_]*DIGEST[A-Z0-9_]*\}\}$")
-SAFE_PROFILE_IDS = {"search", "login", "order"}
+SAFE_PROFILE_IDS = {"baseline", "search", "login", "order"}
 
 
 class WorkloadError(Exception):
@@ -123,6 +123,21 @@ def validate_profile(profile: dict[str, Any]) -> None:
     image = str(profile["generator"].get("image", ""))
     if not (IMAGE_DIGEST_RE.match(image) or IMAGE_DIGEST_PLACEHOLDER_RE.match(image)):
         raise WorkloadError("generator image must be pinned by sha256 digest or digest placeholder")
+    if profile_id == "baseline":
+        seed = profile.get("randomSeed")
+        if not isinstance(seed, int) or isinstance(seed, bool) or seed <= 0:
+            raise WorkloadError("baseline randomSeed must be a positive integer")
+        mix = profile.get("trafficMix")
+        if not isinstance(mix, list) or not mix:
+            raise WorkloadError("baseline trafficMix must be a non-empty list")
+        flows = [item.get("flow") for item in mix if isinstance(item, dict)]
+        if set(flows) != {"search", "login", "order"} or len(flows) != 3:
+            raise WorkloadError("baseline trafficMix must define search, login, and order exactly once")
+        weights = [item.get("weightPercent") for item in mix if isinstance(item, dict)]
+        if any(not isinstance(weight, int) or isinstance(weight, bool) or weight <= 0 for weight in weights):
+            raise WorkloadError("baseline trafficMix weights must be positive integers")
+        if sum(weights) != 100:
+            raise WorkloadError("baseline trafficMix weights must sum to 100")
 
 
 def load_fixture(fixture_path: Path) -> RuntimeFixture:
@@ -283,7 +298,7 @@ def common_labels(run_id: str) -> dict[str, str]:
 
 
 def workload_config(profile: dict[str, Any], fixture: RuntimeFixture) -> dict[str, Any]:
-    return {
+    config = {
         "profileId": profile["id"],
         "targetUrlRef": fixture.base_url_ref,
         "scenario": fixture.scenario,
@@ -294,13 +309,21 @@ def workload_config(profile: dict[str, Any], fixture: RuntimeFixture) -> dict[st
         "abortThresholds": profile["abortThresholds"],
         "cleanupCreatedOrders": bool(profile.get("cleanupCreatedOrders", True)),
     }
+    if profile["id"] == "baseline":
+        config["randomSeed"] = profile["randomSeed"]
+        config["trafficMix"] = profile["trafficMix"]
+    return config
+
+
+def profile_result_artifact(profile: dict[str, Any]) -> str:
+    return str(profile.get("resultArtifact") or profile["generator"]["resultArtifact"])
 
 
 def render_manifest(run_id: str, namespace: str, profile: dict[str, Any], fixture: RuntimeFixture) -> list[dict[str, Any]]:
     labels = common_labels(run_id)
     name = object_name(run_id)
     config = workload_config(profile, fixture)
-    result_artifact = str(profile["generator"]["resultArtifact"])
+    result_artifact = profile_result_artifact(profile)
     env = [
         {"name": "TRAIN_TICKET_BASE_URL", "value": fixture.base_url},
         {"name": "TRAIN_TICKET_BASE_URL_REF", "value": fixture.base_url_ref},
@@ -400,11 +423,13 @@ def render_plan(run_id: str, namespace: str, profile: dict[str, Any], fixture: R
         "concurrency": profile["concurrency"],
         "durationSeconds": profile["durationSeconds"],
         "abortThresholds": profile["abortThresholds"],
-        "resultArtifact": profile["generator"]["resultArtifact"],
-        "artifactRef": f"pvc://{namespace}/{fixture.pvc_claim}{profile['generator']['resultArtifact']}",
+        "resultArtifact": profile_result_artifact(profile),
+        "artifactRef": f"pvc://{namespace}/{fixture.pvc_claim}{profile_result_artifact(profile)}",
         "artifactPvcClaim": fixture.pvc_claim,
         "credentialMode": "kubernetesSecretRef" if fixture.secret_name else "environmentRef",
         "workloadConfig": config,
+        "randomSeed": profile.get("randomSeed"),
+        "trafficMix": profile.get("trafficMix", []),
         "objects": [
             {"kind": item["kind"], "name": item["metadata"]["name"], "namespace": item["metadata"]["namespace"]}
             for item in manifest
@@ -551,6 +576,8 @@ def summarized_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "artifactRef": plan["artifactRef"],
         "artifactPvcClaim": plan["artifactPvcClaim"],
         "credentialMode": plan["credentialMode"],
+        "randomSeed": plan.get("randomSeed"),
+        "trafficMix": plan.get("trafficMix", []),
         "objects": plan["objects"],
     }
 

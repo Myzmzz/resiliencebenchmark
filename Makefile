@@ -1,10 +1,14 @@
-.PHONY: sync validate test test-mcp dry-run qualify inventory-images qualify-mcp-dry qualify-remote-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-deepseek-dry trial-dry
+.PHONY: sync validate validate-workloads test test-mcp dry-run qualify inventory-images qualify-mcp-dry qualify-remote-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-deepseek-dry trial-dry
 
 sync:
 	uv sync --extra test
 
 validate:
 	uv run python scripts/benchmark_prepare.py validate-repo --repo .
+	uv run python scripts/validate_workload_profiles.py
+
+validate-workloads:
+	uv run python scripts/validate_workload_profiles.py
 
 test:
 	uv run pytest

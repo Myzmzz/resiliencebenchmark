@@ -11,6 +11,41 @@ spec:
       - /opt/resiliencebenchmark/train-ticket/run-workload.sh
     resultArtifact: /results/train-ticket.jtl
   profiles:
+    - id: baseline
+      description: Deterministic mixed entry workload for baseline and recovery qualification.
+      randomSeed: 2026082201
+      trafficMix:
+        - flow: search
+          weightPercent: 60
+        - flow: login
+          weightPercent: 10
+        - flow: order
+          weightPercent: 30
+      targetFlowQps: 1.0
+      concurrency: 1
+      durationSeconds: 600
+      cleanupCreatedOrders: true
+      resultArtifact: /results/train-ticket-baseline.jtl
+      steps:
+        - name: search-flow
+          method: MIXED
+          path: profile://search
+          weight: 0.6
+          requiresAuthentication: false
+        - name: login-flow
+          method: MIXED
+          path: profile://login
+          weight: 0.1
+          requiresAuthentication: false
+        - name: order-flow
+          method: MIXED
+          path: profile://order
+          weight: 0.3
+          requiresAuthentication: true
+      abortThresholds:
+        maxErrorRate: 0.05
+        maxP95LatencyMs: 2500
+        maxConsecutiveFailures: 20
     - id: search
       description: Search direct travel options without creating orders.
       targetFlowQps: 2.0

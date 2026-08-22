@@ -1,0 +1,115 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: DeterministicWorkloadProfileSet
+metadata:
+  name: benchmark-entry-workloads
+  visibility: public-agent-readable
+spec:
+  defaults:
+    warmupSeconds: 60
+    durationSeconds: 600
+    evaluationWindowSeconds: 300
+    minimumSamples: 100
+    entrySlo:
+      minimumSuccessRate: 0.95
+      maximumErrorRate: 0.05
+      latencyStatistic: p95
+      minimumThroughputRatio: 0.95
+  applications:
+    - id: train-ticket
+      namespace: train-ticket
+      entryService: ts-gateway-service
+      executor:
+        kind: controller-owned-python-workload
+        profileRef: train-ticket/profiles.yaml#baseline
+        resultArtifact: /results/train-ticket-baseline.jtl
+      determinism:
+        randomSeed: 2026082201
+        seedDerivation: sha256-seed-run-slot
+        workerIsolation: slot-derived-subseed
+        datasets:
+          - runtime-fixture://train-ticket/stations
+          - runtime-credential-ref://train-ticket/workload-user
+      load:
+        model: open
+        targetFlowQps: 1.0
+        concurrency: 1
+      trafficMix:
+        - flow: search
+          weightPercent: 60
+        - flow: login
+          weightPercent: 10
+        - flow: order
+          weightPercent: 30
+      entrySlo:
+        minimumSuccessRate: 0.95
+        maximumErrorRate: 0.05
+        p95LatencyMs: 2500
+        minimumThroughputRatio: 0.95
+        maxConsecutiveFailures: 20
+    - id: sock-shop
+      namespace: sock-shop
+      entryService: front-end
+      executor:
+        kind: controller-owned-locust
+        image: "{{LOCUST_WORKLOAD_IMAGE_REPOSITORY}}:{{LOCUST_WORKLOAD_IMAGE_TAG}}@{{LOCUST_WORKLOAD_IMAGE_DIGEST}}"
+        profileRef: sock-shop/locustfile.py
+        resultArtifact: /results/sock-shop-baseline.csv
+      determinism:
+        randomSeed: 2026082202
+        seedDerivation: sha256-seed-user-iteration
+        workerIsolation: per-user-subseed
+        datasets:
+          - runtime-fixture://sock-shop/catalogue
+          - runtime-credential-ref://sock-shop/workload-user
+      load:
+        model: closed
+        users: 5
+        spawnRatePerSecond: 1
+      trafficMix:
+        - flow: browse-catalogue
+          weightPercent: 50
+        - flow: view-cart
+          weightPercent: 20
+        - flow: add-to-cart
+          weightPercent: 15
+        - flow: checkout-order
+          weightPercent: 15
+      entrySlo:
+        minimumSuccessRate: 0.95
+        maximumErrorRate: 0.05
+        p95LatencyMs: 1500
+        minimumThroughputRatio: 0.95
+        maxConsecutiveFailures: 20
+    - id: otel-demo
+      namespace: otel-demo
+      entryService: frontend-proxy
+      executor:
+        kind: built-in-locust-with-seed-overlay
+        image: "{{LOCUST_WORKLOAD_IMAGE_REPOSITORY}}:{{LOCUST_WORKLOAD_IMAGE_TAG}}@{{LOCUST_WORKLOAD_IMAGE_DIGEST}}"
+        profileRef: otel-demo/locustfile.py
+        sourceDerivedFrom: source-lock://otel-demo-2.2.0/src/load-generator/locustfile.py
+        resultArtifact: /results/otel-demo-baseline.csv
+      determinism:
+        randomSeed: 2026082203
+        seedDerivation: sha256-seed-user-iteration
+        workerIsolation: per-user-subseed
+        datasets:
+          - source-lock://otel-demo-2.2.0/src/load-generator/people.json
+          - source-lock://otel-demo-2.2.0/product-ids
+      load:
+        model: closed
+        users: 5
+        spawnRatePerSecond: 1
+      trafficMix:
+        - flow: browse-products
+          weightPercent: 74
+        - flow: cart-operations
+          weightPercent: 19
+        - flow: checkout
+          weightPercent: 7
+      entrySlo:
+        minimumSuccessRate: 0.95
+        maximumErrorRate: 0.05
+        p95LatencyMs: 1000
+        minimumThroughputRatio: 0.95
+        maxConsecutiveFailures: 20

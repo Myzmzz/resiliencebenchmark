@@ -10,6 +10,7 @@ JMeter plan in the public benchmark repository.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 import os
@@ -467,6 +468,41 @@ def run_flow(
     raise WorkloadRuntimeError(f"unsupported profileId: {profile_id}")
 
 
+def baseline_schedule(config: dict[str, Any]) -> tuple[str, ...]:
+    seed = config.get("randomSeed")
+    mix = config.get("trafficMix")
+    if not isinstance(seed, int) or isinstance(seed, bool) or seed <= 0:
+        raise WorkloadRuntimeError("baseline randomSeed must be a positive integer")
+    if not isinstance(mix, list) or not mix:
+        raise WorkloadRuntimeError("baseline trafficMix must be a non-empty list")
+    schedule: list[str] = []
+    for item in mix:
+        if not isinstance(item, dict):
+            raise WorkloadRuntimeError("baseline trafficMix entries must be objects")
+        flow = item.get("flow")
+        weight = item.get("weightPercent")
+        if flow not in {"search", "login", "order"}:
+            raise WorkloadRuntimeError("baseline trafficMix contains an unsupported flow")
+        if not isinstance(weight, int) or isinstance(weight, bool) or weight <= 0:
+            raise WorkloadRuntimeError("baseline trafficMix weights must be positive integers")
+        schedule.extend([flow] * weight)
+    if len(schedule) != 100:
+        raise WorkloadRuntimeError("baseline trafficMix weights must sum to 100")
+    for index in range(len(schedule) - 1, 0, -1):
+        digest = hashlib.sha256(f"{seed}:{index}".encode("utf-8")).digest()
+        selected = int.from_bytes(digest[:8], "big") % (index + 1)
+        schedule[index], schedule[selected] = schedule[selected], schedule[index]
+    return tuple(schedule)
+
+
+def selected_flow(profile_id: str, schedule: tuple[str, ...], slot: int) -> str:
+    if profile_id != "baseline":
+        return profile_id
+    if not schedule:
+        raise WorkloadRuntimeError("baseline schedule is empty")
+    return schedule[slot % len(schedule)]
+
+
 def record_samples(state: RunState, samples: list[Sample], thresholds: dict[str, Any], min_samples: int) -> None:
     if state.abort_reason:
         return
@@ -561,6 +597,7 @@ def run_workload(
     schedule = {"next": 0}
     start = time.monotonic()
     deadline = start + duration_seconds
+    flow_schedule = baseline_schedule(config) if profile_id == "baseline" else ()
 
     handle, writer = write_jtl_header(result_path)
     try:
@@ -580,7 +617,8 @@ def run_workload(
                     time.sleep(scheduled_at - now)
                 if time.monotonic() >= deadline:
                     return
-                samples = run_flow(profile_id, client, config, username, password, thread_name)
+                flow_id = selected_flow(profile_id, flow_schedule, slot)
+                samples = run_flow(flow_id, client, config, username, password, f"{thread_name}:{flow_id}")
                 with lock:
                     append_jtl(writer, handle, samples, concurrency)
                     record_samples(state, samples, thresholds, min_samples)

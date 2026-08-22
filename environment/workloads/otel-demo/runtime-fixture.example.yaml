@@ -1,0 +1,10 @@
+target:
+  base_url: http://frontend-proxy.otel-demo.svc.cluster.local:8080
+  base_url_ref: runtime://otel-demo/base-url
+  allowed_hosts:
+    - frontend-proxy.otel-demo.svc.cluster.local
+artifacts:
+  pvc_claim: otel-demo-workload-results
+cluster:
+  allowed_namespaces:
+    - otel-demo
