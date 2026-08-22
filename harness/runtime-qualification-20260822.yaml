@@ -47,11 +47,13 @@ spec:
       residual: The full public diagnosis trial exceeded its 300-second budget; normalized trace records MCP operations as tool results without separate tool-call events.
     claudeCode:
       model: claude-opus-5
-      trialRef: runtime-harness://20260822T025515Z-EPI-PUBLIC-TIMEOUT-001-claude-code-claude-opus-5
+      trialRef: runtime-harness://20260822T030614Z-EPI-PUBLIC-TIMEOUT-001-claude-code-claude-opus-5
       status: completed
-      evidenceSources: [k8s_ro, telemetry_ro, source_ro]
+      agentStatus: completed
+      evidenceSources: [k8s_ro, telemetry_ro, source_ro, chaos_control]
       allFourMcpServersConnectedAtInit: true
       chaosCreateUsed: false
+      residual: The four-call cap did not exercise Kubernetes events/logs, Prometheus/Loki, source file reads, or the Chaos create/destroy chain.
     deepseekHarness:
       model: deepseek-v4-pro
       trialRef: runtime-harness://20260822T025839Z-EPI-PUBLIC-TIMEOUT-001-deepseek-harness-deepseek-v4-pro
@@ -63,6 +65,10 @@ spec:
     chaosExecutionEnabled: false
     historicalChaosBladeResources: 157
     realFaultInjectionPerformed: false
+  mcpRepairs:
+    k8sListResources:
+      behavior: namespaced lists return type-specific bounded summaries; get-by-name retains detailed sanitized objects
+      liveVerification: otel-demo Pod limit=1 returned a Running summary under the 25000-character response cap
   scoredMatrixBlockers:
     - complete DeepSeek tool trajectory export
     - qualify Codex full-lifecycle completion within the configured budget
