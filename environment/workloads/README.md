@@ -70,3 +70,17 @@ complete artifact checks. Only after throughput repeatability is accepted is
 the calibrated throughput frozen; a fault run must then retain at least 95% of
 that value. Until this gate is complete, result summaries deliberately report
 that throughput calibration is required and Chaos execution remains blocked.
+
+For Locust workloads, cumulative statistics are reset 300 seconds into the
+600-second run, so the final summary represents the last 300 seconds. Freeze
+the median throughput only when both summaries pass their entry SLO and their
+throughput spread is at most 10%:
+
+```bash
+python3 scripts/calibrate_workload_results.py \
+  --application otel-demo \
+  --summary run-1/otel-demo-summary.json \
+  --summary run-2/otel-demo-summary.json \
+  --maximum-throughput-spread-ratio 0.10 \
+  --minimum-throughput-ratio 0.95
+```

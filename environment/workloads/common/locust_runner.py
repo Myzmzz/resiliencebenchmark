@@ -11,6 +11,8 @@ import subprocess
 import sys
 from typing import Any
 
+from deterministic import evaluation_window_plan
+
 
 def require_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
@@ -94,6 +96,11 @@ def evaluate(stats_path: Path) -> tuple[dict[str, Any], bool]:
     throughput_ratio = float_env("RESBENCH_MINIMUM_THROUGHPUT_RATIO")
     baseline_throughput = float(baseline_raw) if baseline_raw else None
     minimum_throughput = baseline_throughput * throughput_ratio if baseline_throughput is not None else None
+    window = evaluation_window_plan(
+        int_env("RESBENCH_DURATION_SECONDS", 60),
+        int_env("RESBENCH_WARMUP_SECONDS", 0),
+        int_env("RESBENCH_EVALUATION_WINDOW_SECONDS", 1),
+    )
     checks = {
         "minimumSamples": requests >= minimum_samples,
         "minimumSuccessRate": success_rate >= minimum_success,
@@ -115,6 +122,7 @@ def evaluate(stats_path: Path) -> tuple[dict[str, Any], bool]:
         "throughputRps": throughput,
         "baselineThroughputRps": baseline_throughput,
         "minimumThroughputRps": minimum_throughput,
+        "measurementWindow": window,
         "checks": checks,
         "qualified": all(checks.values()),
         "calibrationRequired": baseline_throughput is None,

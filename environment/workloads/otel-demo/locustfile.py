@@ -5,14 +5,15 @@ from __future__ import annotations
 import itertools
 import os
 
-from locust import HttpUser, constant_pacing, task
+from locust import HttpUser, constant_pacing, events, task
 
-from deterministic import deterministic_choice, deterministic_uuid, exact_percent_schedule
+from deterministic import deterministic_choice, deterministic_uuid, exact_percent_schedule, install_locust_evaluation_window
 
 
 SEED = int(os.environ.get("RESBENCH_RANDOM_SEED", "2026082203"))
 SCHEDULE = exact_percent_schedule(SEED, (("browse-products", 74), ("cart-operations", 19), ("checkout", 7)))
 USER_COUNTER = itertools.count()
+MEASUREMENT_WINDOW = install_locust_evaluation_window(events)
 PRODUCTS = (
     "0PUK6V6EV0",
     "1YMWWN1N4O",

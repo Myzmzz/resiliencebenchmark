@@ -173,6 +173,8 @@ def render_plan(application: str, run_id: str, defaults: dict[str, Any], app: di
         {"name": "RESBENCH_USERS", "value": str(load["users"])},
         {"name": "RESBENCH_SPAWN_RATE", "value": str(load["spawnRatePerSecond"])},
         {"name": "RESBENCH_DURATION_SECONDS", "value": str(defaults["durationSeconds"])},
+        {"name": "RESBENCH_WARMUP_SECONDS", "value": str(defaults["warmupSeconds"])},
+        {"name": "RESBENCH_EVALUATION_WINDOW_SECONDS", "value": str(defaults["evaluationWindowSeconds"])},
         {"name": "RESBENCH_CSV_PREFIX", "value": result_prefix},
         {"name": "RESBENCH_SUMMARY_PATH", "value": f"/results/{application}-summary.json"},
         {"name": "RESBENCH_MINIMUM_SUCCESS_RATE", "value": str(slo["minimumSuccessRate"])},

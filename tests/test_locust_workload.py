@@ -27,6 +27,9 @@ def test_sock_shop_render_uses_seed_mix_secret_refs_and_no_values():
     assert "sock-shop-workload-user" in rendered
     assert "password=" not in rendered
     assert plan["manifest"][1]["spec"]["template"]["spec"]["containers"][0]["image"] == image
+    env = plan["manifest"][1]["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert {"name": "RESBENCH_WARMUP_SECONDS", "value": "60"} in env
+    assert {"name": "RESBENCH_EVALUATION_WINDOW_SECONDS", "value": "300"} in env
 
 
 def test_otel_demo_render_has_no_credential_environment():

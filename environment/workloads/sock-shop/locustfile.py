@@ -8,9 +8,14 @@ import json
 import os
 from urllib import request as urllib_request
 
-from locust import HttpUser, constant_pacing, task
+from locust import HttpUser, constant_pacing, events, task
 
-from deterministic import deterministic_choice, deterministic_uuid, exact_percent_schedule
+from deterministic import (
+    deterministic_choice,
+    deterministic_uuid,
+    exact_percent_schedule,
+    install_locust_evaluation_window,
+)
 
 
 SEED = int(os.environ.get("RESBENCH_RANDOM_SEED", "2026082202"))
@@ -20,6 +25,7 @@ SCHEDULE = exact_percent_schedule(
     (("browse-catalogue", 50), ("view-cart", 20), ("add-to-cart", 15), ("checkout-order", 15)),
 )
 USER_COUNTER = itertools.count()
+MEASUREMENT_WINDOW = install_locust_evaluation_window(events)
 
 
 class SockShopUser(HttpUser):

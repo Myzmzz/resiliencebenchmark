@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import py_compile
+import sys
 
 ROOT = Path("environment/workloads")
 RUNNER = ROOT / "common" / "locust_runner.py"
@@ -21,6 +22,7 @@ deterministic = load_module("deterministic_workload", DETERMINISTIC)
 
 
 def load_runner():
+    sys.modules["deterministic"] = deterministic
     return load_module("locust_runner", RUNNER)
 
 
@@ -32,6 +34,19 @@ def test_exact_percent_schedule_and_ids_are_reproducible():
     assert first.count("a") == 70
     assert first.count("b") == 30
     assert deterministic.deterministic_uuid(123, 1, 2, "user") == deterministic.deterministic_uuid(123, 1, 2, "user")
+
+
+def test_evaluation_window_uses_final_five_minutes_after_warmup():
+    formal = deterministic.evaluation_window_plan(600, 60, 300)
+    smoke = deterministic.evaluation_window_plan(60, 60, 300)
+
+    assert formal["resetAfterSeconds"] == 300
+    assert formal["measurementWindowSeconds"] == 300
+    assert formal["calibrationWindowEligible"] is True
+    assert smoke["resetAfterSeconds"] == 0
+    assert smoke["measurementWindowSeconds"] == 60
+    assert smoke["appliedWarmupSeconds"] == 0
+    assert smoke["calibrationWindowEligible"] is False
 
 
 def test_locust_profiles_compile_without_importing_runtime_dependencies(tmp_path):
@@ -58,6 +73,9 @@ def test_locust_runner_evaluates_95_percent_entry_slo(tmp_path, monkeypatch):
         "RESBENCH_MINIMUM_SAMPLES": "100",
         "RESBENCH_MINIMUM_THROUGHPUT_RATIO": "0.95",
         "RESBENCH_BASELINE_THROUGHPUT_RPS": "10",
+        "RESBENCH_DURATION_SECONDS": "600",
+        "RESBENCH_WARMUP_SECONDS": "60",
+        "RESBENCH_EVALUATION_WINDOW_SECONDS": "300",
     }
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -74,3 +92,4 @@ def test_locust_runner_evaluates_95_percent_entry_slo(tmp_path, monkeypatch):
         "maximumP95LatencyMs": True,
         "minimumThroughput": True,
     }
+    assert summary["measurementWindow"]["calibrationWindowEligible"] is True
