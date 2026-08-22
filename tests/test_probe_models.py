@@ -4,6 +4,18 @@ from pathlib import Path
 from scripts import probe_models
 
 
+PRODUCTION_MODELS = Path("harness/models.yaml")
+
+
+def test_production_registry_uses_requested_glm_and_minimax_aliases():
+    models = probe_models.load_models_config(PRODUCTION_MODELS)["models"]
+
+    assert "glm-5.3" in models
+    assert "MiniMax-M3" in models
+    assert "glm-4.5" not in models
+    assert "MiniMax-M1" not in models
+
+
 def write_models_config(path: Path) -> None:
     path.write_text(
         "\n".join(

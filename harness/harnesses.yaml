@@ -69,8 +69,8 @@ harnesses:
         - deepseek-v4-pro
         - qwen3.8-max
         - claude-opus-5
-        - MiniMax-M1
-        - glm-4.5
+        - MiniMax-M3
+        - glm-5.3
         - kimi-k2.5
     safety:
       require_controller_budget_token: true
@@ -143,8 +143,8 @@ harnesses:
         - deepseek-v4-pro
         - qwen3.8-max
         - claude-opus-5
-        - MiniMax-M1
-        - glm-4.5
+        - MiniMax-M3
+        - glm-5.3
         - kimi-k2.5
     safety:
       require_fresh_codex_home_per_trial: true
