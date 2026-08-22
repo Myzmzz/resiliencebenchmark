@@ -45,6 +45,29 @@ def test_otel_demo_render_has_no_credential_environment():
     assert {"name": "RESBENCH_BASELINE_THROUGHPUT_RPS", "value": "12.0"} in env
 
 
+def test_otel_demo_uses_frozen_calibration_when_cli_override_is_absent(capsys):
+    image = "harbor.example/workload:commit@sha256:" + "d" * 64
+
+    code = locust_workload.run(
+        [
+            "render",
+            "--application",
+            "otel-demo",
+            "--fixture",
+            "environment/workloads/otel-demo/runtime-fixture.example.yaml",
+            "--image",
+            image,
+        ]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    env = report["manifest"][1]["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert {
+        "name": "RESBENCH_BASELINE_THROUGHPUT_RPS",
+        "value": "7.62106341740766",
+    } in env
+
+
 def test_real_start_requires_digest_pinned_image(tmp_path):
     kubeconfig = tmp_path / "config"
     kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")

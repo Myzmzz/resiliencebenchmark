@@ -119,8 +119,11 @@ spec:
     minimumHealthyWindow: 10m
     failurePolicy: block-episode
   readiness:
-    currentStatus: workload-smoke-qualified-business-baseline-pending
+    currentStatus: inactive-standby-otel-demo-selected
     knownGaps:
+      - observedAt: 2026-08-22
+        severity: informational
+        item: All 48 Deployments and 3 StatefulSets are intentionally scaled to zero while OTel Demo is the selected test system; original replicas are preserved in standby annotations.
       - observedAt: 2026-08-22
         severity: blocking
         item: The 60-second business smokes passed, but the required pair of 10-minute healthy baseline windows has not yet been executed and archived.

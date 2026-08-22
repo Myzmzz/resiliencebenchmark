@@ -21,7 +21,13 @@
 - One public contract now freezes application-specific random seeds, business-flow mixes, load models, 600-second runtime, result artifacts, and entry SLOs. The common gate is at least 95% success, at most 5% errors, application-specific p95 latency, and at least 95% of the calibrated healthy throughput.
 - Train-Ticket uses seed `2026082201` and a 60/10/30 search/login/order mix. Sock Shop uses seed `2026082202` and a 50/20/15/15 catalogue/view-cart/add-cart/checkout mix. OTel Demo uses seed `2026082203` and a 74/19/7 browse/cart/checkout mix.
 - All three controller-owned generators passed bounded 60-second business smoke tests and retained evidence on application-scoped PVCs. These runs prove executability and path coverage; they do not freeze throughput.
-- Formal calibration remains fail-closed: each application requires two 600-second no-fault runs with identical seed, mix, load parameters, and generator digest before the throughput baseline and its 95% floor can be accepted.
+- OTel Demo formal calibration is complete: two independent 600-second runs evaluated only their final 300-second windows. Median healthy throughput is 7.621063 RPS, the frozen 95% floor is 7.240010 RPS, and throughput spread was 0.074%. Train-Ticket and Sock Shop remain uncalibrated while inactive.
+
+## Active application selection
+
+- OTel Demo is the only active test application. Its 22 business Deployments are Ready; the built-in load generator is intentionally 0 so controller-owned deterministic Jobs are the only load source.
+- All 48 Train-Ticket Deployments, 3 Train-Ticket StatefulSets, and 14 Sock Shop Deployments are intentionally scaled to 0. Their namespaces, Services, PVCs, Secrets, application data, and original replica counts are retained; no application data was deleted.
+- The active-system marker is `otel-demo/resbench-active-system`. Inactive controllers carry `resiliencebenchmark.io/standby-replicas`, making the selection reversible without guessing replica counts.
 
 ## Recovered host incident
 
@@ -39,9 +45,9 @@
 
 ## Live application state
 
-### Train-Ticket
+### Train-Ticket (inactive standby)
 
-- All 48 Train-Ticket Deployments are Ready after worker recovery.
+- All 48 Deployments and 3 StatefulSets are currently scaled to zero because OTel Demo is selected. Their earlier Ready and workload-smoke evidence below remains historical qualification evidence, not current activity.
 - `ts-order-service` was restored from 0/2 to 2/2 Ready by a scoped rolling restart.
 - The original runtime failure included a full accept queue, thousands of file descriptors, and accumulated `CLOSE_WAIT` connections; recurrence under sustained load is not yet excluded.
 - The controller-owned workload image was built from commit `05685b72045d`, pushed to Harbor, and pinned by manifest digest `sha256:1f767740be52f0fd681bc16ef359c86a4989c67c5678d602239a52163a1018e0`. Its runtime account is held only in `train-ticket-workload-user`, and JTL evidence is stored on the Bound `train-ticket-workload-results` PVC.
@@ -51,20 +57,22 @@
 - Nacos replicas had diverged and advertised deleted order, preserve, and Gateway Pod IPs as healthy. A rolling Nacos restart, Distro-initialization wait, three-replica registry equality check, and subsequent Gateway restart removed the stale targets. Replica equality is not yet an automated qualification gate.
 - The latest read-only runtime image inventory observed 85 application/init containers; all were Ready or successfully completed and had runtime SHA-256 digests. This does not yet prove the deployed image-to-source mapping.
 
-### OTel Demo
+### OTel Demo (selected active system)
 
-- All 23 OTel Demo Deployments are Ready after worker recovery; the standard load generator is 1/1 Ready.
+- All 22 OTel Demo business Deployments are Ready; the standard load generator is intentionally scaled to 0 during controlled benchmark operation.
 - Application metrics are visible in shared Prometheus under `otel-demo/*` jobs.
 - Recent application traces are visible in shared Jaeger.
 - `namespace=otel-demo` log streams are visible in Loki.
 - Kubeletstats is incomplete because node serving certificates are expired; node-exporter, cAdvisor, and kube-state-metrics remain available.
 - The latest three-application runtime image inventory observed 29 OTel Demo application/init containers; all were Ready or successfully completed and had runtime SHA-256 digests.
-- The fixed-seed OTel workload smoke recorded 474 requests, 0 failures, 110 ms entry p95, and 8.023 requests/s. Its structured summary remains on the `otel-demo-workload-results` PVC and explicitly marks throughput calibration as pending.
+- The earlier fixed-seed OTel smoke recorded 474 requests, 0 failures, 110 ms entry p95, and 8.023 requests/s. Its smoke-only calibration-pending state is superseded by the formal calibration below.
+- Two formal calibration windows each recorded 2280 requests and 0 failures. Their throughputs were 7.618242 and 7.623884 RPS, p95 values were 37 and 38 ms, and the resulting 95% throughput floor is 7.240010 RPS. Run CSVs, summaries, hashes, and the calibration artifact are retained under the PVC `calibration/` directory.
+- Post-calibration read-only checks found 6,980 OTel Demo Prometheus series, seven matching Jaeger application services with a recent frontend trace, and nine OTel Demo Loki series.
 
-### Sock Shop
+### Sock Shop (inactive standby)
 
 - All 14 source images were relayed to Harbor for `linux/amd64`, verified by manifest digest, and rendered in the cluster-required `repository:tag@digest` form. Multi-architecture source indexes were resolved to platform manifest digests before pinning.
-- All 14 Deployments are Ready. The front-end root, catalogue, tags, and customers paths returned HTTP 200.
+- All 14 Deployments are currently scaled to zero because OTel Demo is selected. Their earlier Ready and business-smoke evidence below remains historical qualification evidence, not current activity.
 - The latest runtime inventory observed 15 Sock Shop containers; every container was Ready or successfully completed and digest-qualified. The combined Train-Ticket, Sock Shop, and OTel Demo inventory qualified 129 containers with no missing runtime digest and no unready container.
 - Prometheus namespace series and a recent Loki stream were observed. Sock Shop trace attribution in Jaeger and the two-run 10-minute throughput calibration remain blocking qualification gaps.
 - Redis snapshot persistence was disabled for the ephemeral session store, and `carts-db` plus `orders-db` were pinned to the Harbor-verified MongoDB 3.4.24 linux/amd64 manifest required by the archived legacy drivers. The synthetic workload user now has one linked address and card.
@@ -97,7 +105,7 @@
 
 ## Next completion gates
 
-1. Run and archive two required 10-minute no-fault baselines for each application, then freeze throughput and its 95% floor; add fail-closed Nacos replica/Kubernetes Pod-IP reconciliation to Train-Ticket reset qualification.
+1. Keep OTel Demo as the only active test application and use the frozen 7.240010 RPS throughput floor for its fault Episodes; calibrate Train-Ticket or Sock Shop only when one of them is explicitly selected later.
 2. Prove Sock Shop Jaeger attribution for front-end, catalogue, cart, order, payment, and shipping paths under the deterministic workload.
 3. Renew kubelet serving certificates using the cluster distribution runbook.
 4. Reconcile the historical ChaosBlade resources with their owning platform.

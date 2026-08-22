@@ -1,0 +1,87 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentSelectionAndCalibrationEvidence
+metadata:
+  name: single-active-otel-demo-calibration-20260822
+spec:
+  status: live-applied-otel-demo-calibrated
+  activeApplication: otel-demo
+  selection:
+    strategy: reversible-scale-to-zero
+    markerRef: kubernetes://otel-demo/configmap/resbench-active-system
+    inactiveApplications:
+      - id: train-ticket
+        controllersScaledToZero: 51
+        deploymentCount: 48
+        statefulSetCount: 3
+        remainingPods: 0
+      - id: sock-shop
+        controllersScaledToZero: 14
+        deploymentCount: 14
+        statefulSetCount: 0
+        remainingPods: 0
+    restoreMetadata:
+      annotation: resiliencebenchmark.io/standby-replicas
+      namespacesRetained: true
+      persistentVolumesRetained: true
+      secretsRetained: true
+      servicesRetained: true
+      applicationDataDeleted: false
+  otelDemo:
+    businessDeploymentsDesired: 22
+    businessDeploymentsReady: 22
+    builtInLoadGeneratorReplicas: 0
+    controlledLoadOnly: true
+    staleEvictedPodsRemoved: 3
+  calibration:
+    status: qualified
+    profileRef: ../workloads/deterministic-profiles.yaml#otel-demo
+    baselineRef: ../workloads/calibrated-baselines.yaml#otel-demo
+    randomSeed: 2026082203
+    durationSecondsPerRun: 600
+    measurementWindowSeconds: 300
+    trafficMix:
+      browse-products: 74
+      cart-operations: 19
+      checkout: 7
+    entrySlo:
+      minimumSuccessRate: 0.95
+      maximumErrorRate: 0.05
+      maximumP95LatencyMs: 1000
+      minimumThroughputRatio: 0.95
+    runs:
+      - runId: otel-calibration-1-20260822
+        requests: 2280
+        failures: 0
+        successRate: 1.0
+        p95LatencyMs: 37
+        throughputRps: 7.618242357940905
+        summarySha256: b12887976f545696a2656d9d40c46ff316bafc8da64edeb1dab2a2ab648f6a20
+      - runId: otel-calibration-2-20260822
+        requests: 2280
+        failures: 0
+        successRate: 1.0
+        p95LatencyMs: 38
+        throughputRps: 7.623884476874415
+        summarySha256: 557eeb38b69623ae41c61a050931d2f3aedd61cc212e4aa0c754af5bac92a98f
+    aggregation: median-of-independent-healthy-runs
+    throughputSpreadRatio: 0.0007403322377061742
+    maximumThroughputSpreadRatio: 0.10
+    calibratedHealthyThroughputRps: 7.62106341740766
+    minimumThroughputRps: 7.240010246537277
+    medianP95LatencyMs: 37.5
+    artifactRef: kubernetes://otel-demo/pvc/otel-demo-workload-results/calibration
+    calibrationArtifactSha256: ea813119192ada0358939b1fc74b1219e2cbebcb98ccaa63a3e177dea21ddf53
+  safety:
+    historicalChaosBladeObjects: 157
+    otelDemoReferencesInHistoricalChaosBladeSpecs: 0
+    realChaosExecutionEnabled: false
+  observabilityVerification:
+    prometheusOtelDemoSeries: 6980
+    jaegerMatchingApplicationServices: 7
+    jaegerRecentFrontendTracesMinimum: 1
+    lokiOtelDemoSeries: 9
+    verifiedAfterCalibration: true
+  boundary:
+    - Only OTel Demo is active at the application layer; the inactive namespaces and data are intentionally preserved for reversible switching.
+    - The built-in OTel load generator remains scaled to zero; future baseline and fault runs must use the controller-owned deterministic Job.
+    - Calibration qualifies the healthy workload floor but does not remove the independent historical-ChaosBlade execution block.

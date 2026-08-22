@@ -131,8 +131,11 @@ spec:
     minimumHealthyWindow: 10m
     failurePolicy: block-episode
   readiness:
-    currentStatus: deterministic-workload-smoke-qualified-baseline-and-trace-attribution-pending
+    currentStatus: inactive-standby-otel-demo-selected
     knownGaps:
+      - observedAt: 2026-08-22
+        severity: informational
+        item: All 14 Deployments are intentionally scaled to zero while OTel Demo is the selected test system; original replicas are preserved in standby annotations.
       - observedAt: 2026-08-22
         severity: blocking
         item: The deterministic workload passed a 60-second smoke, but two repeatable 10-minute healthy runs have not yet frozen the throughput baseline.

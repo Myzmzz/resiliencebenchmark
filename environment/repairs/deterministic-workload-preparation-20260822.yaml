@@ -3,7 +3,7 @@ kind: WorkloadPreparationEvidence
 metadata:
   name: deterministic-entry-workloads-20260822
 spec:
-  status: three-application-smoke-qualified-calibration-pending
+  status: three-application-smoke-qualified-otel-demo-calibrated
   contractRef: ../workloads/deterministic-profiles.yaml
   commonEntrySlo:
     minimumSuccessRate: 0.95
@@ -82,7 +82,11 @@ spec:
     persistentResultVolumesRetained: true
     completedSmokeJobsRetained: false
   calibrationGate:
-    status: pending
+    status: partially-qualified
+    perApplication:
+      train-ticket: pending-inactive
+      sock-shop: pending-inactive
+      otel-demo: qualified
     requiredRunsPerApplication: 2
     durationSecondsPerRun: 600
     precondition: no-active-fault-and-all-application-deployments-ready
@@ -97,5 +101,5 @@ spec:
       - archived-run-artifact-digests
   boundary:
     - The 60-second runs qualify workload executability and business-path coverage; they do not freeze throughput baselines.
-    - A fault Episode remains blocked until the two 10-minute no-fault runs are archived and the throughput objective is resolved.
+    - OTel Demo supersedes its smoke-only state with the qualified baseline recorded in calibrated-baselines.yaml; the other two systems remain pending while inactive.
     - Real ChaosBlade execution remains independently blocked by the historical unowned cluster-scoped resources.

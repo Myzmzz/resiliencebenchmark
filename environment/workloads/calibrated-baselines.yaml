@@ -1,0 +1,41 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: CalibratedWorkloadBaselineSet
+metadata:
+  name: benchmark-entry-throughput-baselines
+  visibility: public-agent-readable
+spec:
+  method:
+    independentRuns: 2
+    durationSeconds: 600
+    measurementWindowSeconds: 300
+    aggregation: median-throughput
+    maximumThroughputSpreadRatio: 0.10
+    minimumThroughputRatio: 0.95
+  applications:
+    - id: train-ticket
+      status: not-calibrated-inactive
+    - id: sock-shop
+      status: not-calibrated-inactive
+    - id: otel-demo
+      status: qualified
+      randomSeed: 2026082203
+      generatorCodeCommit: 056bba6eb003c7940773d3c2fd7d85446010477c
+      generatorImageDigest: sha256:0b4f2ea15b16ff7b452f458524a39fbbc665454039c175c639a38ca7e63470f1
+      baselineThroughputRps: 7.62106341740766
+      minimumThroughputRps: 7.240010246537277
+      throughputSpreadRatio: 0.0007403322377061742
+      medianP95LatencyMs: 37.5
+      runs:
+        - runId: otel-calibration-1-20260822
+          requests: 2280
+          failures: 0
+          throughputRps: 7.618242357940905
+          p95LatencyMs: 37
+          summarySha256: b12887976f545696a2656d9d40c46ff316bafc8da64edeb1dab2a2ab648f6a20
+        - runId: otel-calibration-2-20260822
+          requests: 2280
+          failures: 0
+          throughputRps: 7.623884476874415
+          p95LatencyMs: 38
+          summarySha256: 557eeb38b69623ae41c61a050931d2f3aedd61cc212e4aa0c754af5bac92a98f
+      artifactRef: kubernetes://otel-demo/pvc/otel-demo-workload-results/calibration

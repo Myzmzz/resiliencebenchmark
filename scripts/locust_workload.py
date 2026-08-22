@@ -277,7 +277,11 @@ def run(argv: list[str] | None = None, runner: Runner | None = None) -> int:
             defaults["durationSeconds"] = args.duration_seconds
         fixture = load_fixture(args.fixture, args.application)
         image = args.image or str(mapping(app.get("executor"), "executor").get("image") or "")
-        plan = render_plan(args.application, args.run_id, defaults, app, fixture, image, args.baseline_throughput_rps)
+        slo = mapping(app.get("entrySlo"), "entrySlo")
+        baseline_throughput = args.baseline_throughput_rps
+        if baseline_throughput is None and slo.get("calibratedHealthyThroughputRps") is not None:
+            baseline_throughput = float(slo["calibratedHealthyThroughputRps"])
+        plan = render_plan(args.application, args.run_id, defaults, app, fixture, image, baseline_throughput)
         if args.command == "validate":
             print(json.dumps({"valid": True, "plan": {key: value for key, value in plan.items() if key != "manifest"}}, indent=2))
             return 0

@@ -23,6 +23,9 @@ def test_repository_deterministic_profiles_are_valid():
     assert set(applications) == {"train-ticket", "sock-shop", "otel-demo"}
     assert all(sum(flow["weightPercent"] for flow in app["trafficMix"]) == 100 for app in applications.values())
     assert all(app["entrySlo"]["minimumSuccessRate"] == 0.95 for app in applications.values())
+    assert applications["otel-demo"]["entrySlo"]["minimumThroughputRps"] == pytest.approx(
+        applications["otel-demo"]["entrySlo"]["calibratedHealthyThroughputRps"] * 0.95
+    )
 
 
 def test_profile_rejects_non_deterministic_or_incomplete_mix(tmp_path):

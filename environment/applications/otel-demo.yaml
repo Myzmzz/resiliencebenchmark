@@ -127,7 +127,7 @@ spec:
     minimumHealthyWindow: 10m
     failurePolicy: block-episode
   readiness:
-    currentStatus: deterministic-workload-smoke-and-three-signal-routing-ready-calibration-pending
+    currentStatus: selected-active-system-calibrated
     knownGaps:
       - observedAt: 2026-08-21
         severity: blocking
@@ -142,7 +142,10 @@ spec:
         item: OTel Demo metrics are present in shared Prometheus under otel-demo jobs, traces are present in shared Jaeger, and otel-demo log streams are present in Loki.
       - resolvedAt: 2026-08-22
         item: The fixed-seed browse/cart/checkout workload completed a 60-second smoke with 474 samples, 0 failures, 110 ms entry p95 latency, and 8.023 requests/s; its structured summary is retained on the result PVC.
+      - resolvedAt: 2026-08-22
+        item: Two independent 600-second runs qualified the final 300-second windows with 0 failures; median healthy throughput is 7.621063 RPS and the frozen 95% floor is 7.240010 RPS.
+      - resolvedAt: 2026-08-22
+        item: OTel Demo is the only active test application; its 22 business Deployments are Ready and the built-in load generator is scaled to zero in favor of controller-owned deterministic Jobs.
     nextChecks:
-      - Run two 10-minute no-fault profiles and freeze the accepted throughput baseline and artifact digests.
       - Freeze demo version, feature flag baseline, and image digests.
       - Verify metrics, traces, and logs remain available after feature-flag scrubbing.

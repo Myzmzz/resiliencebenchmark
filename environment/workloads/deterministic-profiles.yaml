@@ -112,4 +112,7 @@ spec:
         maximumErrorRate: 0.05
         p95LatencyMs: 1000
         minimumThroughputRatio: 0.95
+        calibratedHealthyThroughputRps: 7.62106341740766
+        minimumThroughputRps: 7.240010246537277
+        calibrationEvidenceRef: calibrated-baselines.yaml#otel-demo
         maxConsecutiveFailures: 20

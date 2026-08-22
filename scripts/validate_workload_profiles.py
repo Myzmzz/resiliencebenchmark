@@ -62,6 +62,17 @@ def validate_entry_slo(value: Any, field: str) -> None:
         raise ProfileError(f"{field}.latencyStatistic must be p95")
     if "maxConsecutiveFailures" in slo:
         positive_int(slo["maxConsecutiveFailures"], f"{field}.maxConsecutiveFailures")
+    calibrated = slo.get("calibratedHealthyThroughputRps")
+    minimum = slo.get("minimumThroughputRps")
+    evidence = slo.get("calibrationEvidenceRef")
+    if any(value is not None for value in (calibrated, minimum, evidence)):
+        baseline = positive_number(calibrated, f"{field}.calibratedHealthyThroughputRps")
+        floor = positive_number(minimum, f"{field}.minimumThroughputRps")
+        expected = baseline * float(slo["minimumThroughputRatio"])
+        if abs(floor - expected) > 1e-9:
+            raise ProfileError(f"{field}.minimumThroughputRps must equal calibrated baseline times ratio")
+        if not isinstance(evidence, str) or not evidence:
+            raise ProfileError(f"{field}.calibrationEvidenceRef is required")
 
 
 def validate_profile(path: Path = DEFAULT_PROFILE) -> dict[str, Any]:

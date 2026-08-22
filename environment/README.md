@@ -14,9 +14,9 @@
 
 这些文件是环境准备配置，不是 Benchmark 结果。完整实时摘要见根目录 `ENVIRONMENT_STATUS.md`，各应用细节见 `readiness`：
 
-- `train-ticket`: 48 个 Deployment Ready；固定种子混合负载镜像已按 digest 推送并通过 60 秒冒烟，双 10 分钟正式基线仍待执行。
-- `sock-shop`: 14 个 Deployment Ready；会话与旧版 Mongo 兼容问题已修复，固定种子目录/购物车/结算负载通过 60 秒冒烟，Trace 归因和正式基线仍待完成。
-- `otel-demo`: 23 个 Deployment Ready；固定种子浏览/购物车/结算负载通过 60 秒冒烟，Prometheus/Jaeger/Loki 三信号已接通；kubeletstats 仍受节点证书过期影响。
+- `train-ticket`: 当前为非活动待机态，48 个 Deployment 和 3 个 StatefulSet 均缩容到 0；PVC、Secret、Service 和原副本注解保留。
+- `sock-shop`: 当前为非活动待机态，14 个 Deployment 均缩容到 0；PVC、Secret、Service 和原副本注解保留。
+- `otel-demo`: 当前唯一活动系统，22 个业务 Deployment Ready；双 10 分钟校准已冻结 7.621063 RPS 健康基线及 7.240010 RPS 下限，Prometheus/Jaeger/Loki 三信号已接通。
 
 ## Secret Boundary
 
