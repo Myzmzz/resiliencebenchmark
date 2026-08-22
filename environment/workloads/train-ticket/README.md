@@ -60,6 +60,10 @@ preparation contract and dry-run renderer, not a claim that the workload is
 already executable in the cluster.
 
 Real starts write `/results/train-ticket.jtl` to the fixture-provided PVC.
+The baseline profile writes `/results/train-ticket-baseline.jtl` and records
+the deterministic search/login/order flow selection in the JTL thread name.
+`--duration-seconds 60` is reserved for bounded installation smoke; omitting it
+uses the declared 600-second profile for formal baseline collection.
 `stop --execute` removes only this run's Job and ConfigMap by `run_id`; it never
 deletes the result PVC.
 

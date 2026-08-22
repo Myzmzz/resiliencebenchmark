@@ -14,9 +14,9 @@
 
 这些文件是环境准备配置，不是 Benchmark 结果。完整实时摘要见根目录 `ENVIRONMENT_STATUS.md`，各应用细节见 `readiness`：
 
-- `train-ticket`: 应用 Deployment 当前 Ready；可重复负载镜像尚未构建并固定 digest，订单服务连接堆积复发风险和正式业务基线仍待验证。
-- `sock-shop`: 固定清单已创建，但节点不能访问 Docker Hub；14 个 Deployment 暂时缩容为 0，等待 Harbor digest 镜像同步。
-- `otel-demo`: load-generator 已启用，Prometheus/Jaeger/Loki 三信号已接通；kubeletstats 仍受节点证书过期影响。
+- `train-ticket`: 48 个 Deployment Ready；固定种子混合负载镜像已按 digest 推送并通过 60 秒冒烟，双 10 分钟正式基线仍待执行。
+- `sock-shop`: 14 个 Deployment Ready；会话与旧版 Mongo 兼容问题已修复，固定种子目录/购物车/结算负载通过 60 秒冒烟，Trace 归因和正式基线仍待完成。
+- `otel-demo`: 23 个 Deployment Ready；固定种子浏览/购物车/结算负载通过 60 秒冒烟，Prometheus/Jaeger/Loki 三信号已接通；kubeletstats 仍受节点证书过期影响。
 
 ## Secret Boundary
 

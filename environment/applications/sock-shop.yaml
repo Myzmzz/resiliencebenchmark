@@ -131,11 +131,11 @@ spec:
     minimumHealthyWindow: 10m
     failurePolicy: block-episode
   readiness:
-    currentStatus: application-ready-business-smoke-passed-trace-attribution-pending
+    currentStatus: deterministic-workload-smoke-qualified-baseline-and-trace-attribution-pending
     knownGaps:
       - observedAt: 2026-08-22
         severity: blocking
-        item: A repeatable controller-owned steady-load profile is not yet deployed and qualified for the required 10-minute healthy window.
+        item: The deterministic workload passed a 60-second smoke, but two repeatable 10-minute healthy runs have not yet frozen the throughput baseline.
       - observedAt: 2026-08-22
         severity: blocking
         item: Prometheus series and Loki streams are present, but recent Jaeger services cannot yet be attributed to Sock Shop critical paths with sufficient confidence.
@@ -148,7 +148,11 @@ spec:
         item: All 14 Deployments became Ready and the front-end root, catalogue, tags, and customers business endpoints returned HTTP 200.
       - resolvedAt: 2026-08-22
         item: Runtime image inventory qualified all 15 Sock Shop containers by digest; Prometheus namespace series and a recent Loki stream were observed.
+      - resolvedAt: 2026-08-22
+        item: Redis session persistence and legacy Mongo protocol compatibility were repaired for session, cart, and order paths; the synthetic workload account has one linked address and card.
+      - resolvedAt: 2026-08-22
+        item: The fixed-seed catalogue, cart, and checkout smoke completed 360 samples with 0 failures, 310 ms entry p95 latency, and 6.0965 requests/s; its structured summary is retained on the result PVC.
     nextChecks:
-      - Deploy and qualify a repeatable steady-load profile for catalogue, cart, and checkout.
+      - Run two 10-minute no-fault profiles and freeze the accepted throughput baseline and artifact digests.
       - Produce Sock Shop traffic and verify trace-service attribution for front-end and downstream critical paths.
-      - Run and archive the full 10-minute healthy baseline before enabling Episodes.
+      - Keep payment-limit-safe cart isolation in the reset qualification before enabling Episodes.

@@ -234,6 +234,7 @@ def render_plan(application: str, run_id: str, defaults: dict[str, Any], app: di
         "randomSeed": seed,
         "trafficMix": mix,
         "load": load,
+        "durationSeconds": defaults["durationSeconds"],
         "entrySlo": slo,
         "resultArtifact": executor["resultArtifact"],
         "objects": [{"kind": "ConfigMap", "name": name}, {"kind": "Job", "name": name}],
@@ -260,12 +261,18 @@ def run(argv: list[str] | None = None, runner: Runner | None = None) -> int:
     parser.add_argument("--run-id", default="baseline")
     parser.add_argument("--image")
     parser.add_argument("--baseline-throughput-rps", type=float)
+    parser.add_argument("--duration-seconds", type=int)
     parser.add_argument("--kubeconfig", type=Path)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args(argv)
     active = runner or SubprocessRunner()
     try:
         defaults, app = load_application(args.application, args.profile_file)
+        defaults = dict(defaults)
+        if args.duration_seconds is not None:
+            if not 60 <= args.duration_seconds <= 21_600:
+                raise WorkloadError("--duration-seconds must be between 60 and 21600")
+            defaults["durationSeconds"] = args.duration_seconds
         fixture = load_fixture(args.fixture, args.application)
         image = args.image or str(mapping(app.get("executor"), "executor").get("image") or "")
         plan = render_plan(args.application, args.run_id, defaults, app, fixture, image, args.baseline_throughput_rps)

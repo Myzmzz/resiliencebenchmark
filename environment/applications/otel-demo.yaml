@@ -127,7 +127,7 @@ spec:
     minimumHealthyWindow: 10m
     failurePolicy: block-episode
   readiness:
-    currentStatus: application-and-three-signal-routing-ready-node-signal-gap-remains
+    currentStatus: deterministic-workload-smoke-and-three-signal-routing-ready-calibration-pending
     knownGaps:
       - observedAt: 2026-08-21
         severity: blocking
@@ -140,7 +140,9 @@ spec:
         item: Standard load-generator scaled from 0 to 1 and became Ready with zero restarts.
       - resolvedAt: 2026-08-21
         item: OTel Demo metrics are present in shared Prometheus under otel-demo jobs, traces are present in shared Jaeger, and otel-demo log streams are present in Loki.
+      - resolvedAt: 2026-08-22
+        item: The fixed-seed browse/cart/checkout workload completed a 60-second smoke with 474 samples, 0 failures, 110 ms entry p95 latency, and 8.023 requests/s; its structured summary is retained on the result PVC.
     nextChecks:
-      - Freeze the built-in load-generator profile and calibrate the steady baseline window.
+      - Run two 10-minute no-fault profiles and freeze the accepted throughput baseline and artifact digests.
       - Freeze demo version, feature flag baseline, and image digests.
       - Verify metrics, traces, and logs remain available after feature-flag scrubbing.

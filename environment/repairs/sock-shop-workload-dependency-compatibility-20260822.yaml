@@ -1,0 +1,58 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentRepairPlan
+metadata:
+  name: sock-shop-workload-dependency-compatibility-20260822
+spec:
+  status: live-applied-deterministic-smoke-qualified
+  observedFailures:
+    - component: session-db
+      reason: RedisSnapshotWriteFailure
+      effect: Login sessions and customer ownership associations could not be persisted.
+    - component: carts-db
+      reason: LegacyMongoDriverProtocolMismatch
+      effect: The carts service used OP_QUERY against an incompatible modern MongoDB server.
+    - component: orders-db
+      reason: LegacyMongoDriverProtocolMismatch
+      effect: A successful checkout could not be qualified against the original database image.
+    - component: payment
+      reason: SharedBenchmarkCartExceededPaymentLimit
+      effect: Five virtual users accumulated more than the demo payment limit in one shared account cart.
+  repairs:
+    - target: kubernetes://sock-shop/deployment/session-db
+      container: session-db
+      arguments:
+        - redis-server
+        - --save
+        - ""
+        - --appendonly
+        - "no"
+    - target: kubernetes://sock-shop/deployment/carts-db
+      container: carts-db
+      imageRef: runtime-harbor://sock-shop/mongo:3.4.24-amd64
+      manifestDigest: sha256:6c24a2d79ac97db10f360b45af2e02cae0fd92067e01b773a7766591534c9620
+    - target: kubernetes://sock-shop/deployment/orders-db
+      container: orders-db
+      imageRef: runtime-harbor://sock-shop/mongo:3.4.24-amd64
+      manifestDigest: sha256:6c24a2d79ac97db10f360b45af2e02cae0fd92067e01b773a7766591534c9620
+    - target: kubernetes://sock-shop/secret/sock-shop-workload-user
+      action: Rebind one synthetic address and card after Redis recovery.
+      credentialValuesRecorded: false
+    - target: ../workloads/sock-shop/locustfile.py
+      action: Reset the shared cart before checkout and choose only bounded-price cart items while preserving the declared flow mix.
+  imageVerification:
+    sourcePlatform: linux/amd64
+    mongoVersion: 3.4.24
+    sourceConfigAndLayerDigestsMatched: true
+  verification:
+    deploymentsReady:
+      session-db: 1
+      carts-db: 1
+      orders-db: 1
+    linkedSyntheticAddresses: 1
+    linkedSyntheticCards: 1
+    smokeRunRef: deterministic-entry-workloads-20260822#sock-shop
+    checkoutFailures: 0
+  boundary:
+    - The repair is required by the archived Sock Shop service versions and is not an injected benchmark defect.
+    - The synthetic account Secret and persistent result PVC are intentionally retained; completed smoke Jobs and ConfigMaps are removed.
+    - The repair does not qualify the required 10-minute no-fault baseline or Jaeger critical-path attribution.

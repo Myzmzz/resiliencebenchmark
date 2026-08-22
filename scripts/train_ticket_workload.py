@@ -507,6 +507,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", default="tt-baseline")
     parser.add_argument("--namespace", default="train-ticket")
     parser.add_argument("--image", help="Runtime workload image as repository:tag@sha256:digest")
+    parser.add_argument("--duration-seconds", type=int, help="Bounded runtime override for qualification smoke runs")
     parser.add_argument("--kubeconfig", type=Path)
     parser.add_argument("--execute", action="store_true", help="Perform the Kubernetes action. Default is dry-run.")
     return parser
@@ -520,6 +521,10 @@ def run(argv: list[str] | None = None, runner: CommandRunner | None = None) -> i
         fixture = load_fixture(args.fixture)
         assert_namespace_allowed(args.namespace, fixture)
         profile = load_profile(args.profile_file, args.profile)
+        if args.duration_seconds is not None:
+            if not 60 <= args.duration_seconds <= 21_600:
+                raise WorkloadError("--duration-seconds must be between 60 and 21600")
+            profile["durationSeconds"] = args.duration_seconds
         apply_image_override(profile, args.image)
         plan = render_plan(run_id, args.namespace, profile, fixture)
 

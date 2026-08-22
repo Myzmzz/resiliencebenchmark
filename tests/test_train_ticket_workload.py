@@ -115,6 +115,28 @@ def test_baseline_profile_renders_fixed_seed_mix_and_artifact(tmp_path):
     assert plan["resultArtifact"] == "/results/train-ticket-baseline.jtl"
 
 
+def test_cli_accepts_bounded_baseline_smoke_duration(capsys):
+    image = "harbor.example/train-ticket/workload:commit@sha256:" + "3" * 64
+
+    code = train_ticket_workload.run(
+        [
+            "validate",
+            "--fixture",
+            str(EXAMPLE_FIXTURE),
+            "--profile",
+            "baseline",
+            "--image",
+            image,
+            "--duration-seconds",
+            "60",
+        ]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert report["plan"]["durationSeconds"] == 60
+
+
 def test_repository_example_fixture_is_valid():
     fixture = train_ticket_workload.load_fixture(EXAMPLE_FIXTURE)
 

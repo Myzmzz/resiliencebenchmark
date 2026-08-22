@@ -123,7 +123,7 @@ spec:
     knownGaps:
       - observedAt: 2026-08-22
         severity: blocking
-        item: The final 60-second business smoke passed, but the required 10-minute healthy baseline window has not yet been executed and archived.
+        item: The 60-second business smokes passed, but the required pair of 10-minute healthy baseline windows has not yet been executed and archived.
       - observedAt: 2026-08-22
         severity: warning
         item: Nacos replica-to-replica registry equality was verified after repair but is not yet an automated reset/qualification gate.
@@ -139,8 +139,12 @@ spec:
         item: A 60-second Gateway-based order smoke completed 60 login, search, contact, preserve, query, and cancellation flows with 360/360 successful samples and 280 ms p95 latency.
       - resolvedAt: 2026-08-22
         item: Stale Nacos order, preserve, and Gateway registrations were removed by a rolling Nacos restart; all three Nacos replicas returned equal live instance sets before Gateway restart and smoke qualification.
+      - resolvedAt: 2026-08-22
+        item: The fixed-seed mixed baseline generator was built from commit 1320c15bef95 and pinned by manifest digest sha256:4be3b6e41094a8fbd05b580162f876825d413663372bd422b27d1a705d680397.
+      - resolvedAt: 2026-08-22
+        item: A 60-second mixed search/login/order smoke executed 60 business flows and 155 entry samples with 0 failures and 269 ms p95 latency; created orders were cancelled.
     nextChecks:
-      - Run and archive the full 10-minute order baseline while confirming application readiness and SLO queries for the complete window.
+      - Run and archive two full 10-minute mixed baselines while confirming application readiness and SLO queries for each complete window.
       - Automate Nacos replica equality and Kubernetes Pod-IP reconciliation as a fail-closed qualification check.
       - Freeze all component images by digest before building episodes.
       - Verify order creation, query, metrics, traces, and logs under steady load.

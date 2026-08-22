@@ -1,0 +1,101 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: WorkloadPreparationEvidence
+metadata:
+  name: deterministic-entry-workloads-20260822
+spec:
+  status: three-application-smoke-qualified-calibration-pending
+  contractRef: ../workloads/deterministic-profiles.yaml
+  commonEntrySlo:
+    minimumSuccessRate: 0.95
+    maximumErrorRate: 0.05
+    latencyStatistic: p95
+    minimumThroughputRatio: 0.95
+    healthyWindowSeconds: 600
+    evaluationWindowSeconds: 300
+  applications:
+    - id: train-ticket
+      randomSeed: 2026082201
+      trafficMix:
+        search: 60
+        login: 10
+        order: 30
+      generatorImage:
+        sourceCommit: 1320c15bef95bb39c3b2152274bde98b86efc4b8
+        imageRef: runtime-harbor://train-ticket/train-ticket-workload:1320c15bef95
+        manifestDigest: sha256:4be3b6e41094a8fbd05b580162f876825d413663372bd422b27d1a705d680397
+      smoke:
+        runId: tt-baseline-smoke-20260822
+        durationSeconds: 60
+        businessFlows: 60
+        samples: 155
+        failures: 0
+        successRate: 1.0
+        p95LatencyMs: 269
+        observedFlows:
+          search: 38
+          login: 3
+          order: 19
+        resultRef: kubernetes://train-ticket/pvc/train-ticket-workload-results/results/train-ticket-baseline.jtl
+    - id: sock-shop
+      randomSeed: 2026082202
+      trafficMix:
+        browse-catalogue: 50
+        view-cart: 20
+        add-to-cart: 15
+        checkout-order: 15
+      generatorImage:
+        imageRef: runtime-harbor://observe/otel-demo:2.2.0-load-generator
+        manifestDigest: sha256:0b4f2ea15b16ff7b452f458524a39fbbc665454039c175c639a38ca7e63470f1
+        codeDelivery: controller-owned-configmap
+      smoke:
+        runId: sock-baseline-smoke4-20260822
+        durationSeconds: 60
+        samples: 360
+        failures: 0
+        successRate: 1.0
+        errorRate: 0.0
+        p95LatencyMs: 310
+        throughputRps: 6.096540678323263
+        resultRef: kubernetes://sock-shop/pvc/sock-shop-workload-results/sock-shop-summary.json
+    - id: otel-demo
+      randomSeed: 2026082203
+      trafficMix:
+        browse-products: 74
+        cart-operations: 19
+        checkout: 7
+      generatorImage:
+        imageRef: runtime-harbor://observe/otel-demo:2.2.0-load-generator
+        manifestDigest: sha256:0b4f2ea15b16ff7b452f458524a39fbbc665454039c175c639a38ca7e63470f1
+        codeDelivery: controller-owned-configmap
+      smoke:
+        runId: otel-baseline-smoke-20260822
+        durationSeconds: 60
+        samples: 474
+        failures: 0
+        successRate: 1.0
+        errorRate: 0.0
+        p95LatencyMs: 110
+        throughputRps: 8.022982
+        resultRef: kubernetes://otel-demo/pvc/otel-demo-workload-results/otel-demo-summary.json
+  runtimeObjects:
+    credentialValuesRecorded: false
+    persistentResultVolumesRetained: true
+    completedSmokeJobsRetained: false
+  calibrationGate:
+    status: pending
+    requiredRunsPerApplication: 2
+    durationSecondsPerRun: 600
+    precondition: no-active-fault-and-all-application-deployments-ready
+    acceptOnlyIf:
+      - both-runs-meet-entry-slo
+      - seeds-and-traffic-mixes-match-the-contract
+      - result-artifacts-are-complete
+      - throughput-variance-is-within-the-frozen-tolerance
+    output:
+      - calibrated-throughput-rps
+      - minimum-throughput-rps-at-95-percent
+      - archived-run-artifact-digests
+  boundary:
+    - The 60-second runs qualify workload executability and business-path coverage; they do not freeze throughput baselines.
+    - A fault Episode remains blocked until the two 10-minute no-fault runs are archived and the throughput objective is resolved.
+    - Real ChaosBlade execution remains independently blocked by the historical unowned cluster-scoped resources.

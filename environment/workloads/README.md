@@ -22,3 +22,51 @@ Fault injection is fail-closed when the profile is invalid, weights do not sum
 to 100, the baseline does not meet the entry SLO, the result artifact is
 missing, cleanup fails, or a repeated no-fault run cannot reproduce the traffic
 mix and entry metrics within the calibrated tolerance.
+
+## What must exist before a run
+
+Each application needs five runtime objects: a reachable in-cluster entry
+Service, the deterministic profile, a digest-pinned generator image, a Bound
+results PVC, and (where login is required) a Kubernetes Secret reference. The
+Secret value is never rendered into a plan or written to a result artifact.
+
+Apply the three result PVC manifests once. Train-Ticket additionally requires a
+runtime workload-user Secret; Sock Shop requires a synthetic user with one
+linked address and card. OTel Demo uses no workload credential.
+
+Use the bounded 60-second override only for installation smoke tests:
+
+```bash
+python3 scripts/train_ticket_workload.py start \
+  --profile baseline \
+  --fixture environment/workloads/train-ticket/runtime-fixture.example.yaml \
+  --run-id tt-baseline-smoke \
+  --duration-seconds 60 \
+  --image "$TRAIN_TICKET_WORKLOAD_PIN" \
+  --kubeconfig "$KUBECONFIG_PATH" \
+  --execute
+
+python3 scripts/locust_workload.py start \
+  --application sock-shop \
+  --fixture environment/workloads/sock-shop/runtime-fixture.example.yaml \
+  --run-id sock-baseline-smoke \
+  --duration-seconds 60 \
+  --image "$LOCUST_WORKLOAD_PIN" \
+  --kubeconfig "$KUBECONFIG_PATH" \
+  --execute
+```
+
+Replace `sock-shop` with `otel-demo` and its fixture for the third system.
+`stop --execute` removes only that run's Job and ConfigMap; result PVCs and
+runtime Secrets are retained.
+
+## Calibration gate
+
+The formal baseline is two independent 600-second no-fault runs per
+application, not the 60-second smoke. Both runs must use the same seed, traffic
+mix, load parameters, generator digest, and entry Service. Both must satisfy at
+least 95% success, at most 5% errors, the application p95 threshold, and
+complete artifact checks. Only after throughput repeatability is accepted is
+the calibrated throughput frozen; a fault run must then retain at least 95% of
+that value. Until this gate is complete, result summaries deliberately report
+that throughput calibration is required and Chaos execution remains blocked.

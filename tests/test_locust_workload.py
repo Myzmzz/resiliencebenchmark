@@ -65,3 +65,25 @@ def test_real_start_requires_digest_pinned_image(tmp_path):
 
     assert code == 2
     assert runner.calls == []
+
+
+def test_cli_accepts_bounded_smoke_duration(capsys):
+    image = "harbor.example/workload:commit@sha256:" + "c" * 64
+
+    code = locust_workload.run(
+        [
+            "validate",
+            "--application",
+            "otel-demo",
+            "--fixture",
+            "environment/workloads/otel-demo/runtime-fixture.example.yaml",
+            "--image",
+            image,
+            "--duration-seconds",
+            "60",
+        ]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert report["plan"]["durationSeconds"] == 60
