@@ -143,6 +143,15 @@ def test_dry_run_for_claude_does_not_persist_rendered_mcp_config(tmp_path):
     assert "mcp-token-that-must-not-leak-000000" not in text
 
 
+def test_connectivity_smoke_prompt_is_bounded_and_non_mutating():
+    harnesses = yaml.safe_load((REPO_ROOT / "harness/harnesses.yaml").read_text(encoding="utf-8"))
+    prompt = trial.resolve_prompt_file(harnesses, "connectivity_smoke", REPO_ROOT).read_text(encoding="utf-8")
+
+    assert "no more than four MCP tool calls" in prompt
+    assert "not authorization to inject a fault" in prompt
+    assert "Do not call any create, destroy, mutation" in prompt
+
+
 def test_execute_codex_uses_fixed_argv_stdin_and_allowlisted_env(tmp_path):
     calls = []
     final = valid_agent_result()

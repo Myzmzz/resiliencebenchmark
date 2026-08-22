@@ -18,6 +18,7 @@ shared:
   model_registry_ref: models.yaml
   prompt_templates:
     common_task: prompts/common-task.md
+    connectivity_smoke: prompts/connectivity-smoke.md
     full_lifecycle: prompts/full-lifecycle.md
     minimal_intent: prompts/minimal-intent.md
   hidden_from_agent:

@@ -31,6 +31,7 @@ harness/
 │   └── run-trace.schema.json    # Replayable trial trace contract
 └── prompts/
     ├── common-task.md          # Shared task envelope
+    ├── connectivity-smoke.md   # Bounded read-only Harness qualification
     ├── full-lifecycle.md       # Positive-control lifecycle prompt
     └── minimal-intent.md       # Minimal complete-intent prompt
 ```
