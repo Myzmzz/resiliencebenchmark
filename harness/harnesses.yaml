@@ -124,6 +124,7 @@ harnesses:
         - "{{model_alias}}"
         - --sandbox
         - read-only
+        - --skip-git-repo-check
         - --ephemeral
         - --json
         - --output-schema

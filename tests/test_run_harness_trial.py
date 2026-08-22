@@ -74,6 +74,7 @@ def test_codex_registry_uses_literal_stdin_marker():
     assert args[-1] == "-"
     assert all(isinstance(item, str) for item in args)
     assert "--strict-config" not in args
+    assert "--skip-git-repo-check" in args
 
 
 def test_dry_run_records_template_hashes_without_resolved_urls_or_homes(tmp_path):
