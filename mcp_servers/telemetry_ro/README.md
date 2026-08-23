@@ -54,3 +54,19 @@ All returned payloads are recursively redacted before leaving the MCP server.
 Fields whose key names look credential-like are replaced with `<redacted>`, and
 common credential-looking strings such as bearer headers, model-key prefixes,
 and credential assignments are conservatively redacted.
+
+## Controller-owned disturbance hook
+
+`TelemetryROService(..., disturbance_hook=...)` accepts the optional
+`TelemetryDisturbanceRuleEngine` used by multi-level benchmark runs. The hook
+can fail deterministic metric-range call slots or remove deterministic matrix
+points before the response reaches the Agent. It is not exposed as an
+Agent-visible MCP tool: rule registration/removal remains a Controller-only
+control path, and every rule/hit/removal must be copied into
+`controller_record` by the runtime adapter.
+
+Direct service composition raises `TelemetryInjectedFailure`; an HTTP reverse
+proxy may map its `http_status=503` or `mode=timeout` to transport behavior.
+Without that proxy mapping, this is an MCP tool failure rather than proof that
+an actual HTTP 503 was emitted. Production qualification must test the deployed
+transport, not only the in-process rule engine.

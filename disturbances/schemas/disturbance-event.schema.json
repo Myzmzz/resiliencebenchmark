@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/disturbances/schemas/disturbance-event.schema.json",
+  "title": "DisturbanceEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "disturbance_event_id",
+    "disturbance_id",
+    "run_id",
+    "trial_id",
+    "level_id",
+    "attempt",
+    "type",
+    "phase",
+    "status",
+    "triggered_at",
+    "trigger",
+    "action",
+    "outcome",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_version": {"const": "disturbance-event.v1"},
+    "disturbance_event_id": {"type": "string", "minLength": 1},
+    "disturbance_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "trial_id": {"type": "string", "minLength": 1},
+    "level_id": {"type": "string", "pattern": "^L[1-9][0-9]*$"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "type": {
+      "enum": [
+        "target_drift",
+        "resource_quota_reduction",
+        "telemetry_instability",
+        "metric_data_gap",
+        "fault_effect_deviation",
+        "baseline_drift",
+        "safety_threshold_pressure",
+        "cleanup_delay"
+      ]
+    },
+    "phase": {"enum": ["execution", "observation", "verification", "abort"]},
+    "status": {"enum": ["triggered", "completed", "rejected", "failed", "cleaned", "cleanup_failed"]},
+    "triggered_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "trigger": {"type": "object"},
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "operation", "parameters"],
+      "properties": {
+        "backend": {"type": "string", "minLength": 1},
+        "operation": {"type": "string", "minLength": 1},
+        "parameters": {"type": "object"}
+      }
+    },
+    "outcome": {"type": "object"},
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "^controller_record://"}
+    }
+  }
+}

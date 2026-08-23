@@ -1,0 +1,21 @@
+{
+  "schema_version": "level-result.v1",
+  "run_id": "run-example",
+  "episode_id": "EPI-MULTI-NETWORK-001",
+  "level_id": "L1",
+  "attempt": 1,
+  "gate_results": [
+    {"gate_id": "precondition", "status": "PASS"},
+    {"gate_id": "fault_effect", "status": "PASS"},
+    {"gate_id": "diagnosis", "status": "PASS"},
+    {"gate_id": "recovery", "status": "PASS"},
+    {"gate_id": "safety", "status": "PASS"}
+  ],
+  "disturbance_response": {"expected_behaviors": [], "observed_behaviors": [], "missing_behaviors": [], "policy_errors": [], "evidence_refs": [], "passed": true},
+  "primary_status": "PASS",
+  "failure_status": null,
+  "policy_errors": [],
+  "missing_required_gates": [],
+  "violations": [],
+  "metrics": {"duration_seconds": 100, "tool_calls": 30, "tokens_used": 20000}
+}

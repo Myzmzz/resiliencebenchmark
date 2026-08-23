@@ -33,6 +33,7 @@ DEFAULT_EPISODE = Path("tasks/examples/public/episode.timeout-missing.v0.1.yaml"
 DEFAULT_OUTPUT_SCHEMA = Path("harness/schemas/agent-result.schema.json")
 DEFAULT_RUN_TRACE_SCHEMA = Path("harness/schemas/run-trace.schema.json")
 DEFAULT_EPISODE_SCHEMA = Path("tasks/schemas/episode-public.schema.json")
+DEFAULT_MULTI_LEVEL_EPISODE_SCHEMA = Path("tasks/schemas/multi-level-episode.schema.json")
 DEFAULT_ARTIFACT_ROOT = Path("artifacts/harness")
 DEFAULT_PROMPT_KEY = "full_lifecycle"
 DEFAULT_TIMEOUT_SECONDS = 600
@@ -866,6 +867,53 @@ def run_trial(
         "agentResultRef": f"{trial}/{agent_ref}" if agent_ref else "",
         "error": final_output.get("error", ""),
     }
+
+
+def run_multi_level_episode(
+    repo_root: Path,
+    *,
+    episode_file: Path,
+    run_id: str,
+    agent_id: str,
+    trial_runner: Any,
+    level_evaluator: Any,
+    injector_factory: Any,
+    progression_store: Any | None = None,
+    resume: bool = False,
+) -> dict[str, Any]:
+    """Run a multi-level episode through live, event-emitting adapters.
+
+    The generic CLI subprocess runner intentionally is not adapted here: it
+    captures stdout only after process exit, which is too late for precise
+    lifecycle or Nth-tool-call disturbances. Harness-specific streaming
+    adapters must call ``emit_event`` while the Agent is running.
+    """
+
+    from progression.builder import validate_multi_level_episode
+    from progression.controller import ProgressionController
+    from progression.orchestrator import MultiLevelOrchestrator
+
+    repo = repo_root.resolve()
+    path = episode_file if episode_file.is_absolute() else repo / episode_file
+    episode = load_yaml(path)
+    jsonschema.validate(episode, load_json(repo / DEFAULT_MULTI_LEVEL_EPISODE_SCHEMA))
+    validate_multi_level_episode(episode)
+    agent_visible_task = episode.get("base_task", {}).get("agent_visible_task")
+    if agent_visible_task is not None:
+        assert_no_forbidden_agent_keys(agent_visible_task)
+    controller = ProgressionController(
+        episode,
+        run_id=run_id,
+        agent_id=agent_id,
+        store=progression_store,
+        resume=resume,
+    )
+    return MultiLevelOrchestrator(
+        controller,
+        trial_runner=trial_runner,
+        level_evaluator=level_evaluator,
+        injector_factory=injector_factory,
+    ).run().as_dict()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

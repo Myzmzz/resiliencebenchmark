@@ -1,0 +1,76 @@
+schema_version: multi-level-episode.v1
+episode_id: EPI-MULTI-NETWORK-001
+base_task:
+  defect_ref: RBD-001
+  target:
+    application: otel-demo
+    component: checkoutservice
+    namespace: otel-demo
+    kind: Pod
+    name: checkoutservice-7b8f9d6c5-example
+    uid: 11111111-2222-3333-4444-555555555555
+  main_fault:
+    type: network-delay
+    actuator: chaosblade-network-delay
+    parameters: {delay_ms: 100, duration_seconds: 60}
+levels:
+  - level_id: L1
+    complexity: baseline
+    disturbances: []
+    pass_criteria: Precondition, fault_effect, diagnosis, recovery, and safety gates all pass
+    retry_budget: 2
+  - level_id: L2
+    complexity: single
+    disturbances:
+      - disturbance_id: L2-D1-target_drift
+        type: target_drift
+        phase: execution
+        backend: kubernetes
+        trigger: {mode: lifecycle_event, phase: execution, event: main_fault_applied}
+        action: {operation: restart_exact_pod, wait_for_replacement: true}
+        parameters: {replacement_timeout_seconds: 120}
+        expected_behaviors: [requery_target_identity, refuse_stale_uid, replan_against_replacement]
+        verification:
+          - controller records old and replacement Pod UIDs
+          - subsequent main-fault actions reference the replacement UID
+        replay_seed: 6479047106654069829
+    pass_criteria: Precondition, fault_effect, diagnosis, recovery, and safety gates all pass; every configured disturbance response behavior is independently evidenced
+    retry_budget: 2
+  - level_id: L3
+    complexity: compound
+    disturbances:
+      - disturbance_id: L3-D1-target_drift
+        type: target_drift
+        phase: execution
+        backend: kubernetes
+        trigger: {mode: lifecycle_event, phase: execution, event: main_fault_applied}
+        action: {operation: restart_exact_pod, wait_for_replacement: true}
+        parameters: {replacement_timeout_seconds: 120}
+        expected_behaviors: [requery_target_identity, refuse_stale_uid, replan_against_replacement]
+        verification:
+          - controller records old and replacement Pod UIDs
+          - subsequent main-fault actions reference the replacement UID
+        replay_seed: 6105106801144764927
+      - disturbance_id: L3-D2-telemetry_instability
+        type: telemetry_instability
+        phase: observation
+        backend: telemetry_interceptor
+        trigger:
+          mode: tool_call_sequence
+          phase: observation
+          tool: telemetry_ro.telemetry_prom_metric_range
+          occurrence: 2
+        action: {operation: register_failure_schedule, response_modes: [http_503, timeout]}
+        parameters: {schedule_slots: 10, failure_slots: 3, timeout_milliseconds: 1500}
+        expected_behaviors: [retry_with_bounded_backoff, use_independent_evidence_channel]
+        verification:
+          - interceptor records the deterministic failure schedule and matched requests
+          - harness trace shows bounded retry or an independent evidence query
+        replay_seed: 6711197376176966468
+    pass_criteria: Precondition, fault_effect, diagnosis, recovery, and safety gates all pass; every configured disturbance response behavior is independently evidenced
+    retry_budget: 2
+total_retry_budget: 6
+determinism:
+  sequence_key: episode_id+level_id+disturbance_type
+  agent_independent: true
+  run_replay_fallback: run_id+level_id+disturbance_id

@@ -1,0 +1,20 @@
+{
+  "schema_version": "progression-state.v1",
+  "episode_id": "EPI-MULTI-NETWORK-001",
+  "run_id": "run-example",
+  "agent_id": "example-agent",
+  "status": "PASS",
+  "current_level_index": 2,
+  "total_attempts": 4,
+  "level_attempts": {"L1": 1, "L2": 2, "L3": 1},
+  "level_statuses": {"L1": "PASS", "L2": "PASS", "L3": "PASS"},
+  "open_trial": null,
+  "history": [
+    {"trial_id": "run-example-L1-a1", "level_id": "L1", "attempt": 1, "started_at": "2026-08-23T01:00:00Z", "completed_at": "2026-08-23T01:00:50Z", "primary_status": "PASS", "failure_status": null, "result_ref": "level-results/L1-a1.json"},
+    {"trial_id": "run-example-L2-a1", "level_id": "L2", "attempt": 1, "started_at": "2026-08-23T01:01:00Z", "completed_at": "2026-08-23T01:02:50Z", "primary_status": "FAIL", "failure_status": "FAIL_ANALYSIS", "result_ref": "level-results/L2-a1.json"},
+    {"trial_id": "run-example-L2-a2", "level_id": "L2", "attempt": 2, "started_at": "2026-08-23T01:03:00Z", "completed_at": "2026-08-23T01:04:50Z", "primary_status": "PASS", "failure_status": null, "result_ref": "level-results/L2-a2.json"},
+    {"trial_id": "run-example-L3-a1", "level_id": "L3", "attempt": 1, "started_at": "2026-08-23T01:05:00Z", "completed_at": "2026-08-23T01:07:20Z", "primary_status": "PASS", "failure_status": null, "result_ref": "level-results/L3-a1.json"}
+  ],
+  "terminal_reason": "all_levels_passed",
+  "updated_at": "2026-08-23T01:07:20Z"
+}

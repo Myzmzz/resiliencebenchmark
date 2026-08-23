@@ -178,6 +178,14 @@ class TelemetryTransport(Protocol):
         ...
 
 
+class TelemetryDisturbanceHook(Protocol):
+    async def before_tool(self, tool: str) -> None:
+        ...
+
+    def after_tool(self, tool: str, response: Mapping[str, Any]) -> dict[str, Any]:
+        ...
+
+
 class UrlLibTelemetryTransport:
     """Small GET-only transport using Python stdlib so tests can inject fakes."""
 
@@ -261,9 +269,11 @@ class TelemetryROService:
         self,
         config: RuntimeConfig | None = None,
         transport: TelemetryTransport | None = None,
+        disturbance_hook: TelemetryDisturbanceHook | None = None,
     ) -> None:
         self.config = config if config is not None else RuntimeConfig.from_env()
         self.transport = transport if transport is not None else UrlLibTelemetryTransport()
+        self.disturbance_hook = disturbance_hook
 
     async def prometheus_query_instant(self, *, query: str, time: int, limit: int = DEFAULT_LIMIT) -> dict[str, Any]:
         _ensure_raw_queries_allowed(self.config)
@@ -315,6 +325,9 @@ class TelemetryROService:
         group_by: Sequence[str] | None = None,
         limit: int = DEFAULT_LIMIT,
     ) -> dict[str, Any]:
+        tool_name = "telemetry_prom_metric_range"
+        if self.disturbance_hook is not None:
+            await self.disturbance_hook.before_tool(tool_name)
         query = _build_prometheus_metric_query(
             namespace=self.config.namespace,
             metric=metric,
@@ -323,7 +336,7 @@ class TelemetryROService:
             window=window,
             group_by=group_by,
         )
-        return await self._prometheus_query_range_raw(
+        result = await self._prometheus_query_range_raw(
             query=query,
             start=start,
             end=end,
@@ -331,6 +344,9 @@ class TelemetryROService:
             limit=limit,
             constructed=True,
         )
+        if self.disturbance_hook is not None:
+            result = self.disturbance_hook.after_tool(tool_name, result)
+        return result
 
     async def prometheus_metric_series(
         self,
