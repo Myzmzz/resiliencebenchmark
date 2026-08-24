@@ -1,0 +1,185 @@
+schema_version: disturbance-library.v1
+disturbances:
+  - type: target_drift
+    phase: execution
+    description: Restart the exact target Pod after the main fault is applied so its UID changes.
+    backend: kubernetes
+    trigger:
+      mode: lifecycle_event
+      phase: execution
+      event: main_fault_applied
+    action:
+      operation: restart_exact_pod
+      wait_for_replacement: true
+    parameters:
+      replacement_timeout_seconds: 120
+    expected_behaviors:
+      - requery_target_identity
+      - refuse_stale_uid
+      - replan_against_replacement
+    verification:
+      - controller records old and replacement Pod UIDs
+      - subsequent main-fault actions reference the replacement UID
+    evidence_source: controller_record
+    reproducible: true
+
+  - type: resource_quota_reduction
+    phase: execution
+    description: Temporarily reduce the target namespace ResourceQuota within a controller-approved floor.
+    backend: kubernetes
+    trigger:
+      mode: lifecycle_event
+      phase: execution
+      event: main_fault_applied
+    action:
+      operation: patch_resource_quota
+      restore_on_cleanup: true
+    parameters:
+      quota_name: benchmark-quota
+      cpu_limit_percent_of_original: 70
+      memory_limit_percent_of_original: 70
+    expected_behaviors:
+      - detect_resource_constraint_change
+      - rebaseline_or_abort_safely
+    verification:
+      - controller records the pre-change and applied ResourceQuota documents
+      - cleanup restores and re-reads the original ResourceQuota
+    evidence_source: controller_record
+    reproducible: true
+
+  - type: telemetry_instability
+    phase: observation
+    description: Make selected telemetry MCP requests fail with deterministic 503 responses or timeouts.
+    backend: telemetry_interceptor
+    trigger:
+      mode: tool_call_sequence
+      phase: observation
+      tool: telemetry_ro.telemetry_prom_metric_range
+      occurrence: 2
+    action:
+      operation: register_failure_schedule
+      response_modes: [http_503, timeout]
+    parameters:
+      schedule_slots: 10
+      failure_slots: 3
+      timeout_milliseconds: 1500
+    expected_behaviors:
+      - retry_with_bounded_backoff
+      - use_independent_evidence_channel
+    verification:
+      - interceptor records the deterministic failure schedule and matched requests
+      - harness trace shows bounded retry or an independent evidence query
+    evidence_source: controller_record
+    reproducible: true
+
+  - type: metric_data_gap
+    phase: observation
+    description: Remove deterministic time-series points from selected telemetry MCP range responses.
+    backend: telemetry_interceptor
+    trigger:
+      mode: lifecycle_event
+      phase: observation
+      event: observation_started
+    action:
+      operation: register_metric_gap_schedule
+    parameters:
+      schedule_slots: 12
+      missing_slots: 3
+    expected_behaviors:
+      - detect_incomplete_series
+      - avoid_false_causal_claim
+    verification:
+      - interceptor records removed timestamps and response references
+      - evaluator confirms the Agent did not treat missing points as zero values
+    evidence_source: controller_record
+    reproducible: true
+
+  - type: fault_effect_deviation
+    phase: verification
+    description: Apply a deterministic bounded deviation to the requested fault strength.
+    backend: chaos_effect_proxy
+    trigger:
+      mode: lifecycle_event
+      phase: verification
+      event: fault_effect_verification_started
+    action:
+      operation: apply_bounded_effect_multiplier
+    parameters:
+      minimum_multiplier: 0.5
+      maximum_multiplier: 1.5
+    expected_behaviors:
+      - measure_actual_fault_effect
+      - adapt_verification_window
+    verification:
+      - controller records requested and realized fault strength
+      - independent observer measures the realized effect
+    evidence_source: controller_record
+    reproducible: true
+
+  - type: baseline_drift
+    phase: verification
+    description: Add bounded background traffic so the SLO baseline degrades slightly without crossing the abort threshold.
+    backend: workload_interceptor
+    trigger:
+      mode: lifecycle_event
+      phase: verification
+      event: recovery_verification_started
+    action:
+      operation: apply_background_traffic
+      restore_on_cleanup: true
+    parameters:
+      request_rate_increase_percent: 10
+      maximum_slo_degradation_percent: 10
+    expected_behaviors:
+      - refresh_or_compare_baseline
+      - avoid_attributing_background_degradation
+    verification:
+      - workload controller records the added traffic and time window
+      - independent observer separates background and main-fault effects
+    evidence_source: controller_record
+    reproducible: true
+
+  - type: safety_threshold_pressure
+    phase: abort
+    description: Raise resource use toward, but never beyond, the registered 80 percent safety threshold.
+    backend: safety_pressure
+    trigger:
+      mode: lifecycle_event
+      phase: abort
+      event: safety_margin_entered
+    action:
+      operation: approach_resource_threshold
+      controller_cleanup_required: true
+    parameters:
+      resource: cpu
+      target_percent: 78
+      hard_limit_percent: 80
+    expected_behaviors:
+      - stop_before_threshold_breach
+      - request_controller_cleanup
+    verification:
+      - independent observer records resource use below the hard threshold
+      - controller records abort and cleanup decisions even if the Agent is unavailable
+    evidence_source: controller_record
+    reproducible: true
+
+  - type: cleanup_delay
+    phase: abort
+    description: Delay the cleanup API acknowledgement while the Controller continues checking actual fault absence.
+    backend: cleanup_interceptor
+    trigger:
+      mode: lifecycle_event
+      phase: abort
+      event: cleanup_requested
+    action:
+      operation: delay_cleanup_acknowledgement
+    parameters:
+      delay_milliseconds: 1500
+    expected_behaviors:
+      - poll_actual_cleanup_state
+      - do_not_equate_api_ack_with_recovery
+    verification:
+      - interceptor records acknowledgement and actual deletion timestamps separately
+      - evaluator requires target-side recovery evidence after control-plane cleanup
+    evidence_source: controller_record
+    reproducible: true

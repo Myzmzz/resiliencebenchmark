@@ -19,8 +19,13 @@ test = ["pytest>=7,<9"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["controller*", "evaluator*", "mcp_servers*", "scripts*"]
+include = ["controller*", "disturbances*", "evaluator*", "mcp_servers*", "progression*", "scoring*", "scripts*"]
 exclude = ["artifacts*", "environment*", "harness*", "runs*", "tasks*", "tests*", "tmp*"]
+
+[tool.setuptools.package-data]
+disturbances = ["library.yaml", "schemas/*.json", "README.md"]
+evaluator = ["schemas/*.json"]
+scoring = ["schemas/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "controller/tests", "evaluator"]

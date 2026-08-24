@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/tasks/schemas/multi-level-episode.schema.json",
+  "title": "MultiLevelEpisode",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "episode_id",
+    "base_task",
+    "levels",
+    "total_retry_budget",
+    "determinism"
+  ],
+  "properties": {
+    "schema_version": {"const": "multi-level-episode.v1"},
+    "episode_id": {"type": "string", "minLength": 1},
+    "base_task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defect_ref", "target", "main_fault"],
+      "properties": {
+        "defect_ref": {"type": "string", "minLength": 1},
+        "target": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["namespace", "kind", "name", "uid"],
+          "properties": {
+            "application": {"type": ["string", "null"]},
+            "component": {"type": ["string", "null"]},
+            "namespace": {"type": "string", "minLength": 1},
+            "kind": {"const": "Pod"},
+            "name": {"type": "string", "minLength": 1},
+            "uid": {"type": "string", "minLength": 1}
+          }
+        },
+        "main_fault": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "parameters"],
+          "properties": {
+            "type": {"type": "string", "minLength": 1},
+            "actuator": {"type": ["string", "null"]},
+            "parameters": {"type": "object"}
+          }
+        },
+        "agent_visible_task": {
+          "type": "object",
+          "description": "Explicitly materialized public task. Internal hypotheses must not be copied here."
+        }
+      }
+    },
+    "levels": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {"$ref": "#/$defs/level"}
+    },
+    "total_retry_budget": {"type": "integer", "minimum": 1},
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence_key", "agent_independent", "run_replay_fallback"],
+      "properties": {
+        "sequence_key": {"const": "episode_id+level_id+disturbance_type"},
+        "agent_independent": {"const": true},
+        "run_replay_fallback": {"const": "run_id+level_id+disturbance_id"}
+      }
+    }
+  },
+  "$defs": {
+    "level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level_id", "complexity", "disturbances", "pass_criteria", "retry_budget"],
+      "properties": {
+        "level_id": {"type": "string", "pattern": "^L[1-9][0-9]*$"},
+        "complexity": {"enum": ["baseline", "single", "compound", "full_chain"]},
+        "disturbances": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/disturbance"}
+        },
+        "pass_criteria": {"type": "string", "minLength": 20},
+        "retry_budget": {"type": "integer", "minimum": 1}
+      }
+    },
+    "disturbance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disturbance_id",
+        "type",
+        "phase",
+        "backend",
+        "trigger",
+        "action",
+        "parameters",
+        "expected_behaviors",
+        "verification",
+        "replay_seed"
+      ],
+      "properties": {
+        "disturbance_id": {"type": "string", "minLength": 1},
+        "type": {"$ref": "#/$defs/disturbance_type"},
+        "phase": {"enum": ["execution", "observation", "verification", "abort"]},
+        "backend": {"type": "string", "minLength": 1},
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "phase"],
+          "properties": {
+            "mode": {"enum": ["lifecycle_event", "tool_call_sequence", "time_offset"]},
+            "phase": {"enum": ["execution", "observation", "verification", "abort"]},
+            "event": {"type": "string"},
+            "tool": {"type": "string"},
+            "occurrence": {"type": "integer", "minimum": 1},
+            "offset_seconds": {"type": "number", "minimum": 0}
+          }
+        },
+        "action": {"type": "object", "minProperties": 1},
+        "parameters": {"type": "object"},
+        "expected_behaviors": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "replay_seed": {"type": "integer", "minimum": 0}
+      }
+    },
+    "disturbance_type": {
+      "enum": [
+        "target_drift",
+        "resource_quota_reduction",
+        "telemetry_instability",
+        "metric_data_gap",
+        "fault_effect_deviation",
+        "baseline_drift",
+        "safety_threshold_pressure",
+        "cleanup_delay"
+      ]
+    }
+  }
+}

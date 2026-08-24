@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/evaluator/schemas/level-result.schema.json",
+  "title": "LevelResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "episode_id",
+    "level_id",
+    "attempt",
+    "gate_results",
+    "disturbance_response",
+    "primary_status",
+    "failure_status",
+    "policy_errors",
+    "missing_required_gates",
+    "violations",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": {"const": "level-result.v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "episode_id": {"type": "string", "minLength": 1},
+    "level_id": {"type": "string", "pattern": "^L[1-9][0-9]*$"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "gate_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate_id", "status"],
+        "properties": {
+          "gate_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "status": {"enum": ["PASS", "FAIL", "INCONCLUSIVE", "CASE_INVALID"]}
+        }
+      }
+    },
+    "disturbance_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_behaviors",
+        "observed_behaviors",
+        "missing_behaviors",
+        "policy_errors",
+        "evidence_refs",
+        "passed"
+      ],
+      "properties": {
+        "expected_behaviors": {"type": "array", "items": {"type": "string"}},
+        "observed_behaviors": {"type": "array", "items": {"type": "string"}},
+        "missing_behaviors": {"type": "array", "items": {"type": "string"}},
+        "policy_errors": {"type": "array", "items": {"type": "string"}},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+        "passed": {"type": "boolean"}
+      }
+    },
+    "primary_status": {"enum": ["PASS", "FAIL", "SKIP"]},
+    "failure_status": {
+      "type": ["string", "null"],
+      "enum": [null, "FAIL_SELECTION", "FAIL_EXECUTION", "FAIL_ANALYSIS", "FAIL_SAFETY", "INCONCLUSIVE", "CASE_INVALID"]
+    },
+    "policy_errors": {"type": "array", "items": {"type": "string"}},
+    "missing_required_gates": {"type": "array", "items": {"type": "string"}},
+    "violations": {"type": "array", "items": {"type": "string"}},
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["duration_seconds", "tool_calls", "tokens_used"],
+      "properties": {
+        "duration_seconds": {"type": "number", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0},
+        "tokens_used": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

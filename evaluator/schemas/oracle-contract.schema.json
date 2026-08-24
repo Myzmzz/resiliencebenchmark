@@ -65,7 +65,8 @@
               "slo_violation",
               "causal_mechanism",
               "diagnosis",
-              "recovery"
+              "recovery",
+              "disturbance_response"
             ]
           },
           "required": {

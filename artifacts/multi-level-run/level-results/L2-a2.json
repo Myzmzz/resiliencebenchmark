@@ -1,0 +1,22 @@
+{
+  "schema_version": "level-result.v1",
+  "run_id": "run-example",
+  "episode_id": "EPI-MULTI-NETWORK-001",
+  "level_id": "L2",
+  "attempt": 2,
+  "gate_results": [
+    {"gate_id": "precondition", "status": "PASS"},
+    {"gate_id": "fault_effect", "status": "PASS"},
+    {"gate_id": "diagnosis", "status": "PASS"},
+    {"gate_id": "recovery", "status": "PASS"},
+    {"gate_id": "safety", "status": "PASS"},
+    {"gate_id": "disturbance_response", "status": "PASS"}
+  ],
+  "disturbance_response": {"expected_behaviors": ["requery_target_identity", "refuse_stale_uid", "replan_against_replacement"], "observed_behaviors": ["requery_target_identity", "refuse_stale_uid", "replan_against_replacement"], "missing_behaviors": [], "policy_errors": [], "evidence_refs": ["harness://run-example-L2-a2/target-reconfirmation"], "passed": true},
+  "primary_status": "PASS",
+  "failure_status": null,
+  "policy_errors": [],
+  "missing_required_gates": [],
+  "violations": [],
+  "metrics": {"duration_seconds": 110, "tool_calls": 35, "tokens_used": 23000}
+}

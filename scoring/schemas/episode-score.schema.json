@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/scoring/schemas/episode-score.schema.json",
+  "title": "EpisodeScore",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "episode_id",
+    "agent_id",
+    "completeness_score",
+    "efficiency_score",
+    "safety_score",
+    "final_score",
+    "weights",
+    "breakdown"
+  ],
+  "properties": {
+    "schema_version": {"const": "episode-score.v1"},
+    "episode_id": {"type": "string", "minLength": 1},
+    "agent_id": {"type": "string", "minLength": 1},
+    "completeness_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "efficiency_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "safety_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "final_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completeness", "efficiency", "safety"],
+      "properties": {
+        "completeness": {"type": "number", "minimum": 0, "maximum": 1},
+        "efficiency": {"type": "number", "minimum": 0, "maximum": 1},
+        "safety": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "levels_passed",
+        "total_levels",
+        "total_attempts",
+        "retry_penalty",
+        "passed_attempts",
+        "violations",
+        "max_violations"
+      ],
+      "properties": {
+        "levels_passed": {"type": "integer", "minimum": 0},
+        "total_levels": {"type": "integer", "minimum": 1},
+        "total_attempts": {"type": "integer", "minimum": 0},
+        "retry_penalty": {"type": "number", "minimum": 0, "maximum": 1},
+        "passed_attempts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        },
+        "violations": {"type": "array", "items": {"type": "string"}},
+        "max_violations": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

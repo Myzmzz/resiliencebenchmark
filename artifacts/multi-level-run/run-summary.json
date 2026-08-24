@@ -1,0 +1,18 @@
+{
+  "schema_version": "multi-level-run.v1",
+  "artifact_kind": "offline_contract_example",
+  "empirical_status": "not_run_against_live_cluster",
+  "run_id": "run-example",
+  "episode_id": "EPI-MULTI-NETWORK-001",
+  "agent_id": "example-agent",
+  "status": "PASS",
+  "level_result_refs": [
+    "level-results/L1-a1.json",
+    "level-results/L2-a1.json",
+    "level-results/L2-a2.json",
+    "level-results/L3-a1.json"
+  ],
+  "controller_record_ref": "controller-record.jsonl",
+  "progression_state_ref": "progression-state.json",
+  "episode_score_ref": "episode-score.json"
+}
