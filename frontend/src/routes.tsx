@@ -10,6 +10,14 @@ import EpisodesPage from "./pages/EpisodesPage";
 import MCPToolsPage from "./pages/MCPToolsPage";
 import WorkloadsPage from "./pages/WorkloadsPage";
 import ObservabilityPage from "./pages/ObservabilityPage";
+import EvaluationTasksPage from "./features/evaluation/pages/EvaluationTasksPage";
+import EvaluationTaskCreatePage from "./features/evaluation/pages/EvaluationTaskCreatePage";
+import EvaluationMonitoringPage from "./features/evaluation/pages/EvaluationMonitoringPage";
+import EvaluationTaskMonitorPage from "./features/evaluation/pages/EvaluationTaskMonitorPage";
+import EvaluationUnitDetailPage from "./features/evaluation/pages/EvaluationUnitDetailPage";
+import EvaluationResultsPage from "./features/evaluation/pages/EvaluationResultsPage";
+import EvaluationResultDetailPage from "./features/evaluation/pages/EvaluationResultDetailPage";
+import "./features/evaluation/evaluation.css";
 
 /** 子路由集中定义，测试用 createMemoryRouter 复用。 */
 export const routeChildren: RouteObject[] = [
@@ -31,10 +39,14 @@ export const routeChildren: RouteObject[] = [
   { path: "episodes/defects", element: <PlaceholderPage title="缺陷库" milestone="M4" /> },
   { path: "episodes/disturbances", element: <PlaceholderPage title="扰动库" milestone="M4" /> },
   { path: "episodes/list", element: <PlaceholderPage title="Episode 管理" milestone="M4" /> },
-  // 评测（结果 M5；任务/监控二期）
-  { path: "evaluation/tasks", element: <PlaceholderPage title="评测任务" milestone="Phase 2" /> },
-  { path: "evaluation/monitoring", element: <PlaceholderPage title="运行监控" milestone="Phase 2" /> },
-  { path: "evaluation/results", element: <PlaceholderPage title="结果分析" milestone="M5" /> },
+  // 评测
+  { path: "evaluation/tasks", element: <EvaluationTasksPage /> },
+  { path: "evaluation/tasks/new", element: <EvaluationTaskCreatePage /> },
+  { path: "evaluation/monitoring", element: <EvaluationMonitoringPage /> },
+  { path: "evaluation/monitoring/:taskId", element: <EvaluationTaskMonitorPage /> },
+  { path: "evaluation/monitoring/:taskId/units/:unitId", element: <EvaluationUnitDetailPage /> },
+  { path: "evaluation/results", element: <EvaluationResultsPage /> },
+  { path: "evaluation/results/:taskId", element: <EvaluationResultDetailPage /> },
 ];
 
 export const router = createBrowserRouter([

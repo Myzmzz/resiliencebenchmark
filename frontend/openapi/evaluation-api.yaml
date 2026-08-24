@@ -1,0 +1,594 @@
+openapi: 3.1.0
+info:
+  title: Resilience Benchmark Evaluation Frontend API
+  version: 1.0.0
+  description: >-
+    前端评测模块的真实 API 契约。运行时不得回退到静态或模拟数据。
+    SSE 断线续传使用浏览器自动发送的 Last-Event-ID 请求头。
+servers:
+  - url: /api/v1/evaluation
+paths:
+  /options:
+    get:
+      operationId: getEvaluationOptions
+      summary: 获取创建任务所需的环境、系统、Harness、模型、MCP、题目与策略选项
+      responses:
+        "200":
+          description: 选项快照
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationOptions"
+        default:
+          $ref: "#/components/responses/Problem"
+  /compile:
+    post:
+      operationId: compileEvaluation
+      summary: 编译系统×Harness×模型×适用题目矩阵
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvaluationSelection"
+      responses:
+        "200":
+          description: 权威编译结果与一次性 compileToken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompiledEvaluation"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks:
+    get:
+      operationId: listEvaluationTasks
+      parameters:
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/EnvironmentId"
+        - $ref: "#/components/parameters/Query"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: 任务、摘要与环境占用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskListResponse"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createEvaluationTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvaluationTaskRequest"
+      responses:
+        "201":
+          description: 已创建的不可变任务
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskDetail"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/drafts:
+    post:
+      operationId: createEvaluationDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveDraftRequest"
+      responses:
+        "201":
+          description: 草稿
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}:
+    get:
+      operationId: getEvaluationTask
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: 任务、进度、矩阵和租约视图
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}/draft:
+    put:
+      operationId: updateEvaluationDraft
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveDraftRequest"
+      responses:
+        "200":
+          description: 已保存草稿
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}/cancel:
+    post:
+      operationId: cancelQueuedEvaluationTask
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: 已取消排队
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}/abort:
+    post:
+      operationId: abortEvaluationTask
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "202":
+          description: 中止请求已受理，任务进入恢复/清理
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}/units/{unitId}:
+    get:
+      operationId: getEvaluationUnit
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+        - name: unitId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 评测单元、Trial、故障、扰动、证据和门禁
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationUnitDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}/events:
+    get:
+      operationId: streamEvaluationEvents
+      summary: 流式任务事件
+      description: >-
+        每个事件必须包含 SSE id 字段。浏览器重连时自动通过 Last-Event-ID 请求头
+        发送最后成功接收的 id，服务端从下一条事件继续。
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: SSE，event 类型为 evaluation-event，data 为 EvaluationEvent JSON
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}/reuse/validation:
+    get:
+      operationId: validateEvaluationReuse
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: 原冻结引用可用性
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReuseValidation"
+        default:
+          $ref: "#/components/responses/Problem"
+  /tasks/{taskId}/reuse:
+    post:
+      operationId: reuseEvaluationTask
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReuseTaskRequest"
+      responses:
+        "201":
+          description: 新任务，不包含原结果与证据
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationTaskDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /monitoring:
+    get:
+      operationId: getEvaluationMonitoringOverview
+      responses:
+        "200":
+          description: 每个环境唯一活动任务和等待数量
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringOverviewResponse"
+        default:
+          $ref: "#/components/responses/Problem"
+  /results:
+    get:
+      operationId: listEvaluationResults
+      parameters:
+        - $ref: "#/components/parameters/Query"
+        - name: terminal_status
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: 终态任务结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationResultListResponse"
+        default:
+          $ref: "#/components/responses/Problem"
+  /results/{taskId}:
+    get:
+      operationId: getEvaluationResult
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: 多系统×Harness、模型、单元、Oracle 与恢复聚合
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationResultDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string }
+    Status:
+      name: status
+      in: query
+      schema: { type: string, enum: [PENDING, RUNNING, COMPLETED] }
+    EnvironmentId:
+      name: environment_id
+      in: query
+      schema: { type: string }
+    Query:
+      name: q
+      in: query
+      schema: { type: string }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  responses:
+    Problem:
+      description: RFC 9457 风格错误
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+  schemas:
+    ProblemDetails:
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+    EvaluationOptions:
+      type: object
+      required: [environments, systems, harnesses, models, mcpServers, questions, questionSets, scoringPolicies, evaluators, promptStrategies]
+      properties:
+        environments: { type: array, items: { $ref: "#/components/schemas/EnvironmentOption" } }
+        systems: { type: array, items: { $ref: "#/components/schemas/SystemOption" } }
+        harnesses: { type: array, items: { $ref: "#/components/schemas/HarnessOption" } }
+        models: { type: array, items: { $ref: "#/components/schemas/NamedStatusOption" } }
+        mcpServers: { type: array, items: { $ref: "#/components/schemas/NamedStatusOption" } }
+        questions: { type: array, items: { $ref: "#/components/schemas/QuestionOption" } }
+        questionSets: { type: array, items: { $ref: "#/components/schemas/QuestionSetOption" } }
+        scoringPolicies: { type: array, items: { $ref: "#/components/schemas/NamedOption" } }
+        evaluators: { type: array, items: { $ref: "#/components/schemas/NamedOption" } }
+        promptStrategies: { type: array, items: { $ref: "#/components/schemas/NamedOption" } }
+    NamedOption:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    NamedStatusOption:
+      allOf:
+        - $ref: "#/components/schemas/NamedOption"
+        - type: object
+          required: [status]
+          properties:
+            status: { type: string }
+            description: { type: string }
+    EnvironmentOption:
+      type: object
+      required: [id, name, status, queueSize, lastCheckedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [IDLE, BUSY, RECOVERING, RESET_FAILED] }
+        currentTask: { $ref: "#/components/schemas/CurrentTaskBrief" }
+        queueSize: { type: integer, minimum: 0 }
+        lastCheckedAt: { type: string, format: date-time }
+    CurrentTaskBrief:
+      type: object
+      required: [taskId, name, progressPercent]
+      properties:
+        taskId: { type: string }
+        name: { type: string }
+        progressPercent: { type: number, minimum: 0, maximum: 100 }
+        currentUnitLabel: { type: string }
+        phase: { type: string }
+    SystemOption:
+      type: object
+      required: [id, name, version, namespace, status, serviceCount, sourceCommit, imageLocked, imageTotal, codeGraphStatus, languages]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        version: { type: string }
+        namespace: { type: string }
+        status: { type: string, enum: [READY, INACTIVE, UNAVAILABLE] }
+        serviceCount: { type: integer }
+        sourceCommit: { type: string }
+        imageLocked: { type: integer }
+        imageTotal: { type: integer }
+        codeGraphStatus: { type: string, enum: [AVAILABLE, STALE, MISSING] }
+        languages: { type: array, items: { type: string } }
+    HarnessOption:
+      type: object
+      required: [id, name, status, modelIds, requiredMcpIds]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [AVAILABLE, UNAVAILABLE] }
+        description: { type: string }
+        modelIds: { type: array, items: { type: string } }
+        requiredMcpIds: { type: array, items: { type: string } }
+    QuestionOption:
+      type: object
+      required: [id, title, category, applicableSystemIds, maxTrials, status]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        category: { type: string }
+        applicableSystemIds: { type: array, items: { type: string } }
+        targetService: { type: string }
+        maxTrials: { type: integer, minimum: 1 }
+        status: { type: string, enum: [AVAILABLE, INCOMPATIBLE] }
+    QuestionSetOption:
+      type: object
+      required: [id, name, version, questionIds]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        version: { type: string }
+        questionIds: { type: array, items: { type: string } }
+    HarnessSelection:
+      type: object
+      required: [harnessId, modelIds]
+      properties:
+        harnessId: { type: string }
+        modelIds: { type: array, minItems: 1, uniqueItems: true, items: { type: string } }
+    ExecutionStrategy:
+      type: object
+      required: [questionOrder, maxTrialsPerUnit, retryPerPhase, stopOnSafetyViolation, scoringPolicyId, evaluatorId, promptStrategyId]
+      properties:
+        questionOrder: { type: string, enum: [FIXED, RANDOM_SEEDED] }
+        maxTrialsPerUnit: { type: integer, minimum: 1 }
+        retryPerPhase: { type: integer, minimum: 0 }
+        stopOnSafetyViolation: { type: boolean }
+        scoringPolicyId: { type: string }
+        evaluatorId: { type: string }
+        promptStrategyId: { type: string }
+    EvaluationSelection:
+      type: object
+      required: [environmentId, systemIds, harnesses, mcpServerIds, questionSetId, questionIds, strategy]
+      properties:
+        environmentId: { type: string }
+        systemIds: { type: array, minItems: 1, uniqueItems: true, items: { type: string } }
+        harnesses: { type: array, minItems: 1, items: { $ref: "#/components/schemas/HarnessSelection" } }
+        mcpServerIds: { type: array, uniqueItems: true, items: { type: string } }
+        questionSetId: { type: string }
+        questionIds: { type: array, minItems: 1, uniqueItems: true, items: { type: string } }
+        strategy: { $ref: "#/components/schemas/ExecutionStrategy" }
+    CompiledEvaluation:
+      type: object
+      required: [compileToken, generatedAt, systemsCount, harnessesCount, modelConfigurationsCount, uniqueQuestionCount, evaluationUnitCount, maxTrialCount, sharedMcpServerIds, matrix, issues, valid]
+      properties:
+        compileToken: { type: string }
+        generatedAt: { type: string, format: date-time }
+        systemsCount: { type: integer }
+        harnessesCount: { type: integer }
+        modelConfigurationsCount: { type: integer }
+        uniqueQuestionCount: { type: integer }
+        evaluationUnitCount: { type: integer }
+        maxTrialCount: { type: integer }
+        sharedMcpServerIds: { type: array, items: { type: string } }
+        matrix:
+          type: array
+          items:
+            type: object
+            required: [systemId, harnessId, modelId, applicableQuestionIds, unitCount]
+            properties:
+              systemId: { type: string }
+              harnessId: { type: string }
+              modelId: { type: string }
+              applicableQuestionIds: { type: array, items: { type: string } }
+              unitCount: { type: integer }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message, severity]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              severity: { type: string, enum: [ERROR, WARNING] }
+        valid: { type: boolean }
+    CreateEvaluationTaskRequest:
+      type: object
+      required: [name, compileToken, selection, enqueueIfBusy]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 1000 }
+        compileToken: { type: string }
+        selection: { $ref: "#/components/schemas/EvaluationSelection" }
+        enqueueIfBusy: { type: boolean }
+    SaveDraftRequest:
+      type: object
+      required: [name, selection]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        selection: { type: object, additionalProperties: true }
+    EvaluationTaskListResponse:
+      type: object
+      required: [items, total, summary, occupancies]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/EvaluationTaskSummary" } }
+        total: { type: integer }
+        summary: { type: object, additionalProperties: true }
+        occupancies: { type: array, items: { type: object, additionalProperties: true } }
+    EvaluationTaskSummary:
+      type: object
+      required: [taskId, name, environmentId, environmentName, systems, harnessNames, modelCount, uniqueQuestionCount, evaluationUnitCount, completedUnitCount, businessStatus, phase, createdAt]
+      properties:
+        taskId: { type: string }
+        name: { type: string }
+        environmentId: { type: string }
+        environmentName: { type: string }
+        systems: { type: array, items: { type: object, additionalProperties: true } }
+        harnessNames: { type: array, items: { type: string } }
+        modelCount: { type: integer }
+        uniqueQuestionCount: { type: integer }
+        evaluationUnitCount: { type: integer }
+        completedUnitCount: { type: integer }
+        businessStatus: { type: string, enum: [PENDING, RUNNING, COMPLETED] }
+        phase: { type: string }
+        terminalStatus: { type: string }
+        queuePosition: { type: integer }
+        waitingForTaskId: { type: string }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    EvaluationTaskDetail:
+      allOf:
+        - $ref: "#/components/schemas/EvaluationTaskSummary"
+        - type: object
+          required: [specFingerprint, harnessProgress, systemProgress, units, recentEvents]
+          properties:
+            specFingerprint: { type: string }
+            selection: { $ref: "#/components/schemas/EvaluationSelection" }
+            compiled: { $ref: "#/components/schemas/CompiledEvaluation" }
+            harnessProgress: { type: array, items: { type: object, additionalProperties: true } }
+            systemProgress: { type: array, items: { type: object, additionalProperties: true } }
+            currentUnit: { type: object, additionalProperties: true }
+            units: { type: array, items: { type: object, additionalProperties: true } }
+            recentEvents: { type: array, items: { $ref: "#/components/schemas/EvaluationEvent" } }
+            lease: { type: object, additionalProperties: true }
+    EvaluationEvent:
+      type: object
+      required: [id, sequence, taskId, type, phase, occurredAt, message]
+      properties:
+        id: { type: string }
+        sequence: { type: integer }
+        taskId: { type: string }
+        unitId: { type: string }
+        trialId: { type: string }
+        type: { type: string }
+        phase: { type: string }
+        occurredAt: { type: string, format: date-time }
+        message: { type: string }
+        payload: { type: object, additionalProperties: true }
+    EvaluationUnitDetail:
+      type: object
+      additionalProperties: true
+      required: [unitId, taskId, systemId, harnessId, modelId, questionId, status, disturbances, liveMetrics, gates, trials, events, artifactRefs]
+    MonitoringOverviewResponse:
+      type: object
+      required: [environments]
+      properties:
+        environments: { type: array, items: { type: object, additionalProperties: true } }
+    EvaluationResultListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items: { type: array, items: { type: object, additionalProperties: true } }
+        total: { type: integer }
+    EvaluationResultDetail:
+      type: object
+      additionalProperties: true
+      required: [taskId, name, systems, totalUnits, validUnits, pass, fail, caseInvalid, score, systemResults, scoreMatrix, modelScores, unitResults, recovery, oracleSummary, artifacts]
+      description: scoreMatrix 同时包含 modelId 为空的系统×Harness 聚合单元，以及带 modelId 的模型下钻单元。
+    ReuseValidation:
+      type: object
+      additionalProperties: true
+      required: [sourceTaskId, specFingerprint, systems, harnesses, models, mcpServers, questionStrategyLabel, scoringPolicyLabel, evaluatorLabel, evaluationUnitCount, checks, canReuseDirectly]
+    ReuseTaskRequest:
+      type: object
+      required: [name, environmentId, enqueueIfBusy]
+      properties:
+        name: { type: string }
+        environmentId: { type: string }
+        enqueueIfBusy: { type: boolean }

@@ -3,6 +3,7 @@ import type { MenuProps } from "antd";
 import { Boxes, Bot, Library, Gauge, Database } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import HealthIndicator from "../components/HealthIndicator";
+import { menuSelectionForPath } from "./menuSelection";
 
 const iconStyle = { width: 16, height: 16, verticalAlign: -3 };
 
@@ -61,6 +62,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const openKeys = pathname.startsWith("/infrastructure") ? [] : [pathname.split("/")[1] ?? "environments"];
+  const selectedKey = menuSelectionForPath(pathname);
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -74,7 +76,7 @@ export default function AppLayout() {
           theme="dark"
           mode="inline"
           items={menuItems}
-          selectedKeys={[pathname]}
+          selectedKeys={[selectedKey]}
           defaultOpenKeys={openKeys}
           onClick={({ key }) => navigate(key)}
         />
