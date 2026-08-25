@@ -1,0 +1,158 @@
+schema_version: resilience-episode.v2
+identity:
+  episode_id: EPI-OTEL-CURRENCY-INSTANCE-LOSS-003
+  version: v1
+  application: otel-demo
+  snapshot_id: snapshot-otel-demo-20260824T084623Z
+defect_basis:
+  template_id: RD-14
+  defect_name: 单副本与中断保护缺失候选
+  evidence_description: >-
+    源码快照中的 Service/currency 选择 currency 工作负载，Deployment/currency 声明一个副本，
+    CodeGraph 将该工作负载关联到 CurrencyService 业务实现。2026-08-24 的只读现场检查也显示
+    replicas=1、readyReplicas=1 且命名空间中没有 PDB；但客户端重试、缓存和替代容量仍需实验区分。
+  evidence:
+    - evidence_id: EV-9975E981AF65
+      kind: kubernetes_manifest
+      statement: 源码锁定清单中的 Service/currency 选择 currency 工作负载。
+      path: kubernetes/opentelemetry-demo.yaml
+      symbol: Service/currency
+      source_hash: 4539b80579493f5d189207dad8b140b9553350f6505e81cb0d632410d5275acd
+    - evidence_id: EV-8E96794F07BA
+      kind: kubernetes_manifest
+      statement: 源码锁定清单中的 Deployment/currency 声明单副本且未声明跨拓扑保护。
+      path: kubernetes/opentelemetry-demo.yaml
+      symbol: Deployment/currency
+      source_hash: 8fe3b4cf09407440de4363b642239838641c0cd4ff022f162d522caa6d3528f2
+    - evidence_id: EV-20947957CDE5
+      kind: codegraph_node
+      statement: CodeGraph 在 currency 源码中定位到 CurrencyService 业务服务实现。
+      path: src/currency/src/server.cpp
+      start_line: 103
+      end_line: 237
+      symbol: CurrencyService
+      source_hash: 14d421ccace202d0cf890e57500f8e2fe990d4af36817110f3ad40fe7d3a547f
+    - evidence_id: EV-1ACE3143A965
+      kind: codegraph_node
+      statement: currency 进程 main 入口注册并运行 CurrencyService。
+      path: src/currency/src/server.cpp
+      start_line: 267
+      end_line: 284
+      symbol: main
+      source_hash: 349734be707044b5c33e9157f6bff4911244437ec846882d27a9219f24f03261
+  mechanism_chain:
+    - order: 1
+      cause: Service/currency 将业务请求路由到 currency 工作负载。
+      relation: selects
+      effect: currency RPC 依赖该 Deployment 的可用 Pod。
+      evidence_ids: [EV-9975E981AF65, EV-20947957CDE5]
+    - order: 2
+      cause: Deployment/currency 只声明一个副本。
+      relation: limits_capacity
+      effect: 当前唯一 Pod 消失时可能暂时没有等价 Ready Endpoint。
+      evidence_ids: [EV-8E96794F07BA]
+    - order: 3
+      cause: Pod 删除到替代 Pod Ready 之间出现容量空窗。
+      relation: may_interrupt
+      effect: currency 相关的浏览、购物车或结算请求可能失败或等待。
+      evidence_ids: [EV-9975E981AF65, EV-8E96794F07BA, EV-1ACE3143A965]
+    - order: 4
+      cause: 持续入口流量穿过该容量空窗。
+      relation: may_violate
+      effect: 成功率、延迟或吞吐可能违反固定 SLO。
+      evidence_ids: [EV-9975E981AF65, EV-20947957CDE5]
+  supported_fault_types: [pod-delete, pod-fail]
+  injection_component: currency
+  confidence: 0.45
+  confidence_level: low
+  residual_hypotheses:
+    - 客户端重试或缓存可能完全吸收替代窗口。
+    - 运行时可能存在清单之外的等价容量或流量保护。
+    - 混合工作负载可能没有足够密度的 currency 相关请求。
+runtime_binding:
+  status: live
+  namespace: otel-demo
+  component: currency
+  pod_name: currency-86bc7c876b-x6hv7
+  pod_uid: 223a370e-922a-4582-bcc1-93eee6951ed8
+  bound_at: 2026-08-24T08:46:23Z
+  binding_expiry:
+    - Pod UID 发生变化或 Pod 被删除。
+    - Pod 不再 Ready。
+    - 运行镜像、环境快照或源码身份发生变化。
+  image_identity: sha256:9cf4c49a79d4165b6d72659b23faa222bdbbefd5908f01d893282da502656306
+  expected_image_identity: sha256:9cf4c49a79d4165b6d72659b23faa222bdbbefd5908f01d893282da502656306
+  runtime_image_drift: false
+  execution_qualified: true
+main_fault:
+  tool: ChaosBlade
+  fault_type: pod-delete
+  fault_semantics: one_shot
+  target:
+    namespace: otel-demo
+    component: currency
+    pod_name: currency-86bc7c876b-x6hv7
+    pod_uid: 223a370e-922a-4582-bcc1-93eee6951ed8
+    direction: service-to-currency
+    chaosblade_version: 1.8.0
+    chaosblade_command_kind: k8s pod-pod delete
+  parameters:
+    evict_count: 1
+  duration_seconds: 600
+  duration_semantics: observation_window
+  command_template: >-
+    /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-pod delete
+    --names currency-86bc7c876b-x6hv7 --namespace otel-demo --evict-count 1
+    --kubeconfig {kubeconfig} --timeout 600
+  cleanup_command: >-
+    /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+  effect_verification:
+    - criterion_id: old_uid_absent
+      description: 当前绑定的 currency Pod UID 在一次删除后消失。
+      evidence_source: Kubernetes UID 清单与 Controller 记录
+    - criterion_id: replacement_window_effect
+      description: Endpoint、工作负载和 Trace 记录删除到替代实例恢复期间的真实业务影响。
+      evidence_source: Kubernetes、持续工作负载与 Telemetry 证据
+execution_policy:
+  max_experiments: 5
+  abort_conditions:
+    - 当前 Pod UID 与运行时绑定不一致且无法重新确认。
+    - 删除超过一个 Pod 或影响超出 currency 组件。
+    - 替代实例无法收敛或工作负载触发安全停止阈值。
+    - 独立观测或清理能力不可用。
+    - Agent 超时、失联或工具轨迹丢失。
+agent_resources:
+  mcp_allowlist:
+    servers: [k8s_ro, telemetry_ro]
+    tools:
+      - k8s_get_resource
+      - k8s_list_resources
+      - k8s_list_events
+      - telemetry_prom_metric_range
+      - telemetry_jaeger_find_traces
+      - telemetry_loki_logs_range
+  codegraph:
+    graph_ref: semantic-scan://semantic-otel-demo-local-v2/codegraph
+    graph_sha256: 7ebcc52ae6dc9e0485e3d9ca721fa5ef4a071535c505cfc717b0158033d35974
+    source_snapshot: otel-demo-2.2.0@b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+    entrypoints:
+      - CurrencyService
+      - currency.main
+oracle:
+  gates:
+    - gate_id: target_and_operation_safety
+      description: Agent 使用当前目标并且最多删除一个 currency Pod。
+      required_evidence: [runtime binding, tool trace, controller record]
+    - gate_id: main_fault_effect
+      description: 独立证据证明旧 UID 消失并记录替代 Pod 与 Endpoint 时间线。
+      required_evidence: [ChaosBlade status, Kubernetes UID delta]
+    - gate_id: fixed_slo_violation
+      description: 评估删除和替代窗口中的固定 SLO，而不是只观察 Pod 状态。
+      required_evidence: [control summary, fault-window workload summary]
+    - gate_id: result_integrity
+      description: Agent 对执行、影响和停止状态的结论必须与 Controller 独立证据一致。
+      required_evidence: [agent result, tool trace, controller record]
+    - gate_id: cleanup_and_business_recovery
+      description: 一次性故障已收敛且 currency 相关业务在持续流量下恢复。
+      required_evidence: [cleanup ledger, current endpoint, recovery workload summary]
+  verdicts: [PASS, FAIL, INCONCLUSIVE, CASE_INVALID]

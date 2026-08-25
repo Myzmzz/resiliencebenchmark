@@ -93,6 +93,7 @@ def build_multi_level_episode(
     total_retry_budget: int | None = None,
     agent_visible_task: Mapping[str, Any] | None = None,
     library: Mapping[DisturbanceType, DisturbanceDefinition] | None = None,
+    disturbance_order: Sequence[DisturbanceType] | None = None,
 ) -> dict[str, Any]:
     """Return a deterministic multi-level episode for one main-fault plan.
 
@@ -112,7 +113,19 @@ def build_multi_level_episode(
             f"total_retry_budget {budget} cannot fund one attempt for each of {level_count} levels"
         )
     definitions = dict(library or load_disturbance_library())
-    ordered_types = _recommended_types(_fault_type(plan))
+    ordered_types = (
+        tuple(disturbance_order)
+        if disturbance_order is not None
+        else _recommended_types(_fault_type(plan))
+    )
+    if len(set(ordered_types)) != len(ordered_types):
+        raise ValueError("disturbance_order must contain unique disturbance types")
+    unknown = set(ordered_types) - set(definitions)
+    if unknown:
+        raise ValueError(
+            "disturbance_order contains types missing from the library: "
+            + ", ".join(sorted(item.value for item in unknown))
+        )
     retry_budgets = _allocate_attempts(level_count, budget)
     levels: list[dict[str, Any]] = []
     for index in range(level_count):
@@ -298,7 +311,7 @@ def _base_task(plan: Mapping[str, Any]) -> dict[str, Any]:
         "defect_ref": str(plan.get("defect_ref") or "UNSPECIFIED"),
         "target": target,
         "main_fault": {
-            "type": _fault_type(plan) or "unspecified",
+            "type": str(action_space.get("selected_actuator") or _fault_type(plan) or "unspecified"),
             "actuator": action_space.get("selected_actuator"),
             "parameters": parameter_map,
         },

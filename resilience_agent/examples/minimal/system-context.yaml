@@ -1,0 +1,11 @@
+application: minimal-checkout
+namespace: resilience-demo
+workload:
+  profile: synthetic read-only checkout requests at a steady rate
+  baseline_window: 5 minutes
+  slo:
+    - Checkout p95 latency remains below the calibrated threshold.
+    - Checkout error rate remains below the calibrated threshold.
+experiment_parameters:
+  target dependency: inventory
+  duration window: 60 seconds

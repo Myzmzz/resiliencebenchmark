@@ -1,0 +1,189 @@
+registry_version: internal-resilience-defect-matchers.v0.1
+description: Conservative operational matchers layered on the canonical 30-class DefectSpec catalog.
+rules:
+  - rule_id: rbd-001-python-requests-without-timeout
+    defect_id: RBD-001
+    scope: file
+    input: files
+    confidence_score: 0.78
+    file_globs: ["**/*.py"]
+    match:
+      all:
+        - id: python-requests-call
+          pattern: '\brequests\.(?:get|post|put|patch|delete|request)\s*\('
+          flags: im
+          message: Python requests call is present on a downstream path.
+      none:
+        - id: explicit-python-timeout
+          pattern: '\btimeout\s*='
+          flags: im
+          message: No explicit requests timeout is visible in the same file.
+    alternative_explanations:
+      - A configured Session or adapter may enforce a timeout outside this file.
+      - The call may be unreachable or absent from the workload path.
+
+  - rule_id: rbd-001-java-resttemplate-without-timeout
+    defect_id: RBD-001
+    scope: file
+    input: files
+    confidence_score: 0.70
+    file_globs: ["**/*.java"]
+    match:
+      all:
+        - id: resttemplate-construction
+          pattern: '\bnew\s+RestTemplate\s*\('
+          flags: im
+          message: RestTemplate is constructed directly.
+      none:
+        - id: resttemplate-timeout-configuration
+          pattern: 'set(?:Connect|Read)Timeout|RestTemplateBuilder[\s\S]{0,300}set(?:Connect|Read)Timeout|ClientHttpRequestFactory'
+          flags: im
+          message: No local RestTemplate connect/read timeout configuration is visible.
+    alternative_explanations:
+      - A dependency-injected request factory may apply timeouts elsewhere.
+
+  - rule_id: rbd-001-go-default-http-client
+    defect_id: RBD-001
+    scope: file
+    input: files
+    confidence_score: 0.76
+    file_globs: ["**/*.go"]
+    match:
+      all:
+        - id: go-package-http-call
+          pattern: '\bhttp\.(?:Get|Post|PostForm)\s*\('
+          flags: im
+          message: Go package-level HTTP helper uses the default client.
+      none:
+        - id: go-request-context-or-client-timeout
+          pattern: 'context\.WithTimeout|http\.Client\s*\{[\s\S]{0,300}Timeout\s*:'
+          flags: im
+          message: No local request context deadline or explicit HTTP client timeout is visible.
+    alternative_explanations:
+      - An outer cancellation boundary may still stop the request.
+
+  - rule_id: rbd-001-typescript-fetch-without-abort-signal
+    defect_id: RBD-001
+    scope: file
+    input: files
+    target_component: frontend
+    confidence_score: 0.76
+    file_globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+    match:
+      all:
+        - id: fetch-downstream-call
+          pattern: '\bfetch\s*\('
+          flags: im
+          message: A Fetch API call is present on a frontend or server-side JavaScript path.
+      none:
+        - id: fetch-abort-or-timeout
+          pattern: 'AbortSignal\.timeout|new\s+AbortController|\bsignal\s*:'
+          flags: im
+          message: No AbortSignal, AbortController, or explicit signal is visible in the same file.
+    alternative_explanations:
+      - A framework wrapper or outer request lifecycle may cancel the operation outside this file.
+      - Browser navigation cancellation may limit some client-side calls without providing a server timeout.
+
+  - rule_id: rbd-006-fixed-retry-sleep
+    defect_id: RBD-006
+    scope: file
+    input: files
+    confidence_score: 0.84
+    file_globs: ["**/*.py", "**/*.java", "**/*.go", "**/*.js", "**/*.ts"]
+    match:
+      all:
+        - id: retry-loop
+          pattern: '(?:for|while)[^\n]*(?:retry|retries|attempt)|(?:retry|attempt)[\s\S]{0,500}(?:for|while)'
+          flags: im
+          message: A retry or attempt loop is present.
+        - id: fixed-sleep
+          pattern: '(?:time\.sleep|Thread\.sleep|sleep)\s*\(\s*(?:\d+(?:\.\d+)?|[A-Z_][A-Z0-9_]*)\s*\)'
+          flags: im
+          message: Retry pacing uses a fixed sleep interval.
+      none:
+        - id: jitter-or-backoff
+          pattern: 'jitter|exponential|backoff|random\.|Math\.random|rand\.'
+          flags: im
+          message: No jitter or exponential-backoff signal is visible in the same file.
+    alternative_explanations:
+      - The loop may have a very small bounded retry count or an external throttle.
+
+  - rule_id: rbd-020-short-termination-grace
+    defect_id: RBD-020
+    scope: file
+    input: files
+    confidence_score: 0.86
+    file_globs: ["**/*.yaml", "**/*.yml"]
+    match:
+      all:
+        - id: short-termination-grace
+          pattern: 'terminationGracePeriodSeconds\s*:\s*(?:[0-9]|1[0-4])\s*$'
+          flags: im
+          message: Workload termination grace is configured below 15 seconds.
+    alternative_explanations:
+      - The process may terminate safely within the configured grace period.
+
+  - rule_id: rbd-021-single-replica-without-pdb
+    defect_id: RBD-021
+    scope: project
+    input: files
+    confidence_score: 0.68
+    file_globs: ["**/*.yaml", "**/*.yml"]
+    match:
+      all:
+        - id: single-replica-kubernetes-workload
+          pattern: '(?:^\s*kind\s*:\s*(?:Deployment|StatefulSet)\s*$[\s\S]{0,2500}^\s*replicas\s*:\s*1\s*$|^\s*replicas\s*:\s*1\s*$[\s\S]{0,2500}^\s*kind\s*:\s*(?:Deployment|StatefulSet)\s*$)'
+          flags: im
+          message: A Kubernetes Deployment or StatefulSet is configured with a single replica.
+      none:
+        - id: disruption-budget
+          pattern: '^\s*kind\s*:\s*PodDisruptionBudget\s*$'
+          flags: im
+          message: No PodDisruptionBudget is visible in the scanned manifest set.
+    alternative_explanations:
+      - The workload may be intentionally non-critical or duplicated outside the scanned manifests.
+
+  - rule_id: rbd-021-system-context-single-instance
+    defect_id: RBD-021
+    scope: project
+    input: context
+    target_component: runtime-deployment
+    confidence_score: 0.72
+    file_globs: ["*"]
+    match:
+      all:
+        - id: observed-single-replica
+          pattern: '(?:available_replicas|ready_replicas|replicas)\s*:\s*1\s*$'
+          flags: im
+          message: Supplied system context reports a single ready or available replica.
+      none:
+        - id: observed-disruption-protection
+          pattern: '(?:pdb|disruption_budget)\s*:\s*(?:true|enabled|present)'
+          flags: im
+          message: Supplied system context does not report disruption-budget protection.
+    alternative_explanations:
+      - The context snapshot may be incomplete or temporarily scaled down.
+
+  - rule_id: rbd-028-cache-error-propagation
+    defect_id: RBD-028
+    scope: file
+    input: files
+    confidence_score: 0.75
+    file_globs: ["**/*.py", "**/*.java", "**/*.go", "**/*.js", "**/*.ts"]
+    match:
+      all:
+        - id: cache-client-usage
+          pattern: '\b(?:redis|memcache|cacheClient|cache_client)\b'
+          flags: im
+          message: A cache client is used on the code path.
+        - id: cache-error-propagated
+          pattern: '(?:catch|except)[\s\S]{0,240}(?:throw|raise)|(?:cache|redis)[\s\S]{0,120}(?:throw|raise)'
+          flags: im
+          message: Cache-related failure appears to be propagated to the caller.
+      none:
+        - id: source-fallback
+          pattern: 'fallback|loadFromSource|load_from_source|databaseFallback|origin_fetch'
+          flags: im
+          message: No fallback-to-source signal is visible in the same file.
+    alternative_explanations:
+      - An interceptor or caller may provide a fallback outside this file.

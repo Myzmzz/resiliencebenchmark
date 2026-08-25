@@ -27,6 +27,7 @@ DEFAULT_KUBECONFIG_ROOT = Path("/etc/resiliencebenchmark/kubeconfigs")
 DEFAULT_SOURCE_ROOT = "/opt/resiliencebenchmark/sources"
 DEFAULT_BASELINE_LEDGER_DIR = "/var/lib/resiliencebenchmark/chaos-control/baseline"
 DEFAULT_ACTIVE_LEDGER_DIR = "/var/lib/resiliencebenchmark/chaos-control/active"
+DEFAULT_TELEMETRY_DISTURBANCE_DIR = "/var/lib/resiliencebenchmark/telemetry-disturbance"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = REPO_ROOT / "tasks/schemas/episode-public.schema.json"
 UNIT_NAMES = (
@@ -311,6 +312,7 @@ def build_env_files(runtime: Mapping[str, str], episode: Mapping[str, str]) -> d
             "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": namespace,
             "RESBENCH_JAEGER_ALLOWED_SERVICES": runtime["jaeger_allowlist"],
             "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
+            "RESBENCH_TELEMETRY_DISTURBANCE_DIR": DEFAULT_TELEMETRY_DISTURBANCE_DIR,
         },
         "source_ro.env": {
             **common,

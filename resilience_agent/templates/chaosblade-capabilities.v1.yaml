@@ -1,0 +1,47 @@
+schema_version: chaosblade-capability-manifest.v1
+registry_version: chaosblade-1.8.0-k8s-profiles-v1
+generated_at: 2026-08-24T00:00:00Z
+namespace: resbench-system
+capabilities:
+  - fault_type: network-delay
+    actuator: ChaosBlade
+    status: verified
+    command_kind: k8s pod-network delay
+    blade_version: 1.8.0
+    verification_source: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s --help and chaosblades.chaosblade.io operator preflight
+    verified_at: 2026-08-24T00:00:00Z
+  - fault_type: network-loss
+    actuator: ChaosBlade
+    status: verified
+    command_kind: k8s pod-network loss
+    blade_version: 1.8.0
+    verification_source: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s --help and chaosblades.chaosblade.io operator preflight
+    verified_at: 2026-08-24T00:00:00Z
+  - fault_type: cpu-load
+    actuator: ChaosBlade
+    status: verified
+    command_kind: k8s pod-cpu fullload
+    blade_version: 1.8.0
+    verification_source: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s --help and chaosblades.chaosblade.io operator preflight
+    verified_at: 2026-08-24T00:00:00Z
+  - fault_type: memory-load
+    actuator: ChaosBlade
+    status: verified
+    command_kind: k8s pod-mem load
+    blade_version: 1.8.0
+    verification_source: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s --help and chaosblades.chaosblade.io operator preflight
+    verified_at: 2026-08-24T00:00:00Z
+  - fault_type: pod-delete
+    actuator: ChaosBlade
+    status: verified
+    command_kind: k8s pod-pod delete
+    blade_version: 1.8.0
+    verification_source: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s --help and chaosblades.chaosblade.io operator preflight
+    verified_at: 2026-08-24T00:00:00Z
+  - fault_type: pod-fail
+    actuator: ChaosBlade
+    status: verified
+    command_kind: k8s pod-pod fail
+    blade_version: 1.8.0
+    verification_source: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s --help and chaosblades.chaosblade.io operator preflight
+    verified_at: 2026-08-24T00:00:00Z

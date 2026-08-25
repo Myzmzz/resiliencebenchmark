@@ -1,0 +1,74 @@
+schema_version: resilience-episode-public.v1
+identity:
+  episode_id: EPI-OTEL-CART-DEADLINE-001
+  version: v2
+  application: otel-demo
+  snapshot_id: snapshot-otel-demo-builtin-load-20260825T001800Z
+title: OTel Demo cart 路径有界韧性验证任务
+objective: |
+  在限定实验预算内，对 otel-demo 中与 cart 路径相关的一个逻辑组件实施允许的
+  ChaosBlade 网络延迟故障。验证故障是否真实生效，分析持续业务流量下的影响，
+  处理运行时扰动，并完成故障清理与业务恢复验证。
+environment_snapshot:
+  application: otel-demo
+  namespace: otel-demo
+  source_snapshot: otel-demo-2.2.0@b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+  workload_profile: environment/kubernetes/otel-demo/values.yaml#components.load-generator
+  continuous_workload: true
+  fixed_slo:
+    - success_rate >= 0.95
+    - error_rate <= 0.05
+    - p95_latency_ms <= 1000
+  binding_expiry:
+    - Pod UID 发生变化。
+    - Pod 不再 Ready。
+    - 环境快照、镜像或源码身份发生变化。
+action_space:
+  allowed_fault_types: [network-delay]
+  target_scope: >-
+    otel-demo 命名空间中与 cart 路径相关的一个目标 Pod；每次执行前必须重新确认 Pod 名称和 UID。
+  forbidden_actions:
+    - 不得访问私有缺陷证据或 Oracle。
+    - 不得修改源码、Deployment、Service 或持久化数据。
+    - 不得操作共享观测系统、流量发生器或无关资源。
+    - 同时只能存在一个主故障。
+    - 命中停止条件后不得继续实验。
+execution_budget:
+  max_experiments: 5
+  max_concurrent_faults: 1
+  fault_or_observation_window_seconds: 600
+agent_resources:
+  mcp_allowlist:
+    servers: [k8s_ro, telemetry_ro, source_ro, chaos_control]
+    tools:
+      - k8s_get_resource
+      - k8s_list_resources
+      - k8s_list_events
+      - telemetry_prom_metric_range
+      - telemetry_jaeger_find_traces
+      - telemetry_loki_logs_range
+      - chaos_validate_plan
+      - chaos_inventory_run
+      - chaos_create_experiment
+      - chaos_get_experiment
+      - chaos_destroy_experiment
+      - chaos_recovery_status
+  codegraph:
+    graph_ref: semantic-scan://semantic-otel-demo-local-v3/codegraph
+    graph_sha256: 7ebcc52ae6dc9e0485e3d9ca721fa5ef4a071535c505cfc717b0158033d35974
+    source_snapshot: otel-demo-2.2.0@b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+    entrypoints:
+      - frontend.pages.api.cart.handler
+      - frontend.utils.Request.request
+expected_output:
+  - 对风险假设给出 confirmed、rejected 或 inconclusive 判断。
+  - 提供目标选择和重新确认的证据。
+  - 提供故障生效及业务影响证据。
+  - 提供扰动响应、证据边界和剩余不确定性。
+  - 提供清理与业务恢复证据。
+safety_constraints:
+  - 每次变更前重新查询 Pod 名称和 UID。
+  - 命令返回成功不等于故障已经生效。
+  - Pod 处于 Running 不等于业务已经恢复。
+  - Telemetry 缺失不等于指标为零。
+  - 无法验证清理时必须停止并返回 INCONCLUSIVE。

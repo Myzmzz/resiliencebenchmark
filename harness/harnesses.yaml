@@ -19,6 +19,7 @@ shared:
   prompt_templates:
     common_task: prompts/common-task.md
     connectivity_smoke: prompts/connectivity-smoke.md
+    chaos_write_smoke: prompts/chaos-write-smoke.md
     full_lifecycle: prompts/full-lifecycle.md
     minimal_intent: prompts/minimal-intent.md
   hidden_from_agent:

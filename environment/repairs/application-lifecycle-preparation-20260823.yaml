@@ -1,0 +1,79 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: ApplicationLifecyclePreparationEvidence
+metadata:
+  name: application-lifecycle-preparation-20260823
+spec:
+  status: partially-qualified
+  deploymentBundles:
+    trainTicket:
+      bundle: environment/kubernetes/train-ticket/deployment.yaml
+      exportedObjects:
+        deployments: 48
+        statefulSets: 3
+        services: 56
+        persistentVolumeClaims: 7
+        applicationConfigMaps: 5
+      helmReleases: [nacosdb, tsdb, rabbitmq, nacos]
+      secretValuesRecorded: false
+      temporaryNamespaceQualification:
+        namespace: rb-train-ticket-e1-20260823
+        status: failed-readiness-timeout
+        createdDeployments: 48
+        createdStatefulSets: 3
+        infrastructureReadyReplicas: 10
+        finalReadyReplicas: 20
+        finalDesiredReplicas: 64
+        cause: Startup storm placed 52 Pods on tcse-v100-03; Nacos clients failed registration while RPC status was STARTING.
+        artifact: artifacts/qualification/train-ticket-temp-deploy-20260823.json
+        namespaceDeleted: true
+    sockShop:
+      renderer: scripts/render_sock_shop.py
+      runtimeImageMap: environment/kubernetes/sock-shop/harbor-image-map.json
+    otelDemo:
+      bundle: environment/kubernetes/otel-demo/deployment.yaml
+      helmChart: open-telemetry/opentelemetry-demo
+      helmChartVersion: 0.40.5
+      liveRevision: 16
+      temporaryNamespaceQualification:
+        namespace: rb-otel-demo-e1-20260823
+        status: passed
+        businessDeploymentsReady: 22
+        loadGeneratorReplicas: 0
+        namespaceDeleted: true
+  lifecycleExecutor:
+    implementation: scripts/deploy_application.py
+    supportedModes: [apply, activate, standby, delete]
+    otelDemoStandbyActivate:
+      status: passed
+      restoredBusinessDeployments: 22
+      intentionallyZeroDeployments: 1
+      activeMarker: otel-demo
+  episodeReset:
+    implementation: scripts/reset_episode.py
+    staticAndUnitQualification: passed
+    liveQualification: passed
+    artifact: artifacts/qualification/episode-reset-live-20260823.json
+    firstBaseline:
+      requests: 474
+      failures: 0
+      p95LatencyMs: 34
+      throughputRps: 8.026646867524603
+    secondBaseline:
+      requests: 474
+      failures: 0
+      p95LatencyMs: 29
+      throughputRps: 8.01197273425988
+    throughputSpreadRatio: 0.0018281772584382518
+    repeatedFault:
+      faultType: cpu-load
+      cpuPercent: 1
+      durationSeconds: 5
+      firstObservedPhase: Running
+      secondObservedPhase: Running
+      bothDestroyVerifiedAbsent: true
+    finalChaosBladeCount: 0
+    workloadObjectResidue: 0
+  imageTagRepair:
+    otelDemoHelmRevision: 16
+    removedLatestReferences: 5
+    remainingLatestReferencesAcrossThreeSystems: 0

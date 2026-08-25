@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/resilience-agent/episode-designs.v0.1.json",
+  "title": "Internal Resilience Episode Designs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "design_set_id",
+    "generated_at",
+    "source_analysis_id",
+    "generation_mode",
+    "model_provenance",
+    "summary",
+    "episodes"
+  ],
+  "properties": {
+    "schema_version": {"const": "episode-designs.v0.1"},
+    "design_set_id": {"type": "string", "pattern": "^EPSET-[a-f0-9]{12}$"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "source_analysis_id": {"type": "string", "pattern": "^ANALYSIS-[a-f0-9]{12}$"},
+    "generation_mode": {"enum": ["internal_episode_design", "model_assisted_episode_design"]},
+    "model_provenance": {
+      "type": ["object", "null"],
+      "properties": {
+        "provider": {"type": "string"},
+        "protocol": {"type": "string"},
+        "requested_model": {"type": "string"},
+        "resolved_model": {"type": ["string", "null"]},
+        "reasoning_effort": {"type": "string"},
+        "store": {"type": "boolean"},
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_tokens", "output_tokens", "total_tokens"],
+          "properties": {
+            "input_tokens": {"type": "integer", "minimum": 0},
+            "output_tokens": {"type": "integer", "minimum": 0},
+            "total_tokens": {"type": "integer", "minimum": 0}
+          }
+        }
+      },
+      "required": ["provider", "protocol", "requested_model", "resolved_model", "reasoning_effort", "store", "usage"],
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_count", "eligible_candidate_count", "episode_count", "min_confidence"],
+      "properties": {
+        "candidate_count": {"type": "integer", "minimum": 0},
+        "eligible_candidate_count": {"type": "integer", "minimum": 0},
+        "episode_count": {"type": "integer", "minimum": 0},
+        "min_confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "episodes": {"type": "array", "items": {"$ref": "#/$defs/episode"}}
+  },
+  "$defs": {
+    "stringArray": {"type": "array", "items": {"type": "string"}},
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "status"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "value": {},
+        "status": {"enum": ["provided", "tbd"]}
+      }
+    },
+    "evidenceBasis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "line", "signal_id", "summary"],
+      "properties": {
+        "kind": {"enum": ["source", "config", "system"]},
+        "path": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "signal_id": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1}
+      }
+    },
+    "verifiedEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "line_start", "line_end", "signal_id", "summary", "excerpt"],
+      "properties": {
+        "kind": {"enum": ["source", "config", "system"]},
+        "path": {"type": "string"},
+        "line_start": {"type": "integer", "minimum": 1},
+        "line_end": {"type": "integer", "minimum": 1},
+        "signal_id": {"type": "string"},
+        "summary": {"type": "string"},
+        "excerpt": {"type": "string"}
+      }
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase_id", "action", "completion_criteria", "required_evidence"],
+      "properties": {
+        "phase_id": {"type": "string", "minLength": 1},
+        "action": {"type": "string", "minLength": 1},
+        "completion_criteria": {"type": "string", "minLength": 1},
+        "required_evidence": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "selected_actuator", "parameters"],
+      "properties": {
+        "class": {"type": "string", "minLength": 1},
+        "selected_actuator": {"type": ["string", "null"]},
+        "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}}
+      }
+    },
+    "experiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "experiment_id",
+        "role",
+        "objective",
+        "trigger",
+        "phases",
+        "required_evidence",
+        "completion_criteria"
+      ],
+      "properties": {
+        "experiment_id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["baseline_control", "hypothesis_validation"]},
+        "objective": {"type": "string", "minLength": 1},
+        "trigger": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/trigger"}]},
+        "phases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/phase"}]}
+        },
+        "required_evidence": {"$ref": "#/$defs/stringArray"},
+        "completion_criteria": {"type": "string", "minLength": 1}
+      }
+    },
+    "oracleGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_id", "required", "failure_status", "required_evidence"],
+      "properties": {
+        "gate_id": {
+          "enum": [
+            "episode_validity",
+            "safety",
+            "fault_effect",
+            "slo_violation",
+            "causal_mechanism",
+            "diagnosis",
+            "recovery"
+          ]
+        },
+        "required": {"type": "boolean"},
+        "failure_status": {
+          "enum": [
+            "PASS",
+            "FAIL_SELECTION",
+            "FAIL_EXECUTION",
+            "FAIL_ANALYSIS",
+            "FAIL_SAFETY",
+            "INCONCLUSIVE",
+            "CASE_INVALID"
+          ]
+        },
+        "required_evidence": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "episode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "episode_id",
+        "candidate_id",
+        "defect_ref",
+        "title",
+        "status",
+        "design_basis",
+        "application_snapshot",
+        "workload",
+        "evidence_contract",
+        "action_space",
+        "budget",
+        "experiment_sequence",
+        "safety",
+        "oracle",
+        "recovery",
+        "decision_rules",
+        "leakage_controls",
+        "model_reasoning",
+        "readiness"
+      ],
+      "properties": {
+        "episode_id": {"type": "string", "pattern": "^EPI-RBD-[0-9]{3}-[A-F0-9]{10}$"},
+        "candidate_id": {"type": "string", "pattern": "^CAND-RBD-[0-9]{3}-[a-f0-9]{12}$"},
+        "defect_ref": {"type": "string", "pattern": "^RBD-[0-9]{3}$"},
+        "title": {"type": "string", "minLength": 1},
+        "status": {"enum": ["draft_unqualified", "draft_ready_for_controller_review"]},
+        "design_basis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hypothesis",
+            "mechanism",
+            "candidate_confidence",
+            "evidence_basis",
+            "alternative_explanations",
+            "truth_status"
+          ],
+          "properties": {
+            "hypothesis": {"type": "string", "minLength": 1},
+            "mechanism": {"type": "string", "minLength": 1},
+            "candidate_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "evidence_basis": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"$ref": "#/$defs/evidenceBasis"}
+            },
+            "alternative_explanations": {"$ref": "#/$defs/stringArray"},
+            "truth_status": {"const": "hypothesis_not_independently_confirmed"}
+          }
+        },
+        "application_snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "application",
+            "namespace",
+            "snapshot_id",
+            "release_ref",
+            "candidate_services",
+            "source_artifacts",
+            "runtime_target",
+            "health_prerequisites",
+            "reset_contract"
+          ],
+          "properties": {
+            "application": {"type": "string", "minLength": 1},
+            "namespace": {"type": ["string", "null"]},
+            "snapshot_id": {"type": ["string", "null"]},
+            "release_ref": {"type": ["string", "null"]},
+            "candidate_services": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            "source_artifacts": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            "runtime_target": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["component", "kind", "name", "uid", "status"],
+              "properties": {
+                "component": {"type": "string", "minLength": 1},
+                "kind": {"type": ["string", "null"]},
+                "name": {"type": ["string", "null"]},
+                "uid": {"type": ["string", "null"]},
+                "status": {"enum": ["resolved", "unresolved"]}
+              }
+            },
+            "health_prerequisites": {"$ref": "#/$defs/stringArray"},
+            "reset_contract": {"$ref": "#/$defs/stringArray"}
+          }
+        },
+        "workload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profile", "baseline_window", "slo", "fixture_ref", "status"],
+          "properties": {
+            "profile": {"type": ["string", "null"]},
+            "baseline_window": {"type": ["string", "null"]},
+            "slo": {"$ref": "#/$defs/stringArray"},
+            "fixture_ref": {"type": ["string", "null"]},
+            "status": {"enum": ["provided", "partial"]}
+          }
+        },
+        "evidence_contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metrics", "traces", "logs", "kubernetes", "source", "independence_requirement"],
+          "properties": {
+            "metrics": {"$ref": "#/$defs/stringArray"},
+            "traces": {"$ref": "#/$defs/stringArray"},
+            "logs": {"$ref": "#/$defs/stringArray"},
+            "kubernetes": {"$ref": "#/$defs/stringArray"},
+            "source": {"$ref": "#/$defs/stringArray"},
+            "independence_requirement": {"type": "string", "minLength": 1}
+          }
+        },
+        "action_space": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowed_trigger_classes",
+            "actuator_candidates",
+            "selected_actuator",
+            "parameters",
+            "target_scope",
+            "forbidden_actions"
+          ],
+          "properties": {
+            "allowed_trigger_classes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            "actuator_candidates": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            "selected_actuator": {"type": ["string", "null"]},
+            "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
+            "target_scope": {"const": "single_resolved_target"},
+            "forbidden_actions": {"$ref": "#/$defs/stringArray"}
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_experiments", "max_duration_minutes", "max_concurrent_faults"],
+          "properties": {
+            "max_experiments": {"type": "integer", "minimum": 1, "maximum": 10},
+            "max_duration_minutes": {"type": ["integer", "null"], "minimum": 1},
+            "max_concurrent_faults": {"const": 1}
+          }
+        },
+        "experiment_sequence": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/experiment"}
+        },
+        "safety": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "guardrails", "abort_conditions", "required_authorization"],
+          "properties": {
+            "mode": {"const": "design_only_not_executed"},
+            "guardrails": {"$ref": "#/$defs/stringArray"},
+            "abort_conditions": {"$ref": "#/$defs/stringArray"},
+            "required_authorization": {"$ref": "#/$defs/stringArray"}
+          }
+        },
+        "oracle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["primary_outcome", "gates"],
+          "properties": {
+            "primary_outcome": {"const": "verified_resilience_defect_or_rejected_hypothesis"},
+            "gates": {"type": "array", "minItems": 7, "items": {"$ref": "#/$defs/oracleGate"}}
+          }
+        },
+        "recovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cleanup_actions",
+            "verification",
+            "control_plane_absence_required",
+            "business_recovery_required"
+          ],
+          "properties": {
+            "cleanup_actions": {"$ref": "#/$defs/stringArray"},
+            "verification": {"$ref": "#/$defs/stringArray"},
+            "control_plane_absence_required": {"const": true},
+            "business_recovery_required": {"const": true}
+          }
+        },
+        "decision_rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["confirm", "reject", "inconclusive"],
+          "properties": {
+            "confirm": {"$ref": "#/$defs/stringArray"},
+            "reject": {"$ref": "#/$defs/stringArray"},
+            "inconclusive": {"$ref": "#/$defs/stringArray"}
+          }
+        },
+        "leakage_controls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["internal_only_fields", "public_materialization_rules"],
+          "properties": {
+            "internal_only_fields": {"$ref": "#/$defs/stringArray"},
+            "public_materialization_rules": {"$ref": "#/$defs/stringArray"}
+          }
+        },
+        "model_reasoning": {
+          "type": ["object", "null"],
+          "properties": {
+            "critical_path_rationale": {"type": "string"},
+            "alternative_experiments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["trigger_class", "target_component", "rationale", "evidence"],
+                "properties": {
+                  "trigger_class": {"type": "string"},
+                  "target_component": {"type": "string"},
+                  "rationale": {"type": "string"},
+                  "evidence": {"type": "array", "items": {"$ref": "#/$defs/verifiedEvidence"}}
+                }
+              }
+            },
+            "risk_notes": {"$ref": "#/$defs/stringArray"},
+            "public_leakage_notes": {"$ref": "#/$defs/stringArray"},
+            "readiness_notes": {"$ref": "#/$defs/stringArray"}
+          },
+          "required": ["critical_path_rationale", "alternative_experiments", "risk_notes", "public_leakage_notes", "readiness_notes"],
+          "additionalProperties": false
+        },
+        "readiness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ready_for_execution", "ready_for_lock", "execution_blockers", "promotion_requirements"],
+          "properties": {
+            "ready_for_execution": {"type": "boolean"},
+            "ready_for_lock": {"const": false},
+            "execution_blockers": {"$ref": "#/$defs/stringArray"},
+            "promotion_requirements": {"$ref": "#/$defs/stringArray"}
+          }
+        }
+      }
+    }
+  }
+}

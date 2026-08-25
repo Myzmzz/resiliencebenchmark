@@ -12,15 +12,38 @@ spec:
     episodePublicSchema: tasks/schemas/episode-public.schema.json
     privateEvaluatorInputSchema: tasks/schemas/ground-truth.schema.json
     privateBundlePolicy: tasks/contracts/private-evaluator-bundle.md
+  analysisAgent:
+    implementation: resilience_agent/agent.py
+    offlineFallback: resilience_agent/pipeline.py
+    modelConfig: resilience_agent/config/model.yaml
+    runSchema: resilience_agent/schemas/agent-run.schema.json
+    candidateSchema: resilience_agent/schemas/candidate-defects.schema.json
+    episodeDesignSchema: resilience_agent/schemas/episode-designs.schema.json
+    capabilities:
+      defectIdentification: resilience_agent/defect_identification.py
+      episodeDesign: resilience_agent/episode_design.py
+      modelReasoning: resilience_agent/model_reasoning.py
+      boundedTools: resilience_agent/analysis_tools.py
+    templates:
+      defectMatchers: resilience_agent/templates/defect-matchers.v0.1.yaml
+      episodeDesign: resilience_agent/templates/episode-design-templates.v0.1.yaml
+    minimalExample: resilience_agent/examples/minimal
   environments:
     applicationConfigs:
       - environment/applications/train-ticket.yaml
       - environment/applications/sock-shop.yaml
       - environment/applications/otel-demo.yaml
     kubernetesDeployments:
+      trainTicket:
+        deploymentBundle: environment/kubernetes/train-ticket/deployment.yaml
+        staticManifest: environment/kubernetes/train-ticket/static-manifests.yaml
+        requiredSecrets: environment/kubernetes/train-ticket/required-secrets.yaml
       sockShop:
         renderConfig: environment/kubernetes/sock-shop/render-config.yaml
         renderer: scripts/render_sock_shop.py
+      otelDemo:
+        deploymentBundle: environment/kubernetes/otel-demo/deployment.yaml
+        values: environment/kubernetes/otel-demo/values.yaml
     workloads:
       trainTicket:
         profiles: environment/workloads/train-ticket/profiles.yaml
@@ -33,6 +56,7 @@ spec:
       - environment/observability/prometheus-otlp-receiver.yaml
       - environment/observability/otel-demo-collector-routing.yaml
       - environment/observability/promtail-dut-logs.configmap.yaml
+      - environment/observability/promtail-readiness.patch.yaml
       - environment/observability/prometheus-persistence-required.yaml
       - environment/observability/kubelet-certificate-expiry.yaml
       - environment/observability/prometheus-pvc.yaml
@@ -64,6 +88,9 @@ spec:
     sourceLocks: environment/shared/source-locks.yaml
     runtimeImageInventory: scripts/inventory_runtime_images.py
     runtimeImageLockPolicy: environment/shared/runtime-image-lock-policy.yaml
+    applicationLifecycle:
+      deployer: scripts/deploy_application.py
+      resetter: scripts/reset_episode.py
     repairPlans:
       - environment/repairs/observability-node-exporter-pin.yaml
       - environment/repairs/otel-demo-load-generator-enable.yaml
@@ -112,20 +139,26 @@ spec:
   currentScope:
     implemented:
       - public schemas and defect catalog
+      - internal model-driven resilience analysis agent with bounded read-only tools and evidence validation
+      - model-assisted candidate-defect and EpisodeDesign contracts with auditable run manifests
       - environment adapter configuration
       - harness model MCP and prompt configuration
       - controller safety validation
       - independent evaluator contracts
       - static and read-only cluster qualification tools
+      - dry-run-first application apply activate standby and delete executor
+      - lightweight Episode reset executor with Chaos ledger and workload SLO gates
       - authenticated source telemetry Kubernetes and gated ChaosBlade MCP implementations
       - Codex and Claude Code trial-local MCP client templates
       - BladeAI native SSE verifier adapter and DeepSeek headless MCP contract
       - pinned MCP host release installer endpoint qualifier and trial runner
       - buildable controller-owned Train-Ticket workload image source
     notYetClaimed:
+      - V2 internal Agent MCP client and dynamic evidence driven open hypothesis discovery
       - runnable locked Episode bundle
       - deployed MCP endpoints for every Harness
       - qualified seven-model matrix
       - clean reproducible baseline for all three applications
       - automatic defect implantation and defective application image pipeline
       - formal experiment results
+      - live resilience-agent model gateway qualification with runtime credentials

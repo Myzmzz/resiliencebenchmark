@@ -52,6 +52,7 @@ command -v systemctl >/dev/null 2>&1 || { printf 'systemd systemctl is required\
 command -v getent >/dev/null 2>&1 || { printf 'getent is required\n' >&2; exit 1; }
 command -v groupadd >/dev/null 2>&1 || { printf 'groupadd is required\n' >&2; exit 1; }
 command -v useradd >/dev/null 2>&1 || { printf 'useradd is required\n' >&2; exit 1; }
+command -v usermod >/dev/null 2>&1 || { printf 'usermod is required\n' >&2; exit 1; }
 if [ "$MATERIALIZE_SOURCES" = true ]; then
   command -v runuser >/dev/null 2>&1 || { printf 'runuser is required for source materialization\n' >&2; exit 1; }
   command -v git >/dev/null 2>&1 || { printf 'git is required for source materialization\n' >&2; exit 1; }
@@ -89,11 +90,18 @@ for service_identity in \
   fi
 done
 
+if ! getent group resbench-telemetry-control >/dev/null 2>&1; then
+  groupadd --system resbench-telemetry-control
+fi
+usermod -a -G resbench-telemetry-control resbench-telemetry-ro
+usermod -a -G resbench-telemetry-control resbench-chaos-control
+
 install -d -m 0751 -o root -g root "$ENV_DIR" "$KUBECONFIG_DIR"
 install -d -m 0755 -o root -g root "$STATE_DIR"
 install -d -m 0750 -o resbench-source-ro -g resbench-source-ro "$SOURCE_STATE_DIR" "$SOURCE_ROOT"
 install -d -m 0700 -o resbench-chaos-control -g resbench-chaos-control "$ACTIVE_LEDGER_DIR"
 install -d -m 0700 -o resbench-chaos-control -g resbench-chaos-control "$BASELINE_LEDGER_DIR"
+install -d -m 2770 -o root -g resbench-telemetry-control "$STATE_DIR/telemetry-disturbance"
 
 # Use the host interpreter explicitly. A uv-managed interpreter under /root is
 # not traversable by the dedicated service identities and is hidden by

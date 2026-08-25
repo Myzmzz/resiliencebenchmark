@@ -6,6 +6,8 @@
 
 当前真实环境进度与阻塞项见 [`ENVIRONMENT_STATUS.md`](ENVIRONMENT_STATUS.md)。
 
+实验采用“BladeAI 内模型对比 + 原生 Agent 系统对比”的双轨制，完整决策、控制变量和结果解释规则见 [`EXPERIMENT_DESIGN_DECISIONS.md`](EXPERIMENT_DESIGN_DECISIONS.md)。
+
 ## 核心目标
 
 Benchmark 不仅判断 Agent 是否成功执行一条故障命令，而是评估它能否在安全约束和有限实验预算下，完成“选择实验 → 执行实验 → 分析证据”的闭环，并识别、验证和定位真实的系统韧性问题。

@@ -6,6 +6,7 @@ import pytest
 from mcp.server import MCPServer
 
 from mcp_servers.http_runtime import (
+    FileBackedBearerTokenVerifier,
     HTTP_PATH_ENV,
     HTTP_PORT_ENV,
     ISSUER_URL_ENV,
@@ -33,6 +34,25 @@ def http_env(**overrides: str) -> dict[str, str]:
 
 async def verify(verifier: StaticBearerTokenVerifier, token: str):
     return await verifier.verify_token(token)
+
+
+def test_file_backed_token_verifier_rotates_without_server_restart(tmp_path):
+    token_file = tmp_path / "active-token"
+    first = "a" * 40
+    second = "b" * 40
+    token_file.write_text(first, encoding="utf-8")
+    token_file.chmod(0o600)
+    verifier = FileBackedBearerTokenVerifier(
+        token_file=token_file,
+        scopes=["resbench:episode"],
+        resource="http://127.0.0.1:8000/mcp",
+    )
+
+    assert asyncio.run(verifier.verify_token(first)) is not None
+    token_file.write_text(second, encoding="utf-8")
+    token_file.chmod(0o600)
+    assert asyncio.run(verifier.verify_token(first)) is None
+    assert asyncio.run(verifier.verify_token(second)) is not None
 
 
 def test_static_bearer_token_verifier_accepts_only_exact_token_without_returning_secret():

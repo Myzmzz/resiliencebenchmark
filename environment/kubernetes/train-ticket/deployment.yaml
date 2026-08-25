@@ -1,0 +1,100 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: ApplicationDeploymentBundle
+metadata:
+  name: train-ticket
+spec:
+  defaultNamespace: train-ticket
+  liveExport: live-export.yaml
+  staticManifest: static-manifests.yaml
+  requiredSecrets: required-secrets.yaml
+  helmReleases:
+    - release: nacos
+      chart:
+        name: nacos
+        version: 0.1.5
+        appVersion: "1.0"
+        package: charts/nacos-0.1.5.tgz
+        sha256: d981a8e2a7a32a1404d80617e41d1d0307ef00bb57dff0ab1b8f4f8ce920c094
+        sourceRef: source-lock://train-ticket-upstream/deployment/kubernetes-manifests/quickstart-k8s/charts/nacos
+      values: values/nacos.yaml
+    - release: nacosdb
+      chart:
+        name: mysql
+        version: 1.0.0
+        appVersion: 5.7.34
+        package: charts/mysql-1.0.0.tgz
+        sha256: 764c35c13b413acb4610b4442c2637ed513ce8d09a3b0ccce6ecb0eb3fd0f59d
+        sourceRef: source-lock://train-ticket-upstream/deployment/kubernetes-manifests/quickstart-k8s/charts/mysql
+      values: values/nacosdb.yaml
+    - release: rabbitmq
+      chart:
+        name: rabbitmq
+        version: "3"
+        appVersion: "1.0"
+        package: charts/rabbitmq-3.tgz
+        sha256: 27d174e89bbf260fc7da289bc4342baa3deaa3eced4ac652474f74568fccf302
+        sourceRef: source-lock://train-ticket-upstream/deployment/kubernetes-manifests/quickstart-k8s/charts/rabbitmq
+      values: values/rabbitmq.yaml
+    - release: tsdb
+      chart:
+        name: mysql
+        version: 1.0.0
+        appVersion: 5.7.34
+        package: charts/mysql-1.0.0.tgz
+        sha256: 764c35c13b413acb4610b4442c2637ed513ce8d09a3b0ccce6ecb0eb3fd0f59d
+        sourceRef: source-lock://train-ticket-upstream/deployment/kubernetes-manifests/quickstart-k8s/charts/mysql
+      values: values/tsdb.yaml
+  postInstallPatches:
+    nacosdb:
+      kind: StatefulSet
+      name: nacosdb-mysql
+      containers:
+        - name: mysql
+          command: [/docker-entrypoint.sh]
+          args: [mysqld]
+        - name: xenon
+          command: [docker-entrypoint]
+          args: [xenon, -c, /etc/xenon/xenon.json]
+    tsdb:
+      kind: StatefulSet
+      name: tsdb-mysql
+      containers:
+        - name: mysql
+          command: [/docker-entrypoint.sh]
+          args: [mysqld]
+        - name: xenon
+          command: [docker-entrypoint]
+          args: [xenon, -c, /etc/xenon/xenon.json]
+    rabbitmq:
+      kind: Deployment
+      name: rabbitmq
+      containers:
+        - name: rabbitmq
+          command: [/usr/local/bin/docker-entrypoint.sh]
+          args: [rabbitmq-server]
+    nacos:
+      kind: StatefulSet
+      name: nacos
+      initContainers:
+        - name: initmysql
+          command:
+            - sh
+            - -c
+            - >-
+              until nc -z "${MYSQL_SERVICE_HOST:-nacosdb-mysql-leader}"
+              "${MYSQL_SERVICE_PORT:-3306}"; do sleep 2; done
+      containers:
+        - name: k8snacos
+          command: [bin/docker-startup.sh]
+  runtimePlaceholders:
+    - HARBOR_REGISTRY
+    - TRAIN_TICKET_NFS_SERVER
+    - TRAIN_TICKET_NACOS_DB_PASSWORD
+    - TRAIN_TICKET_NACOSDB_MYSQL_PASSWORD
+    - TRAIN_TICKET_NACOSDB_MYSQL_REPLICATION_PASSWORD
+    - TRAIN_TICKET_TSDB_MYSQL_PASSWORD
+    - TRAIN_TICKET_TSDB_MYSQL_REPLICATION_PASSWORD
+  readiness:
+    deploymentCount: 48
+    statefulSetCount: 3
+    timeoutSeconds: 900

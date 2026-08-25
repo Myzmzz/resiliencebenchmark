@@ -1,0 +1,25 @@
+[Unit]
+Description=ResBench semantic scan control API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=resbench-scan
+Group=resbench-scan
+WorkingDirectory=/data/mj/resbench-system/repo
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/data/mj/resbench-system
+Environment=RESBENCH_CODEGRAPH_COMMAND=/data/mj/resbench-tools/node_modules/.bin/codegraph
+EnvironmentFile=-/data/mj/resbench-system/semantic-scan.env
+ExecStart=/data/mj/resbench-system/repo/.venv/bin/python scripts/serve_semantic_scan.py --host 127.0.0.1 --port 18085 --system-root /data/mj/resbench-system --run-root /data/mj/resbench-runs --repository-url https://github.com/open-telemetry/opentelemetry-demo.git --revision 2.2.0 --expected-commit b74a7bc7bbe66099c61951f42b24dab8b6f02d18 --codegraph-command /data/mj/resbench-tools/node_modules/.bin/codegraph --kubeconfig /data/mj/resbench-system/kubeconfig --kubeconfig-ref /data/mj/resbench-system/kubeconfig
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/data/mj/resbench-tools
+ReadWritePaths=/data/mj/resbench-system /data/mj/resbench-runs
+
+[Install]
+WantedBy=multi-user.target

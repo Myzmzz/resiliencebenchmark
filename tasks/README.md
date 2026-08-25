@@ -10,6 +10,7 @@
 tasks/
 ├── catalog/        # Public defect-class catalog and representative DefectSpec entries.
 ├── contracts/      # Public policy for the runtime-private Evaluator bundle.
+├── episodes/       # Versioned InternalEpisode/PublicEpisodeTask pairs.
 ├── examples/       # Agent-visible public examples and unlocked smoke cases.
 └── schemas/        # Versioned JSON Schema contracts.
 ```
@@ -21,6 +22,21 @@ The task layer separates three objects that are easy to conflate:
 - `DefectSpec`: a representative resilience defect class. It describes the latent defect, the fault trigger that can expose it, the failure outcome, observable evidence, recovery expectations, candidate applications, and leakage controls.
 - `EpisodePublic`: the Agent-visible assignment. It gives the application snapshot, workload, tool permissions, budget, safety boundary, allowed triggers, observability endpoints, source-code scope, and required final report format. It must not contain the root cause answer.
 - `GroundTruth`: the Evaluator-only causal truth. This repository defines the schema only; real hidden instances should be supplied by a private evaluation bundle or service.
+
+## Episode v1 pair
+
+The current handoff is exactly two documents. `episode-internal.yaml` validates
+against `InternalEpisode` (`resilience-episode.v1`) and is visible only to the
+Controller and Evaluator. `episode-public.yaml` validates against
+`PublicEpisodeTask` (`resilience-episode-public.v1`) and is the only document
+given to the tested Agent.
+
+The public document must not contain private defect evidence, mechanism chains,
+confidence, residual hypotheses, concrete Pod UIDs, command or cleanup
+templates, cleanup handles, or Oracle rules. Runtime orchestration such as the
+no-disturbance control run, ordered disturbance coverage, reset/replay behavior,
+and continuous workload remains a Stage-2 Controller concern and must not add a
+third Episode document.
 
 ## Versioning
 

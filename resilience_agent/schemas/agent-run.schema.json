@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/resilience-agent/agent-run.v0.1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "status",
+    "started_at",
+    "completed_at",
+    "reasoning_mode",
+    "model",
+    "project_root",
+    "evidence_roots",
+    "stages",
+    "artifacts",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "resilience-agent-run.v0.1"},
+    "run_id": {"type": "string", "pattern": "^RARUN-[a-f0-9]{12}$"},
+    "status": {"enum": ["completed", "failed"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "reasoning_mode": {"enum": ["model", "deterministic"]},
+    "model": {"type": ["object", "null"]},
+    "project_root": {"type": "string"},
+    "evidence_roots": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "stages": {"type": "array", "items": {"type": "object"}},
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_defects", "episode_designs", "agent_run", "model_defect_assessment", "model_episode_review"],
+      "properties": {
+        "candidate_defects": {"type": ["string", "null"]},
+        "episode_designs": {"type": ["string", "null"]},
+        "agent_run": {"type": "string"},
+        "model_defect_assessment": {"type": ["string", "null"]},
+        "model_episode_review": {"type": ["string", "null"]}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

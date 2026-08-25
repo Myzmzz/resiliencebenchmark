@@ -1,4 +1,6 @@
-.PHONY: sync validate validate-workloads test test-mcp dry-run qualify inventory-images qualify-mcp-dry qualify-remote-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-deepseek-dry trial-dry
+.PHONY: sync validate validate-workloads test test-mcp dry-run qualify inventory-images qualify-mcp-dry qualify-remote-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-deepseek-dry deploy-app-dry reset-episode-dry trial-dry
+.PHONY: resilience-agent-test resilience-agent-smoke-offline resilience-agent-configure-key resilience-agent-check-model
+.PHONY: backend-dev frontend-dev frontend-build test-backend test-frontend
 
 sync:
 	uv sync --extra test
@@ -54,8 +56,31 @@ activate-mcp-episode-dry:
 deploy-deepseek-dry:
 	uv run python scripts/deploy_deepseek_harness.py
 
+deploy-app-dry:
+	uv run python scripts/deploy_application.py --application otel-demo --mode activate
+
+reset-episode-dry:
+	uv run python scripts/reset_episode.py --application otel-demo --cleanup-handle cleanup-example-episode
+
 trial-dry:
 	uv run python scripts/run_harness_trial.py --harness codex --model gpt-5.6
+
+resilience-agent-test:
+	uv run pytest tests/test_resilience_agent.py tests/test_resilience_model_agent.py
+
+resilience-agent-smoke-offline:
+	uv run python -m resilience_agent run \
+		--project resilience_agent/examples/minimal \
+		--context resilience_agent/examples/minimal/system-context.yaml \
+		--output-dir artifacts/resilience-agent-minimal-offline \
+		--reasoning-mode deterministic
+
+resilience-agent-configure-key:
+	@security add-generic-password -U -a "$${USER}" -s resilience-agent-llm -w
+	@echo "Stored resilience Agent credential in macOS Keychain service: resilience-agent-llm"
+
+resilience-agent-check-model:
+	@uv run python -c 'import json; from pathlib import Path; from resilience_agent.model_client import load_model_config; c=load_model_config(Path("resilience_agent/config/model.yaml")); print(json.dumps(c.public_dict(), ensure_ascii=False, indent=2))'
 
 qualify:
 	@test -n "$(KUBECONFIG_PATH)" || (echo "KUBECONFIG_PATH is required" >&2; exit 2)
@@ -75,3 +100,23 @@ inventory-images:
 		--namespace sock-shop \
 		--namespace otel-demo \
 		--output artifacts/qualification/runtime-images.json
+
+backend-dev:
+	uv run uvicorn backend.main:app --reload --port 8000
+
+frontend-dev:
+	cd frontend && pnpm dev
+
+frontend-build:
+	cd frontend && pnpm build
+
+test-backend:
+	uv run pytest tests/test_health.py tests/test_config.py tests/test_common_models.py \
+		tests/test_infrastructure_models.py tests/test_infrastructure_api.py \
+		tests/test_environment_status_parser.py tests/test_integration_m2.py \
+		tests/test_applications_api.py tests/test_episodes_api.py tests/test_experiment_api.py \
+		tests/test_harnesses_api.py tests/test_mcp_tools_api.py tests/test_models_api.py \
+		tests/test_observability_api.py
+
+test-frontend:
+	cd frontend && pnpm vitest run

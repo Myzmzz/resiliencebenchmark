@@ -39,9 +39,11 @@ spec:
         - RESBENCH_TELEMETRY_ALLOWED_NAMESPACES
         - RESBENCH_JAEGER_ALLOWED_SERVICES
         - RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES
+        - RESBENCH_TELEMETRY_DISTURBANCE_DIR
       scopeRule: single-namespace-upstream-enforced-query-scope
       strictStructuredQueriesRequired: true
       rawQueriesAllowedInProduction: false
+      controllerOwnedDisturbanceChannel: private-runtime-directory
       qualificationBoundary: structured-query-scope-plus-upstream-defense-in-depth
     - name: source_ro
       module: mcp_servers.source_ro
@@ -63,6 +65,8 @@ spec:
         - RESBENCH_CHAOS_BASELINE_LEDGER_DIR
         - RESBENCH_CHAOS_LEDGER_DIR
       executionDefault: disabled
+      controllerIdentityModes: [live-pod-uid, local-process-lease]
+      exactlyOneControllerIdentityModeRequiredForWrites: true
       singletonRequired: true
       durableDeadlineWatchdogRequired: true
       scopeRule: one-controller-one-active-experiment

@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=resbench-telemetry-ro
 Group=resbench-telemetry-ro
+SupplementaryGroups=resbench-telemetry-control
 WorkingDirectory=/opt/resiliencebenchmark/repo
 EnvironmentFile=/etc/resiliencebenchmark/mcp/telemetry_ro.env
 Environment=PYTHONDONTWRITEBYTECODE=1
@@ -34,6 +35,7 @@ SystemCallArchitectures=native
 CapabilityBoundingSet=
 AmbientCapabilities=
 ReadOnlyPaths=/opt/resiliencebenchmark/repo /etc/resiliencebenchmark
+ReadWritePaths=/var/lib/resiliencebenchmark/telemetry-disturbance
 UMask=0077
 
 [Install]

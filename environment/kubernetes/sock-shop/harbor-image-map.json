@@ -1,0 +1,16 @@
+{
+  "weaveworksdemos/front-end": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/front-end:pinned-26a2d9b6b291@sha256:26a2d9b6b291dee2dca32fca3f5bff6c2fa07bb5954359afcbc8001cc70eac71",
+  "weaveworksdemos/catalogue": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/catalogue:pinned-0147a65b7116@sha256:0147a65b7116569439eefb1a6dbed455fe022464ef70e0c3cab75bc4a226b39b",
+  "weaveworksdemos/payment": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/payment:pinned-5ab1c9877480@sha256:5ab1c9877480a018d4dda10d6dfa382776e6bca9fc1c60bacbb80903fde8cfe0",
+  "weaveworksdemos/orders": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/orders:pinned-b622e40e8343@sha256:b622e40e83433baf6374f15e076b53893f79958640fc6667dff597622eff03b9",
+  "weaveworksdemos/user": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/user:pinned-2ffccc332963@sha256:2ffccc332963c89e035fea52201012208bf62df43a55fe461ad6598a5c757ab7",
+  "weaveworksdemos/shipping": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/shipping:pinned-983305c948fd@sha256:983305c948fded487f4a4acdeab5f898e89d577b4bc1ca3de7750076469ccad4",
+  "weaveworksdemos/queue-master": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/queue-master:pinned-6292d3095f4c@sha256:6292d3095f4c7aeed8d863527f8ef6d7a75d3128f20fc61e57f398c100142712",
+  "weaveworksdemos/carts": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/carts:pinned-434d2f5a6e0e@sha256:434d2f5a6e0e8beef1f253fe96f45b8437a703125fc003434c5282ecf8969a4f",
+  "weaveworksdemos/catalogue-db": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/catalogue-db:pinned-7ba74ec9adf8@sha256:7ba74ec9adf88f6625b8d85d3323d1ee5232b39877e1590021ea485cf9457251",
+  "weaveworksdemos/user-db": "${HARBOR_REGISTRY}/sock-shop/weaveworksdemos/user-db:pinned-695bc22c1139@sha256:695bc22c11396c7ae747118c56e619f3b3295d9d4cbec999d30230b3f399a389",
+  "mongo": "${HARBOR_REGISTRY}/sock-shop/mongo:3.4.24-amd64@sha256:6c24a2d79ac97db10f360b45af2e02cae0fd92067e01b773a7766591534c9620",
+  "redis": "${HARBOR_REGISTRY}/sock-shop/redis:pinned-9c3ecc609a80@sha256:9c3ecc609a8087c0f11c494fefaf37a8f7bf9a967631d4a0da8967a9810be354",
+  "rabbitmq": "${HARBOR_REGISTRY}/sock-shop/rabbitmq:pinned-0297618bd602@sha256:0297618bd60270f03665448b02b3b1110dfc51fae60a3c6804005169f0904dad",
+  "kbudde/rabbitmq-exporter": "${HARBOR_REGISTRY}/sock-shop/kbudde/rabbitmq-exporter:pinned-f8d2a74b5413@sha256:f8d2a74b54132842fc9fc958a0cf838399f69088cbb795f3be81d84902c1e74c"
+}

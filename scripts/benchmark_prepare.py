@@ -62,7 +62,14 @@ SKIP_DIRS = {
     "ground-truth-private",
 }
 POLICY_SCAN_SKIP_DIRS = {"tests"}
-AGENT_VISIBLE_DIRS = {"tasks", "environment", "harness", "controller", "scripts"}
+AGENT_VISIBLE_DIRS = {
+    "tasks",
+    "environment",
+    "harness",
+    "controller",
+    "resilience_agent",
+    "scripts",
+}
 SAFE_PRIVATE_CONTRACT_FILES = {
     "tasks/schemas/ground-truth.schema.json",
 }

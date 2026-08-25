@@ -1,0 +1,41 @@
+schema_version: episode-generation-config.v1
+application: semantic-checkout-fixture
+snapshot_id: snapshot-rd14-positive-v1
+episode_version: v1
+duration_seconds: 600
+max_experiments: 5
+kubeconfig_ref: /etc/resiliencebenchmark/kubeconfigs/controller.kubeconfig
+fault_profiles_path: ../templates/episode-fault-profiles.v1.yaml
+chaosblade_capabilities_path: ../templates/chaosblade-capabilities.v1.yaml
+public_prompt_path: ../prompts/episode/agent_task.md
+output_dir: ../../artifacts/episode-generation/semantic-rd14-positive-v4
+
+runtime_bindings:
+  - status: fixture
+    namespace: semantic-fixture
+    component: cart
+    pod_name: cart-7d9f6c8b45-example
+    pod_uid: 11111111-2222-4333-8444-555555555555
+    bound_at: 2026-08-24T00:00:00Z
+    image_identity: fixture/cart@sha256:positive
+    expected_image_identity: fixture/cart@sha256:positive
+    runtime_image_drift: false
+    execution_qualified: true
+    binding_expiry:
+      - The Pod UID changes or the Pod is deleted.
+      - The Pod is no longer Ready.
+      - The environment snapshot or source identity changes.
+
+mcp_servers: [k8s_ro, telemetry_ro]
+mcp_tools:
+  - k8s_get_resource
+  - k8s_list_resources
+  - k8s_list_events
+  - telemetry_prom_metric_range
+  - telemetry_jaeger_find_traces
+  - telemetry_loki_logs_range
+
+codegraph_entrypoints: [publicCheckoutApi, checkoutRoute, CartService]
+fixed_slo:
+  - success_rate >= 0.95
+  - p95_latency_ms <= 1000

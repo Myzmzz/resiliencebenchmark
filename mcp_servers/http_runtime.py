@@ -6,8 +6,10 @@ import hmac
 import ipaddress
 import os
 import re
+import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Protocol
 from urllib.parse import urlparse
 
@@ -22,6 +24,7 @@ DEFAULT_HTTP_PATH = "/mcp"
 DEFAULT_CLIENT_ID = "resiliencebenchmark-agent"
 MIN_TOKEN_CHARS = 32
 TOKEN_ENV = "RESBENCH_MCP_TOKEN"
+TOKEN_STATE_FILE_ENV = "RESBENCH_MCP_TOKEN_STATE_FILE"
 TRANSPORT_ENV = "RESBENCH_MCP_TRANSPORT"
 HTTP_HOST_ENV = "RESBENCH_MCP_HTTP_HOST"
 HTTP_PORT_ENV = "RESBENCH_MCP_HTTP_PORT"
@@ -100,6 +103,58 @@ class StaticBearerTokenVerifier:
         )
 
 
+class FileBackedBearerTokenVerifier:
+    """Verifier whose active token can be atomically rotated by the Controller."""
+
+    def __init__(
+        self,
+        *,
+        token_file: Path,
+        scopes: list[str],
+        resource: str,
+        client_id: str = DEFAULT_CLIENT_ID,
+    ) -> None:
+        self._token_file = token_file.resolve()
+        self._scopes = list(scopes)
+        self._resource = resource
+        self._client_id = client_id or DEFAULT_CLIENT_ID
+        self._read_token()
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        active = self._read_token()
+        candidate_sha256 = hashlib.sha256(token.encode("utf-8")).digest()
+        active_sha256 = hashlib.sha256(active.encode("utf-8")).digest()
+        if not hmac.compare_digest(candidate_sha256, active_sha256):
+            return None
+        return AccessToken(
+            token="<redacted>",
+            client_id=self._client_id,
+            scopes=self._scopes,
+            resource=self._resource,
+        )
+
+    def _read_token(self) -> str:
+        path = self._token_file
+        if not path.is_absolute() or not path.is_file() or path.is_symlink():
+            raise MCPRuntimeConfigError(
+                f"{TOKEN_STATE_FILE_ENV} must be an absolute regular file"
+            )
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode & 0o077:
+            raise MCPRuntimeConfigError(
+                f"{TOKEN_STATE_FILE_ENV} must not be group/world accessible"
+            )
+        token = path.read_text(encoding="utf-8").strip()
+        if (
+            len(token) < MIN_TOKEN_CHARS
+            or any(char.isspace() for char in token)
+        ):
+            raise MCPRuntimeConfigError(
+                f"{TOKEN_STATE_FILE_ENV} contains an invalid token"
+            )
+        return token
+
+
 def read_transport(env: Mapping[str, str] | None = None) -> TransportName:
     values = os.environ if env is None else env
     raw = values.get(TRANSPORT_ENV, "stdio").strip().lower()
@@ -131,12 +186,21 @@ def build_http_runtime_config(env: Mapping[str, str] | None = None) -> MCPHttpRu
         resource_server_url=resource_url,
         required_scopes=scopes,
     )
-    verifier = StaticBearerTokenVerifier(
-        token=token,
-        scopes=scopes,
-        resource=resource_url,
-        client_id=values.get(CLIENT_ID_ENV, DEFAULT_CLIENT_ID),
-    )
+    token_file = values.get(TOKEN_STATE_FILE_ENV, "").strip()
+    if token_file:
+        verifier = FileBackedBearerTokenVerifier(
+            token_file=Path(token_file),
+            scopes=scopes,
+            resource=resource_url,
+            client_id=values.get(CLIENT_ID_ENV, DEFAULT_CLIENT_ID),
+        )
+    else:
+        verifier = StaticBearerTokenVerifier(
+            token=token,
+            scopes=scopes,
+            resource=resource_url,
+            client_id=values.get(CLIENT_ID_ENV, DEFAULT_CLIENT_ID),
+        )
     return MCPHttpRuntimeConfig(host=host, port=port, path=path, auth=auth, token_verifier=verifier)
 
 

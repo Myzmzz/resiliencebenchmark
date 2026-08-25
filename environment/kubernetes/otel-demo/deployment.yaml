@@ -1,0 +1,26 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: ApplicationDeploymentBundle
+metadata:
+  name: otel-demo
+spec:
+  defaultNamespace: otel-demo
+  supplementalManifest: supplemental-manifests.yaml
+  helmReleases:
+    - release: otel-demo
+      chart:
+        repositoryName: open-telemetry
+        repositoryUrl: https://open-telemetry.github.io/opentelemetry-helm-charts
+        name: opentelemetry-demo
+        version: 0.40.5
+        appVersion: 2.2.0
+      values: values.yaml
+  runtimePlaceholders:
+    - HARBOR_REGISTRY
+    - OTEL_DEMO_POSTGRES_PASSWORD
+    - OTEL_DEMO_OPENAI_API_KEY
+    - OTEL_DEMO_GRAFANA_ADMIN_PASSWORD
+  readiness:
+    deploymentCount: 23
+    activeDeploymentCount: 23
+    intentionallyStandby: []
+    timeoutSeconds: 600

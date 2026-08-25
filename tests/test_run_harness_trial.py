@@ -6,7 +6,6 @@ import yaml
 
 from scripts import run_harness_trial as trial
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -123,6 +122,58 @@ def test_codex_config_renders_custom_responses_provider_without_api_key(tmp_path
     assert "mcp-token-that-must-not-leak-000000" not in rendered
 
 
+def test_codex_oauth_mode_uses_ephemeral_auth_without_gateway_or_artifact_leak(
+    tmp_path,
+):
+    auth = tmp_path / "source-auth.json"
+    auth_secret = "oauth-refresh-secret-that-must-not-leak"
+    auth.write_text(json.dumps({"refresh_token": auth_secret}), encoding="utf-8")
+    auth.chmod(0o600)
+    env = runtime_env()
+    env.pop("RESBENCH_LLM_BASE_URL")
+    env.pop("RESBENCH_LLM_API_KEY")
+    env["RESBENCH_CODEX_AUTH_FILE"] = str(auth)
+    observed = {}
+
+    def fake_runner(argv, stdin, child_env, timeout_seconds):
+        codex_home = Path(child_env["CODEX_HOME"])
+        observed["auth_exists"] = (codex_home / "auth.json").is_file()
+        observed["auth_mode"] = (codex_home / "auth.json").stat().st_mode & 0o777
+        observed["config"] = (codex_home / "config.toml").read_text(encoding="utf-8")
+        observed["child_env"] = dict(child_env)
+        return trial.CommandResult(
+            returncode=0,
+            stdout=(json.dumps(valid_agent_result()) + "\n").encode(),
+            stderr=b"",
+        )
+
+    report = trial.run_trial(
+        REPO_ROOT,
+        "codex",
+        "gpt-5.6",
+        execute=True,
+        artifact_root=tmp_path / "artifacts",
+        parent_env=env,
+        runner=fake_runner,
+        trial_id="exec-codex-oauth",
+    )
+    output_dir = artifact_dir(report, tmp_path / "artifacts")
+    planned = load_json(output_dir / "planned.json")
+
+    assert report["status"] == "completed"
+    assert observed["auth_exists"] is True
+    assert observed["auth_mode"] == 0o600
+    assert "model_provider" not in observed["config"]
+    assert 'approval_policy = "never"' in observed["config"]
+    assert "chaos_create_experiment" in observed["config"]
+    assert 'approval_mode = "approve"' in observed["config"]
+    assert "OPENAI_API_KEY" not in observed["child_env"]
+    assert "OPENAI_BASE_URL" not in observed["child_env"]
+    assert planned["templates"]["codexAuthMode"] == "chatgpt-oauth"
+    assert auth_secret not in artifact_text(output_dir)
+    assert not any(path.is_dir() for path in output_dir.iterdir())
+
+
 def test_dry_run_for_claude_does_not_persist_rendered_mcp_config(tmp_path):
     report = trial.run_trial(
         REPO_ROOT,
@@ -159,6 +210,30 @@ def test_claude_stream_json_registry_enables_verbose_mode():
     assert "--print" in args
     assert "stream-json" in args
     assert "--verbose" in args
+
+
+def test_runtime_fault_capability_is_short_lived_and_redacted_from_artifacts():
+    token = "baseline-capability-token-with-at-least-32-characters"
+    env = {
+        "RESBENCH_BASELINE_GATE_TOKEN": token,
+        "RESBENCH_CLEANUP_HANDLE": "cleanup-run-001-attempt-001",
+        "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": "runtime://controller/token",
+        "RESBENCH_CHAOS_CONTROLLER_POD_UID": "controller-uid",
+        "RESBENCH_AUTHORIZED_TARGET_JSON": json.dumps(
+            {"namespace": "otel-demo", "name": "frontend-abc", "uid": "pod-uid"}
+        ),
+        "RESBENCH_MAIN_FAULT_JSON": json.dumps(
+            {"type": "network-delay", "parameters": {"delay_ms": 100}}
+        ),
+        "RESBENCH_AUTHORIZED_RUN_ID": "run-capability-001",
+    }
+
+    prompt = trial.append_runtime_capability_prompt("public task", env)
+
+    assert token in prompt
+    assert "frontend-abc" in prompt
+    assert "run-capability-001" in prompt
+    assert token not in trial.redact_text(prompt, env)
 
 
 def test_execute_codex_uses_fixed_argv_stdin_and_allowlisted_env(tmp_path):
@@ -201,6 +276,7 @@ def test_execute_codex_uses_fixed_argv_stdin_and_allowlisted_env(tmp_path):
     assert "RESBENCH_LLM_BASE_URL" not in calls[0]["env"]
     assert "RESBENCH_K8S_MCP_URL" not in calls[0]["env"]
     assert calls[0]["env"]["PATH"] == trial.SAFE_PATH
+    assert calls[0]["env"]["HOME"] == calls[0]["env"]["CODEX_HOME"]
     assert "KUBECONFIG" not in calls[0]["env"]
     assert "HARBOR_REGISTRY" not in calls[0]["env"]
     trace = load_json(artifact_ref_path(report, tmp_path, "runTraceRef"))
@@ -273,6 +349,41 @@ def test_codex_mcp_jsonl_shape_records_call_and_result(tmp_path):
     assert any(event["kind"] == "tool_result" and event.get("tool") == "k8s_ro.k8s_cluster_inventory" for event in trace["events"])
 
 
+def test_codex_item_started_and_completed_are_distinct_nonduplicated_events():
+    started = {
+        "type": "item.started",
+        "item": {
+            "type": "mcp_tool_call",
+            "server": "telemetry_ro",
+            "tool": "telemetry_prom_metric_range",
+            "status": "in_progress",
+            "result": None,
+            "error": None,
+        },
+    }
+    completed = {
+        "type": "item.completed",
+        "item": {
+            "type": "mcp_tool_call",
+            "server": "telemetry_ro",
+            "tool": "telemetry_prom_metric_range",
+            "status": "completed",
+            "result": {"content": []},
+            "error": None,
+        },
+    }
+    objects = trial.extract_json_objects(
+        json.dumps(started) + "\n" + json.dumps(completed) + "\n"
+    )
+    tool_events = [item for item in objects if item.get("type") == "mcp_tool_call"]
+
+    assert len(tool_events) == 2
+    assert [trial.trace_kind_from_event(item) for item in tool_events] == [
+        "tool_call",
+        "tool_result",
+    ]
+
+
 @pytest.mark.parametrize(
     "tool_event",
     [
@@ -333,6 +444,7 @@ def test_execute_claude_stream_json_extracts_nested_final_json(tmp_path):
     assert calls[0]["env"]["ANTHROPIC_AUTH_TOKEN"] == runtime_env()["RESBENCH_LLM_API_KEY"]
     assert calls[0]["env"]["ANTHROPIC_API_KEY"] == runtime_env()["RESBENCH_LLM_API_KEY"]
     assert calls[0]["env"]["RESBENCH_K8S_MCP_URL"] == runtime_env()["RESBENCH_K8S_MCP_URL"]
+    assert calls[0]["env"]["HOME"] == calls[0]["env"]["CLAUDE_CONFIG_DIR"]
     assert "OPENAI_API_KEY" not in calls[0]["env"]
     assert "KUBECONFIG" not in calls[0]["env"]
     assert load_json(artifact_ref_path(report, tmp_path, "agentResultRef"))["suspected_defect"] == "from claude stream-json"
@@ -420,6 +532,7 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert "Public episode contract follows" not in encoded_artifacts
     assert "<prompt omitted from artifacts>" in encoded_artifacts
     assert not Path(calls[0]["env"]["DSH_HOME"]).exists()
+    assert calls[0]["env"]["HOME"] == calls[0]["env"]["DSH_HOME"]
 
 
 def test_extract_json_objects_accepts_multiline_fenced_agent_result():

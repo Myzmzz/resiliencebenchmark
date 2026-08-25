@@ -3,6 +3,7 @@
 # perform shell-style environment expansion in URL fields.
 
 model_provider = "resbench_gateway"
+approval_policy = "never"
 
 [model_providers.resbench_gateway]
 name = "Resilience Benchmark Gateway"
@@ -43,3 +44,9 @@ bearer_token_env_var = "RESBENCH_MCP_TOKEN"
 [mcp_servers.chaos_control]
 url = "__RESBENCH_CHAOS_CONTROL_MCP_URL__"
 bearer_token_env_var = "RESBENCH_MCP_TOKEN"
+
+[mcp_servers.chaos_control.tools.chaos_create_experiment]
+approval_mode = "approve"
+
+[mcp_servers.chaos_control.tools.chaos_destroy_experiment]
+approval_mode = "approve"

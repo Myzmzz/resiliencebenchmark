@@ -1,0 +1,89 @@
+schema_version: episode-fault-profiles.v1
+registry_version: chaosblade-1.8.0-k8s-profiles-v1
+minimum_duration_seconds: 600
+
+profiles:
+  network-delay:
+    tool: ChaosBlade
+    fault_semantics: persistent
+    duration_semantics: active_fault_window
+    command: >-
+      /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-network delay --time {delay_ms} --interface {interface}
+      --names {pod_name} --namespace {namespace} --kubeconfig {kubeconfig}
+      --timeout {duration_seconds}
+    cleanup: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+    default_parameters: {delay_ms: 100, interface: eth0}
+    features: [target_identity_sensitive, telemetry_dependent, cleanup_verification]
+    effect_verification:
+      - {criterion_id: chaosblade_running, description: ChaosBlade experiment reaches Running for the exact Pod UID, evidence_source: ChaosBlade status and controller ledger}
+      - {criterion_id: client_latency_delta, description: Independent client latency increases against the pre-fault baseline, evidence_source: deterministic workload summary}
+
+  network-loss:
+    tool: ChaosBlade
+    fault_semantics: persistent
+    duration_semantics: active_fault_window
+    command: >-
+      /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-network loss --percent {loss_percent} --interface {interface}
+      --names {pod_name} --namespace {namespace} --kubeconfig {kubeconfig}
+      --timeout {duration_seconds}
+    cleanup: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+    default_parameters: {loss_percent: 5, interface: eth0}
+    features: [target_identity_sensitive, telemetry_dependent, cleanup_verification]
+    effect_verification:
+      - {criterion_id: chaosblade_running, description: ChaosBlade experiment reaches Running for the exact Pod UID, evidence_source: ChaosBlade status and controller ledger}
+      - {criterion_id: request_error_delta, description: Independent request errors or retry attempts increase over baseline, evidence_source: workload and trace evidence}
+
+  cpu-load:
+    tool: ChaosBlade
+    fault_semantics: persistent
+    duration_semantics: active_fault_window
+    command: >-
+      /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-cpu fullload --cpu-percent {cpu_percent}
+      --names {pod_name} --namespace {namespace} --kubeconfig {kubeconfig}
+      --timeout {duration_seconds}
+    cleanup: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+    default_parameters: {cpu_percent: 60}
+    features: [target_identity_sensitive, telemetry_dependent, cleanup_verification]
+    effect_verification:
+      - {criterion_id: cpu_pressure_visible, description: Target container CPU utilization or throttling increases during the fault window, evidence_source: cgroup and Prometheus metrics}
+
+  memory-load:
+    tool: ChaosBlade
+    fault_semantics: persistent
+    duration_semantics: active_fault_window
+    command: >-
+      /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-mem load --mode ram --mem-percent {mem_percent}
+      --names {pod_name} --namespace {namespace} --kubeconfig {kubeconfig}
+      --timeout {duration_seconds}
+    cleanup: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+    default_parameters: {mem_percent: 50}
+    features: [target_identity_sensitive, telemetry_dependent, cleanup_verification]
+    effect_verification:
+      - {criterion_id: memory_pressure_visible, description: Target working-set memory increases by the configured bounded amount, evidence_source: cgroup and Prometheus metrics}
+
+  pod-delete:
+    tool: ChaosBlade
+    fault_semantics: one_shot
+    duration_semantics: observation_window
+    command: >-
+      /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-pod delete --names {pod_name} --namespace {namespace}
+      --evict-count 1 --kubeconfig {kubeconfig} --timeout {duration_seconds}
+    cleanup: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+    default_parameters: {evict_count: 1}
+    features: [target_identity_change, telemetry_dependent, cleanup_verification]
+    effect_verification:
+      - {criterion_id: old_uid_absent, description: The bound Pod UID disappears after the one-shot fault, evidence_source: Kubernetes UID inventory}
+      - {criterion_id: service_capacity_effect, description: Ready endpoints and deterministic workload show whether capacity remains during replacement, evidence_source: Kubernetes endpoints and workload summary}
+
+  pod-fail:
+    tool: ChaosBlade
+    fault_semantics: persistent
+    duration_semantics: active_fault_window
+    command: >-
+      /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-pod fail --names {pod_name} --namespace {namespace}
+      --evict-count 1 --kubeconfig {kubeconfig} --timeout {duration_seconds}
+    cleanup: /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+    default_parameters: {evict_count: 1}
+    features: [target_identity_sensitive, telemetry_dependent, cleanup_verification]
+    effect_verification:
+      - {criterion_id: pod_failure_visible, description: The bound Pod becomes unavailable while the experiment is active, evidence_source: Kubernetes Pod conditions}

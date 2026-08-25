@@ -16,5 +16,6 @@ credentials*.yaml
 credentials*.json
 ground-truth-private/
 artifacts/
+benchmark-wheels/
 runs/
 tmp/

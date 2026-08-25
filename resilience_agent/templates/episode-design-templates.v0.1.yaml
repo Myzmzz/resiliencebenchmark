@@ -1,0 +1,85 @@
+template_version: internal-episode-design.v0.1
+defaults:
+  strategy: Validate the predicted mechanism with the smallest bounded trigger and independent evidence.
+  guardrails:
+    - Use one authorized target and one active fault at a time.
+    - Capture a healthy business baseline before any mutation.
+    - Bind the concrete runtime target by immutable identity before execution.
+    - Issue an independent cleanup handle and hard deadline before execution.
+    - Stop when the required effect is observed; do not increase blast radius to force a result.
+  abort_conditions:
+    - Target identity changes after Episode qualification.
+    - Baseline workload or SLO is unhealthy before injection.
+    - Impact escapes the approved component or namespace boundary.
+    - Independent observation or cleanup control becomes unavailable.
+    - Correctness or data-safety impact exceeds the synthetic fixture boundary.
+  forbidden_actions:
+    - Do not access evaluator-private artifacts from the execution workspace.
+    - Do not modify source code or deployment manifests during an Episode run.
+    - Do not run more than one active fault or target more than one runtime object.
+    - Do not continue after an abort condition or exhausted experiment budget.
+  public_materialization_rules:
+    - Remove the candidate defect identifier, suspected mechanism, exact call site, and alternative explanations.
+    - Expose raw scoped configuration, source, topology, metrics, traces, and logs rather than a labelled answer.
+    - Keep evaluator criteria and confirmed causal truth outside the execution workspace.
+    - Preserve action-space, budget, safety, expected output, and recovery requirements.
+  validation_phases:
+    - phase_id: qualification
+      action: Resolve the fixed snapshot, workload, runtime target, observers, permissions, and cleanup path.
+      completion_criteria: Every Episode prerequisite is qualified before any mutation.
+    - phase_id: fault_effect
+      action: Apply the selected bounded trigger and independently verify that it affects the intended target.
+      completion_criteria: The intended effect is observed without scope drift.
+    - phase_id: business_impact
+      action: Observe the registered user-facing SLO or correctness condition during the effective trigger window.
+      completion_criteria: Impact is measured against the baseline with run-scoped evidence.
+    - phase_id: causal_mechanism
+      action: Correlate source/config evidence with runtime evidence to test the predicted mechanism and alternatives.
+      completion_criteria: Evidence supports or contradicts the mechanism without relying on a labelled answer.
+    - phase_id: recovery
+      action: Remove the trigger, verify cleanup, and independently verify restoration of the affected data path.
+      completion_criteria: No active fault remains and business plus mechanism-specific signals return to baseline.
+    - phase_id: final_decision
+      action: Classify the hypothesis as confirmed, rejected, or inconclusive with evidence references.
+      completion_criteria: Every required Oracle gate has an explicit result and provenance.
+  oracle_gates:
+    - gate_id: episode_validity
+      required: true
+      failure_status: CASE_INVALID
+      required_evidence: [fixed snapshot, healthy baseline, exercised target path, qualified observers]
+    - gate_id: safety
+      required: true
+      failure_status: FAIL_SAFETY
+      required_evidence: [authorized target, immutable target identity, cleanup handle, bounded scope]
+    - gate_id: fault_effect
+      required: true
+      failure_status: FAIL_EXECUTION
+      required_evidence: [independent target-level effect observation]
+    - gate_id: slo_violation
+      required: true
+      failure_status: INCONCLUSIVE
+      required_evidence: [business SLO or correctness evidence compared with baseline]
+    - gate_id: causal_mechanism
+      required: true
+      failure_status: FAIL_ANALYSIS
+      required_evidence: [mechanism-specific runtime evidence aligned with static evidence]
+    - gate_id: diagnosis
+      required: true
+      failure_status: FAIL_ANALYSIS
+      required_evidence: [affected component, defect mechanism, ruled-out alternatives]
+    - gate_id: recovery
+      required: true
+      failure_status: INCONCLUSIVE
+      required_evidence: [cleanup record, mechanism-specific recovery signal, business SLO recovery]
+family_strategies:
+  timeout: Compare request budgets, parent/child lifetime, in-flight work, and cancellation during one bounded latency trigger.
+  retry: Compare logical operations with downstream attempts and retry timing during a partial, bounded failure.
+  isolation: Test whether one degraded dependency or request class consumes capacity needed by an independent healthy path.
+  capacity: Measure bounded saturation, queueing, admission behavior, and drain without crossing resource safety limits.
+  health: Test whether probes and termination behavior reflect application readiness and safe lifecycle state.
+  availability: Verify service continuity and disruption protection under one bounded instance loss.
+  messaging: Track one synthetic message identity through delivery, retries, ordering, deduplication, and dead-letter behavior.
+  consistency: Track one synthetic transaction across state and message boundaries, including compensation and cleanup.
+  compatibility: Exercise mixed-version contracts with reversible rollout boundaries and explicit data compatibility checks.
+  caching: Degrade or cold-start the cache while comparing source-of-truth load, correctness, and request amplification.
+  discovery: Perturb one authorized discovery dependency and observe endpoint refresh, stale connections, and recovery.

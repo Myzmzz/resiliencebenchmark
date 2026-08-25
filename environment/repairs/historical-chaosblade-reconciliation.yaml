@@ -17,18 +17,56 @@ spec:
     declaredOwnerLabel: faults-api
     createdByLabel: svc-fault-scheduler
     benchmarkRunIdLabels: 0
+    deletionState:
+      terminating: 157
+      deletionTimestampWindow: 2026-03-25T05:38:33Z/2026-03-25T05:38:44Z
+      note: All resources were already stuck behind finalizer.chaosblade.io before the 2026-08-23 cleanup attempt.
+    experimentTypes:
+      container-container-remove: 157
+    targetNamespace:
+      train-ticket: 157
   decision:
-    automaticDeletionAllowed: false
-    reason: The resources belong to a pre-existing fault platform and cannot be attributed to this BenchmarkFactory.
-  requiredResolution:
-    - obtain-ownership-confirmation-from-fault-platform-operator
-    - export-full-resource-and-target-inventory-to-private-artifact
-    - verify-current-target-side-residual-effects
-    - use-platform-supported-recovery-or-destroy-path
-    - verify-finalizers-resources-and-data-plane-residue-cleared
-    - rerun-clean-cluster-qualification
+    normalDeletionAllowed: true
+    finalizerRemovalAllowed: true
+    reason: After normal destroy failed because all historical target Pods were absent, the owner explicitly authorized complete non-batched finalizer removal.
+  attemptedReconciliation:
+    attemptedAt: 2026-08-23
+    inventoryArtifact: artifacts/chaosblade/historical-chaosblades-pre-delete-20260822T142709Z.json
+    inventorySha256: 5945ffef6ef7f2546362af5bb1b19a32c808c639878f443a58ab1e529f1e59b9
+    canaryNames:
+      - blade-91f397065c17
+      - blade-f2d6d538e44e
+      - blade-2e42e4dde97f
+      - blade-dad1f700d6ce
+      - blade-8793598d3392
+    result: resolved
+    observedError: The operator could not destroy the historical experiment because its target Pod no longer exists.
+    canaryRollback: The status-only wakeup was restored to its original Running/Success state; no finalizer was removed.
+    operatorBoundary: ChaosBlade Operator 1.8.0 ignores already-terminating Running/Error objects on informer replay, and its periodic cleanup only handles Destroying objects.
+    finalizerRemoval:
+      executedAt: 2026-08-23
+      preRemovalArtifact: artifacts/chaosblade/historical-chaosblades-before-finalizer-removal-20260823T032000Z.json
+      preRemovalSha256: 58fde35746a6aebe7d587c0963d750614b089fe882f74f39a24dfce041bfe762
+      requested: 157
+      succeeded: 157
+      failed: 0
+      postRemovalCount: 0
+      mode: complete-concurrent-not-canary-batched
+    postRemovalQualification:
+      globalChaosBladeCount: 0
+      globalUnsafeUnownedCount: 0
+      activeOwnedCount: 0
+      minimalExperiment:
+        application: otel-demo
+        faultType: cpu-load
+        cpuPercent: 1
+        durationSeconds: 5
+        observedPhases: [Initialized, Running]
+        destroyVerifiedAbsent: true
+        artifact: artifacts/qualification/chaos-control-e0-minimal-20260823.json
+  requiredResolution: []
   acceptance:
     - no-preexisting-nonterminal-chaosblade-resources
     - no-unowned-tc-qdisc-stress-process-or-container-residue
     - benchmark-controller-can-identify-every-future-resource-by-run-id-and-target-uid
-  currentStatus: awaiting-owner-authorized-reconciliation
+  currentStatus: resolved-historical-resources-absent-minimal-create-destroy-qualified

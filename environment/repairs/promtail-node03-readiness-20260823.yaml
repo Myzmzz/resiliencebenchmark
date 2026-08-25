@@ -1,0 +1,28 @@
+apiVersion: resiliencebenchmark.io/v1alpha1
+kind: EnvironmentRepairEvidence
+metadata:
+  name: promtail-node03-readiness-20260823
+spec:
+  status: live-applied-qualified
+  observedFailure:
+    daemonSet: observability/promtail
+    ready: 1/2
+    node: tcse-v100-03
+    message: Unable to find any logs to tail
+  diagnosis:
+    hostPathMountsMatchedHealthyNode: true
+    permissionErrorObserved: false
+    cause: No target DUT Pod was scheduled on tcse-v100-03, and Promtail 2.9.8 returned HTTP 500 when no matching file was being tailed.
+  repair:
+    readinessProbe:
+      type: tcpSocket
+      port: http
+    ingestionConfigChanged: false
+  verification:
+    daemonSetReady: 2/2
+    temporaryProbeNamespace: otel-demo
+    temporaryProbeNode: tcse-v100-03
+    lokiStreamCount: 1
+    lokiEntryCount: 3
+    marker: resbench-promtail-node03-20260823
+    temporaryProbeDeleted: true

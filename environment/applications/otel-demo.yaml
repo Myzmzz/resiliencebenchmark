@@ -64,8 +64,8 @@ spec:
         description: Checkout path through cart, checkout, payment, and shipping services.
         syntheticLoadProfile: otel-demo-checkout
     steadyLoad:
-      generator: controller-owned-locust
-      profileRef: ../workloads/deterministic-profiles.yaml#otel-demo
+      generator: application-owned-built-in-locust
+      profileRef: kubernetes/otel-demo/values.yaml#components.load-generator
       users: 5
   slos:
     - id: entry-success-rate

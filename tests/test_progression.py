@@ -13,7 +13,6 @@ from progression.controller import (
     ProgressionController,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -129,6 +128,34 @@ def test_skip_is_terminal_but_not_fail():
 
     assert controller.status is EpisodeProgressStatus.SKIP
     assert controller.snapshot()["terminal_reason"] == "CASE_INVALID"
+
+
+def test_engineering_progression_executes_all_levels_after_a_scored_failure():
+    episode = build_multi_level_episode(qualified_plan(budget=3))
+    controller = ProgressionController(
+        episode,
+        run_id="run-engineering",
+        agent_id="agent-a",
+        continue_after_failure=True,
+    )
+
+    l1 = controller.start_trial()
+    controller.record_result(
+        l1.trial_id,
+        primary_status="FAIL",
+        failure_status="INCONCLUSIVE",
+        result_ref="l1.json",
+    )
+    l2 = controller.start_trial()
+    controller.record_result(l2.trial_id, primary_status="PASS", result_ref="l2.json")
+    l3 = controller.start_trial()
+    controller.record_result(l3.trial_id, primary_status="PASS", result_ref="l3.json")
+
+    state = controller.snapshot()
+    assert [l1.level_id, l2.level_id, l3.level_id] == ["L1", "L2", "L3"]
+    assert state["level_statuses"] == {"L1": "FAIL", "L2": "PASS", "L3": "PASS"}
+    assert state["terminal_reason"] == "all_levels_executed_with_failures"
+    assert controller.status is EpisodeProgressStatus.FAIL
 
 
 def test_checkpoint_resume_preserves_attempt_budget(tmp_path):

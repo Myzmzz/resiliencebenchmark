@@ -115,6 +115,20 @@ def test_three_level_episode_retries_then_passes_with_disturbance_evidence(tmp_p
 
     l2_failed_once = False
     record_counts = {}
+    preparations = []
+    finalizations = []
+
+    def prepare(ticket, level):
+        preparations.append((ticket.level_id, ticket.attempt))
+        return {
+            "status": "qualified",
+            "target_uid_ref": f"runtime://{ticket.trial_id}/target-uid",
+            "baseline_gate_token_ref": f"runtime-secret://{ticket.trial_id}/baseline",
+        }
+
+    def finalize(ticket, level, trial_report):
+        finalizations.append((ticket.level_id, ticket.attempt, trial_report["status"]))
+        return {"status": "verified", "cleanup_absent": True}
 
     def level_evaluator(ticket, level, trial_report, controller_records):
         nonlocal l2_failed_once
@@ -172,6 +186,8 @@ def test_three_level_episode_retries_then_passes_with_disturbance_evidence(tmp_p
         trial_runner=runner,
         level_evaluator=level_evaluator,
         injector_factory=injector_factory,
+        trial_preparer=prepare,
+        trial_finalizer=finalize,
     )
 
     assert report["status"] == "PASS"
@@ -184,6 +200,13 @@ def test_three_level_episode_retries_then_passes_with_disturbance_evidence(tmp_p
     assert k8s.restarts == 3
     assert len(telemetry.rules) == 1
     assert record_counts["run-integration-L3-a1"] == 5
+    assert preparations == [("L1", 1), ("L2", 1), ("L2", 2), ("L3", 1)]
+    assert finalizations == [
+        ("L1", 1, "completed"),
+        ("L2", 1, "completed"),
+        ("L2", 2, "completed"),
+        ("L3", 1, "completed"),
+    ]
     score = calculate_episode_score(
         episode_id=episode["episode_id"],
         agent_id="agent-a",

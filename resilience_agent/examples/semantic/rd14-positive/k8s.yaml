@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: semantic-fixture
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: semantic-fixture
+  labels:
+    app: cart
+  annotations:
+    resiliencebenchmark.io/source-symbol: CartService
+    resiliencebenchmark.io/source-path: checkout.ts
+    resiliencebenchmark.io/source-identity: rd14-positive-v1
+    resiliencebenchmark.io/business-critical: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart
+  template:
+    metadata:
+      labels:
+        app: cart
+    spec:
+      containers:
+        - name: cart
+          image: semantic-fixture/cart:rd14-positive-v1
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart
+  namespace: semantic-fixture
+  annotations:
+    resiliencebenchmark.io/source-symbol: CartService
+    resiliencebenchmark.io/source-identity: rd14-positive-v1
+    resiliencebenchmark.io/business-critical: "true"
+spec:
+  selector:
+    app: cart
+  ports:
+    - port: 8080
+      targetPort: 8080

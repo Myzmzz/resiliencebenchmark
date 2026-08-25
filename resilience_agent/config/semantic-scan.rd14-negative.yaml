@@ -1,0 +1,42 @@
+schema_version: semantic-scan-config.v1
+
+codebase:
+  id: rd14-negative
+  path: ../examples/semantic/rd14-positive/src
+  source_identity: rd14-negative-v1
+
+codegraph:
+  command: codegraph
+  force_reindex: false
+  timeout_seconds: 120
+  max_nodes: 30
+  max_code_blocks: 8
+  max_query_results: 20
+
+kubernetes:
+  mode: manifest
+  namespace: semantic-fixture
+  max_resources_per_agent: 30
+  authoritative_for_namespace: true
+  sources:
+    - alias: negative-fixture
+      path: ../examples/semantic/rd14-negative/k8s.yaml
+
+templates_path: ../templates/resilience-defects-v2.yaml
+prompts_root: ../prompts/semantic_scan
+output_dir: ../../artifacts/semantic-scan
+
+agents:
+  model_config_path: model-semantic-scan.yaml
+  max_concurrency: 1
+  recursion_limit: 20
+  agent_timeout_seconds: 240
+  structured_output_strategy: provider
+  context_budget:
+    coordinator_chars: 8000
+    subagent_chars: 12000
+    verifier_chars: 12000
+    max_tool_result_chars: 5000
+
+planning_mode: deterministic
+active_template_ids: [RD-14]

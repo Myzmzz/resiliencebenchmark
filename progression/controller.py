@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-import json
-import os
 from pathlib import Path
-import tempfile
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from .builder import validate_multi_level_episode
 
@@ -75,12 +76,14 @@ class ProgressionController:
         agent_id: str,
         store: ProgressionStore | None = None,
         resume: bool = False,
+        continue_after_failure: bool = False,
     ) -> None:
         validate_multi_level_episode(episode)
         self.episode = dict(episode)
         self.run_id = run_id
         self.agent_id = agent_id
         self.store = store
+        self.continue_after_failure = continue_after_failure
         loaded = store.load() if resume and store else None
         self.state = loaded or self._new_state()
         self._validate_state()
@@ -163,7 +166,15 @@ class ProgressionController:
             self.state["level_statuses"][level_id] = "PASS"
             next_index = int(self.state["current_level_index"]) + 1
             if next_index >= len(self.episode["levels"]):
-                self._finish(EpisodeProgressStatus.PASS, "all_levels_passed")
+                if self.continue_after_failure and "FAIL" in self.state[
+                    "level_statuses"
+                ].values():
+                    self._finish(
+                        EpisodeProgressStatus.FAIL,
+                        "all_levels_executed_with_failures",
+                    )
+                else:
+                    self._finish(EpisodeProgressStatus.PASS, "all_levels_passed")
             else:
                 self.state["current_level_index"] = next_index
                 self.state["terminal_reason"] = None
@@ -179,8 +190,25 @@ class ProgressionController:
                 self.episode["total_retry_budget"]
             )
             if exhausted or budget_exhausted:
-                reason = "level_retry_budget_exhausted" if exhausted else "episode_retry_budget_exhausted"
-                self._finish(EpisodeProgressStatus.FAIL, reason)
+                next_index = int(self.state["current_level_index"]) + 1
+                if self.continue_after_failure and next_index < len(
+                    self.episode["levels"]
+                ):
+                    self.state["current_level_index"] = next_index
+                    self.state["terminal_reason"] = None
+                    self._persist()
+                elif self.continue_after_failure:
+                    self._finish(
+                        EpisodeProgressStatus.FAIL,
+                        "all_levels_executed_with_failures",
+                    )
+                else:
+                    reason = (
+                        "level_retry_budget_exhausted"
+                        if exhausted
+                        else "episode_retry_budget_exhausted"
+                    )
+                    self._finish(EpisodeProgressStatus.FAIL, reason)
             else:
                 self.state["terminal_reason"] = None
                 self._persist()
