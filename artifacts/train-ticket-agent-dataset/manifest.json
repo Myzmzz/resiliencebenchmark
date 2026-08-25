@@ -1,0 +1,50 @@
+{
+  "schema_version": "benchmark-task-dataset-manifest.v1",
+  "application": "train-ticket",
+  "execution_status": "GENERATED",
+  "statistics_eligible": false,
+  "paired_task_count": 30,
+  "agent_count": 3,
+  "record_count": 90,
+  "one_record_per_file": true,
+  "agents": {
+    "bladeai": {
+      "record_count": 30,
+      "verdict_counts": {
+        "PASS": 18,
+        "INCONCLUSIVE": 6,
+        "FAIL": 6
+      },
+      "average_score": 91.33,
+      "minimum_score": 65.8,
+      "maximum_score": 99.2
+    },
+    "codex": {
+      "record_count": 30,
+      "verdict_counts": {
+        "PASS": 18,
+        "INCONCLUSIVE": 6,
+        "FAIL": 6
+      },
+      "average_score": 91.33,
+      "minimum_score": 65.8,
+      "maximum_score": 99.2
+    },
+    "claude-code": {
+      "record_count": 30,
+      "verdict_counts": {
+        "PASS": 18,
+        "INCONCLUSIVE": 6,
+        "FAIL": 6
+      },
+      "average_score": 91.33,
+      "minimum_score": 65.8,
+      "maximum_score": 99.2
+    }
+  },
+  "directories": {
+    "bladeai": "bladeai",
+    "codex": "codex",
+    "claude-code": "claude-code"
+  }
+}
