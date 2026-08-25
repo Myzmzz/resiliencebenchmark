@@ -1,0 +1,44 @@
+# Trial-local Codex config for official ChatGPT/OAuth authentication.
+# auth.json is copied separately into the ephemeral CODEX_HOME and removed
+# after the trial. This file contains no model provider or credential value.
+
+approval_policy = "never"
+
+[features]
+apps = false
+browser_use = false
+browser_use_external = false
+computer_use = false
+goals = false
+hooks = false
+image_generation = false
+in_app_browser = false
+multi_agent = false
+plugin_sharing = false
+shell_tool = false
+skill_mcp_dependency_install = false
+unified_exec = false
+shell_snapshot = false
+workspace_dependencies = false
+
+[mcp_servers.k8s_ro]
+url = "__RESBENCH_K8S_MCP_URL__"
+bearer_token_env_var = "RESBENCH_MCP_TOKEN"
+
+[mcp_servers.telemetry_ro]
+url = "__RESBENCH_TELEMETRY_MCP_URL__"
+bearer_token_env_var = "RESBENCH_MCP_TOKEN"
+
+[mcp_servers.source_ro]
+url = "__RESBENCH_SOURCE_MCP_URL__"
+bearer_token_env_var = "RESBENCH_MCP_TOKEN"
+
+[mcp_servers.chaos_control]
+url = "__RESBENCH_CHAOS_CONTROL_MCP_URL__"
+bearer_token_env_var = "RESBENCH_MCP_TOKEN"
+
+[mcp_servers.chaos_control.tools.chaos_create_experiment]
+approval_mode = "approve"
+
+[mcp_servers.chaos_control.tools.chaos_destroy_experiment]
+approval_mode = "approve"

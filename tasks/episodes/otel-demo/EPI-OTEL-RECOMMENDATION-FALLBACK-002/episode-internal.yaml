@@ -1,0 +1,162 @@
+schema_version: resilience-episode.v2
+identity:
+  episode_id: EPI-OTEL-RECOMMENDATION-FALLBACK-002
+  version: v1
+  application: otel-demo
+  snapshot_id: snapshot-otel-demo-20260824T084623Z
+defect_basis:
+  template_id: RD-05
+  defect_name: 推荐依赖熔断或回退机制失效候选
+  evidence_description: >-
+    recommendation 的 ListRecommendations 直接调用 get_product_list，后者在默认或缓存未命中路径调用
+    product-catalog。当前代码上下文未显示明确的 circuit breaker、fallback 或异常映射，但前端能够隐藏空推荐，
+    且统一 gRPC 保护尚未排除，因此需要用有界网络丢包区分候选机制。
+  evidence:
+    - evidence_id: EV-AA8AA65F071A
+      kind: codegraph_node
+      statement: RecommendationService.ListRecommendations 是推荐请求入口并调用商品列表辅助函数。
+      path: src/recommendation/recommendation_server.py
+      start_line: 43
+      end_line: 56
+      symbol: RecommendationService::ListRecommendations
+      source_hash: 064f5dc1c48f4ad5dd55d73ab1adea4b3b8632ecc8e19c2ab0eed3c2649395a3
+    - evidence_id: EV-61B067B36A84
+      kind: codegraph_node
+      statement: get_product_list 在默认或缓存未命中路径直接访问 product-catalog。
+      path: src/recommendation/recommendation_server.py
+      start_line: 67
+      end_line: 113
+      symbol: get_product_list
+      source_hash: a4abd04f7e87adb8926678ac189a3ea3a3ae383c79c6f521e2065ef926e51c15
+    - evidence_id: EV-AC81FBB8A65F
+      kind: codegraph_edge
+      statement: CodeGraph 记录 get_product_list 到 product-catalog ListProducts 的调用边。
+      start_line: 78
+      end_line: 78
+      relation: calls
+      source_hash: a3f1f2ee7b64b1b7d0a9c2efa61213921b7b8770e1e1ceb231f1acc1dfc1e0a1
+    - evidence_id: EV-FD2487468E8D
+      kind: codegraph_node
+      statement: 前端 Recommendations 组件在推荐列表为空时能够不渲染该区域，构成部分降级反证。
+      path: src/frontend/components/Recommendations/Recommendations.tsx
+      start_line: 9
+      end_line: 28
+      symbol: Recommendations
+      source_hash: e02d03342fea78a90a88df1a026ed7762bb7125f1bf7f430f1ab2a199db0913b
+  mechanism_chain:
+    - order: 1
+      cause: 请求进入 RecommendationService.ListRecommendations。
+      relation: calls
+      effect: 入口同步调用 get_product_list 生成推荐商品列表。
+      evidence_ids: [EV-AA8AA65F071A, EV-61B067B36A84]
+    - order: 2
+      cause: get_product_list 在默认或缓存未命中路径调用 product-catalog。
+      relation: depends_on
+      effect: product-catalog 网络丢包进入推荐请求关键路径。
+      evidence_ids: [EV-61B067B36A84, EV-AC81FBB8A65F]
+    - order: 3
+      cause: 当前上下文未显示明确的熔断、回退或异常映射。
+      relation: may_propagate
+      effect: 推荐请求可能持续等待或失败，而不是快速受控降级。
+      evidence_ids: [EV-61B067B36A84]
+    - order: 4
+      cause: 前端可隐藏空推荐但不能证明服务间调用已经受保护。
+      relation: limits_scope
+      effect: 故障影响应区分推荐服务退化与核心商品浏览失败。
+      evidence_ids: [EV-FD2487468E8D]
+  supported_fault_types: [network-loss, network-delay]
+  injection_component: product-catalog
+  confidence: 0.55
+  confidence_level: medium
+  residual_hypotheses:
+    - gRPC wrapper、拦截器或 Envoy 可能已提供统一超时和快速失败。
+    - 缓存命中可能吸收 product-catalog 故障。
+    - product-catalog 同时服务核心商品列表，可能造成与推荐回退无关的直接影响。
+runtime_binding:
+  status: live
+  namespace: otel-demo
+  component: product-catalog
+  pod_name: product-catalog-68d55776cd-xcgsr
+  pod_uid: 471daaba-1111-4822-86d7-5a510d29f825
+  bound_at: 2026-08-24T08:46:23Z
+  binding_expiry:
+    - Pod UID 发生变化或 Pod 被删除。
+    - Pod 不再 Ready。
+    - 运行镜像、环境快照或源码身份发生变化。
+  image_identity: sha256:79a8988444f71e6285593abab4d2066f54d9f23f1935d561b2e93e9b036f13c7
+  expected_image_identity: sha256:79a8988444f71e6285593abab4d2066f54d9f23f1935d561b2e93e9b036f13c7
+  runtime_image_drift: false
+  execution_qualified: true
+main_fault:
+  tool: ChaosBlade
+  fault_type: network-loss
+  fault_semantics: persistent
+  target:
+    namespace: otel-demo
+    component: product-catalog
+    pod_name: product-catalog-68d55776cd-xcgsr
+    pod_uid: 471daaba-1111-4822-86d7-5a510d29f825
+    direction: recommendation-to-product-catalog
+    chaosblade_version: 1.8.0
+    chaosblade_command_kind: k8s pod-network loss
+  parameters:
+    loss_percent: 20
+    interface: eth0
+  duration_seconds: 600
+  duration_semantics: active_fault_window
+  command_template: >-
+    /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-network loss
+    --percent 20 --interface eth0 --names product-catalog-68d55776cd-xcgsr --namespace otel-demo
+    --kubeconfig {kubeconfig} --timeout 600
+  cleanup_command: >-
+    /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+  effect_verification:
+    - criterion_id: chaosblade_running
+      description: 主故障以当前 product-catalog Pod 为目标并进入 Running 状态。
+      evidence_source: ChaosBlade 状态与 Controller 记录
+    - criterion_id: dependency_loss_delta
+      description: 请求错误、重试、延迟或 Trace 证明目标路径实际受到丢包影响。
+      evidence_source: 工作负载、Trace 与 Telemetry 证据
+execution_policy:
+  max_experiments: 5
+  abort_conditions:
+    - 当前 Pod UID 与运行时绑定不一致且无法重新确认。
+    - 故障超出 otel-demo、product-catalog 或单目标范围。
+    - 持续工作负载触发安全停止阈值。
+    - 独立观测或清理能力不可用。
+    - Agent 超时、失联或工具轨迹丢失。
+agent_resources:
+  mcp_allowlist:
+    servers: [k8s_ro, telemetry_ro]
+    tools:
+      - k8s_get_resource
+      - k8s_list_resources
+      - k8s_list_events
+      - telemetry_prom_metric_range
+      - telemetry_jaeger_find_traces
+      - telemetry_loki_logs_range
+  codegraph:
+    graph_ref: semantic-scan://semantic-otel-demo-local-v3/codegraph
+    graph_sha256: 7ebcc52ae6dc9e0485e3d9ca721fa5ef4a071535c505cfc717b0158033d35974
+    source_snapshot: otel-demo-2.2.0@b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+    entrypoints:
+      - RecommendationService.ListRecommendations
+      - recommendation.get_product_list
+oracle:
+  gates:
+    - gate_id: target_and_operation_safety
+      description: Agent 使用当前目标并遵守单目标、单主故障和实验预算约束。
+      required_evidence: [runtime binding, tool trace, controller record]
+    - gate_id: main_fault_effect
+      description: 独立证据证明网络丢包真实作用于 product-catalog 和相关请求。
+      required_evidence: [ChaosBlade status, target state delta]
+    - gate_id: fixed_slo_violation
+      description: 分别评估核心浏览和推荐行为是否在有效故障窗口内违反固定 SLO。
+      required_evidence: [control summary, fault-window workload summary]
+    - gate_id: result_integrity
+      description: Agent 对执行、影响和停止状态的结论必须与 Controller 独立证据一致。
+      required_evidence: [agent result, tool trace, controller record]
+    - gate_id: cleanup_and_business_recovery
+      description: 主故障已清理且浏览与推荐路径在持续流量下恢复。
+      required_evidence: [cleanup ledger, resource absence, recovery workload summary]
+  verdicts: [PASS, FAIL, INCONCLUSIVE, CASE_INVALID]

@@ -38,6 +38,27 @@ class LevelEvaluator(Protocol):
 InjectorFactory = Callable[[TrialTicket, Mapping[str, Any]], DisturbanceInjector]
 
 
+class TrialPreparer(Protocol):
+    """Reset, rebaseline, and rebind the exact target before every attempt."""
+
+    def __call__(
+        self,
+        ticket: TrialTicket,
+        level: Mapping[str, Any],
+    ) -> Mapping[str, Any]: ...
+
+
+class TrialFinalizer(Protocol):
+    """Force main-fault cleanup and verify recovery after every attempt."""
+
+    def __call__(
+        self,
+        ticket: TrialTicket,
+        level: Mapping[str, Any],
+        trial_report: Mapping[str, Any],
+    ) -> Mapping[str, Any]: ...
+
+
 @dataclass(frozen=True)
 class MultiLevelRunResult:
     run_id: str
@@ -69,11 +90,15 @@ class MultiLevelOrchestrator:
         trial_runner: StreamingTrialRunner,
         level_evaluator: LevelEvaluator,
         injector_factory: InjectorFactory,
+        trial_preparer: TrialPreparer | None = None,
+        trial_finalizer: TrialFinalizer | None = None,
     ) -> None:
         self.controller = controller
         self.trial_runner = trial_runner
         self.level_evaluator = level_evaluator
         self.injector_factory = injector_factory
+        self.trial_preparer = trial_preparer
+        self.trial_finalizer = trial_finalizer
 
     def run(self) -> MultiLevelRunResult:
         results: list[dict[str, Any]] = []
@@ -81,21 +106,59 @@ class MultiLevelOrchestrator:
             ticket = self.controller.start_trial()
             level = self.controller.current_level
             assert level is not None
-            injector = self.injector_factory(ticket, level)
             controller_records: list[dict[str, Any]] = []
 
+            preparation: Mapping[str, Any]
+            try:
+                preparation = (
+                    self.trial_preparer(ticket, level)
+                    if self.trial_preparer is not None
+                    else {"status": "not_configured"}
+                )
+            except Exception as exc:  # noqa: BLE001 - evaluator decides CASE_INVALID.
+                preparation = {"status": "failed", "error": str(exc)}
+
+            injector = None
+            if preparation.get("status") != "failed":
+                injector = self.injector_factory(ticket, level)
+
             def emit(event: LifecycleEvent) -> list[dict[str, Any]]:
+                if injector is None:
+                    raise RuntimeError("disturbance injector is unavailable after preparation failure")
                 records = injector.process_event(event)
                 controller_records.extend(records)
                 return records
 
             trial_report: Mapping[str, Any]
-            try:
-                trial_report = self.trial_runner(ticket, level, emit)
-            except Exception as exc:  # noqa: BLE001 - turn runner failure into an auditable level result.
-                trial_report = {"status": "failed", "error": str(exc)}
-            finally:
-                controller_records.extend(injector.cleanup_all(reason="trial_finished"))
+            if preparation.get("status") == "failed":
+                trial_report = {
+                    "status": "preparation_failed",
+                    "error": preparation.get("error", "trial preparation failed"),
+                    "preparation": dict(preparation),
+                }
+            else:
+                try:
+                    trial_report = dict(self.trial_runner(ticket, level, emit))
+                    trial_report["preparation"] = dict(preparation)
+                except Exception as exc:  # noqa: BLE001 - turn runner failure into an auditable level result.
+                    trial_report = {
+                        "status": "failed",
+                        "error": str(exc),
+                        "preparation": dict(preparation),
+                    }
+                finally:
+                    assert injector is not None
+                    controller_records.extend(injector.cleanup_all(reason="trial_finished"))
+                if self.trial_finalizer is not None:
+                    try:
+                        trial_report["finalization"] = dict(
+                            self.trial_finalizer(ticket, level, trial_report)
+                        )
+                    except Exception as exc:  # noqa: BLE001 - evaluator fails recovery/safety.
+                        trial_report["finalization"] = {
+                            "status": "failed",
+                            "error": str(exc),
+                        }
             result = dict(
                 self.level_evaluator(
                     ticket,

@@ -11,4 +11,11 @@ This is the positive-control prompt. Follow the full benchmark lifecycle explici
 7. Recover by deleting only the experiment handle created in this trial, then verify recovery with independent observations available to you.
 8. Produce the structured JSON report required by `prompts/common-task.md`.
 
+Keep the bounded experiment operationally efficient: use at most 12 read-only
+tool calls before applying the approved fault, apply it within the first three
+minutes, and use at most 32 tool calls in total. Prefer parallel observations
+and focused implementation-source reads over broad metric enumeration or
+README-only evidence. If a metric family is unavailable, state that once and
+pivot to traces, logs, or source rather than repeating equivalent searches.
+
 Never claim success only because a command returned successfully. Tie every claim to observable evidence and state any uncertainty.

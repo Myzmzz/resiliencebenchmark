@@ -1,0 +1,104 @@
+additionalAffinities: {}
+affinity: {}
+busybox:
+  image: ${HARBOR_REGISTRY}/train-ticket/busybox
+  tag: '1.32'
+hardAntiAffinity: true
+imagePullPolicy: IfNotPresent
+metrics:
+  annotations: {}
+  enabled: false
+  image: ${HARBOR_REGISTRY}/train-ticket/prom-mysqld-exporter
+  livenessProbe:
+    initialDelaySeconds: 15
+    timeoutSeconds: 5
+  readinessProbe:
+    initialDelaySeconds: 5
+    timeoutSeconds: 1
+  serviceMonitor:
+    enabled: false
+    interval: 10s
+  tag: v0.12.1
+mysql:
+  allowEmptyRootPassword: true
+  args: []
+  configFiles:
+    node.cnf: '[mysqld]
+
+      default_storage_engine=InnoDB
+
+      max_connections=65535
+
+      '
+  image: ${HARBOR_REGISTRY}/train-ticket/radondb-percona
+  initTokudb: false
+  livenessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+  mysqlDatabase: nacos
+  mysqlPassword: '${TRAIN_TICKET_NACOSDB_MYSQL_PASSWORD}'
+  mysqlReplicationPassword: '${TRAIN_TICKET_NACOSDB_MYSQL_REPLICATION_PASSWORD}'
+  mysqlUser: nacos
+  readinessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  tag: 5.7.34
+nodeSelector: {}
+persistence:
+  accessModes:
+  - ReadWriteOnce
+  annotations: {}
+  enabled: true
+  reclaimPolicy: ''
+  size: 1Gi
+podAnnotations: {}
+podLabels: {}
+rbac:
+  create: true
+replicaCount: 3
+resources: {}
+service:
+  annotations: {}
+  port: 3306
+  type: ClusterIP
+serviceAccount:
+  create: true
+  name: null
+slowLogTail: true
+statefulsetAnnotations: {}
+xenon:
+  args: []
+  image: ${HARBOR_REGISTRY}/train-ticket/radondb-xenon
+  livenessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+  readinessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 1
+  resources:
+    limits:
+      cpu: 100m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  tag: 1.1.5-helm

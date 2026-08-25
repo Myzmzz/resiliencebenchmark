@@ -1,0 +1,35 @@
+affinity: {}
+annotations: {}
+global:
+  mode: cluster
+initmysql:
+  image: ${HARBOR_REGISTRY}/train-ticket/busybox:1.32
+nacos:
+  db:
+    host: nacosdb-mysql-leader
+    name: nacos
+    passowrd: '${TRAIN_TICKET_NACOS_DB_PASSWORD}'
+    password: '${TRAIN_TICKET_NACOS_DB_PASSWORD}'
+    port: '3306'
+    username: nacos
+  domainName: cluster.local
+  headlessService: nacos-headless
+  health:
+    enabled: false
+  image:
+    pullPolicy: IfNotPresent
+    repository: ${HARBOR_REGISTRY}/train-ticket/nacos-nacos-server
+    tag: 2.0.1
+  preferhostmode: hostname
+  replicaCount: 3
+  secretName: nacos-mysql
+  serverPort: 8848
+nodeSelector: {}
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+service:
+  port: 8848
+  type: NodePort
+tolerations: []

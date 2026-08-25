@@ -56,6 +56,7 @@ class RuntimeConfig:
     controller_pod_uid: str | None = None
     controller_pod_namespace: str | None = None
     controller_pod_name: str | None = None
+    controller_lease_file: Path | None = None
     ledger_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "resbench-chaos-control-ledger")
     baseline_ledger_dir: Path | None = None
     kubectl_path: str = "kubectl"
@@ -70,6 +71,7 @@ class RuntimeConfig:
         )
         ledger_raw = values.get("RESBENCH_CHAOS_LEDGER_DIR")
         baseline_raw = values.get("RESBENCH_CHAOS_BASELINE_LEDGER_DIR")
+        controller_lease_raw = values.get("RESBENCH_CHAOS_CONTROLLER_LEASE_FILE")
         return cls(
             execute_enabled=values.get("RESBENCH_CHAOS_EXECUTE_ENABLED", "").lower() == "true",
             kubeconfig=values.get("RESBENCH_CHAOS_KUBECONFIG"),
@@ -78,6 +80,9 @@ class RuntimeConfig:
             controller_pod_uid=values.get("RESBENCH_CHAOS_CONTROLLER_POD_UID"),
             controller_pod_namespace=values.get("RESBENCH_CHAOS_CONTROLLER_POD_NAMESPACE"),
             controller_pod_name=values.get("RESBENCH_CHAOS_CONTROLLER_POD_NAME"),
+            controller_lease_file=(
+                Path(controller_lease_raw) if controller_lease_raw else None
+            ),
             ledger_dir=Path(ledger_raw) if ledger_raw else cls().ledger_dir,
             baseline_ledger_dir=Path(baseline_raw) if baseline_raw else None,
             kubectl_path=values.get("RESBENCH_KUBECTL", "kubectl"),
@@ -450,7 +455,13 @@ class ChaosControlService:
             failed_ledger = {**ledger, "state": "create_failed", "updated_at": _now_iso()}
             self._write_ledger(cleanup_handle, failed_ledger)
             raise
-        ledger = {**ledger, "state": "active", "updated_at": _now_iso(), "experiment_name": record.name}
+        ledger = {
+            **ledger,
+            "state": "active",
+            "ever_active": True,
+            "updated_at": _now_iso(),
+            "experiment_name": record.name,
+        }
         self._write_ledger(cleanup_handle, ledger)
         return {
             "ok": True,
@@ -480,6 +491,15 @@ class ChaosControlService:
         namespace = ledger["namespace"]
         name = ledger["experiment_name"]
         await self._delete_and_verify_from_ledger(ledger, kubeconfig)
+        self._write_ledger(
+            cleanup_handle,
+            {
+                **ledger,
+                "state": "destroyed",
+                "cleanup_error": None,
+                "updated_at": _now_iso(),
+            },
+        )
         return {"ok": True, "destroyed": name, "namespace": namespace, "verified_absent": True, "idempotent": True}
 
     async def cleanup_expired_leases(self, *, now: datetime | None = None) -> dict[str, Any]:
@@ -542,6 +562,13 @@ class ChaosControlService:
             "resource_absent": record is None,
             "terminal": True if record is None else record.terminal,
             "phase": "Absent" if record is None else record.phase,
+            "ledger_state": str(ledger.get("state", "unknown")),
+            "run_id": str(ledger.get("run_id", "")),
+            "target_uid": str(ledger.get("target_uid", "")),
+            "fault_type": str(ledger.get("fault_type", "")),
+            "created_at": ledger.get("created_at"),
+            "deadline_at": ledger.get("deadline_at"),
+            "ever_active": bool(ledger.get("ever_active")),
         }
 
     async def _delete_and_verify_from_ledger(self, ledger: Mapping[str, Any], kubeconfig: str) -> None:
@@ -619,6 +646,35 @@ class ChaosControlService:
             )
 
     async def _verify_controller_identity(self, kubeconfig: str) -> None:
+        if self.config.controller_lease_file is not None:
+            payload = _read_private_json_file(
+                self.config.controller_lease_file,
+                label="controller process lease",
+                missing_code="CONTROLLER_LEASE_MISSING",
+                missing_message="The local Controller process lease is missing or unsafe.",
+                missing_next_step="Restart the local Controller supervisor before enabling writes.",
+            )
+            controller_id = str(payload.get("controller_id") or "")
+            expires_at = _parse_datetime(payload.get("expires_at"))
+            try:
+                pid = int(payload.get("pid"))
+                process_alive = pid > 1
+                if process_alive:
+                    os.kill(pid, 0)
+            except (OSError, TypeError, ValueError):
+                process_alive = False
+            if (
+                controller_id != self.config.controller_pod_uid
+                or expires_at is None
+                or expires_at <= datetime.now(timezone.utc)
+                or not process_alive
+            ):
+                raise ChaosControlError(
+                    "CONTROLLER_LEASE_INVALID",
+                    "The local Controller process lease is expired or does not match the configured identity.",
+                    next_step="Renew the private Controller lease from the live supervisor before retrying.",
+                )
+            return
         if not (self.config.controller_pod_namespace and self.config.controller_pod_name):
             return
         live_uid = await self.backend.get_pod_uid(self.config.controller_pod_namespace, self.config.controller_pod_name, kubeconfig)

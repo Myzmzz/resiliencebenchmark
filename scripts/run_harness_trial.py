@@ -14,18 +14,20 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
+import threading
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 from urllib.parse import urlparse
 
 import jsonschema
 import yaml
-
 
 DEFAULT_HARNESSES_CONFIG = Path("harness/harnesses.yaml")
 DEFAULT_MODELS_CONFIG = Path("harness/models.yaml")
@@ -56,6 +58,24 @@ ALLOWED_RUNTIME_ENV = {
     "RESBENCH_SOURCE_MCP_URL",
     "RESBENCH_CHAOS_CONTROL_MCP_URL",
     "RESBENCH_MCP_TOKEN",
+    "RESBENCH_BASELINE_GATE_TOKEN",
+    "RESBENCH_CLEANUP_HANDLE",
+    "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF",
+    "RESBENCH_CHAOS_CONTROLLER_POD_UID",
+    "RESBENCH_AUTHORIZED_TARGET_JSON",
+    "RESBENCH_MAIN_FAULT_JSON",
+    "RESBENCH_AUTHORIZED_RUN_ID",
+    "RESBENCH_CODEX_AUTH_FILE",
+}
+OPTIONAL_RUNTIME_ENV = {
+    "RESBENCH_BASELINE_GATE_TOKEN",
+    "RESBENCH_CLEANUP_HANDLE",
+    "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF",
+    "RESBENCH_CHAOS_CONTROLLER_POD_UID",
+    "RESBENCH_AUTHORIZED_TARGET_JSON",
+    "RESBENCH_MAIN_FAULT_JSON",
+    "RESBENCH_AUTHORIZED_RUN_ID",
+    "RESBENCH_CODEX_AUTH_FILE",
 }
 ALLOWED_MCP_TOOLS = {
     "k8s_ro": {
@@ -125,6 +145,7 @@ class CommandResult:
 
 
 Runner = Callable[[Sequence[str], bytes, Mapping[str, str], int], CommandResult]
+EventObserver = Callable[[Mapping[str, Any]], None]
 
 
 def utc_now() -> str:
@@ -287,6 +308,53 @@ def validate_prompt_text(prompt_text: str) -> None:
         raise ValueError("prompt appears to contain a secret-like value")
 
 
+def append_runtime_capability_prompt(
+    prompt_text: str,
+    env: Mapping[str, str],
+) -> str:
+    names = {
+        "baseline_gate_token": "RESBENCH_BASELINE_GATE_TOKEN",
+        "cleanup_handle": "RESBENCH_CLEANUP_HANDLE",
+        "controller_token_ref": "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF",
+        "expected_controller_pod_uid": "RESBENCH_CHAOS_CONTROLLER_POD_UID",
+        "target": "RESBENCH_AUTHORIZED_TARGET_JSON",
+        "main_fault": "RESBENCH_MAIN_FAULT_JSON",
+        "run_id": "RESBENCH_AUTHORIZED_RUN_ID",
+    }
+    present = {key: env.get(name, "") for key, name in names.items() if env.get(name)}
+    if not present:
+        return prompt_text
+    missing = [name for key, name in names.items() if key not in present]
+    if missing:
+        raise ValueError(
+            "runtime fault capability is incomplete: " + ", ".join(sorted(missing))
+        )
+    if len(present["baseline_gate_token"]) < 32:
+        raise ValueError("runtime baseline capability is too short")
+    try:
+        target = json.loads(present["target"])
+        main_fault = json.loads(present["main_fault"])
+    except json.JSONDecodeError as exc:
+        raise ValueError("runtime target or main fault is not valid JSON") from exc
+    capability = {
+        "target": target,
+        "main_fault": main_fault,
+        "run_id": present["run_id"],
+        "cleanup_handle": present["cleanup_handle"],
+        "baseline_gate_token": present["baseline_gate_token"],
+        "controller_token_ref": present["controller_token_ref"],
+        "expected_controller_pod_uid": present["expected_controller_pod_uid"],
+    }
+    return (
+        prompt_text
+        + "\n\nController-issued, single-attempt runtime capability follows. It is short-lived, "
+        "scope-bound, and must be used only with chaos_control for this trial.\n\n"
+        "```json\n"
+        + json.dumps(capability, ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n```\n"
+    )
+
+
 def validate_url_env(name: str, value: str) -> str | None:
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -296,13 +364,19 @@ def validate_url_env(name: str, value: str) -> str | None:
     return None
 
 
-def runtime_env_status(env: Mapping[str, str], execute: bool) -> tuple[dict[str, dict[str, Any]], list[str]]:
+def runtime_env_status(
+    env: Mapping[str, str],
+    execute: bool,
+    harness_name: str | None = None,
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
     status: dict[str, dict[str, Any]] = {}
     issues: list[str] = []
     for name in sorted(ALLOWED_RUNTIME_ENV):
         value = env.get(name, "")
         status[name] = {"present": bool(value)}
-        if execute and not value:
+        oauth_codex = harness_name == "codex" and bool(env.get("RESBENCH_CODEX_AUTH_FILE"))
+        oauth_optional = {"RESBENCH_LLM_BASE_URL", "RESBENCH_LLM_API_KEY"} if oauth_codex else set()
+        if execute and not value and name not in OPTIONAL_RUNTIME_ENV | oauth_optional:
             issues.append(f"{name} is required for execute")
     for name in sorted(ALLOWED_RUNTIME_ENV):
         if name.endswith("_URL") and env.get(name):
@@ -328,7 +402,14 @@ def render_dsh_contract(repo_root: Path, dsh_home: Path, env: Mapping[str, str],
 
 
 def render_codex_config(repo_root: Path, codex_home: Path, env: Mapping[str, str]) -> Path:
-    template = (repo_root / "harness" / "codex" / "config.toml.template").read_text(encoding="utf-8")
+    template_name = (
+        "config.oauth.toml.template"
+        if env.get("RESBENCH_CODEX_AUTH_FILE")
+        else "config.toml.template"
+    )
+    template = (repo_root / "harness" / "codex" / template_name).read_text(
+        encoding="utf-8"
+    )
     rendered = template.replace("__RESBENCH_LLM_BASE_URL__", env.get("RESBENCH_LLM_BASE_URL", ""))
     for placeholder, env_name in MCP_URL_ENV.items():
         rendered = rendered.replace(placeholder, env.get(env_name, ""))
@@ -341,6 +422,23 @@ def render_codex_config(repo_root: Path, codex_home: Path, env: Mapping[str, str
     return path
 
 
+def copy_codex_auth(codex_home: Path, env: Mapping[str, str]) -> bool:
+    raw = env.get("RESBENCH_CODEX_AUTH_FILE", "")
+    if not raw:
+        return False
+    source = Path(raw).expanduser().resolve()
+    if not source.is_file() or source.is_symlink():
+        raise ValueError("RESBENCH_CODEX_AUTH_FILE must be a regular file")
+    mode = stat.S_IMODE(source.stat().st_mode)
+    if mode & 0o077:
+        raise ValueError("RESBENCH_CODEX_AUTH_FILE must not be group/world accessible")
+    codex_home.mkdir(parents=True, exist_ok=True)
+    destination = codex_home / "auth.json"
+    shutil.copyfile(source, destination)
+    os.chmod(destination, 0o600)
+    return True
+
+
 def render_claude_config(repo_root: Path, claude_home: Path) -> Path:
     source = repo_root / "harness" / "claude-code" / "mcp.json.template"
     claude_home.mkdir(parents=True, exist_ok=True)
@@ -351,7 +449,7 @@ def render_claude_config(repo_root: Path, claude_home: Path) -> Path:
 
 def anthropic_base_url(value: str) -> str:
     normalized = value.rstrip("/")
-    return normalized[:-3] if normalized.endswith("/v1") else normalized
+    return normalized.removesuffix("/v1")
 
 
 def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], homes: Mapping[str, str]) -> dict[str, str]:
@@ -380,6 +478,15 @@ def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], home
         child = {key: value for key, value in parent_env.items() if key in ALLOWED_RUNTIME_ENV and value}
     child = {key: value for key, value in child.items() if value}
     child.update(homes)
+    home_key = {
+        "codex": "CODEX_HOME",
+        "claude-code": "CLAUDE_CONFIG_DIR",
+        "deepseek-harness": "DSH_HOME",
+    }.get(harness_name)
+    if home_key and homes.get(home_key):
+        child["HOME"] = homes[home_key]
+    child["USER"] = "resbench"
+    child["LOGNAME"] = "resbench"
     child["PATH"] = SAFE_PATH
     return child
 
@@ -406,6 +513,75 @@ def subprocess_runner(argv: Sequence[str], stdin: bytes, env: Mapping[str, str],
     return CommandResult(returncode=int(completed.returncode), stdout=completed.stdout, stderr=completed.stderr)
 
 
+def subprocess_streaming_runner(
+    argv: Sequence[str],
+    stdin: bytes,
+    env: Mapping[str, str],
+    timeout_seconds: int,
+    stdout_line_observer: Callable[[bytes], None],
+) -> CommandResult:
+    """Run a harness and forward stdout JSONL before process completion."""
+
+    process = subprocess.Popen(
+        list(argv),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=dict(env),
+    )
+    stdout_chunks: list[bytes] = []
+    stderr_chunks: list[bytes] = []
+    observer_errors: list[Exception] = []
+
+    def drain_stdout() -> None:
+        assert process.stdout is not None
+        for line in iter(process.stdout.readline, b""):
+            stdout_chunks.append(line)
+            try:
+                stdout_line_observer(line)
+            except Exception as exc:  # noqa: BLE001 - terminate on observer safety failure.
+                observer_errors.append(exc)
+                process.terminate()
+                break
+
+    def drain_stderr() -> None:
+        assert process.stderr is not None
+        for line in iter(process.stderr.readline, b""):
+            stderr_chunks.append(line)
+
+    stdout_thread = threading.Thread(target=drain_stdout, daemon=True)
+    stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    assert process.stdin is not None
+    try:
+        process.stdin.write(stdin)
+        process.stdin.close()
+    except BrokenPipeError:
+        pass
+    timed_out = False
+    try:
+        process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+    stdout_thread.join(timeout=5)
+    stderr_thread.join(timeout=5)
+    if observer_errors:
+        raise observer_errors[0]
+    return CommandResult(
+        returncode=int(process.returncode or 0),
+        stdout=b"".join(stdout_chunks),
+        stderr=b"".join(stderr_chunks),
+        timed_out=timed_out,
+    )
+
+
 def truncate_output(data: bytes, max_output_bytes: int) -> tuple[bytes, bool]:
     if len(data) <= max_output_bytes:
         return data, False
@@ -422,9 +598,14 @@ def write_payload(artifact_dir: Path, name: str, payload: bytes | str, env: Mapp
 
 def extract_json_objects(text: str) -> list[dict[str, Any]]:
     objects: list[dict[str, Any]] = []
+    seen_nodes: set[int] = set()
 
     def collect(value: Any) -> None:
         if isinstance(value, dict):
+            identity = id(value)
+            if identity in seen_nodes:
+                return
+            seen_nodes.add(identity)
             objects.append(value)
             for key in ("structured_output", "result", "text", "content", "message", "item"):
                 if key in value:
@@ -433,6 +614,10 @@ def extract_json_objects(text: str) -> list[dict[str, Any]]:
                 if isinstance(item, (dict, list)):
                     collect(item)
         elif isinstance(value, list):
+            identity = id(value)
+            if identity in seen_nodes:
+                return
+            seen_nodes.add(identity)
             for item in value:
                 collect(item)
         elif isinstance(value, str):
@@ -440,20 +625,24 @@ def extract_json_objects(text: str) -> list[dict[str, Any]]:
                 collect(candidate)
 
     stripped = text.strip()
+    parsed_whole = False
     if stripped:
         try:
             parsed = json.loads(stripped)
             collect(parsed)
+            parsed_whole = True
         except json.JSONDecodeError:
             pass
-        for candidate in string_json_candidates(stripped):
-            collect(candidate)
-    for line in text.splitlines():
-        try:
-            parsed = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        collect(parsed)
+        if not parsed_whole:
+            for candidate in string_json_candidates(stripped):
+                collect(candidate)
+    if not parsed_whole:
+        for line in text.splitlines():
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            collect(parsed)
     return objects
 
 
@@ -476,7 +665,9 @@ def trace_kind_from_event(event: Mapping[str, Any]) -> str | None:
     marker = str(event.get("type") or event.get("event") or event.get("kind") or "")
     if marker == "mcp_tool_call":
         completed = str(event.get("status") or "").lower() in {"completed", "failed"}
-        has_result = any(key in event for key in ("result", "error", "output"))
+        has_result = any(
+            event.get(key) is not None for key in ("result", "error", "output")
+        )
         return "tool_result" if completed or has_result else "tool_call"
     if marker in {"tool_call", "tool_use", "function_call"}:
         return "tool_call"
@@ -645,6 +836,7 @@ def run_trial(
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
     parent_env: Mapping[str, str] | None = None,
     runner: Runner | None = None,
+    event_observer: EventObserver | None = None,
     trial_id: str | None = None,
 ) -> dict[str, Any]:
     env = dict(parent_env if parent_env is not None else os.environ)
@@ -673,13 +865,14 @@ def run_trial(
     prompt_file = resolve_prompt_file(harnesses, prompt_ref, repo)
     prompt_text = render_prompt(common_prompt_file, prompt_file, episode)
     validate_prompt_text(prompt_text)
+    prompt_text = append_runtime_capability_prompt(prompt_text, env)
     episode_id = str(episode.get("episode_id") or "unknown-episode")
     trial = validate_trial_id(trial_id) if trial_id else make_trial_id(harness_name, episode_id, model_alias)
     resolved_artifact_root = resolve_artifact_root(repo, artifact_root)
     artifact_dir = artifact_dir_for(resolved_artifact_root, trial)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     events_jsonl = artifact_dir / "events.jsonl"
-    env_status, env_issues = runtime_env_status(env, execute)
+    env_status, env_issues = runtime_env_status(env, execute, harness_name)
     if execute and env_issues:
         raise ValueError("; ".join(env_issues))
 
@@ -687,7 +880,11 @@ def run_trial(
     codex_home = temp_root / "codex-home"
     claude_home = temp_root / "claude-config"
     dsh_home = temp_root / "dsh-home"
-    codex_template = repo / "harness" / "codex" / "config.toml.template"
+    codex_template = repo / "harness" / "codex" / (
+        "config.oauth.toml.template"
+        if env.get("RESBENCH_CODEX_AUTH_FILE")
+        else "config.toml.template"
+    )
     claude_template = repo / "harness" / "claude-code" / "mcp.json.template"
     dsh_settings = repo / "harness" / "deepseek-harness" / "settings.yaml.template"
     dsh_cordis = repo / "harness" / "deepseek-harness" / "mcp.cordis.patch.yml"
@@ -713,6 +910,7 @@ def run_trial(
             "codex_last_message_file": temp_root / "codex-last-message.json",
         }
         render_codex_config(repo, codex_home, env)
+        codex_auth_copied = copy_codex_auth(codex_home, env)
         paths["mcp_config_file"] = render_claude_config(repo, claude_home)
         render_dsh_contract(repo, dsh_home, env, model_alias)
 
@@ -745,6 +943,7 @@ def run_trial(
             "runtimeEnv": env_status,
             "templates": {
                 "codexConfigTemplateSha256": sha256_file(codex_template),
+                "codexAuthMode": "chatgpt-oauth" if codex_auth_copied else "gateway-api-key",
                 "claudeMcpTemplateSha256": sha256_file(claude_template),
                 "dshSettingsTemplateSha256": sha256_file(dsh_settings),
                 "dshCordisPatchSha256": sha256_file(dsh_cordis),
@@ -764,7 +963,8 @@ def run_trial(
             events.append({"ts": utc_now(), "kind": "error", "summary": error})
             append_jsonl(events_jsonl, {"ts": utc_now(), "event": "fail_closed", "error": redact_text(error, env)})
         else:
-            actual_runner = runner or subprocess_runner
+            if event_observer is not None and runner is not None:
+                raise ValueError("event_observer requires the built-in streaming subprocess runner")
             append_jsonl(
                 events_jsonl,
                 {
@@ -779,7 +979,20 @@ def run_trial(
                     ),
                 },
             )
-            result = actual_runner(argv, stdin, child_env, timeout_seconds)
+            if event_observer is None:
+                result = (runner or subprocess_runner)(argv, stdin, child_env, timeout_seconds)
+            else:
+                def observe_stdout_line(line: bytes) -> None:
+                    for stream_event in extract_json_objects(redact_text(line, env)):
+                        event_observer(redact_json(stream_event, env))
+
+                result = subprocess_streaming_runner(
+                    argv,
+                    stdin,
+                    child_env,
+                    timeout_seconds,
+                    observe_stdout_line,
+                )
             stdout_ref, stdout_truncated = write_payload(artifact_dir, "stdout.txt", result.stdout, env, max_output_bytes)
             stderr_ref, stderr_truncated = write_payload(artifact_dir, "stderr.txt", result.stderr, env, max_output_bytes)
             if stdout_ref:
@@ -878,8 +1091,11 @@ def run_multi_level_episode(
     trial_runner: Any,
     level_evaluator: Any,
     injector_factory: Any,
+    trial_preparer: Any | None = None,
+    trial_finalizer: Any | None = None,
     progression_store: Any | None = None,
     resume: bool = False,
+    continue_after_failure: bool = False,
 ) -> dict[str, Any]:
     """Run a multi-level episode through live, event-emitting adapters.
 
@@ -907,12 +1123,15 @@ def run_multi_level_episode(
         agent_id=agent_id,
         store=progression_store,
         resume=resume,
+        continue_after_failure=continue_after_failure,
     )
     return MultiLevelOrchestrator(
         controller,
         trial_runner=trial_runner,
         level_evaluator=level_evaluator,
         injector_factory=injector_factory,
+        trial_preparer=trial_preparer,
+        trial_finalizer=trial_finalizer,
     ).run().as_dict()
 
 

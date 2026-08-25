@@ -1,0 +1,62 @@
+schema_version: semantic-scan-config.v1
+
+codebase:
+  id: otel-demo-2.2.0
+  path: ../../../benchmark-sources/materialized/otel-demo-2.2.0
+  source_identity: otel-demo-2.2.0@b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+
+codegraph:
+  command: codegraph
+  force_reindex: false
+  timeout_seconds: 600
+  max_nodes: 60
+  max_code_blocks: 12
+  max_query_results: 30
+
+kubernetes:
+  mode: live
+  namespace: otel-demo
+  kubeconfig_path: null
+  include_configmap_data: true
+  discover_custom_resources: true
+  max_resources_per_agent: 80
+  authoritative_for_namespace: false
+  sources:
+    - alias: upstream-kubernetes
+      path: ../../../benchmark-sources/materialized/otel-demo-2.2.0/kubernetes/opentelemetry-demo.yaml
+    - alias: benchmark-kubernetes
+      path: ../../environment/kubernetes/otel-demo
+
+templates_path: ../templates/resilience-defects-v2.yaml
+prompts_root: ../prompts/semantic_scan
+output_dir: ../../artifacts/semantic-scan
+
+agents:
+  model_config_path: model-semantic-scan.yaml
+  max_concurrency: 3
+  recursion_limit: 320
+  agent_timeout_seconds: 1800
+  max_attempts_per_agent: 2
+  tool_call_limit: 100
+  model_call_limit: 120
+  structured_output_strategy: provider
+  context_budget:
+    coordinator_chars: 30000
+    subagent_chars: 40000
+    verifier_chars: 30000
+    max_tool_result_chars: 8000
+
+planning_mode: model
+active_template_ids:
+  - RD-01
+  - RD-02
+  - RD-05
+  - RD-06
+  - RD-07
+  - RD-08
+  - RD-09
+  - RD-10
+  - RD-11
+  - RD-12
+  - RD-13
+  - RD-14

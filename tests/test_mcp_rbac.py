@@ -23,10 +23,10 @@ def test_rbac_objects_are_unique_and_service_accounts_do_not_automount_tokens():
         for item in items
     ]
 
-    assert len(items) == 23
+    assert len(items) == 30
     assert len(identities) == len(set(identities))
     service_accounts = [item for item in items if item["kind"] == "ServiceAccount"]
-    assert len(service_accounts) == 6
+    assert len(service_accounts) == 7
     assert all(item["automountServiceAccountToken"] is False for item in service_accounts)
     assert all(item["metadata"]["namespace"] == "resiliencebenchmark-system" for item in service_accounts)
 

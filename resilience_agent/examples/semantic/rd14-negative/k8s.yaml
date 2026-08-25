@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: semantic-fixture
+  labels:
+    app: cart
+  annotations:
+    resiliencebenchmark.io/source-symbol: CartService
+    resiliencebenchmark.io/source-path: checkout.ts
+    resiliencebenchmark.io/source-identity: rd14-negative-v1
+    resiliencebenchmark.io/business-critical: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cart
+  template:
+    metadata:
+      labels:
+        app: cart
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: cart
+      containers:
+        - name: cart
+          image: semantic-fixture/cart:rd14-negative-v1
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cart
+  namespace: semantic-fixture
+  annotations:
+    resiliencebenchmark.io/source-symbol: CartService
+    resiliencebenchmark.io/source-identity: rd14-negative-v1
+    resiliencebenchmark.io/business-critical: "true"
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cart
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart
+  namespace: semantic-fixture
+  annotations:
+    resiliencebenchmark.io/source-symbol: CartService
+    resiliencebenchmark.io/source-identity: rd14-negative-v1
+    resiliencebenchmark.io/business-critical: "true"
+spec:
+  selector:
+    app: cart
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -8,24 +8,51 @@ version = "0.1.0"
 description = "Environment preparation contracts and safety tooling for a microservice resilience BenchmarkFactory"
 requires-python = ">=3.10"
 dependencies = [
+  "fastapi>=0.115,<1",
   "jsonschema>=4.20,<5",
+  "langchain>=1.1,<2",
+  "langchain-openai>=1.1,<2",
+  "langgraph>=1,<2",
   "mcp[cli]>=2,<3",
   "pydantic>=2.11,<3",
   "PyYAML>=6,<7",
+  "uvicorn>=0.30,<1",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7,<9"]
+test = ["pytest>=7,<9", "httpx>=0.27,<1"]
+runtime = ["dulwich>=0.22,<0.23", "kubernetes>=32,<35"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["controller*", "disturbances*", "evaluator*", "mcp_servers*", "progression*", "scoring*", "scripts*"]
-exclude = ["artifacts*", "environment*", "harness*", "runs*", "tasks*", "tests*", "tmp*"]
+include = ["backend*", "controller*", "disturbances*", "evaluator*", "harness*", "mcp_servers*", "progression*", "resilience_agent*", "scoring*", "scripts*", "stage2_service*", "tasks*"]
+exclude = ["artifacts*", "environment*", "runs*", "tests*", "tmp*"]
 
 [tool.setuptools.package-data]
+resilience_agent = [
+  "README.md",
+  "config/*",
+  "prompts/semantic_scan/*.md",
+  "prompts/episode/*.md",
+  "examples/minimal/*.yaml",
+  "examples/semantic/**/*.yaml",
+  "examples/semantic/**/*.ts",
+  "schemas/*.json",
+  "templates/*.yaml",
+]
+tasks = ["catalog/*.yaml", "schemas/*.json", "examples/**/*.yaml", "episodes/**/*.yaml"]
 disturbances = ["library.yaml", "schemas/*.json", "README.md"]
 evaluator = ["schemas/*.json"]
 scoring = ["schemas/*.json"]
+harness = [
+  "*.yaml",
+  "codex/*.template",
+  "claude-code/*.template",
+  "deepseek-harness/*.template",
+  "deepseek-harness/*.yml",
+  "prompts/*.md",
+  "schemas/*.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "controller/tests", "evaluator"]

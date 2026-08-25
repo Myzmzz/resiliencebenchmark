@@ -17,6 +17,11 @@ from .types import (
     load_disturbance_library,
 )
 from .telemetry_interceptor import TelemetryDisturbanceRuleEngine, TelemetryInjectedFailure
+from .kubernetes_runtime import KubernetesDisturbanceClient, KubernetesRuntimeError
+from .file_telemetry_interceptor import (
+    FileBackedTelemetryDisturbanceHook,
+    FileTelemetryRuleClient,
+)
 
 __all__ = [
     "DisturbanceDefinition",
@@ -26,6 +31,10 @@ __all__ = [
     "DisturbanceType",
     "InMemoryControllerRecordSink",
     "KubernetesDisturbanceAdapter",
+    "KubernetesDisturbanceClient",
+    "KubernetesRuntimeError",
+    "FileBackedTelemetryDisturbanceHook",
+    "FileTelemetryRuleClient",
     "LifecycleEvent",
     "TelemetryInterceptorAdapter",
     "TelemetryDisturbanceRuleEngine",

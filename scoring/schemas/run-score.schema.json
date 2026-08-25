@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/scoring/schemas/run-score.schema.json",
+  "title": "RunScore",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "score_status",
+    "policy_id",
+    "status_reason",
+    "metrics",
+    "evidence_refs",
+    "episode_score"
+  ],
+  "properties": {
+    "schema_version": {"const": "run-score.v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "score_status": {"enum": ["provisional", "final"]},
+    "policy_id": {"type": "string", "minLength": 1},
+    "comparison_group": {"type": "string", "minLength": 1},
+    "status_reason": {"type": "string", "minLength": 10},
+    "metrics": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "number", "minimum": 0}
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "episode_score": {"type": "object"}
+  }
+}

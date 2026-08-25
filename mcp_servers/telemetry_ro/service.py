@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pathlib import Path
 import re
 import urllib.error
 import urllib.parse
@@ -18,6 +19,7 @@ TIMEOUT_ENV = "RESBENCH_TELEMETRY_TIMEOUT_SECONDS"
 NAMESPACE_ALLOWLIST_ENV = "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES"
 JAEGER_SERVICE_ALLOWLIST_ENV = "RESBENCH_JAEGER_ALLOWED_SERVICES"
 ALLOW_RAW_QUERIES_ENV = "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES"
+DISTURBANCE_DIR_ENV = "RESBENCH_TELEMETRY_DISTURBANCE_DIR"
 
 MAX_OUTPUT_CHARS = 25_000
 MAX_RESPONSE_BYTES = 2_000_000
@@ -273,6 +275,14 @@ class TelemetryROService:
     ) -> None:
         self.config = config if config is not None else RuntimeConfig.from_env()
         self.transport = transport if transport is not None else UrlLibTelemetryTransport()
+        if disturbance_hook is None and os.environ.get(DISTURBANCE_DIR_ENV):
+            from disturbances.file_telemetry_interceptor import (
+                FileBackedTelemetryDisturbanceHook,
+            )
+
+            disturbance_hook = FileBackedTelemetryDisturbanceHook(
+                Path(os.environ[DISTURBANCE_DIR_ENV])
+            )
         self.disturbance_hook = disturbance_hook
 
     async def prometheus_query_instant(self, *, query: str, time: int, limit: int = DEFAULT_LIMIT) -> dict[str, Any]:

@@ -48,8 +48,7 @@ class TelemetryDisturbanceRuleEngine:
         rule: Mapping[str, Any],
     ) -> str:
         normalized = _validate_rule(rule)
-        raw = f"{run_id}\x1f{level_id}\x1f{disturbance_id}".encode("utf-8")
-        rule_id = "telemetry-rule-" + hashlib.sha256(raw).hexdigest()[:16]
+        rule_id = telemetry_rule_id(run_id, level_id, disturbance_id)
         active = _ActiveRule(
             rule_id=rule_id,
             run_id=run_id,
@@ -119,6 +118,13 @@ class TelemetryDisturbanceRuleEngine:
     def events(self) -> list[dict[str, Any]]:
         with self._lock:
             return deepcopy(self._events)
+
+
+def telemetry_rule_id(run_id: str, level_id: str, disturbance_id: str) -> str:
+    if not run_id or not level_id or not disturbance_id:
+        raise ValueError("telemetry rule identity fields must be non-empty")
+    raw = f"{run_id}\x1f{level_id}\x1f{disturbance_id}".encode("utf-8")
+    return "telemetry-rule-" + hashlib.sha256(raw).hexdigest()[:16]
 
 
 def _validate_rule(value: Mapping[str, Any]) -> dict[str, Any]:

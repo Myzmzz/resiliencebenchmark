@@ -1,0 +1,23 @@
+affinity: {}
+annotations: {}
+global:
+  mode: cluster
+nodeSelector: {}
+rabbitmq:
+  image:
+    pullPolicy: IfNotPresent
+    repository: ${HARBOR_REGISTRY}/train-ticket/codewisdom-rabbitmq
+    tag: 3
+  readinessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+  replicaCount: 1
+  serverPort: 5672
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+tolerations: []

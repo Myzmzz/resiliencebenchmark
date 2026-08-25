@@ -221,6 +221,7 @@ def base_headers(api_key: str) -> dict[str, str]:
         "authorization": f"Bearer {api_key}",
         "content-type": "application/json",
         "accept": "application/json",
+        "user-agent": "resiliencebenchmark-model-probe/1.0",
     }
 
 
@@ -397,6 +398,7 @@ def anthropic_messages_probe(
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
         "accept": "application/json",
+        "user-agent": "resiliencebenchmark-model-probe/1.0",
     }
     url = join_endpoint(base_url, "/messages")
     try:

@@ -40,12 +40,18 @@ def test_codex_template_uses_official_http_mcp_server_shape():
         "workspace_dependencies",
     } <= set(parsed["features"])
     assert set(parsed["mcp_servers"]) == set(EXPECTED_ENDPOINTS)
+    assert parsed["approval_policy"] == "never"
     for name, env_name in EXPECTED_ENDPOINTS.items():
         server = parsed["mcp_servers"][name]
-        assert server == {
-            "url": f"__{env_name}__",
-            "bearer_token_env_var": "RESBENCH_MCP_TOKEN",
-        }
+        assert server["url"] == f"__{env_name}__"
+        assert server["bearer_token_env_var"] == "RESBENCH_MCP_TOKEN"
+        if name == "chaos_control":
+            assert server["tools"] == {
+                "chaos_create_experiment": {"approval_mode": "approve"},
+                "chaos_destroy_experiment": {"approval_mode": "approve"},
+            }
+        else:
+            assert "tools" not in server
 
 
 def test_codex_template_is_safe_after_runner_url_rendering():

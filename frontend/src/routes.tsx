@@ -3,6 +3,7 @@ import type { RouteObject } from "react-router-dom";
 import AppLayout from "./layout/AppLayout";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import InfrastructurePage from "./pages/InfrastructurePage";
+import ExperimentPage from "./pages/ExperimentPage";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import ModelsPage from "./pages/ModelsPage";
 import HarnessesPage from "./pages/HarnessesPage";
@@ -25,7 +26,7 @@ export const routeChildren: RouteObject[] = [
   // 基础设施资源（M2）
   { path: "infrastructure", element: <InfrastructurePage /> },
   // 环境与资源（M3）
-  { path: "environments/infrastructure", element: <PlaceholderPage title="实验环境" milestone="M3" /> },
+  { path: "environments/infrastructure", element: <ExperimentPage /> },
   { path: "environments/applications", element: <ApplicationsPage /> },
   { path: "environments/workloads", element: <WorkloadsPage /> },
   { path: "environments/observability", element: <ObservabilityPage /> },

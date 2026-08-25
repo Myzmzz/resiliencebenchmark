@@ -1,0 +1,5182 @@
+apiVersion: v1
+kind: List
+metadata:
+  name: train-ticket-static-manifests
+items:
+- apiVersion: v1
+  data:
+    nginx.conf: "events {}\nhttp {\n  server {\n    listen 8443 ssl;\n    ssl_certificate\
+      \ /etc/nginx/tls/tls.crt;\n    ssl_certificate_key /etc/nginx/tls/tls.key;\n\
+      \n    location / {\n      proxy_pass http://ts-gateway-service:18888;\n    \
+      \  proxy_set_header Host $host;\n      proxy_set_header X-Forwarded-Proto https;\n\
+      \      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    }\n\
+      \  }\n}\n"
+  kind: ConfigMap
+  metadata:
+    labels:
+      app: ischaos-tls-gateway
+    name: ischaos-tls-gateway-nginx
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: 'yes'
+      pv.kubernetes.io/bound-by-controller: 'yes'
+      volume.beta.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+      volume.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+    labels:
+      app: nacosdb-mysql
+      release: nacosdb
+    name: data-nacosdb-mysql-0
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: nfs-client
+    volumeMode: Filesystem
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: 'yes'
+      pv.kubernetes.io/bound-by-controller: 'yes'
+      volume.beta.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+      volume.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+    labels:
+      app: nacosdb-mysql
+      release: nacosdb
+    name: data-nacosdb-mysql-1
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: nfs-client
+    volumeMode: Filesystem
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: 'yes'
+      pv.kubernetes.io/bound-by-controller: 'yes'
+      volume.beta.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+      volume.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+    labels:
+      app: nacosdb-mysql
+      release: nacosdb
+    name: data-nacosdb-mysql-2
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: nfs-client
+    volumeMode: Filesystem
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: 'yes'
+      pv.kubernetes.io/bound-by-controller: 'yes'
+      volume.beta.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+      volume.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+    labels:
+      app: tsdb-mysql
+      release: tsdb
+    name: data-tsdb-mysql-0
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: nfs-client
+    volumeMode: Filesystem
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: 'yes'
+      pv.kubernetes.io/bound-by-controller: 'yes'
+      volume.beta.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+      volume.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+    labels:
+      app: tsdb-mysql
+      release: tsdb
+    name: data-tsdb-mysql-1
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: nfs-client
+    volumeMode: Filesystem
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: 'yes'
+      pv.kubernetes.io/bound-by-controller: 'yes'
+      volume.beta.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+      volume.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+    labels:
+      app: tsdb-mysql
+      release: tsdb
+    name: data-tsdb-mysql-2
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: nfs-client
+    volumeMode: Filesystem
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: 'yes'
+      pv.kubernetes.io/bound-by-controller: 'yes'
+      volume.beta.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+      volume.kubernetes.io/storage-provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner
+    labels:
+      app.kubernetes.io/managed-by: resiliencebenchmark
+      resiliencebenchmark.io/purpose: workload-results
+    name: train-ticket-workload-results
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: nfs-client
+    volumeMode: Filesystem
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: ischaos-tls-gateway
+    name: ischaos-tls-gateway
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+    selector:
+      app: ischaos-tls-gateway
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-admin-basic-info-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18767
+      protocol: TCP
+      targetPort: 18767
+    selector:
+      app: ts-admin-basic-info-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-admin-order-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16112
+      protocol: TCP
+      targetPort: 16112
+    selector:
+      app: ts-admin-order-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-admin-route-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16113
+      protocol: TCP
+      targetPort: 16113
+    selector:
+      app: ts-admin-route-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-admin-travel-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16114
+      protocol: TCP
+      targetPort: 16114
+    selector:
+      app: ts-admin-travel-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-admin-user-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16115
+      protocol: TCP
+      targetPort: 16115
+    selector:
+      app: ts-admin-user-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-assurance-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18888
+      protocol: TCP
+      targetPort: 18888
+    selector:
+      app: ts-assurance-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-auth-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12340
+      protocol: TCP
+      targetPort: 12340
+    selector:
+      app: ts-auth-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-avatar-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 17001
+      protocol: TCP
+      targetPort: 17001
+    selector:
+      app: ts-avatar-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-basic-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 15680
+      protocol: TCP
+      targetPort: 15680
+    selector:
+      app: ts-basic-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-cancel-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18885
+      protocol: TCP
+      targetPort: 18885
+    selector:
+      app: ts-cancel-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-config-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 15679
+      protocol: TCP
+      targetPort: 15679
+    selector:
+      app: ts-config-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-consign-price-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16110
+      protocol: TCP
+      targetPort: 16110
+    selector:
+      app: ts-consign-price-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-consign-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16111
+      protocol: TCP
+      targetPort: 16111
+    selector:
+      app: ts-consign-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-contacts-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12347
+      protocol: TCP
+      targetPort: 12347
+    selector:
+      app: ts-contacts-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-delivery-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18808
+      protocol: TCP
+      targetPort: 18808
+    selector:
+      app: ts-delivery-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-execute-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12386
+      protocol: TCP
+      targetPort: 12386
+    selector:
+      app: ts-execute-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-food-delivery-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18957
+      protocol: TCP
+      targetPort: 18957
+    selector:
+      app: ts-food-delivery-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-food-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18856
+      protocol: TCP
+      targetPort: 18856
+    selector:
+      app: ts-food-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-gateway-service
+  spec:
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      nodePort: 30467
+      port: 18888
+      protocol: TCP
+      targetPort: 18888
+    selector:
+      app: ts-gateway-service
+    sessionAffinity: None
+    type: NodePort
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-inside-payment-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18673
+      protocol: TCP
+      targetPort: 18673
+    selector:
+      app: ts-inside-payment-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-news-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12862
+      protocol: TCP
+      targetPort: 12862
+    selector:
+      app: ts-news-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-notification-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 17853
+      protocol: TCP
+      targetPort: 17853
+    selector:
+      app: ts-notification-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-order-other-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12032
+      protocol: TCP
+      targetPort: 12032
+    selector:
+      app: ts-order-other-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-order-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12031
+      protocol: TCP
+      targetPort: 12031
+    selector:
+      app: ts-order-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-payment-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 19001
+      protocol: TCP
+      targetPort: 19001
+    selector:
+      app: ts-payment-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-preserve-other-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 14569
+      protocol: TCP
+      targetPort: 14569
+    selector:
+      app: ts-preserve-other-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-preserve-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 14568
+      protocol: TCP
+      targetPort: 14568
+    selector:
+      app: ts-preserve-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-price-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16579
+      protocol: TCP
+      targetPort: 16579
+    selector:
+      app: ts-price-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-rebook-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18886
+      protocol: TCP
+      targetPort: 18886
+    selector:
+      app: ts-rebook-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-route-plan-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 14578
+      protocol: TCP
+      targetPort: 14578
+    selector:
+      app: ts-route-plan-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-route-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 11178
+      protocol: TCP
+      targetPort: 11178
+    selector:
+      app: ts-route-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-seat-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18898
+      protocol: TCP
+      targetPort: 18898
+    selector:
+      app: ts-seat-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-security-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 11188
+      protocol: TCP
+      targetPort: 11188
+    selector:
+      app: ts-security-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-station-food-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 18855
+      protocol: TCP
+      targetPort: 18855
+    selector:
+      app: ts-station-food-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-station-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12345
+      protocol: TCP
+      targetPort: 12345
+    selector:
+      app: ts-station-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-ticket-office-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16108
+      protocol: TCP
+      targetPort: 16108
+    selector:
+      app: ts-ticket-office-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-train-food-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 19999
+      protocol: TCP
+      targetPort: 19999
+    selector:
+      app: ts-train-food-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-train-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 14567
+      protocol: TCP
+      targetPort: 14567
+    selector:
+      app: ts-train-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-travel-plan-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 14322
+      protocol: TCP
+      targetPort: 14322
+    selector:
+      app: ts-travel-plan-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-travel-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12346
+      protocol: TCP
+      targetPort: 12346
+    selector:
+      app: ts-travel-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-travel2-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16346
+      protocol: TCP
+      targetPort: 16346
+    selector:
+      app: ts-travel2-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-ui-dashboard
+  spec:
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      nodePort: 32677
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: ts-ui-dashboard
+    sessionAffinity: None
+    type: NodePort
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-user-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 12342
+      protocol: TCP
+      targetPort: 12342
+    selector:
+      app: ts-user-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-verification-code-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 15678
+      protocol: TCP
+      targetPort: 15678
+    selector:
+      app: ts-verification-code-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-voucher-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 16101
+      protocol: TCP
+      targetPort: 16101
+    selector:
+      app: ts-voucher-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ts-wait-order-service
+  spec:
+    internalTrafficPolicy: Cluster
+    ports:
+    - name: http
+      port: 17525
+      protocol: TCP
+      targetPort: 17525
+    selector:
+      app: ts-wait-order-service
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    labels:
+      app: ischaos-tls-gateway
+    name: ischaos-tls-gateway
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ischaos-tls-gateway
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          ischaos.io/tls-cert-expire-reloaded-at: '2026-06-16T07:28:40.705946281Z'
+        creationTimestamp: null
+        labels:
+          app: ischaos-tls-gateway
+      spec:
+        containers:
+        - image: ${HARBOR_REGISTRY}/ischaos/frontend:v1.3.1-tls-cert-expire
+          imagePullPolicy: IfNotPresent
+          name: nginx
+          ports:
+          - containerPort: 8443
+            name: https
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /etc/nginx/nginx.conf
+            name: nginx-config
+            readOnly: true
+            subPath: nginx.conf
+          - mountPath: /etc/nginx/tls
+            name: tls
+            readOnly: true
+        dnsPolicy: ClusterFirst
+        imagePullSecrets:
+        - name: harbor-secret
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: ischaos-tls-gateway-nginx
+          name: nginx-config
+        - name: tls
+          secret:
+            defaultMode: 420
+            secretName: ischaos-ts-gateway-tls
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-admin-basic-info-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-admin-basic-info-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-admin-basic-info-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-admin-basic-info-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-admin-basic-info-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-admin-basic-info-service
+          ports:
+          - containerPort: 18767
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18767
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-admin-order-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-admin-order-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-admin-order-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-admin-order-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-admin-order-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-admin-order-service
+          ports:
+          - containerPort: 16112
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16112
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-admin-route-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-admin-route-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-admin-route-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-admin-route-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-admin-route-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-admin-route-service
+          ports:
+          - containerPort: 16113
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16113
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-admin-travel-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-admin-travel-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-admin-travel-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-admin-travel-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-admin-travel-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-admin-travel-service
+          ports:
+          - containerPort: 16114
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16114
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-admin-user-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-admin-user-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-admin-user-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-admin-user-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-admin-user-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-admin-user-service
+          ports:
+          - containerPort: 16115
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16115
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-assurance-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-assurance-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-assurance-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-assurance-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-assurance-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-assurance-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-assurance-service
+          ports:
+          - containerPort: 18888
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18888
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-auth-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 2
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-auth-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:20+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-auth-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-auth-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-auth-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-auth-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-auth-service
+          ports:
+          - containerPort: 12340
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12340
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-avatar-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-avatar-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-avatar-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-avatar-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-avatar-service
+          ports:
+          - containerPort: 17001
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 17001
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-basic-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-basic-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-basic-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-basic-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-basic-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-basic-service
+          ports:
+          - containerPort: 15680
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 15680
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-cancel-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-cancel-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-cancel-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-cancel-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-cancel-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-cancel-service
+          ports:
+          - containerPort: 18885
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18885
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-config-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-config-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:20+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-config-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-config-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-config-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-config-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-config-service
+          ports:
+          - containerPort: 15679
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 15679
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-consign-price-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-consign-price-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:21+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-consign-price-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-consign-price-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-consign-price-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-consign-price-service:1.0.1
+          imagePullPolicy: IfNotPresent
+          name: ts-consign-price-service
+          ports:
+          - containerPort: 16110
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16110
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-consign-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-consign-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:21+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-consign-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-consign-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-consign-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-consign-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-consign-service
+          ports:
+          - containerPort: 16111
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16111
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-contacts-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-contacts-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:21+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-contacts-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-contacts-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-contacts-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-contacts-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-contacts-service
+          ports:
+          - containerPort: 12347
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12347
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-delivery-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-delivery-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:22+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-delivery-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-delivery-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          - name: rabbitmq_host
+            value: rabbitmq
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-delivery-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-delivery-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-delivery-service
+          ports:
+          - containerPort: 18808
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18808
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-execute-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-execute-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-execute-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-execute-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-execute-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-execute-service
+          ports:
+          - containerPort: 12386
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12386
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-food-delivery-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-food-delivery-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-food-delivery-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-food-delivery-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-food-delivery-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-food-delivery-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-food-delivery-service
+          ports:
+          - containerPort: 18957
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18957
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-food-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-food-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-food-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-food-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          - name: rabbitmq_host
+            value: rabbitmq
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-food-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-food-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-food-service
+          ports:
+          - containerPort: 18856
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18856
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-gateway-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 3
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-gateway-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-08-22T01:48:16+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-gateway-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-gateway-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-gateway-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-gateway-service
+          ports:
+          - containerPort: 18888
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18888
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-inside-payment-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-inside-payment-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:22+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-inside-payment-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-inside-payment-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-inside-payment-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-inside-payment-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-inside-payment-service
+          ports:
+          - containerPort: 18673
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18673
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-news-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-news-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-news-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-news-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-news-service
+          ports:
+          - containerPort: 12862
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12862
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-notification-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-notification-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:23+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-notification-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-notification-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          - name: rabbitmq_host
+            value: rabbitmq
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-notification-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-notification-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-notification-service
+          ports:
+          - containerPort: 17853
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 17853
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-order-other-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-order-other-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-order-other-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-order-other-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-order-other-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-order-other-service:1.0.2
+          imagePullPolicy: IfNotPresent
+          name: ts-order-other-service
+          ports:
+          - containerPort: 12032
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12032
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    labels:
+      bladeai.io/critical-service: 'true'
+    name: ts-order-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 2
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-order-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-08-21T12:00:50+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-order-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-order-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-order-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-order-service:1.0.1
+          imagePullPolicy: IfNotPresent
+          name: ts-order-service
+          ports:
+          - containerPort: 12031
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12031
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-payment-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-payment-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:24+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-payment-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-payment-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-payment-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-payment-service:1.0.2
+          imagePullPolicy: IfNotPresent
+          name: ts-payment-service
+          ports:
+          - containerPort: 19001
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 19001
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-preserve-other-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-preserve-other-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-preserve-other-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-preserve-other-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          - name: rabbitmq_host
+            value: rabbitmq
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-preserve-other-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-preserve-other-service
+          ports:
+          - containerPort: 14569
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 14569
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-preserve-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 2
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-preserve-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-06-22T21:34:24+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-preserve-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-preserve-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          - name: rabbitmq_host
+            value: rabbitmq
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-preserve-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-preserve-service
+          ports:
+          - containerPort: 14568
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 14568
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-price-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-price-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:24+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-price-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-price-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-price-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-price-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-price-service
+          ports:
+          - containerPort: 16579
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16579
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-rebook-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-rebook-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-rebook-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-rebook-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-rebook-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-rebook-service
+          ports:
+          - containerPort: 18886
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18886
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-route-plan-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-route-plan-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-06-22T21:37:25+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-route-plan-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-route-plan-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-route-plan-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-route-plan-service
+          ports:
+          - containerPort: 14578
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 14578
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-route-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-route-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:25+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-route-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-route-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-route-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-route-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-route-service
+          ports:
+          - containerPort: 11178
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 11178
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-seat-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-seat-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-08-22T01:05:35+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-seat-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-seat-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-seat-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-seat-service
+          ports:
+          - containerPort: 18898
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18898
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-security-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-security-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:25+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-security-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-security-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-security-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-security-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-security-service
+          ports:
+          - containerPort: 11188
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 11188
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-station-food-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-station-food-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:26+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-station-food-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-station-food-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-station-food-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-station-food-service:1.0.1
+          imagePullPolicy: IfNotPresent
+          name: ts-station-food-service
+          ports:
+          - containerPort: 18855
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 18855
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-station-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-station-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-station-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-station-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-station-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-station-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-station-service
+          ports:
+          - containerPort: 12345
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12345
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-ticket-office-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-ticket-office-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:26+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-ticket-office-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-ticket-office-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-ticket-office-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-ticket-office-service
+          ports:
+          - containerPort: 16108
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16108
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-train-food-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-train-food-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-train-food-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-train-food-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-train-food-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-train-food-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-train-food-service
+          ports:
+          - containerPort: 19999
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 19999
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-train-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-train-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:27+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-train-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-train-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-train-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-train-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-train-service
+          ports:
+          - containerPort: 14567
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 14567
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-travel-plan-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-travel-plan-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-travel-plan-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-travel-plan-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-travel-plan-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-travel-plan-service
+          ports:
+          - containerPort: 14322
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 14322
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-travel-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-travel-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:28+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-travel-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-travel-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-travel-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-travel-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-travel-service
+          ports:
+          - containerPort: 12346
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12346
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-travel2-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-travel2-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-travel2-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-travel2-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-travel2-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-travel2-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-travel2-service
+          ports:
+          - containerPort: 16346
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16346
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-ui-dashboard
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 3
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-ui-dashboard
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-ui-dashboard
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - image: ${HARBOR_REGISTRY}/train-ticket/ts-ui-dashboard:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-ui-dashboard
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 8080
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-user-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-user-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-user-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-user-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-user-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-user-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-user-service
+          ports:
+          - containerPort: 12342
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 12342
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-verification-code-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-verification-code-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-verification-code-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-verification-code-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          envFrom:
+          - configMapRef:
+              name: nacos
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-verification-code-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-verification-code-service
+          ports:
+          - containerPort: 15678
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 15678
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-voucher-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-voucher-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: '2026-07-29T14:45:29+08:00'
+        creationTimestamp: null
+        labels:
+          app: ts-voucher-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-voucher-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-voucher-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-voucher-service
+          ports:
+          - containerPort: 16101
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 16101
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      resiliencebenchmark.io/standby-selected-system: otel-demo
+    name: ts-wait-order-service
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: ts-wait-order-service
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ts-wait-order-service
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                  - tcse-v100-01
+        containers:
+        - env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: OTEL_SERVICE_NAME
+            value: ts-wait-order-service
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability.svc:4318
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+          - name: OTEL_METRICS_EXPORTER
+            value: otlp
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: OTEL_JAVAAGENT_LOGGING
+            value: application
+          - name: JAVA_TOOL_OPTIONS
+            value: -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -javaagent:/opt/opentelemetry-javaagent/opentelemetry-javaagent.jar
+          - name: WAIT_ORDER_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: WAIT_ORDER_MYSQL_PASSWORD
+                name: ts-wait-order-mysql
+          envFrom:
+          - configMapRef:
+              name: nacos
+          - secretRef:
+              name: ts-wait-order-mysql
+          image: ${HARBOR_REGISTRY}/train-ticket/ts-wait-order-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          name: ts-wait-order-service
+          ports:
+          - containerPort: 17525
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 17525
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/opentelemetry-javaagent
+            name: opentelemetry-javaagent
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: opentelemetry-javaagent
+          nfs:
+            path: /data/share
+            server: ${TRAIN_TICKET_NFS_SERVER}

@@ -49,6 +49,14 @@ items:
       namespace: resiliencebenchmark-system
       labels: *managedLabels
 
+  - apiVersion: v1
+    kind: ServiceAccount
+    automountServiceAccountToken: false
+    metadata:
+      name: resbench-controller-otel-demo
+      namespace: resiliencebenchmark-system
+      labels: *managedLabels
+
   - apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -96,6 +104,19 @@ items:
     rules:
       - apiGroups: [""]
         resources: [pods]
+        verbs: [get, list]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: resbench-controller-inventory
+      labels: *managedLabels
+    rules:
+      - apiGroups: [""]
+        resources: [nodes]
+        verbs: [get, list]
+      - apiGroups: [chaosblade.io]
+        resources: [chaosblades]
         verbs: [get, list]
 
   - &k8sInventoryBinding
@@ -158,6 +179,20 @@ items:
     subjects:
       - kind: ServiceAccount
         name: resbench-chaos-control-otel-demo
+        namespace: resiliencebenchmark-system
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: resbench-controller-inventory-otel-demo
+      labels: *managedLabels
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: resbench-controller-inventory
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-controller-otel-demo
         namespace: resiliencebenchmark-system
 
   - &k8sNamespaceBinding
@@ -226,4 +261,77 @@ items:
     subjects:
       - kind: ServiceAccount
         name: resbench-chaos-control-otel-demo
+        namespace: resiliencebenchmark-system
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: resbench-controller-runtime
+      namespace: otel-demo
+      labels: *managedLabels
+    rules:
+      - apiGroups: [""]
+        resources: [pods]
+        verbs: [get, list, watch, create, patch, delete]
+      - apiGroups: [""]
+        resources: [pods/log]
+        verbs: [get]
+      - apiGroups: [""]
+        resources: [configmaps]
+        verbs: [get, list, create, update, patch, delete]
+      - apiGroups: [""]
+        resources: [persistentvolumeclaims]
+        verbs: [get, list]
+      - apiGroups: [apps]
+        resources: [deployments, statefulsets, replicasets]
+        verbs: [get, list, watch]
+      - apiGroups: [batch]
+        resources: [jobs]
+        verbs: [get, list, watch, create, patch, delete]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: resbench-controller-runtime
+      namespace: otel-demo
+      labels: *managedLabels
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: resbench-controller-runtime
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-controller-otel-demo
+        namespace: resiliencebenchmark-system
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: resbench-controller-observability-proxy
+      namespace: observability
+      labels: *managedLabels
+    rules:
+      - apiGroups: [""]
+        resources: [services, pods]
+        verbs: [get, list]
+      - apiGroups: [""]
+        resources: [services/proxy]
+        verbs: [get]
+      - apiGroups: [""]
+        resources: [pods/portforward]
+        verbs: [create]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: resbench-controller-observability-proxy
+      namespace: observability
+      labels: *managedLabels
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: resbench-controller-observability-proxy
+    subjects:
+      - kind: ServiceAccount
+        name: resbench-controller-otel-demo
         namespace: resiliencebenchmark-system

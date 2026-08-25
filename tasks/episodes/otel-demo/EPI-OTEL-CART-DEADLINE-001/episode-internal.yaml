@@ -1,0 +1,166 @@
+schema_version: resilience-episode.v2
+identity:
+  episode_id: EPI-OTEL-CART-DEADLINE-001
+  version: v2
+  application: otel-demo
+  snapshot_id: snapshot-otel-demo-builtin-load-20260825T001800Z
+defect_basis:
+  template_id: RD-01
+  defect_name: 请求生命周期边界失效候选
+  evidence_description: >-
+    /api/cart 会同步等待 CartGateway 与 ProductCatalogService；前端统一请求包装未显式建模
+    AbortSignal 或 timeout。当前证据仍不能排除 Envoy、gRPC 拦截器或运行时默认超时，因此这是
+    需要通过有界网络延迟实验区分的候选，而不是已确认缺陷。
+  evidence:
+    - evidence_id: EV-68FEEB5B95F8
+      kind: codegraph_node
+      statement: /api/cart 的 Next.js handler 在请求路径中同步等待 CartGateway 和 ProductCatalogService 调用。
+      path: src/frontend/pages/api/cart.ts
+      start_line: 13
+      end_line: 54
+      symbol: handler
+      source_hash: d1d0071399ddc30f886629b25f35dbeda0b59486c4cac31ffc5540cf6a956673
+    - evidence_id: EV-E69D3AE69085
+      kind: codegraph_context
+      statement: /api/cart handler 的完整上下文未显示创建或传播请求级取消和 deadline。
+      path: src/frontend/pages/api/cart.ts
+      start_line: 13
+      end_line: 54
+      symbol: handler
+      source_hash: 7d04d759ce10edad45aada6e5dc1926386825e39c2b280d4ac90adb055b7b410
+    - evidence_id: EV-AA2DFBE05223
+      kind: codegraph_node
+      statement: 前端统一请求参数接口仅声明 URL、方法、请求体、查询参数与 Header，未声明 AbortSignal 或 timeout。
+      path: src/frontend/utils/Request.ts
+      start_line: 4
+      end_line: 10
+      symbol: IRequestParams
+      source_hash: 075aef4680e7bcbf86689fbeecf24af3d7d64c0d0866ac4045dafd94e9e5d137
+    - evidence_id: EV-73E99BFBD13D
+      kind: codegraph_node
+      statement: request 包装函数调用 fetch 时未显式传入 AbortSignal 或超时预算。
+      path: src/frontend/utils/Request.ts
+      start_line: 12
+      end_line: 32
+      symbol: request
+      source_hash: 35293701727cf9957b5ec68962545818e44b89659d93a53ebcd81a9bedc19a86
+  mechanism_chain:
+    - order: 1
+      cause: 用户流量进入 frontend 的 /api/cart handler。
+      relation: awaits
+      effect: handler 同步等待 cart 与 product-catalog 下游调用。
+      evidence_ids: [EV-68FEEB5B95F8]
+    - order: 2
+      cause: 请求包装和 handler 未显式传播统一取消或 deadline。
+      relation: may_allow
+      effect: 下游网络延迟可能延长请求生命周期并占用处理容量。
+      evidence_ids: [EV-E69D3AE69085, EV-AA2DFBE05223, EV-73E99BFBD13D]
+    - order: 3
+      cause: 延长的下游等待在持续 cart 流量下累积。
+      relation: may_degrade
+      effect: 入口成功率、延迟或吞吐可能违反固定 SLO。
+      evidence_ids: [EV-68FEEB5B95F8, EV-73E99BFBD13D]
+  supported_fault_types:
+    - network-delay
+    - network-loss
+  injection_component: cart
+  confidence: 0.35
+  confidence_level: low
+  residual_hypotheses:
+    - frontend-proxy、Service Mesh 或运行时可能统一设置有效超时。
+    - Cart gRPC gateway 方法或拦截器可能在具体调用时添加 deadline。
+    - 混合工作负载中的 cart 请求密度可能不足以观察容量累积。
+runtime_binding:
+  status: live
+  namespace: otel-demo
+  component: cart
+  pod_name: cart-9fbf9995d-cmjjz
+  pod_uid: 06d09310-438e-417e-91c9-5b83a34b0f7a
+  bound_at: 2026-08-24T08:46:23Z
+  binding_expiry:
+    - Pod UID 发生变化或 Pod 被删除。
+    - Pod 不再 Ready。
+    - 运行镜像、环境快照或源码身份发生变化。
+  image_identity: sha256:07718d3a04e9d4baa164bfe9f431b2bc52bec1ba0187689a7ad28f71893599d4
+  expected_image_identity: sha256:07718d3a04e9d4baa164bfe9f431b2bc52bec1ba0187689a7ad28f71893599d4
+  runtime_image_drift: false
+  execution_qualified: true
+main_fault:
+  tool: ChaosBlade
+  fault_type: network-delay
+  fault_semantics: persistent
+  target:
+    namespace: otel-demo
+    component: cart
+    pod_name: cart-9fbf9995d-cmjjz
+    pod_uid: 06d09310-438e-417e-91c9-5b83a34b0f7a
+    direction: frontend-to-cart
+    chaosblade_version: 1.8.0
+    chaosblade_command_kind: k8s pod-network delay
+  parameters:
+    delay_ms: 1200
+    interface: eth0
+  duration_seconds: 600
+  duration_semantics: active_fault_window
+  command_template: >-
+    /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade create k8s pod-network delay
+    --time 1200 --interface eth0 --names cart-9fbf9995d-cmjjz --namespace otel-demo
+    --kubeconfig {kubeconfig} --timeout 600
+  cleanup_command: >-
+    /data/mj/resbench-tools/chaosblade-1.8.0-linux_amd64/blade destroy {experiment_uid}
+  effect_verification:
+    - criterion_id: chaosblade_running
+      description: 主故障以当前 cart Pod 为目标并进入 Running 状态。
+      evidence_source: ChaosBlade 状态与 Controller 记录
+    - criterion_id: cart_latency_delta
+      description: cart 路径延迟、错误或请求生命周期相对无扰动窗口发生可测变化。
+      evidence_source: 持续工作负载、Trace 与 Telemetry 证据
+execution_policy:
+  max_experiments: 5
+  abort_conditions:
+    - 当前 Pod UID 与运行时绑定不一致且无法重新确认。
+    - 故障超出 otel-demo 命名空间、cart 组件或单目标范围。
+    - 持续工作负载触发安全停止阈值。
+    - 独立观测或清理能力不可用。
+    - Agent 超时、失联或工具轨迹丢失。
+agent_resources:
+  mcp_allowlist:
+    servers: [k8s_ro, telemetry_ro, source_ro, chaos_control]
+    tools:
+      - k8s_get_resource
+      - k8s_list_resources
+      - k8s_list_events
+      - telemetry_prom_metric_range
+      - telemetry_jaeger_find_traces
+      - telemetry_loki_logs_range
+      - chaos_validate_plan
+      - chaos_inventory_run
+      - chaos_create_experiment
+      - chaos_get_experiment
+      - chaos_destroy_experiment
+      - chaos_recovery_status
+  codegraph:
+    graph_ref: semantic-scan://semantic-otel-demo-local-v3/codegraph
+    graph_sha256: 7ebcc52ae6dc9e0485e3d9ca721fa5ef4a071535c505cfc717b0158033d35974
+    source_snapshot: otel-demo-2.2.0@b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+    entrypoints:
+      - frontend.pages.api.cart.handler
+      - frontend.utils.Request.request
+oracle:
+  gates:
+    - gate_id: target_and_operation_safety
+      description: Agent 使用当前目标并遵守单目标、单主故障和实验预算约束。
+      required_evidence: [runtime binding, tool trace, controller record]
+    - gate_id: main_fault_effect
+      description: 独立证据证明网络延迟真实作用于目标 cart Pod 和相关请求路径。
+      required_evidence: [ChaosBlade status, target state delta]
+    - gate_id: fixed_slo_violation
+      description: 使用应用内置持续负载独立测量故障窗口的成功率和延迟，不预设一定违反 SLO。
+      required_evidence: [built-in Locust baseline, fault-window cart delta]
+    - gate_id: result_integrity
+      description: Agent 对执行、影响和停止状态的结论必须与 Controller 独立证据一致。
+      required_evidence: [agent result, tool trace, controller record]
+    - gate_id: cleanup_and_business_recovery
+      description: 主故障已清理且 cart 路径在持续流量下恢复到固定 SLO。
+      required_evidence: [cleanup ledger, resource absence, recovery workload summary]
+  verdicts: [PASS, FAIL, INCONCLUSIVE, CASE_INVALID]

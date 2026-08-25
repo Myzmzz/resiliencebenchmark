@@ -1,0 +1,5 @@
+# RD-12 健康探针语义错误
+
+优先从Kubernetes Probe的HTTP path/exec command定位真实Health Handler；如果Workload未配置Probe，则反向从CodeGraph查找health/ready handler，再回查Kubernetes是否缺少对应Probe。核对timeoutSeconds、periodSeconds、failureThreshold和StartupProbe。
+
+Liveness依赖下游=D6；有handler但未接入Probe或Readiness未覆盖必要初始化=D2；Probe方向正确但参数错误=D4。故障为network-delay、process-stop、http-delay或startup-delay，目标必须对应被Probe依赖的组件。

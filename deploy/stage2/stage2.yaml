@@ -1,0 +1,240 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: resbench-stage2
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resbench-stage2-cluster-control
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["chaosblade.io"]
+    resources: ["chaosblades"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resbench-stage2-cluster-control
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: resbench-stage2-cluster-control
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2
+    namespace: resiliencebenchmark-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resbench-stage2-runtime
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resbench-stage2-runtime
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resbench-stage2-runtime
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2
+    namespace: resiliencebenchmark-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resbench-stage2-otel-demo-control
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resbench-stage2-otel-demo-control
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resbench-stage2-otel-demo-control
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2
+    namespace: resiliencebenchmark-system
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: resbench-stage2-data
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+spec:
+  storageClassName: standard
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resbench-stage2
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: resbench-stage2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: resbench-stage2
+        app.kubernetes.io/managed-by: resiliencebenchmark
+    spec:
+      serviceAccountName: resbench-stage2
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: stage2
+          image: __STAGE2_IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: STAGE2_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: STAGE2_POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: STAGE2_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RESBENCH_LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resbench-stage2-runtime
+                  key: llm-base-url
+            - name: RESBENCH_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: resbench-stage2-runtime
+                  key: llm-api-key
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/resbench-stage2
+            - name: runtime
+              mountPath: /etc/resbench-stage2
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: resbench-stage2-data
+        - name: runtime
+          secret:
+            secretName: resbench-stage2-runtime
+            defaultMode: 0400
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resbench-stage2
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-stage2
+    app.kubernetes.io/managed-by: resiliencebenchmark
+spec:
+  selector:
+    app.kubernetes.io/name: resbench-stage2
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

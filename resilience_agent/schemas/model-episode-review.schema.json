@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/resilience-agent/model-episode-review.v0.1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviews", "overall_notes"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "model-episode-review.v0.1"},
+    "reviews": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/review"}
+    },
+    "overall_notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line_start", "line_count"],
+      "properties": {
+        "path": {"type": "string"},
+        "line_start": {"type": "integer", "minimum": 1},
+        "line_count": {"type": "integer", "minimum": 1, "maximum": 240}
+      }
+    },
+    "alternativeExperiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger_class", "target_component", "rationale", "evidence_refs"],
+      "properties": {
+        "trigger_class": {"type": "string"},
+        "target_component": {"type": "string"},
+        "rationale": {"type": "string"},
+        "evidence_refs": {"type": "array", "items": {"$ref": "#/$defs/evidenceRef"}}
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "episode_title",
+        "hypothesis",
+        "critical_path_rationale",
+        "baseline_objective",
+        "validation_objective",
+        "additional_evidence_requirements",
+        "alternative_experiments",
+        "risk_notes",
+        "public_leakage_notes",
+        "readiness_notes"
+      ],
+      "properties": {
+        "candidate_id": {"type": "string"},
+        "episode_title": {"type": "string"},
+        "hypothesis": {"type": "string"},
+        "critical_path_rationale": {"type": "string"},
+        "baseline_objective": {"type": "string"},
+        "validation_objective": {"type": "string"},
+        "additional_evidence_requirements": {"type": "array", "items": {"type": "string"}},
+        "alternative_experiments": {"type": "array", "items": {"$ref": "#/$defs/alternativeExperiment"}},
+        "risk_notes": {"type": "array", "items": {"type": "string"}},
+        "public_leakage_notes": {"type": "array", "items": {"type": "string"}},
+        "readiness_notes": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

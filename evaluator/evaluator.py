@@ -92,8 +92,16 @@ def evaluate(contract: dict[str, Any], observation: dict[str, Any]) -> Evaluatio
             candidate_statuses.append("INCONCLUSIVE")
             continue
 
+        evidence_sources = observed.get("evidence_sources", [])
+        if not isinstance(evidence_sources, list) or not evidence_sources:
+            gate_statuses[gate_id] = "INCONCLUSIVE"
+            policy_errors.append(f"{gate_id} has no independent evidence")
+            candidate_statuses.append("INCONCLUSIVE")
+            continue
         evidence_kinds = {
-            source.get("kind") for source in observed.get("evidence_sources", [])
+            source.get("kind")
+            for source in evidence_sources
+            if isinstance(source, dict)
         }
         disallowed = sorted(evidence_kinds - allowed_sources)
         if disallowed:
@@ -102,6 +110,15 @@ def evaluate(contract: dict[str, Any], observation: dict[str, Any]) -> Evaluatio
                 f"{gate_id} uses disallowed final evidence source(s): "
                 + ", ".join(disallowed)
             )
+            candidate_statuses.append("INCONCLUSIVE")
+            continue
+
+        if not all(
+            isinstance(source, dict) and source.get("ref")
+            for source in evidence_sources
+        ):
+            gate_statuses[gate_id] = "INCONCLUSIVE"
+            policy_errors.append(f"{gate_id} evidence has no stable reference")
             candidate_statuses.append("INCONCLUSIVE")
             continue
 

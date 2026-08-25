@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+spec:
+  replicas: 2
+  template:
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: checkout
+          image: example.invalid/checkout:demo

@@ -1,0 +1,138 @@
+schema_version: resilience-defect-registry.v2
+registry_version: active-chaosblade-12.v1
+description: >
+  Twelve semantic resilience defect templates admitted because each has a
+  bounded ChaosBlade-compatible trigger and an independently observable effect.
+
+templates:
+  - template_id: RD-01
+    defect_name: 请求生命周期边界失效
+    domain: request_lifecycle
+    prompt_file: rd01_request_lifecycle.md
+    d_class: {fixed: null, allowed: [D1, D2, D4]}
+    mechanism: 超时、Deadline或取消边界在实际调用链中缺失、丢失或预算倒置。
+    graph_focus: [request entry, outbound client, wrapper, deadline, cancellation]
+    kubernetes_kinds: [Deployment, StatefulSet, Service, ConfigMap]
+    fault_types: [network-delay, network-loss, process-stop, http-delay]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+
+  - template_id: RD-02
+    defect_name: 多层重试放大与全局预算缺失
+    domain: retry
+    prompt_file: rd02_retry_amplification.md
+    d_class: {fixed: D5, allowed: [D5]}
+    mechanism: 网关、客户端、SDK或数据库层重试叠加，使一次失败被乘法放大。
+    graph_focus: [retry wrapper, client policy, call edge, attempt budget]
+    kubernetes_kinds: [Deployment, ConfigMap, Service]
+    fault_types: [network-loss, network-drop, http-exception, process-stop]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+
+  - template_id: RD-05
+    defect_name: 熔断、降级或回退机制失效
+    domain: degradation
+    prompt_file: rd05_breaker_fallback.md
+    d_class: {fixed: null, allowed: [D1, D3, D6]}
+    mechanism: 依赖失败后请求仍持续进入故障路径，或可选依赖失败被升级为整体失败。
+    graph_focus: [dependency call, circuit breaker, fallback, cache, optional branch]
+    kubernetes_kinds: [Deployment, ConfigMap, Service]
+    fault_types: [network-delay, network-loss, process-stop, http-exception]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+
+  - template_id: RD-06
+    defect_name: 隔舱与关键请求容量隔离缺失
+    domain: isolation
+    prompt_file: rd06_bulkhead.md
+    d_class: {fixed: D1, allowed: [D1]}
+    mechanism: 关键和非关键路径共享执行器、连接池、队列或并发配额，导致跨类饿饿。
+    graph_focus: [executor, connection pool, queue, semaphore, critical path]
+    kubernetes_kinds: [Deployment, ConfigMap, Service]
+    fault_types: [network-delay, process-stop, http-delay]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+
+  - template_id: RD-07
+    defect_name: 无界并发、队列或连接池耗尽
+    domain: capacity
+    prompt_file: rd07_unbounded_capacity.md
+    d_class: {fixed: D4, allowed: [D4]}
+    mechanism: 资源机制的容量、等待或释放实现有误，使慢依赖转化为内部堆积。
+    graph_focus: [queue construction, pool acquire, pool release, concurrency limit]
+    kubernetes_kinds: [Deployment, StatefulSet, ConfigMap]
+    fault_types: [network-delay, port-occupy, process-stop, jvm-threadfull]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+
+  - template_id: RD-08
+    defect_name: 过载保护、限流或拒绝策略缺失
+    domain: overload
+    prompt_file: rd08_overload_control.md
+    d_class: {fixed: D1, allowed: [D1]}
+    mechanism: 入场请求没有受到容量边界限制，过载时新请求继续争抢关键资源。
+    graph_focus: [middleware registration, rate limiter, admission control, rejection]
+    kubernetes_kinds: [Deployment, Service, ConfigMap, HorizontalPodAutoscaler]
+    fault_types: [cpu-load, traffic-spike]
+    fault_target_kinds: [Pod, Container, Service]
+
+  - template_id: RD-09
+    defect_name: Runtime内存与容器内存预算失配
+    domain: memory
+    prompt_file: rd09_memory_budget.md
+    d_class: {fixed: D4, allowed: [D4]}
+    mechanism: Runtime Heap与容器Limit的关系没有为Native内存、线程栈和运行时开销留出空间。
+    graph_focus: [runtime startup, heap flags, memory allocation]
+    kubernetes_kinds: [Deployment, StatefulSet, ConfigMap]
+    fault_types: [memory-load, jvm-oom]
+    fault_target_kinds: [Pod, Container]
+
+  - template_id: RD-10
+    defect_name: CPU配额与线程或Worker并发失配
+    domain: cpu
+    prompt_file: rd10_cpu_concurrency.md
+    d_class: {fixed: D4, allowed: [D4]}
+    mechanism: CPU Request/Limit与进程并发参数不匹配，导致持续节流或过量上下文切换。
+    graph_focus: [worker count, thread pool, cpu detection, runtime startup]
+    kubernetes_kinds: [Deployment, StatefulSet, ConfigMap]
+    fault_types: [cpu-load, cpu-quota-reduction]
+    fault_target_kinds: [Pod, Container]
+
+  - template_id: RD-11
+    defect_name: 自动扩缩容策略失效
+    domain: autoscaling
+    prompt_file: rd11_autoscaling.md
+    d_class: {fixed: D4, allowed: [D4]}
+    mechanism: 扩容指标、目标值、最小副本或稳定窗口无法在队列堆积前补足容量。
+    graph_focus: [startup cost, readiness, queue signal, concurrency]
+    kubernetes_kinds: [Deployment, HorizontalPodAutoscaler, ConfigMap]
+    fault_types: [traffic-ramp, cpu-load, metric-delay]
+    fault_target_kinds: [Deployment, HorizontalPodAutoscaler, Service]
+
+  - template_id: RD-12
+    defect_name: 健康探针语义错误
+    domain: probes
+    prompt_file: rd12_probe_semantics.md
+    d_class: {fixed: null, allowed: [D2, D4, D6]}
+    mechanism: Liveness依赖慢下游、Readiness未覆盖必要初始化，或探针参数与实际耗时不匹配。
+    graph_focus: [health route, downstream call, initialization, readiness state]
+    kubernetes_kinds: [Deployment, StatefulSet, Pod]
+    fault_types: [network-delay, process-stop, http-delay, startup-delay]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+
+  - template_id: RD-13
+    defect_name: 优雅终止与连接排空缺失
+    domain: termination
+    prompt_file: rd13_graceful_termination.md
+    d_class: {fixed: D1, allowed: [D1]}
+    mechanism: Pod退出时没有停止接收新请求、等待在途请求或关闭连接。
+    graph_focus: [signal handler, server shutdown, connection drain, inflight]
+    kubernetes_kinds: [Deployment, StatefulSet, Pod]
+    fault_types: [pod-delete, process-kill, process-stop]
+    fault_target_kinds: [Pod, Container]
+
+  - template_id: RD-14
+    defect_name: 单副本与中断保护缺失
+    domain: availability
+    prompt_file: rd14_replica_disruption.md
+    d_class: {fixed: D1, allowed: [D1]}
+    mechanism: 关键路径只有一个副本，且没有PDB或跨拓扑冗余，单次中断即清空服务容量。
+    graph_focus: [critical route, service dependency, single point]
+    kubernetes_kinds: [Deployment, StatefulSet, PodDisruptionBudget, Service]
+    fault_types: [pod-delete, pod-fail]
+    fault_target_kinds: [Pod, Deployment, StatefulSet]
