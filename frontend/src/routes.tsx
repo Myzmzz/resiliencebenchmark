@@ -5,6 +5,9 @@ import PlaceholderPage from "./pages/PlaceholderPage";
 import InfrastructurePage from "./pages/InfrastructurePage";
 import ExperimentPage from "./pages/ExperimentPage";
 import ApplicationsPage from "./pages/ApplicationsPage";
+import ApplicationsDetailPage from "./pages/ApplicationsDetailPage";
+import ApplicationsCreatePage from "./pages/ApplicationsCreatePage";
+
 import ModelsPage from "./pages/ModelsPage";
 import HarnessesPage from "./pages/HarnessesPage";
 import EpisodesPage from "./pages/EpisodesPage";
@@ -28,6 +31,8 @@ export const routeChildren: RouteObject[] = [
   // 环境与资源（M3）
   { path: "environments/infrastructure", element: <ExperimentPage /> },
   { path: "environments/applications", element: <ApplicationsPage /> },
+  { path: "environments/applications/new", element: <ApplicationsCreatePage /> },
+  { path: "environments/applications/:appId", element: <ApplicationsDetailPage /> },
   { path: "environments/workloads", element: <WorkloadsPage /> },
   { path: "environments/observability", element: <ObservabilityPage /> },
   { path: "environments/mcp", element: <MCPToolsPage /> },

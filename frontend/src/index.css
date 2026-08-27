@@ -4,3 +4,405 @@ body {
   font-family: -apple-system, "PingFang SC", "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+
+.block-section {
+  margin-bottom: 18px;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+.success-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.success-text {
+  color: #00b42a;
+  font-weight: 500;
+}
+
+/* 两列信息网格布局 */
+.info-grid {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+.info-grid >p {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.info-label {
+  color: #6b7280;
+  flex-shrink: 0;
+  width: 120px;
+}
+.info-value {
+  color: #111827;
+}
+
+/* 单选列表 */
+.entry-radio-group {
+  width: 100%;
+}
+.radio-list {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.radio-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.radio-item >div {
+  flex: 1;
+  display: flex;
+}
+.radio-item:last-child {
+  border-bottom: none;
+}
+.radio-item--active {
+  background-color: #f8faff;
+}
+.entry-name {
+  flex: 1;
+  font-size: 16px;
+  display: flex;
+}
+.entry-name div {
+  width: 180px;
+}
+.entry-path {
+  color: #6b7280;
+}
+
+/* 头部状态行 */
+.header-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+.success-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.success-icon {
+  color: #00b42a;
+  font-size: 14px;
+}
+.success-text {
+  color: #00b42a;
+  font-weight: 500;
+  font-size: 14px;
+}
+.desc-text {
+  font-size: 14px;
+}
+
+/* 资源统计网格 */
+.resource-stat-card {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-bottom: 16px;
+}
+.stat-item {
+  text-align: center;
+}
+.stat-label {
+  color: #6b7280;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.stat-num {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.sub-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+/* 表格样式微调 */
+.service-table :global(.ant-table-thead > tr > th) {
+  background-color: #f8fafc;
+}
+
+/* 底部待确认提示 */
+.warn-notice {
+  margin-top: 20px;
+  border: 1px solid #ffd591;
+  background-color: #fffbeb;
+  border-radius: 4px;
+  padding: 6px 12px;
+}
+.warn-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.warn-icon {
+  color: #fa8c16;
+  font-size: 14px;
+}
+.warn-title {
+  color: #fa8c16;
+  font-weight: 500;
+  font-size: 14px;
+}
+.warn-badge {
+  color: #fa8c16;
+  font-weight: 600;
+}
+.warn-row {
+  color: #4b5563;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.app-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+}
+.app-header-info div {
+  padding: 0 20px;
+  border-right: 1px solid #acadaf;
+}
+.app-header-info div:last-of-type {
+  border-right: none;
+}
+
+/* API Server 状态栏 */
+.api-server-bar {
+  display: flex;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+}
+.api-server-bar div{
+  border-right: 1px solid #acadaf;
+  padding-right: 12px;
+  margin-right: 12px;
+}
+.api-server-bar div span {
+  padding-right: 8px;
+}
+
+.field-item {
+  margin-bottom: 12px;
+}
+.field-label {
+  margin-bottom: 8px;
+}
+
+/* 双输入行 */
+.two-input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.secret-tip {
+  color:#6b7280;
+  font-size: 12px;
+  margin-top: -4px;
+}
+
+/* 预计资源请求 */
+.resource-section{
+  margin-top:12px;
+}
+.resource-stat-row{
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+.stat-item{
+  text-align:center;
+}
+.stat-label{
+  color:#6b7280;
+  margin-bottom:8px;
+}
+.stat-val{
+  font-size:16px;
+  font-weight:500;
+}
+
+/* 右侧预检 */
+.precheck-header{
+  margin-bottom:18px;
+}
+.pre-ok-text{
+  color:#00b42a;
+  font-size: 20px;
+  font-weight: 500;
+}
+.pre-count{
+  font-size: 20px;
+}
+.check-list{
+  margin-bottom:16px;
+  padding-left: 12px;
+}
+.check-item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:6px;
+  font-size:14px;
+}
+.ok-icon{
+  color:#00b42a;
+  font-size:14px;
+}
+
+/* 容量校验 */
+.capacity-card{
+  border: 1px solid #e5e7eb;
+  border-radius:8px;
+  padding:6px 12px;
+  margin-bottom:16px;
+}
+.cap-row{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  margin-bottom:18px;
+}
+.cap-label{
+  width:50px;
+  flex-shrink:0;
+}
+.cap-progress{
+  flex: 1;
+}
+.cap-num{
+  display: inline-block;
+  width: 100px;
+  flex-shrink:0;
+}
+.pre-time-tip{
+  color:#6b7280;
+  font-size:13px;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.filter-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.table-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: #6b7280;
+  font-size: 14px;
+}
+.footer-icon {
+  flex-shrink: 0;
+}
+
+/* 右侧摘要 */
+.summary-list {
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 14px;
+}
+.summary-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+}
+.summary-row:last-child {
+  border-bottom: none;
+}
+.summary-label {
+  width: 100px;
+  flex-shrink: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+.summary-value {
+  flex: 1;
+  color: #111827;
+  font-size: 14px;
+}
+
+.post-check-section {
+  margin-bottom: 20px;
+}
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 15px;
+  line-height: 1;
+}
+.check-icon {
+  color: #00b42a;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.deploy-ready-card {
+  border: 1px solid #b7eb8f;
+  background-color: #f6ffed;
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+}
+.ready-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ready-icon {
+  color: #52c41a;
+  font-size: 14px;
+}
+.ready-text {
+  color: #389e0d;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ready-desc {
+  font-size: 12px;
+  padding-left: 24px;
+}

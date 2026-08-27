@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
-import { Table, Badge, Button, Drawer, Tag, Alert, Spin, Descriptions, List, Typography } from "antd";
+import { Table, Badge, Button, Drawer, Tag, Alert, Spin, Descriptions, List, Typography, Space, Input, Select,Progress } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined, PlusOutlined, InfoCircleTwoTone } from "@ant-design/icons";
 import { fetchApplications } from "../services/api";
 import type { Application, ReadinessGap } from "../types/application";
+import { useNavigate } from "react-router-dom";
+import MetricCard from "../features/evaluation/components/MetricCard";
 
 const { Title, Text } = Typography;
 
 export default function ApplicationsPage() {
+  const navigate = useNavigate();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,53 +56,75 @@ export default function ApplicationsPage() {
       title: "应用名称",
       dataIndex: "displayName",
       key: "displayName",
+      width: 140,
+      render: (text: string, record: Application) => (
+        <span>{text}</span>
+        // <a onClick={() => handleRowClick(record)}>{text}</a>
+      ),
+    },
+    {
+      title: "源码仓库",
+      key: "repository",
+      width: 260,
+      render: (text: string, record: Application) => (
+        <span>github.com/pen-telemetry/opentelemetry-demo</span>
+      ),
+    },
+    {
+      title: "环境/Namespace",
+      key: "namespace",
       width: 200,
       render: (text: string, record: Application) => (
-        <a onClick={() => handleRowClick(record)}>{text}</a>
+        <div>
+          <span>研发测试集群</span>
+          <span>{record.namespace.liveReference}</span>
+        </div>
       ),
     },
     {
-      title: "角色",
-      dataIndex: "benchmarkRole",
-      key: "benchmarkRole",
-      width: 250,
-    },
-    {
-      title: "状态",
-      dataIndex: "status",
-      key: "status",
-      width: 120,
-      render: (status: Application["status"]) => getStatusBadge(status),
-    },
-    {
-      title: "镜像",
-      key: "images",
-      width: 150,
-      render: (_: any, record: Application) => (
-        <span>
-          {record.imageCount} 个 ({record.imagePolicy})
-        </span>
-      ),
-    },
-    {
-      title: "关键路径",
-      dataIndex: "criticalPathsCount",
-      key: "criticalPathsCount",
+      title: "版本/Commit",
+      key: "namespace",
       width: 100,
-      render: (count: number) => `${count} 条`,
+      render: (text: string, record: Application) => (
+        <div>
+          <p>v1.0.0</p>
+          <span style={{fontSize: 12, color: 'gray'}}>8a4f9c2</span>
+        </div>
+      ),
     },
     {
-      title: "SLO",
-      dataIndex: "sloCount",
-      key: "sloCount",
-      width: 80,
-      render: (count: number) => `${count} 个`,
+      title: "服务",
+      key: "namespace",
+      width: 100,
+      render: (text: string, record: Application) => (
+        <div>
+          <span>22</span>
+        </div>
+      ),
     },
     {
-      title: "命名空间生命周期",
-      key: "lifecycle",
-      width: 180,
-      render: (_: any, record: Application) => record.namespace.lifecycle,
+      title: "部署状态",
+      key: "namespace",
+      width: 200,
+      render: (_, item) => <div>
+        <Tag color="green">部署中</Tag>
+        <Progress size="small" percent={20} showInfo={false} />
+        <p style={{fontSize: 12, color: 'gray'}}>等待 Workload 就绪</p>
+      </div>,
+    },
+    {
+      title: "最近操作",
+      key: "namespace",
+      width: 100,
+      render: (_, item) => <div>5分钟前</div>,
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: 100,
+      render: (_, item) => <Space size="small" wrap>
+        <Button type="link" onClick={() => navigate(`/environments/applications/${item.id}`)}>查看详情</Button>
+      </Space>,
     },
   ];
 
@@ -116,32 +141,56 @@ export default function ApplicationsPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>被测系统</Title>
-        <Button icon={<ReloadOutlined />} onClick={loadApplications} loading={loading}>
-          刷新
-        </Button>
+      <header className="evaluation-page-header">
+        <div><h2>被测系统</h2><p>管理源代码接入、部署状态与运行系统</p></div>
+        <Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/environments/applications/new")}>新增系统</Button>
+          <Button icon={<ReloadOutlined />} onClick={loadApplications} loading={loading}>刷新</Button>
+        </Space>
+      </header>
+
+      <div className="evaluation-summary-grid">
+        <MetricCard label="全部系统" value={applications.length} />
+        <MetricCard label="运行中" value={1} tone="primary" />
+        <MetricCard label="部署中" value={2} tone="success" />
+        <MetricCard label="异常" value={3} tone="danger" />
       </div>
 
-      {loading ? (
-        <div style={{ textAlign: "center", padding: 48 }}>
-          <Spin size="large" />
+      <section className="evaluation-panel"  style={{ padding: '14px 0px 0 0' }}>
+        <div className="evaluation-panel-header" style={{padding: '0 12px'}}>
+          <h3>系统列表</h3>
+          <Space wrap>
+            <Input.Search allowClear placeholder="搜索系统名称或仓库" />
+            <Select allowClear placeholder="全部状态" style={{ width: 170 }} options={[]} />
+            <Select allowClear placeholder="全部环境" style={{ width: 170 }} options={[]} />
+            <span>最近同步 10:42:35</span>
+          </Space>
         </div>
-      ) : applications.length === 0 ? (
-        <Alert
-          message="暂无被测系统"
-          description="未找到任何应用配置文件"
-          type="info"
-          showIcon
-        />
-      ) : (
-        <Table
-          columns={columns}
-          dataSource={applications}
-          rowKey="name"
-          pagination={false}
-        />
-      )}
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 48 }}>
+            <Spin size="large" />
+          </div>
+        ) : applications.length === 0 ? (
+          <Alert
+            message="暂无被测系统"
+            description="未找到任何应用配置文件"
+            type="info"
+            showIcon
+          />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={applications}
+            rowKey="name"
+            pagination={false}
+            scroll={{ x: 1500 }}
+          />
+        )}
+      </section>
+
+      <div className="evaluation-info" style={{ background: '#fff' }}><InfoCircleTwoTone style={{ marginRight: 8 }}/>部署成功后进入系统详情页；失败记录会保留，可查看节点、日志并重试。</div>
+
 
       <Drawer
         title={selectedApp?.displayName}
