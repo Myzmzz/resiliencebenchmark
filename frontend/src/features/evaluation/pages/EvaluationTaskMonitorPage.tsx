@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Descriptions, message, Modal, Progress, Select, Space, Tag, Tabs } from "antd";
-import { ReloadOutlined, StopOutlined } from "@ant-design/icons";
+import { ReloadOutlined, StopOutlined, CheckCircleFilled,CheckOutlined, RightCircleFilled } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { abortEvaluationTask, getEvaluationTask } from "../api";
 import { formatDuration, formatTime, percent, phaseLabel } from "../formatters";
@@ -16,7 +16,14 @@ const PHASES: TaskPhase[] = ["PREPARING", "QUALIFYING", "BASELINING", "EXECUTING
 
 function StageTrack({ current }: { current?: TaskPhase }) {
   const currentIndex = Math.max(0, PHASES.indexOf(current ?? "PREPARING"));
-  return <div className="evaluation-stage-track">{PHASES.map((phase, index) => <div className={`evaluation-stage ${index < currentIndex ? "is-complete" : ""} ${index === currentIndex ? "is-current" : ""}`} key={phase}>{phaseLabel(phase)}</div>)}</div>;
+  return <div className="evaluation-stage-track">
+    {
+      PHASES.map((phase, index) => <div className={`StageTrack-item ${index < currentIndex ? "is-success" : ""}`} key={phase}>
+        <div style={{ backgroundColor: index == currentIndex ? "#1d4ed8" : "" }}>{index < currentIndex ? <CheckOutlined /> : index + 1}</div>
+        <span style={{ color: index == currentIndex ? "#1d4ed8" : "" }}>{phaseLabel(phase)}</span>
+      </div>)
+    }
+  </div>;
 }
 
 export default function EvaluationTaskMonitorPage() {
@@ -72,30 +79,65 @@ export default function EvaluationTaskMonitorPage() {
         <div><Space><h2>{task.name}</h2><Tag color="blue">评测中</Tag><Tag color={task.lease?.status === "HELD" ? "green" : "orange"}>环境租约{task.lease?.status === "HELD" ? "正常" : task.lease?.status}</Tag></Space><p>{task.taskId}</p></div>
         <Space><Button icon={<ReloadOutlined />} onClick={() => void resource.reload()}>刷新</Button><Button danger icon={<StopOutlined />} onClick={abort}>安全中止</Button></Space>
       </header>
-      <section className="evaluation-panel evaluation-wizard-summary"><span>{task.environmentName}</span><span>{task.systems.length} 个被测系统</span><span>{task.harnessProgress.length} 个 Harness</span><span>{task.modelCount} 个模型</span><span>{task.uniqueQuestionCount} 道题</span><span>{task.evaluationUnitCount} 个评测单元</span></section>
+      <section className="evaluation-panel evaluation-wizard-summary">
+        <div>{task.environmentName}</div>
+        <div>{task.systems.length} 个被测系统</div>
+        <div>{task.harnessProgress.length} 个 Harness</div>
+        <div>{task.modelCount} 个模型</div>
+        <div>{task.uniqueQuestionCount} 道题</div>
+        <div>{task.evaluationUnitCount} 个评测单元</div>
+      </section>
       <div className="evaluation-summary-grid five">
-        <MetricCard label="总体进度" value={`${task.completedUnitCount} / ${task.evaluationUnitCount}`} footer={<Progress size="small" percent={percent(task.completedUnitCount, task.evaluationUnitCount)} showInfo={false} />} />
-        <MetricCard label="当前单元" value={current ? current.questionIndex : "—"} tone="primary" footer={current?.unitId} />
+        <MetricCard label="总体进度" percent={`${percent(task.completedUnitCount, task.evaluationUnitCount)}%`} value={`${task.completedUnitCount} / ${task.evaluationUnitCount}`} footer={<Progress size="small" percent={percent(task.completedUnitCount, task.evaluationUnitCount)} showInfo={false} />} />
+        <MetricCard label="当前单元" value={current ? current.questionIndex : "—"} tone="primary" />
         <MetricCard label="Harness 总数" value={task.harnessProgress.length} />
         <MetricCard label="已完成 Harness" value={task.harnessProgress.filter((item) => item.status === "COMPLETED").length} tone="success" />
         <MetricCard label="运行时长" value={formatDuration(duration)} />
       </div>
       <HarnessTrack items={task.harnessProgress} selectedId={effectiveHarnessId} onSelect={setSelectedHarnessId} />
-      <div className="evaluation-two-column" style={{ gridTemplateColumns: "minmax(0, 1.55fr) minmax(450px, 1fr)" }}>
+      <div className="evaluation-two-column" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(450px, 1fr)" }}>
         <section className="evaluation-panel">
-          <div className="evaluation-panel-header"><div><h3>当前评测单元</h3><span className="evaluation-muted">{selectedHarness?.harnessName}</span></div>{selectedUnit && <Tag color="blue">{phaseLabel(selectedUnit.phase)}</Tag>}</div>
+          <div className="evaluation-panel-header">
+            <h3>当前评测单元</h3>
+            {/* <div><h3>当前评测单元</h3><span className="evaluation-muted">{selectedHarness?.harnessName}</span></div> */}
+            {/* {selectedUnit && <Tag color="blue">{phaseLabel(selectedUnit.phase)}</Tag>} */}
+          </div>
+
           {!selectedUnit ? <Alert type="info" showIcon title="当前 Harness 暂无运行单元" /> : <>
-            <h3>{selectedUnit.harnessName} × {selectedUnit.modelName} × {selectedUnit.questionId} · {selectedUnit.questionTitle}</h3>
-            <div className="evaluation-wizard-summary" style={{ marginTop: 12 }}><span>系统 {selectedUnit.systemName}</span><span>目标 {selectedUnit.targetService ?? "—"}</span><span>Trial {selectedUnit.currentTrial ?? 0}/{selectedUnit.maxTrials}</span></div>
+            <div className="evaluation-wizard-summary-title">
+              {selectedUnit.harnessName} × {selectedUnit.modelName} × {selectedUnit.questionId}
+              <Tag color="blue">{phaseLabel(selectedUnit.phase)}</Tag>
+            </div>
+            {/* <div className="evaluation-wizard-summary" style={{ marginTop: 12 }}><span>系统 {selectedUnit.systemName}</span><span>目标 {selectedUnit.targetService ?? "—"}</span><span>Trial {selectedUnit.currentTrial ?? 0}/{selectedUnit.maxTrials}</span></div> */}
+
+            <div className="evaluation-wizard-unit-info">
+              <div style={{ paddingRight: 12 }}>
+                <p>目标服务</p>
+                <span>inventory</span>
+              </div>
+              <div>
+                <p>当前 Pod</p>
+                <span>inventory‑5cf7db968‑l8r4n</span>
+              </div>
+              <div>
+                <p>Trial</p>
+                <span>2 / 5</span>
+              </div>
+              <div>
+                <p>已运行</p>
+                <span>06:18</span>
+              </div>
+            </div>
             <StageTrack current={selectedUnit.phase} />
+
             {stream.error && <Alert type="warning" showIcon title={stream.error.message} style={{ marginTop: 12 }} />}
-            <Tabs items={[{ key: "events", label: "实时事件", children: eventsContent }, { key: "evidence", label: "可观测证据", children: evidenceContent }, { key: "environment", label: "环境状态", children: environmentContent }]} />
+            <Tabs className="unit-tabs" items={[{ key: "events", label: "实时事件", children: eventsContent }, { key: "evidence", label: "可观测证据", children: evidenceContent }, { key: "environment", label: "环境状态", children: environmentContent }]} />
           </>}
         </section>
         <div>
-          <div className="evaluation-panel" style={{ marginBottom: 12 }}><div className="evaluation-panel-header"><h3>矩阵筛选</h3></div><Space wrap><Select value={effectiveSystemId} style={{ minWidth: 180 }} options={task.systems.map((item) => ({ value: item.id, label: item.name }))} onChange={setSelectedSystemId} /><Tag>{selectedHarness?.harnessName}</Tag></Space></div>
+          {/* <div className="evaluation-panel" style={{ marginBottom: 12 }}><div className="evaluation-panel-header"><h3>矩阵筛选</h3></div><Space wrap><Select value={effectiveSystemId} style={{ minWidth: 180 }} options={task.systems.map((item) => ({ value: item.id, label: item.name }))} onChange={setSelectedSystemId} /><Tag>{selectedHarness?.harnessName}</Tag></Space></div> */}
           <UnitMatrix units={task.units} systemId={effectiveSystemId} harnessId={effectiveHarnessId} selectedUnitId={selectedUnit?.unitId} onSelect={selectUnit} />
-          <section className="evaluation-panel"><div className="evaluation-panel-header"><h3>环境租约</h3><Tag color={task.lease?.status === "HELD" ? "green" : "orange"}>{task.lease?.status ?? "未知"}</Tag></div><div className="evaluation-muted">最后心跳 {formatTime(task.lease?.heartbeatAt)} · 持有者 {task.lease?.holderTaskId ?? task.taskId}</div></section>
+          {/* <section className="evaluation-panel"><div className="evaluation-panel-header"><h3>环境租约</h3><Tag color={task.lease?.status === "HELD" ? "green" : "orange"}>{task.lease?.status ?? "未知"}</Tag></div><div className="evaluation-muted">最后心跳 {formatTime(task.lease?.heartbeatAt)} · 持有者 {task.lease?.holderTaskId ?? task.taskId}</div></section> */}
         </div>
       </div>
     </div>

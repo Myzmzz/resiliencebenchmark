@@ -1,5 +1,6 @@
 import { Button, Select, Space, Tag } from "antd";
 import type { EvaluationUnitSummary, UnitOutcome } from "../types";
+import { FilterOutlined, MenuOutlined, RightOutlined } from "@ant-design/icons";
 
 function cellClass(unit?: EvaluationUnitSummary): string {
   if (!unit || unit.status === "PENDING") return "unit-cell-pending";
@@ -31,13 +32,17 @@ export default function UnitMatrix({
   const models = [...new Map(scoped.map((unit) => [unit.modelId, unit.modelName])).entries()];
   const indexes = [...new Set(scoped.map((unit) => unit.questionIndex))].sort((a, b) => a - b);
   const selected = scoped.find((unit) => unit.unitId === selectedUnitId) ?? scoped.find((unit) => unit.status === "RUNNING");
-
   return (
     <section className="evaluation-panel unit-matrix-panel">
       <div className="evaluation-panel-header">
-        <div><h3>评测单元矩阵</h3><span className="evaluation-muted">模型 × 题目</span></div>
+        <div><h3>评测单元矩阵</h3><div className="evaluation-muted">16/39个单元已完成</div></div>
         <Space size="small" wrap>
-          <Tag color="green">PASS</Tag><Tag color="red">FAIL</Tag><Tag color="gold">INVALID</Tag><Tag color="blue">运行中</Tag><Tag>待执行</Tag>
+          {/* <Tag color="green">PASS</Tag><Tag color="red">FAIL</Tag><Tag color="gold">INVALID</Tag><Tag color="blue">运行中</Tag><Tag>待执行</Tag> */}
+          <div className="unit-status unit-status-pass">PASS</div>
+          <div className="unit-status unit-status-fail">FAIL</div>
+          <div className="unit-status unit-status-invalid">INVALID</div>
+          <div className="unit-status unit-status-running">运行中</div>
+          <div className="unit-status unit-status-pending">待执行</div>
         </Space>
       </div>
       {models.length === 0 ? <div className="evaluation-muted">当前筛选没有评测单元</div> : (
@@ -67,11 +72,16 @@ export default function UnitMatrix({
       )}
       {selected && (
         <div className="unit-selected-card">
-          <div><strong>{selected.questionId} · {selected.questionTitle}</strong><span>{selected.harnessName} / {selected.modelName} · Trial {selected.currentTrial ?? 0}/{selected.maxTrials}</span></div>
-          <Button type="link" onClick={() => onSelect(selected)}>进入题目详情</Button>
+          <div className="unit-selected-card-info"><strong>{selected.questionId} · {selected.questionTitle}</strong><span>{selected.harnessName} / {selected.modelName} <br /> Trial {selected.currentTrial ?? 0}/{selected.maxTrials}</span></div>
+          <Button color="primary" variant="outlined"  onClick={() => onSelect(selected)}>
+            进入题目详情<RightOutlined />
+          </Button>
         </div>
       )}
-      <div className="unit-matrix-footer"><Select size="small" defaultValue="all" options={[{ value: "all", label: "全部状态" }]} /><Button size="small">查看全部单元</Button></div>
+      <div className="unit-matrix-footer">
+        <Select prefix={<FilterOutlined />} style={{ width: 160 }} size="medium" defaultValue="all" options={[{ value: "all", label: "全部状态" }]} />
+        <Button size="medium"><MenuOutlined />查看全部单元</Button>
+      </div>
     </section>
   );
 }

@@ -19,3 +19,4 @@ artifacts/
 benchmark-wheels/
 runs/
 tmp/
+**/node_modules/

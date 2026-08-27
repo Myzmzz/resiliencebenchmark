@@ -8,8 +8,45 @@ const systems = [
   { id: "otel-demo", name: "OTel Demo", version: "v1.12.0", namespace: "otel-demo", status: "READY", serviceCount: 22, sourceCommit: "8a4f9c2", imageLocked: 22, imageTotal: 22, codeGraphStatus: "AVAILABLE", languages: ["Go", "Java", "Python", "TypeScript", "C#"] },
   { id: "sock-shop", name: "Sock Shop", version: "v1.0", namespace: "sock-shop", status: "READY", serviceCount: 10, sourceCommit: "b28e11a", imageLocked: 10, imageTotal: 10, codeGraphStatus: "AVAILABLE", languages: ["Go", "Java", "Node.js"] },
 ];
-const models = ["gpt-5.6", "gpt-5.5", "gpt-5.4"].map((id) => ({ id, name: id.toUpperCase(), status: "AVAILABLE" }));
-const harnesses = ["codex", "bladeai", "claude-code"].map((id) => ({ id, name: id === "claude-code" ? "Claude Code" : id === "bladeai" ? "BladeAI" : "Codex", status: "AVAILABLE", description: "演示 Harness", modelIds: models.map((item) => item.id), requiredMcpIds: ["k8s_ro", "telemetry_ro"] }));
+// const models = ["gpt-5.6", "gpt-5.5", "gpt-5.4"].map((id) => ({ id, name: id.toUpperCase(), status: "AVAILABLE" }));
+// const harnesses = ["codex", "bladeai", "claude-code"].map((id) => ({ id, name: id === "claude-code" ? "Claude Code" : id === "bladeai" ? "BladeAI" : "Codex", status: "AVAILABLE", description: "演示 Harness", modelIds: models.map((item) => item.id), requiredMcpIds: ["k8s_ro", "telemetry_ro"] }));
+const models = [
+  { id: "gpt-5.6", name: "GPT-5.6", status: "AVAILABLE" },
+  { id: "gpt-5.5", name: "GPT-5.5", status: "AVAILABLE" },
+  { id: "gpt-5.4", name: "GPT-5.4", status: "AVAILABLE" },
+  { id: "qwen3.8-max", name: "QWEN3.8-MAX", status: "AVAILABLE" },
+  { id: "deepseek-v4", name: "DEEPSEEK-V4", status: "AVAILABLE" },
+  { id: "llama4", name: "LLAMA4", status: "AVAILABLE" },
+  { id: "claude-3.7-sonnet", name: "CLAUDE-3.7-SONNET", status: "AVAILABLE" },
+  { id: "claude-3.6-opus", name: "CLAUDE-3.6-OPUS", status: "AVAILABLE" },
+];
+
+const harnesses = [
+  {
+    id: "codex",
+    name: "Codex",
+    status: "AVAILABLE",
+    description: "原生 Harness · 支持流式事件",
+    modelIds: ["gpt-5.6", "gpt-5.5", "gpt-5.4"],
+    requiredMcpIds: ["k8s_ro", "telemetry_ro"],
+  },
+  {
+    id: "bladeai",
+    name: "BladeAI",
+    status: "AVAILABLE",
+    description: "演示 Harness",
+    modelIds: ["qwen3.8-max", "deepseek-v4", "llama4"],
+    requiredMcpIds: ["k8s_ro", "telemetry_ro"],
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    status: "AVAILABLE",
+    description: "演示 Harness",
+    modelIds: ["claude-3.7-sonnet", "claude-3.6-opus"],
+    requiredMcpIds: ["k8s_ro", "telemetry_ro"],
+  },
+];
 const mcpServers = [
   { id: "k8s_ro", name: "k8s_ro", status: "CONNECTED", description: "Kubernetes 只读资源与事件" },
   { id: "telemetry_ro", name: "telemetry_ro", status: "CONNECTED", description: "指标、Trace 与日志" },
