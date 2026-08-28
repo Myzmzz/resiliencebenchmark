@@ -77,7 +77,7 @@ export default function ApplicationsPage() {
       render: (text: string, record: Application) => (
         <div>
           <span>研发测试集群</span>
-          <span>{record.namespace.liveReference}</span>
+          <p>{record.namespace.liveReference}</p>
         </div>
       ),
     },
