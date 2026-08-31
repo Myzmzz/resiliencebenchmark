@@ -446,7 +446,9 @@ class Stage2System:
             permissions=permissions,
             mcp_supervisor=supervisor,
             base_environment=harness_environment,
-            timeout_seconds=300,
+            # Keep the complete Trial within five minutes: the finalizer owns
+            # a separate 180-second cleanup/business-recovery budget.
+            timeout_seconds=120,
         )
         runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
             self.config.kubeconfig
