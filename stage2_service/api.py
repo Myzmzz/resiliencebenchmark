@@ -177,7 +177,11 @@ def create_app(
             "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
             "rbac": {
                 "trial_token_rotation": True,
-                "observability_revoke": ["mcp.k8s.read", "mcp.telemetry.read"],
+                "observability_revoke": [
+                    "mcp.k8s.read",
+                    "mcp.telemetry.read",
+                    "mcp.source.read",
+                ],
                 "chaos_revoke": ["mcp.chaos.create"],
             },
             "chaosblade": {"executor": "chaos_control", "execute_enabled_required": True},
