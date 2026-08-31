@@ -446,6 +446,7 @@ class Stage2System:
             permissions=permissions,
             mcp_supervisor=supervisor,
             base_environment=harness_environment,
+            timeout_seconds=300,
         )
         runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
             self.config.kubeconfig
