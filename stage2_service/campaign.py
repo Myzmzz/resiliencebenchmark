@@ -12,15 +12,18 @@ from .contracts import (
     AgentVerdict,
     CampaignRequest,
     CampaignResult,
+    CaseSpec,
     CapabilityProfile,
     DisturbanceRecord,
     HarnessKind,
     HarnessReport,
+    LifecycleEvent,
     PlatformStatus,
     RecoveryResult,
     TrialKind,
     TrialResult,
     TrialRuntimeContext,
+    default_case_specs,
 )
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
@@ -57,6 +60,8 @@ class HarnessRunner(Protocol):
         episode: LoadedEpisode,
         runtime: TrialRuntimeContext,
         capability: CapabilityProfile,
+        case: CaseSpec,
+        base_prompt: str | None,
         event_observer: EventObserver,
     ) -> HarnessReport: ...
 
@@ -92,12 +97,6 @@ class TrialPreparer(Protocol):
 
 
 class CampaignEngine:
-    TRIAL_ORDER = (
-        TrialKind.CONTROL,
-        TrialKind.TARGET_CHANGE,
-        TrialKind.PERMISSION_CHANGE,
-    )
-
     def __init__(
         self,
         *,
@@ -125,13 +124,33 @@ class CampaignEngine:
         self.resetter = resetter
         self.artifacts = artifacts
 
-    def run(self, request: CampaignRequest) -> CampaignResult:
+    def run(
+        self,
+        request: CampaignRequest,
+        event_observer: EventObserver | None = None,
+    ) -> CampaignResult:
         started_at = datetime.now(UTC)
         campaign_id = f"campaign-{uuid4().hex[:16]}"
         results: list[TrialResult] = []
+        selected_cases = _selected_cases(request)
+
+        def emit(kind: str, payload: Mapping[str, Any]) -> None:
+            if event_observer is not None:
+                event_observer(
+                    {
+                        "kind": kind,
+                        "campaign_id": campaign_id,
+                        "request_id": request.request_id,
+                        "occurred_at": datetime.now(UTC).isoformat(),
+                        "payload": dict(payload),
+                    }
+                )
+
         try:
+            emit("campaign_started", {"cases": [case.case_id.value for case in selected_cases]})
             qualification = dict(self.environment_gate.qualify(self.episode))
             self.artifacts.write(campaign_id, "environment/qualification.json", qualification)
+            emit("environment_qualified", qualification)
             if qualification.get("qualified") is not True:
                 return self._finish(
                     campaign_id,
@@ -148,14 +167,24 @@ class CampaignEngine:
             )
             for harness in request.harnesses:
                 control_passed = True
-                for index, kind in enumerate(self.TRIAL_ORDER, start=1):
-                    trial_id = f"{campaign_id}-{harness.value}-t{index}"
+                for index, case in enumerate(selected_cases, start=1):
+                    kind = case.trial_kind
+                    trial_id = f"{campaign_id}-{harness.value}-{case.case_id.value.lower()}-{index}"
                     runtime: TrialRuntimeContext | None = None
                     report: HarnessReport | None = None
                     recovery: RecoveryResult | None = None
                     permission_started = False
                     disturbance_records: list[DisturbanceRecord] = []
                     try:
+                        emit(
+                            "trial_started",
+                            {
+                                "trial_id": trial_id,
+                                "harness": harness.value,
+                                "case_id": case.case_id.value,
+                                "trial_kind": kind.value,
+                            },
+                        )
                         runtime = self.preparer.prepare(trial_id, self.episode)
                         self.artifacts.write(
                             campaign_id,
@@ -177,11 +206,34 @@ class CampaignEngine:
                         )
 
                         def observe(event: Any) -> None:
+                            if isinstance(event, LifecycleEvent):
+                                emit(
+                                    "lifecycle_event",
+                                    {
+                                        "trial_id": event.trial_id,
+                                        "case_id": case.case_id.value,
+                                        "phase": event.phase.value,
+                                        "event_kind": event.kind,
+                                        "payload": event.payload,
+                                    },
+                                )
                             plan = self.disturbance_planner.plan(kind, event)
                             if plan is None or disturbance_records:
                                 return
                             record = self.disturbance_executor.apply(plan)
                             disturbance_records.append(record)
+                            emit(
+                                "disturbance_applied",
+                                {
+                                    "trial_id": trial_id,
+                                    "case_id": case.case_id.value,
+                                    "disturbance_id": plan.disturbance_id,
+                                    "type": plan.type.value,
+                                    "backend": plan.backend,
+                                    "trigger_event_id": plan.trigger_event_id,
+                                    "evidence": record.application_evidence,
+                                },
+                            )
 
                         report = self.harness_runner.run(
                             campaign_id=campaign_id,
@@ -191,6 +243,12 @@ class CampaignEngine:
                             episode=self.episode,
                             runtime_context=runtime,
                             capability=capability,
+                            case=case,
+                            base_prompt=(
+                                request.case_bundle.base_prompt
+                                if request.case_bundle is not None
+                                else None
+                            ),
                             event_observer=observe,
                         )
                         recovery = self.finalizer.finalize(
@@ -212,6 +270,12 @@ class CampaignEngine:
                         )
                         if kind is TrialKind.CONTROL:
                             control_passed = verdict is AgentVerdict.PASS
+                        disturbance_expected = kind in {
+                            TrialKind.CHAOS_PERMISSION_REVOKED,
+                            TrialKind.TARGET_CHANGE,
+                            TrialKind.EFFECT_OBSERVABILITY_REVOKED,
+                            TrialKind.RECOVERY_OBSERVABILITY_REVOKED,
+                        }
                         platform_valid = (
                             (
                                 report.status == "completed"
@@ -220,7 +284,7 @@ class CampaignEngine:
                             and recovery.controller_cleanup_verified
                             and all(item.applied for item in disturbance_records)
                             and (
-                                kind is TrialKind.CONTROL
+                                not disturbance_expected
                                 or len(disturbance_records) == 1
                             )
                         )
@@ -264,6 +328,16 @@ class CampaignEngine:
                             artifact_refs=tuple(refs),
                         )
                         results.append(result)
+                        emit(
+                            "trial_finished",
+                            {
+                                "trial_id": trial_id,
+                                "case_id": case.case_id.value,
+                                "platform_valid": result.platform_valid,
+                                "agent_verdict": result.agent_verdict.value,
+                                "artifact_refs": result.artifact_refs,
+                            },
+                        )
                         self.artifacts.write(
                             campaign_id,
                             f"trials/{trial_id}/result.json",
@@ -312,7 +386,9 @@ class CampaignEngine:
                 if all(item.platform_valid for item in results)
                 else PlatformStatus.FAILED
             )
-            return self._finish(campaign_id, request, started_at, status, results)
+            finished = self._finish(campaign_id, request, started_at, status, results)
+            emit("campaign_finished", {"platform_status": finished.platform_status.value})
+            return finished
         except Exception as exc:  # noqa: BLE001 - campaign must return an audited terminal result.
             return self._finish(
                 campaign_id,
@@ -437,3 +513,10 @@ class CampaignEngine:
             finished_at=datetime.now(UTC),
             error=error,
         )
+
+
+def _selected_cases(request: CampaignRequest) -> tuple[CaseSpec, ...]:
+    if request.case_bundle is None:
+        return default_case_specs(request.cases)
+    by_id = {case.case_id: case for case in request.case_bundle.cases}
+    return tuple(by_id[case_id] for case_id in request.cases)

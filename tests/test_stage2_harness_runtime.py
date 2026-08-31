@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from stage2_service.contracts import HarnessKind, LifecyclePhase
 from stage2_service.harness_runtime import (
+    HarnessRuntimeError,
     NativeHarnessRunner,
     _bladeai_fault_parts,
     _normalize_bladeai_event,
@@ -24,6 +27,27 @@ def runner(tmp_path: Path):
         mcp_supervisor=DummySupervisor(),
         base_environment={},
     )
+
+
+def test_codex_runtime_requires_isolated_codex_eval(tmp_path: Path):
+    executable = tmp_path / "codex-eval"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    runtime = NativeHarnessRunner(
+        repo_root=Path(__file__).resolve().parents[1],
+        private_root=tmp_path / "private",
+        artifact_root=tmp_path / "artifacts",
+        permissions=object(),
+        mcp_supervisor=DummySupervisor(),
+        base_environment={"RESBENCH_CODEX_EVAL_BIN": str(executable)},
+    )
+
+    assert runtime._resolve_executable(HarnessKind.CODEX, "codex") == str(
+        executable.resolve()
+    )
+
+    with pytest.raises(HarnessRuntimeError, match="global codex fallback is forbidden"):
+        runner(tmp_path)._resolve_executable(HarnessKind.CODEX, "codex")
 
 
 def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):

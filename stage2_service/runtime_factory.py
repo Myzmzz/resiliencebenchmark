@@ -365,7 +365,7 @@ class Stage2System:
         # service start rather than reused across Deployment revisions.
         write_incluster_kubeconfig(config.kubeconfig)
 
-    def run(self, request: CampaignRequest) -> CampaignResult:
+    def run(self, request: CampaignRequest, event_observer=None) -> CampaignResult:
         episode = load_fixed_episode(request.episode, root=self.config.repo_root)
         gate = KubernetesEnvironmentGate(self.config.kubeconfig)
         traffic = KubernetesTrafficEvidence(gate, episode)
@@ -422,6 +422,9 @@ class Stage2System:
             "RESBENCH_LLM_API_KEY": self.config.llm_api_key,
             "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": controller_token_ref,
             "RESBENCH_CHAOS_CONTROLLER_POD_UID": self.config.controller_pod_uid,
+            "RESBENCH_CODEX_EVAL_BIN": os.environ.get(
+                "RESBENCH_CODEX_EVAL_BIN", ""
+            ),
             "STAGE2_BLADEAI_PYTHON": os.environ.get(
                 "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
             ),
@@ -477,7 +480,7 @@ class Stage2System:
             resetter=resetter,
             artifacts=ArtifactStore(self.config.artifact_root),
         )
-        return engine.run(request)
+        return engine.run(request, event_observer=event_observer)
 
 
 def write_incluster_kubeconfig(path: Path) -> None:

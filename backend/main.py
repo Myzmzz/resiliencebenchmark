@@ -12,6 +12,7 @@ from backend.api.mcp_tools import router as mcp_tools_router
 from backend.api.meta import router as meta_router
 from backend.api.models import router as models_router
 from backend.api.observability import router as observability_router
+from backend.api.stage2_console import router as stage2_console_router
 
 API_PREFIX = "/api/v1"
 
@@ -21,7 +22,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173"],
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
     app.include_router(meta_router, prefix=API_PREFIX)
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(episodes_router, prefix=API_PREFIX)
     app.include_router(mcp_tools_router, prefix=API_PREFIX)
     app.include_router(observability_router, prefix=API_PREFIX)
+    app.include_router(stage2_console_router, prefix=API_PREFIX)
     return app
 
 

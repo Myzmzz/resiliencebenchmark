@@ -22,6 +22,26 @@ class Runner:
         )
 
 
+class EventRunner:
+    def run(self, request, event_observer=None):
+        if event_observer is not None:
+            event_observer(
+                {
+                    "kind": "campaign_started",
+                    "request_id": request.request_id,
+                    "payload": {"cases": [item.value for item in request.cases]},
+                }
+            )
+        return CampaignResult(
+            campaign_id="campaign-abcdef1234567890",
+            request_id=request.request_id,
+            platform_status=PlatformStatus.COMPLETED,
+            trials=(),
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+        )
+
+
 def test_single_service_accepts_and_returns_campaign_result():
     client = TestClient(create_app(CampaignSupervisor(Runner())))
     request = _request().model_dump(mode="json")
@@ -36,3 +56,51 @@ def test_single_service_accepts_and_returns_campaign_result():
             break
     assert result.status_code == 200
     assert result.json()["status"] == "COMPLETED"
+
+
+def test_generates_codex_case_bundle_and_preflight_contract():
+    client = TestClient(create_app(CampaignSupervisor(Runner())))
+
+    bundle = client.post(
+        "/api/v1/case-bundles",
+        json={
+            "schema_version": "stage2-case-generation-request.v1",
+            "bundle_id": "local-codex-suite",
+            "prompt": "Diagnose the cart service and run the bounded fault.",
+        },
+    )
+    preflight = client.get("/api/v1/preflight")
+
+    assert bundle.status_code == 200
+    assert [item["case_id"] for item in bundle.json()["cases"]] == [
+        "C0",
+        "P1",
+        "P2",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+    ]
+    assert preflight.status_code == 200
+    assert preflight.json()["harnesses"] == ["codex"]
+    assert preflight.json()["model"] == "gpt-5.6-sol"
+
+
+def test_campaign_events_are_available_for_sse_timeline():
+    client = TestClient(create_app(CampaignSupervisor(EventRunner())))
+    request = _request().model_dump(mode="json")
+
+    accepted = client.post("/api/v1/campaigns", json=request)
+    request_id = accepted.json()["request_id"]
+    status_response = client.get(f"/api/v1/campaigns/{request_id}")
+
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    assert payload["status"] == "COMPLETED"
+    assert payload["events"][0]["kind"] == "campaign_started"
+
+    with client.stream("GET", f"/api/v1/campaigns/{request_id}/events") as stream:
+        body = "".join(stream.iter_text())
+    assert "text/event-stream" in stream.headers["content-type"]
+    assert "event: event" in body
+    assert "event: terminal" in body

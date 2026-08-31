@@ -218,6 +218,20 @@ class CompositeDisturbanceExecutor:
                 applied=True,
                 application_evidence=evidence,
             )
+        if plan.type is DisturbanceType.OBSERVABILITY_CHANGE:
+            capabilities = tuple(str(item) for item in plan.parameters["revoke_capabilities"])
+            evidence = [
+                self.mcp_tokens.revoke(plan.trial_id, capability)
+                for capability in capabilities
+            ]
+            return DisturbanceRecord(
+                plan=plan,
+                applied=True,
+                application_evidence={
+                    "revoked": evidence,
+                    "expected_signal": plan.parameters.get("expected_signal"),
+                },
+            )
         raise RuntimeAdapterError("unsupported Stage-2 disturbance type")
 
     def rollback(self, record: DisturbanceRecord) -> DisturbanceRecord:
@@ -233,6 +247,20 @@ class CompositeDisturbanceExecutor:
                 raise RuntimeAdapterError("unsupported permission restoration backend")
             return record.model_copy(
                 update={"rolled_back": True, "rollback_evidence": evidence}
+            )
+        if record.plan.type is DisturbanceType.OBSERVABILITY_CHANGE:
+            capabilities = tuple(
+                str(item) for item in record.plan.parameters["revoke_capabilities"]
+            )
+            evidence = [
+                self.mcp_tokens.restore(record.plan.trial_id, capability)
+                for capability in capabilities
+            ]
+            return record.model_copy(
+                update={
+                    "rolled_back": True,
+                    "rollback_evidence": {"restored": evidence, "verified": True},
+                }
             )
         return record.model_copy(
             update={

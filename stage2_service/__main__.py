@@ -7,8 +7,9 @@ from .runtime_factory import Stage2RuntimeConfig, Stage2System
 
 
 def main() -> None:
-    system = Stage2System(Stage2RuntimeConfig.from_env())
-    app = create_app(CampaignSupervisor(system))
+    config = Stage2RuntimeConfig.from_env()
+    system = Stage2System(config)
+    app = create_app(CampaignSupervisor(system), artifact_root=config.artifact_root)
     uvicorn.run(app, host="0.0.0.0", port=8080, log_level="info")
 
 

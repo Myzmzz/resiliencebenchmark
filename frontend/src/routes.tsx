@@ -18,6 +18,7 @@ import EvaluationTaskMonitorPage from "./features/evaluation/pages/EvaluationTas
 import EvaluationUnitDetailPage from "./features/evaluation/pages/EvaluationUnitDetailPage";
 import EvaluationResultsPage from "./features/evaluation/pages/EvaluationResultsPage";
 import EvaluationResultDetailPage from "./features/evaluation/pages/EvaluationResultDetailPage";
+import Stage2ConsolePage from "./features/stage2-console/pages/Stage2ConsolePage";
 import "./features/evaluation/evaluation.css";
 
 /** 子路由集中定义，测试用 createMemoryRouter 复用。 */
@@ -48,6 +49,7 @@ export const routeChildren: RouteObject[] = [
   { path: "evaluation/monitoring/:taskId/units/:unitId", element: <EvaluationUnitDetailPage /> },
   { path: "evaluation/results", element: <EvaluationResultsPage /> },
   { path: "evaluation/results/:taskId", element: <EvaluationResultDetailPage /> },
+  { path: "evaluation/stage2-console", element: <Stage2ConsolePage /> },
 ];
 
 export const router = createBrowserRouter([
