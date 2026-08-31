@@ -35,9 +35,11 @@ class Stage2Finalizer:
         self,
         chaos: ChaosCleanupBackend,
         recovery_evidence: RecoveryEvidenceProvider,
+        recovery_timeout_seconds: int = 180,
     ):
         self.chaos = chaos
         self.recovery_evidence = recovery_evidence
+        self.recovery_timeout_seconds = recovery_timeout_seconds
 
     def finalize(
         self,
@@ -74,7 +76,7 @@ class Stage2Finalizer:
         try:
             evidence = dict(
                 self.recovery_evidence.reset_and_wait_healthy(
-                    timeout_seconds=180,
+                    timeout_seconds=self.recovery_timeout_seconds,
                     minimum_requests=20,
                 )
             )

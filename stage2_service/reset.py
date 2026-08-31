@@ -51,6 +51,7 @@ class OtelDemoResetter:
         runner: ResetRunner | None = None,
         timeout_seconds: int = 900,
         recovery_timeout_seconds: int = 300,
+        verify_only: bool = False,
     ):
         self.repo_root = repo_root.resolve()
         self.kubeconfig = kubeconfig.resolve()
@@ -63,8 +64,28 @@ class OtelDemoResetter:
         self.runner = runner or SubprocessResetRunner()
         self.timeout_seconds = timeout_seconds
         self.recovery_timeout_seconds = recovery_timeout_seconds
+        self.verify_only = verify_only
 
     def reset(self, trial_id: str, episode) -> Mapping[str, Any]:
+        if self.verify_only:
+            qualification = dict(self.environment_gate.qualify(episode))
+            traffic = dict(
+                self.traffic_evidence.reset_and_wait_healthy(
+                    timeout_seconds=self.recovery_timeout_seconds
+                )
+            )
+            return {
+                "trial_id": trial_id,
+                "uninstalled": False,
+                "reinstalled": False,
+                "verify_only": True,
+                "verified": (
+                    qualification.get("qualified") is True
+                    and traffic.get("business_healthy") is True
+                ),
+                "qualification": qualification,
+                "traffic_recovery": traffic,
+            }
         env = {
             **os.environ,
             "KUBECONFIG": str(self.kubeconfig),
