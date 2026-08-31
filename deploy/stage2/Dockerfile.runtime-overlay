@@ -1,8 +1,13 @@
 ARG STAGE2_RUNTIME_BASE=1.94.151.57:85/observe/resbench-stage2:stage2-85c382bcad53@sha256:e00709a0903d2d29c6a6e7fc9817896ec1137b2acd179e07676e8565d0dadb2b
 FROM ${STAGE2_RUNTIME_BASE}
 
+ARG SOURCE_HEAD=unknown
+LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
+ENV RESBENCH_CODEX_EVAL_BIN=/app/runtime/bin/codex-eval
+
 # The immutable base contains every pinned native runtime and the vendored OTel
 # chart. Runtime-only releases replace the monolith's Python modules without
 # rebuilding those unchanged third-party layers.
 COPY --chown=10001:10001 stage2_service /app/stage2_service
 COPY --chown=10001:10001 scripts/run_harness_trial.py /app/scripts/run_harness_trial.py
+COPY --chown=10001:10001 --chmod=0755 deploy/stage2/codex-eval /app/runtime/bin/codex-eval
