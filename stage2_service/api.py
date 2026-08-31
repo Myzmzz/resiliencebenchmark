@@ -7,7 +7,7 @@ import inspect
 import json
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from threading import Condition, Lock
+from threading import Condition, Event, Lock
 from typing import Protocol
 
 from fastapi import FastAPI, HTTPException, status
@@ -37,6 +37,7 @@ class CampaignSupervisor:
         self.events: dict[str, list[dict]] = {}
         self.interactions: dict[str, list[dict]] = {}
         self.stop_requests: set[str] = set()
+        self.stop_events: dict[str, Event] = {}
 
     def submit(self, request: CampaignRequest) -> str:
         with self.lock:
@@ -47,6 +48,7 @@ class CampaignSupervisor:
                 raise RuntimeError("one Stage-2 campaign is already active")
             self.events[request.request_id] = []
             self.interactions[request.request_id] = []
+            self.stop_events[request.request_id] = Event()
             self.futures[request.request_id] = self.pool.submit(
                 self._run_request, request
             )
@@ -59,8 +61,13 @@ class CampaignSupervisor:
 
         try:
             parameters = inspect.signature(self.runner.run).parameters
+            kwargs = {}
             if "event_observer" in parameters:
-                return self.runner.run(request, event_observer=observe)
+                kwargs["event_observer"] = observe
+            if "stop_requested" in parameters:
+                kwargs["stop_requested"] = self.stop_events[request.request_id].is_set
+            if kwargs:
+                return self.runner.run(request, **kwargs)
             return self.runner.run(request)
         except TypeError:
             return self.runner.run(request)
@@ -97,6 +104,7 @@ class CampaignSupervisor:
             if request_id not in self.futures:
                 raise KeyError(request_id)
             self.stop_requests.add(request_id)
+            self.stop_events[request_id].set()
             event = {
                 "sequence": len(self.events.setdefault(request_id, [])),
                 "kind": "operator_stop_requested",

@@ -54,6 +54,24 @@ def test_stream_observer_failure_terminates_child() -> None:
     assert time.monotonic() - started < 3
 
 
+def test_stream_cancel_request_terminates_child() -> None:
+    command = [sys.executable, "-c", "import time; time.sleep(10)"]
+    started = time.monotonic()
+
+    result = subprocess_streaming_runner(
+        command,
+        b"",
+        os.environ,
+        15,
+        lambda _line: None,
+        lambda: time.monotonic() - started > 0.2,
+    )
+
+    assert result.cancelled is True
+    assert result.timed_out is False
+    assert time.monotonic() - started < 3
+
+
 def test_bridge_emits_main_fault_only_after_successful_create_result() -> None:
     lifecycle = []
 

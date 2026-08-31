@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -142,6 +143,7 @@ class CommandResult:
     stdout: bytes
     stderr: bytes
     timed_out: bool = False
+    cancelled: bool = False
 
 
 Runner = Callable[[Sequence[str], bytes, Mapping[str, str], int], CommandResult]
@@ -519,6 +521,7 @@ def subprocess_streaming_runner(
     env: Mapping[str, str],
     timeout_seconds: int,
     stdout_line_observer: Callable[[bytes], None],
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> CommandResult:
     """Run a harness and forward stdout JSONL before process completion."""
 
@@ -560,11 +563,23 @@ def subprocess_streaming_runner(
     except BrokenPipeError:
         pass
     timed_out = False
-    try:
-        process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        process.terminate()
+    cancelled = False
+    deadline = time.monotonic() + timeout_seconds
+    while process.poll() is None:
+        if cancel_requested is not None and cancel_requested():
+            cancelled = True
+            process.terminate()
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            process.terminate()
+            break
+        try:
+            process.wait(timeout=min(0.25, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+    if process.poll() is None:
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -579,6 +594,7 @@ def subprocess_streaming_runner(
         stdout=b"".join(stdout_chunks),
         stderr=b"".join(stderr_chunks),
         timed_out=timed_out,
+        cancelled=cancelled,
     )
 
 

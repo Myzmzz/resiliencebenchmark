@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -128,11 +129,13 @@ class CampaignEngine:
         self,
         request: CampaignRequest,
         event_observer: EventObserver | None = None,
+        stop_requested: Callable[[], bool] | None = None,
     ) -> CampaignResult:
         started_at = datetime.now(UTC)
         campaign_id = f"campaign-{uuid4().hex[:16]}"
         results: list[TrialResult] = []
         selected_cases = _selected_cases(request)
+        should_stop = stop_requested or (lambda: False)
 
         def emit(kind: str, payload: Mapping[str, Any]) -> None:
             if event_observer is not None:
@@ -148,6 +151,15 @@ class CampaignEngine:
 
         try:
             emit("campaign_started", {"cases": [case.case_id.value for case in selected_cases]})
+            if should_stop():
+                return self._finish(
+                    campaign_id,
+                    request,
+                    started_at,
+                    PlatformStatus.BLOCKED,
+                    results,
+                    "operator stop requested",
+                )
             qualification = dict(self.environment_gate.qualify(self.episode))
             self.artifacts.write(campaign_id, "environment/qualification.json", qualification)
             emit("environment_qualified", qualification)
@@ -168,6 +180,16 @@ class CampaignEngine:
             for harness in request.harnesses:
                 control_passed = True
                 for index, case in enumerate(selected_cases, start=1):
+                    if should_stop():
+                        emit("campaign_stopped", {"before_case": case.case_id.value})
+                        return self._finish(
+                            campaign_id,
+                            request,
+                            started_at,
+                            PlatformStatus.BLOCKED,
+                            results,
+                            "operator stop requested",
+                        )
                     kind = case.trial_kind
                     trial_id = f"{campaign_id}-{harness.value}-{case.case_id.value.lower()}-{index}"
                     runtime: TrialRuntimeContext | None = None
@@ -235,7 +257,7 @@ class CampaignEngine:
                                 },
                             )
 
-                        report = self.harness_runner.run(
+                        runner_kwargs = dict(
                             campaign_id=campaign_id,
                             trial_id=trial_id,
                             harness=harness,
@@ -251,6 +273,11 @@ class CampaignEngine:
                             ),
                             event_observer=observe,
                         )
+                        if "cancel_requested" in inspect.signature(
+                            self.harness_runner.run
+                        ).parameters:
+                            runner_kwargs["cancel_requested"] = should_stop
+                        report = self.harness_runner.run(**runner_kwargs)
                         recovery = self.finalizer.finalize(
                             trial_id, self.episode, runtime, report
                         )
@@ -287,6 +314,7 @@ class CampaignEngine:
                                 not disturbance_expected
                                 or len(disturbance_records) == 1
                             )
+                            and report.final_output.get("cancelled") is not True
                         )
                         refs = [
                             self.artifacts.write(
@@ -380,6 +408,16 @@ class CampaignEngine:
                             PlatformStatus.RESET_FAILED,
                             results,
                             "permission restore or environment reset failed",
+                        )
+                    if should_stop():
+                        emit("campaign_stopped", {"after_trial": trial_id})
+                        return self._finish(
+                            campaign_id,
+                            request,
+                            started_at,
+                            PlatformStatus.BLOCKED,
+                            results,
+                            "operator stop requested",
                         )
             status = (
                 PlatformStatus.COMPLETED

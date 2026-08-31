@@ -365,7 +365,9 @@ class Stage2System:
         # service start rather than reused across Deployment revisions.
         write_incluster_kubeconfig(config.kubeconfig)
 
-    def run(self, request: CampaignRequest, event_observer=None) -> CampaignResult:
+    def run(
+        self, request: CampaignRequest, event_observer=None, stop_requested=None
+    ) -> CampaignResult:
         episode = load_fixed_episode(request.episode, root=self.config.repo_root)
         gate = KubernetesEnvironmentGate(self.config.kubeconfig)
         traffic = KubernetesTrafficEvidence(gate, episode)
@@ -483,7 +485,11 @@ class Stage2System:
             resetter=resetter,
             artifacts=ArtifactStore(self.config.artifact_root),
         )
-        return engine.run(request, event_observer=event_observer)
+        return engine.run(
+            request,
+            event_observer=event_observer,
+            stop_requested=stop_requested,
+        )
 
 
 def write_incluster_kubeconfig(path: Path) -> None:

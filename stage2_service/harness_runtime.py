@@ -86,6 +86,7 @@ class NativeHarnessRunner:
         case: CaseSpec,
         base_prompt: str | None,
         event_observer,
+        cancel_requested=None,
     ) -> HarnessReport:
         if harness is HarnessKind.BLADEAI:
             return self._run_bladeai(
@@ -96,6 +97,7 @@ class NativeHarnessRunner:
                 runtime_context=runtime_context,
                 capability=capability,
                 event_observer=event_observer,
+                cancel_requested=cancel_requested,
             )
         permission_runtime = self.permissions.runtime_context(trial_id)
         mcp_environment = self.mcp_supervisor.start_trial(
@@ -212,6 +214,7 @@ class NativeHarnessRunner:
                 child_env,
                 self.timeout_seconds,
                 observe_line,
+                cancel_requested,
             )
         finally:
             self.mcp_supervisor.stop()
@@ -243,6 +246,7 @@ class NativeHarnessRunner:
             "returncode": result.returncode,
             "validation_error": validation_error,
             "process_succeeded": result.returncode == 0 and not result.timed_out,
+            "cancelled": result.cancelled,
         }
         if ref:
             final_output["agent_result_ref"] = ref
@@ -301,6 +305,7 @@ class NativeHarnessRunner:
         runtime_context,
         capability,
         event_observer,
+        cancel_requested=None,
     ) -> HarnessReport:
         del model_alias, capability
         permission_runtime = self.permissions.runtime_context(trial_id)
@@ -401,6 +406,7 @@ class NativeHarnessRunner:
             env,
             self.timeout_seconds,
             observe,
+            cancel_requested,
         )
         (artifact_dir / "stdout.txt").write_bytes(result.stdout)
         (artifact_dir / "stderr.txt").write_bytes(result.stderr)
@@ -430,6 +436,7 @@ class NativeHarnessRunner:
                 **dict(final or {}),
                 "process_succeeded": not result.timed_out and final is not None,
                 "returncode": result.returncode,
+                "cancelled": result.cancelled,
             },
         )
 

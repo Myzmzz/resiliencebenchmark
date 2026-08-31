@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import time
 
 from fastapi.testclient import TestClient
 
@@ -39,6 +40,21 @@ class EventRunner:
             trials=(),
             started_at=datetime.now(UTC),
             finished_at=datetime.now(UTC),
+        )
+
+
+class CancellableRunner:
+    def run(self, request, event_observer=None, stop_requested=None):
+        while stop_requested is not None and not stop_requested():
+            time.sleep(0.01)
+        return CampaignResult(
+            campaign_id="campaign-cancelled0001",
+            request_id=request.request_id,
+            platform_status=PlatformStatus.BLOCKED,
+            trials=(),
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+            error="operator stop requested",
         )
 
 
@@ -104,3 +120,22 @@ def test_campaign_events_are_available_for_sse_timeline():
     assert "text/event-stream" in stream.headers["content-type"]
     assert "event: event" in body
     assert "event: terminal" in body
+
+
+def test_stop_endpoint_signals_running_campaign():
+    client = TestClient(create_app(CampaignSupervisor(CancellableRunner())))
+    request = _request().model_dump(mode="json")
+    accepted = client.post("/api/v1/campaigns", json=request)
+    request_id = accepted.json()["request_id"]
+
+    stopped = client.post(f"/api/v1/campaigns/{request_id}/stop")
+    assert stopped.status_code == 200
+    assert stopped.json()["stop_requested"] is True
+
+    for _ in range(100):
+        result = client.get(f"/api/v1/campaigns/{request_id}").json()
+        if result["status"] != "RUNNING":
+            break
+        time.sleep(0.01)
+    assert result["status"] == "BLOCKED"
+    assert result["result"]["error"] == "operator stop requested"
