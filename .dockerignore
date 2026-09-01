@@ -1,0 +1,12 @@
+.git
+.venv
+.pytest_cache
+__pycache__
+artifacts
+runs
+tmp
+frontend/node_modules
+frontend/dist
+benchmark-wheels
+*.pyc
+*.log
