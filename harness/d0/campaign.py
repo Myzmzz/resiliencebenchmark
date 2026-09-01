@@ -50,7 +50,7 @@ class D0CampaignConfig:
     expected_host_id: str = EXPECTED_EXECUTION_HOST_ID
     sample_seconds: int = 10
     agent_timeout_seconds: int = 720
-    effect_wait_seconds: int = 120
+    effect_wait_seconds: int = 300
     recovery_deadline_seconds: int = 330
     agents: tuple[str, ...] = AGENTS
 
