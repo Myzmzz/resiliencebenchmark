@@ -251,3 +251,51 @@ def test_recovery_window_retries_stats_reset_during_load_generator_startup(monke
 
     assert recovered["business_healthy"] is True
     assert len(attempts) == 2
+
+
+def test_recovery_window_discards_cold_start_failure_interval(monkeypatch):
+    resets = []
+    rows = iter(
+        [
+            # Stable traffic before the first reset.
+            (25, 0, 80),
+            # First fresh interval still contains cold-start failures.
+            (20, 10, 500),
+            # Second fresh interval is healthy.
+            (20, 0, 90),
+        ]
+    )
+
+    def load(_url):
+        requests, failures, p95 = next(rows)
+        return {
+            "state": "running",
+            "user_count": 5,
+            "stats": [
+                {
+                    "name": "Aggregated",
+                    "num_requests": requests,
+                    "num_failures": failures,
+                    "total_rps": 1.0,
+                    "current_rps": 1.0,
+                    "current_fail_per_sec": 0.0,
+                    "response_time_percentile_0.95": p95,
+                }
+            ],
+        }
+
+    monkeypatch.setattr("stage2_service.runtime_factory.time.sleep", lambda _seconds: None)
+    evidence = KubernetesTrafficEvidence(
+        Gate(),
+        Episode(),
+        stats_loader=load,
+        stats_resetter=resets.append,
+    )
+
+    recovered = evidence.reset_and_wait_healthy(
+        timeout_seconds=1, minimum_requests=20, stability_samples=1
+    )
+
+    assert recovered["business_healthy"] is True
+    assert recovered["stats_reset_count"] == 2
+    assert len(resets) == 2

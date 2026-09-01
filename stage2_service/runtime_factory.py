@@ -293,9 +293,11 @@ class KubernetesTrafficEvidence:
                 return last
             time.sleep(min(10.0, remaining))
         reset_error: dict[str, Any] = {}
+        reset_count = 0
         while True:
             try:
                 self.stats_resetter(reset_url)
+                reset_count += 1
                 break
             except Exception as exc:  # noqa: BLE001
                 reset_error = {
@@ -317,9 +319,26 @@ class KubernetesTrafficEvidence:
                 int(last.get("num_requests") or 0) >= minimum_requests
                 and last.get("business_healthy") is True
             ):
+                last["stats_reset_count"] = reset_count
                 return last
+            if int(last.get("num_requests") or 0) >= minimum_requests:
+                current_rps = float(last.get("current_rps") or 0.0)
+                current_fail = float(last.get("current_fail_per_sec") or 0.0)
+                if current_rps > 0 and current_fail / current_rps <= 0.05:
+                    try:
+                        self.stats_resetter(reset_url)
+                        reset_count += 1
+                        last = {}
+                    except Exception as exc:  # noqa: BLE001
+                        last = {
+                            "business_healthy": False,
+                            "stage": "stats_rereset",
+                            "error_type": type(exc).__name__,
+                            "stats_reset_count": reset_count,
+                        }
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                last["stats_reset_count"] = reset_count
                 return last
             time.sleep(min(10.0, remaining))
 
