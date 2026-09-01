@@ -570,7 +570,7 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     report = trial.run_trial(
         REPO_ROOT,
         "deepseek-harness",
-        "deepseek-v4-pro",
+        "gpt-5.6-sol",
         execute=True,
         artifact_root=tmp_path,
         parent_env=runtime_env(),
@@ -592,7 +592,9 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert "OPENAI_API_KEY" not in calls[0]["env"]
     assert "ANTHROPIC_AUTH_TOKEN" not in calls[0]["env"]
     assert "baseURL: https://gateway.example/v1" in calls[0]["settings"]
-    assert "model: deepseek-v4-pro" in calls[0]["settings"]
+    assert "model: gpt-5.6-sol" in calls[0]["settings"]
+    assert "id: claude-opus-5" in calls[0]["settings"]
+    assert "deepseek-v4-pro" not in calls[0]["settings"]
     assert "agent-default-model:" in calls[0]["settings"]
     assert "streamable-http" in calls[0]["cordis"]
     assert calls[0]["cordis"].count("failOnStartupError: true") == 4

@@ -110,6 +110,9 @@ harnesses:
     models:
       source: models.yaml
       default_alias: claude-opus-5
+      matrix_aliases:
+        - gpt-5.6-sol
+        - claude-opus-5
     safety:
       require_fresh_config_home_per_trial: true
       deny_direct_oracle_access: true
@@ -181,7 +184,10 @@ harnesses:
       scored_trial_eligibility: blocked-until-complete-tool-trace-pass
     models:
       source: models.yaml
-      default_alias: deepseek-v4-pro
+      default_alias: gpt-5.6-sol
+      matrix_aliases:
+        - gpt-5.6-sol
+        - claude-opus-5
     safety:
       require_controller_budget_token: true
       deny_direct_oracle_access: true

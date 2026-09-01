@@ -35,6 +35,19 @@ class Stage2CaseId(str, Enum):
     D6 = "D6"
 
 
+CORE_STAGE2_CASE_IDS = (
+    Stage2CaseId.C0,
+    Stage2CaseId.P1,
+    Stage2CaseId.P2,
+    Stage2CaseId.D1,
+    Stage2CaseId.D2,
+    Stage2CaseId.D3,
+    Stage2CaseId.D4,
+)
+
+STAGE2_MODEL_MATRIX = ("gpt-5.6-sol", "claude-opus-5")
+
+
 class LifecyclePhase(str, Enum):
     C1_PLAN = "C1_PLAN"
     C2_TARGET = "C2_TARGET"
@@ -101,31 +114,11 @@ class CaseBundleGenerationRequest(ContractModel):
     )
     prompt: str = Field(min_length=1, max_length=12000)
     bundle_id: str = Field(default="stage2-local-codex", pattern=IDENTIFIER)
-    cases: tuple[Stage2CaseId, ...] = (
-        Stage2CaseId.C0,
-        Stage2CaseId.P1,
-        Stage2CaseId.P2,
-        Stage2CaseId.D1,
-        Stage2CaseId.D2,
-        Stage2CaseId.D3,
-        Stage2CaseId.D4,
-        Stage2CaseId.D5,
-        Stage2CaseId.D6,
-    )
+    cases: tuple[Stage2CaseId, ...] = CORE_STAGE2_CASE_IDS
 
 
 def default_case_specs(
-    case_ids: tuple[Stage2CaseId, ...] = (
-        Stage2CaseId.C0,
-        Stage2CaseId.P1,
-        Stage2CaseId.P2,
-        Stage2CaseId.D1,
-        Stage2CaseId.D2,
-        Stage2CaseId.D3,
-        Stage2CaseId.D4,
-        Stage2CaseId.D5,
-        Stage2CaseId.D6,
-    ),
+    case_ids: tuple[Stage2CaseId, ...] = CORE_STAGE2_CASE_IDS,
 ) -> tuple[CaseSpec, ...]:
     specs = {
         Stage2CaseId.C0: CaseSpec(
@@ -229,6 +222,7 @@ class D0QualificationRef(ContractModel):
     campaign_id: str = Field(pattern=r"^d0-[a-z0-9-]{8,100}$")
     manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     agent_status: str
+    model_alias: str = Field(min_length=1)
 
 
 class CampaignRequest(ContractModel):
@@ -246,17 +240,7 @@ class CampaignRequest(ContractModel):
         default_factory=dict
     )
     case_bundle: CaseBundle | None = None
-    cases: tuple[Stage2CaseId, ...] = (
-        Stage2CaseId.C0,
-        Stage2CaseId.P1,
-        Stage2CaseId.P2,
-        Stage2CaseId.D1,
-        Stage2CaseId.D2,
-        Stage2CaseId.D3,
-        Stage2CaseId.D4,
-        Stage2CaseId.D5,
-        Stage2CaseId.D6,
-    )
+    cases: tuple[Stage2CaseId, ...] = CORE_STAGE2_CASE_IDS
     cluster_name: Literal["kubernetes"] = "kubernetes"
     application_namespace: Literal["otel-demo"] = "otel-demo"
     control_namespace: Literal["resiliencebenchmark-system"] = (

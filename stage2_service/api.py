@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from .contracts import (
+    STAGE2_MODEL_MATRIX,
     CampaignRequest,
     CampaignResult,
     CaseBundle,
@@ -234,7 +235,16 @@ def create_app(
                 "deepseek-harness": False,
                 "bladeai": False,
             },
-            "models": {"codex": "gpt-5.6-sol"},
+            "models": list(STAGE2_MODEL_MATRIX),
+            "model_matrix": {
+                harness: {model: available for model in STAGE2_MODEL_MATRIX}
+                for harness, available in {
+                    "codex": True,
+                    "claude-code": False,
+                    "deepseek-harness": False,
+                    "bladeai": False,
+                }.items()
+            },
             "cases": [item.model_dump(mode="json") for item in default_case_specs()],
             "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
             "rbac": {

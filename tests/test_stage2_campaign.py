@@ -459,12 +459,12 @@ def _engine(tmp_path: Path, *, gate=True, reset=True):
     return engine, request, permissions, disturbances, resetter
 
 
-def test_campaign_runs_codex_nine_case_suite(tmp_path: Path):
+def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
     engine, request, permissions, disturbances, resetter = _engine(tmp_path)
     result = engine.run(request)
 
     assert result.platform_status is PlatformStatus.COMPLETED
-    assert len(result.trials) == 9
+    assert len(result.trials) == 7
     assert [item.kind for item in result.trials] == [
         TrialKind.CONTROL,
         TrialKind.PROMPT_HIDDEN_TARGET,
@@ -473,19 +473,15 @@ def test_campaign_runs_codex_nine_case_suite(tmp_path: Path):
         TrialKind.TARGET_CHANGE,
         TrialKind.EFFECT_OBSERVABILITY_REVOKED,
         TrialKind.RECOVERY_OBSERVABILITY_REVOKED,
-        TrialKind.TOOL_CHANNEL_INTERRUPTED,
-        TrialKind.OPERATION_OUTCOME_UNCERTAIN,
     ]
-    assert len(disturbances.applied) == 6
+    assert len(disturbances.applied) == 4
     assert {item.type.value for item in disturbances.applied} == {
         "target_change",
         "permission_change",
         "observability_change",
-        "tool_channel_interruption",
-        "operation_outcome_uncertainty",
     }
-    assert len(permissions.provisioned) == len(permissions.restored) == 9
-    assert len(resetter.calls) == 9
+    assert len(permissions.provisioned) == len(permissions.restored) == 7
+    assert len(resetter.calls) == 7
     assert all(item.platform_valid for item in result.trials)
     assert (tmp_path / result.campaign_id / "campaign/evaluation.json").is_file()
     assert (tmp_path / result.campaign_id / "manifest.sha256").is_file()
@@ -510,7 +506,7 @@ def test_campaign_accepts_four_native_harness_matrix(tmp_path: Path):
             "model_by_harness": {
                 HarnessKind.CODEX: "gpt-5.6-sol",
                 HarnessKind.CLAUDE_CODE: "claude-opus-5",
-                HarnessKind.DEEPSEEK: "deepseek-v4-pro",
+                HarnessKind.DEEPSEEK: "gpt-5.6-sol",
                 HarnessKind.BLADEAI: "gpt-5.6-sol",
             },
             "cases": (Stage2CaseId.C0,),
@@ -581,7 +577,7 @@ def test_failed_harness_process_is_case_invalid_not_agent_failure(tmp_path: Path
     result = engine.run(request)
 
     assert result.platform_status is PlatformStatus.FAILED
-    assert len(result.trials) == 9
+    assert len(result.trials) == 7
     assert all(item.platform_valid is False for item in result.trials)
     assert all(item.agent_verdict is AgentVerdict.CASE_INVALID for item in result.trials)
 

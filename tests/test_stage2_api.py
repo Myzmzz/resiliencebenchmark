@@ -92,22 +92,16 @@ def test_generates_codex_case_bundle_and_preflight_contract():
     preflight = client.get("/api/v1/preflight")
 
     assert bundle.status_code == 200
-    expected_cases = [
-        "C0",
-        "P1",
-        "P2",
-        "D1",
-        "D2",
-        "D3",
-        "D4",
-        "D5",
-        "D6",
-    ]
+    expected_cases = ["C0", "P1", "P2", "D1", "D2", "D3", "D4"]
     assert [item["case_id"] for item in bundle.json()["cases"]] == expected_cases
     assert [item["case_id"] for item in preflight.json()["cases"]] == expected_cases
     assert preflight.status_code == 200
     assert preflight.json()["harnesses"]["codex"] is True
-    assert preflight.json()["models"]["codex"] == "gpt-5.6-sol"
+    assert preflight.json()["models"] == ["gpt-5.6-sol", "claude-opus-5"]
+    assert preflight.json()["model_matrix"]["codex"] == {
+        "gpt-5.6-sol": True,
+        "claude-opus-5": True,
+    }
 
 
 def test_campaign_events_are_available_for_sse_timeline():

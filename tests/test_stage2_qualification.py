@@ -18,6 +18,7 @@ def test_required_gate_verifies_manifest_host_and_agent_pass(tmp_path):
                 "campaign_id": campaign_id,
                 "status": "QUALIFIED",
                 "host": {"verified": True},
+                "models": {"codex": "gpt-5.6-sol"},
                 "results": [{"agent": "codex", "status": "PASS"}],
             }
         ),
@@ -33,8 +34,10 @@ def test_required_gate_verifies_manifest_host_and_agent_pass(tmp_path):
                 campaign_id=campaign_id,
                 manifest_sha256=digest,
                 agent_status="PASS",
+                model_alias="gpt-5.6-sol",
             )
         },
+        model_by_harness={HarnessKind.CODEX: "gpt-5.6-sol"},
     )
 
     result = D0QualificationGate(tmp_path).qualify(request)
@@ -49,6 +52,7 @@ def test_diagnostic_gate_allows_execution_but_never_scores_missing_d0():
         harnesses=(HarnessKind.CLAUDE_CODE,),
         qualification_mode="diagnostic",
         qualification_refs={},
+        model_by_harness={HarnessKind.CLAUDE_CODE: "claude-opus-5"},
     )
 
     result = D0QualificationGate(None).qualify(request)

@@ -50,7 +50,7 @@ class OtelDemoResetter:
         traffic_evidence,
         runner: ResetRunner | None = None,
         timeout_seconds: int = 900,
-        recovery_timeout_seconds: int = 300,
+        recovery_timeout_seconds: int = 180,
         verify_only: bool = False,
     ):
         self.repo_root = repo_root.resolve()

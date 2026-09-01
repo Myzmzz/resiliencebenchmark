@@ -24,7 +24,11 @@ class D0QualificationGate:
                     "reason": "qualification reference is missing",
                 }
                 continue
-            agents[harness.value] = self._verify(harness.value, ref)
+            agents[harness.value] = self._verify(
+                harness.value,
+                request.model_by_harness[harness],
+                ref,
+            )
         formal_eligible = bool(agents) and all(
             value.get("verified") is True for value in agents.values()
         )
@@ -63,6 +67,7 @@ class D0QualificationGate:
                             for result in value.get("results", [])
                             if result.get("agent")
                         },
+                        "models": value.get("models", {}),
                     }
                 )
         return {
@@ -71,7 +76,7 @@ class D0QualificationGate:
             "campaigns": campaigns,
         }
 
-    def _verify(self, agent: str, ref) -> dict[str, Any]:
+    def _verify(self, agent: str, requested_model: str, ref) -> dict[str, Any]:
         if self.artifact_root is None:
             return {"verified": False, "reason": "D0 artifact root is not configured"}
         campaign_dir = (self.artifact_root / ref.campaign_id).resolve()
@@ -96,17 +101,26 @@ class D0QualificationGate:
             None,
         )
         status = str((result or {}).get("status") or "MISSING")
+        qualified_model = str((campaign.get("models") or {}).get(agent) or "")
         verified = (
             campaign.get("host", {}).get("verified") is True
             and status == "PASS"
             and ref.agent_status == status
+            and qualified_model == requested_model
+            and ref.model_alias == requested_model
         )
         return {
             "verified": verified,
             "campaign_id": ref.campaign_id,
             "campaign_status": campaign.get("status"),
             "agent_status": status,
+            "qualified_model": qualified_model,
+            "requested_model": requested_model,
             "host_verified": campaign.get("host", {}).get("verified") is True,
             "manifest_sha256": manifest_sha256,
-            "reason": "qualified" if verified else "D0 Agent result is not PASS",
+            "reason": (
+                "qualified"
+                if verified
+                else "D0 Agent result or model identity does not match the formal Trial"
+            ),
         }

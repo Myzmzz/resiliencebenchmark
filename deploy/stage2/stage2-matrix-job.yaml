@@ -1,0 +1,93 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: resbench-stage2-matrix-
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-stage2-matrix
+    app.kubernetes.io/managed-by: resiliencebenchmark
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: resbench-stage2-matrix
+        app.kubernetes.io/managed-by: resiliencebenchmark
+        resiliencebenchmark.io/source-head: "__SOURCE_HEAD__"
+    spec:
+      serviceAccountName: resbench-stage2
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: matrix
+          image: __STAGE2_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - /app/scripts/run_stage2_matrix.py
+            - --execute
+            - --qualification-file
+            - /var/lib/resbench-stage2/integration/qualification/qualification-matrix.json
+          env:
+            - name: STAGE2_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: STAGE2_POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: STAGE2_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: STAGE2_PRIVATE_ROOT
+              value: /var/lib/resbench-stage2/integration/matrix-private
+            - name: STAGE2_ARTIFACT_ROOT
+              value: /var/lib/resbench-stage2/integration/artifacts
+            - name: STAGE2_D0_ARTIFACT_ROOT
+              value: /var/lib/resbench-stage2/integration/d0
+            - name: STAGE2_KUBECONFIG
+              value: /var/lib/resbench-stage2/integration/matrix-private/service.kubeconfig
+            - name: RESBENCH_LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resbench-stage2-runtime-e2e
+                  key: llm-base-url
+            - name: RESBENCH_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: resbench-stage2-runtime-e2e
+                  key: llm-api-key
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/resbench-stage2
+            - name: runtime
+              mountPath: /etc/resbench-stage2
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: resbench-stage2-data
+        - name: runtime
+          secret:
+            secretName: resbench-stage2-runtime
+            defaultMode: 0400
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi

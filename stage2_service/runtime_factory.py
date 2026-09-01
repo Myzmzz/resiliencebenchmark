@@ -21,7 +21,12 @@ from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 
 from .artifacts import ArtifactStore
 from .campaign import CampaignEngine
-from .contracts import CampaignRequest, CampaignResult, default_case_specs
+from .contracts import (
+    STAGE2_MODEL_MATRIX,
+    CampaignRequest,
+    CampaignResult,
+    default_case_specs,
+)
 from .disturbance import RuntimeDisturbancePlanner
 from .episode import load_fixed_episode
 from .evaluator import Stage2Evaluator
@@ -379,12 +384,6 @@ class Stage2System:
         blade_python = os.environ.get(
             "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
         )
-        models = {
-            "codex": "gpt-5.6-sol",
-            "claude-code": "claude-opus-5",
-            "deepseek-harness": "deepseek-v4-pro",
-            "bladeai": "gpt-5.6-sol",
-        }
         available_models, model_error = self._gateway_models()
         runtimes = {
             "codex": bool(codex and Path(codex).is_file()),
@@ -392,15 +391,22 @@ class Stage2System:
             "deepseek-harness": shutil.which("dsh") is not None,
             "bladeai": Path(blade_python).is_file(),
         }
-        harnesses = {
-            name: ready and models[name] in available_models
+        model_matrix = {
+            name: {
+                model: ready and model in available_models
+                for model in STAGE2_MODEL_MATRIX
+            }
             for name, ready in runtimes.items()
+        }
+        harnesses = {
+            name: all(model_matrix[name].values()) for name in runtimes
         }
         return {
             "schema_version": "stage2-preflight.v2",
             "status": "READY" if any(harnesses.values()) else "ERROR",
             "harnesses": harnesses,
-            "models": models,
+            "models": list(STAGE2_MODEL_MATRIX),
+            "model_matrix": model_matrix,
             "available_models": sorted(available_models),
             "model_catalog_error": model_error,
             "cases": [item.model_dump(mode="json") for item in default_case_specs()],
@@ -513,8 +519,8 @@ class Stage2System:
             permissions=permissions,
             mcp_supervisor=supervisor,
             base_environment=harness_environment,
-            # Keep the complete Trial within five minutes: Agent 265s,
-            # controller cleanup/recovery 25s, then a one-shot reset gate.
+            # The Agent deadline is independent of the bounded cleanup and reset
+            # windows; do not subtract recovery time from Agent execution time.
             timeout_seconds=240,
         )
         runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
@@ -541,7 +547,7 @@ class Stage2System:
             environment_gate=gate,
             traffic_evidence=traffic,
             timeout_seconds=120,
-            recovery_timeout_seconds=300,
+            recovery_timeout_seconds=180,
             verify_only=False,
         )
         engine = CampaignEngine(
