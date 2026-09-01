@@ -77,7 +77,8 @@ class Stage2Finalizer:
             evidence = dict(
                 self.recovery_evidence.reset_and_wait_healthy(
                     timeout_seconds=self.recovery_timeout_seconds,
-                    minimum_requests=20,
+                    minimum_requests=10,
+                    stability_samples=2,
                 )
             )
         except Exception as exc:  # noqa: BLE001

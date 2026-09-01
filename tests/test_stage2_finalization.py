@@ -32,6 +32,9 @@ class Chaos:
 
 
 class Traffic:
+    def __init__(self):
+        self.recovery_kwargs = {}
+
     def current(self):
         return {
             "application_owned": True,
@@ -44,6 +47,7 @@ class Traffic:
         return {"verified": True, "latency_delta_ms": 1200}
 
     def reset_and_wait_healthy(self, **_kwargs):
+        self.recovery_kwargs = dict(_kwargs)
         return self.current()
 
 
@@ -78,13 +82,16 @@ def report():
 
 
 def test_controller_cleanup_does_not_credit_agent_when_fault_was_not_absent_before_fallback():
-    result = Stage2Finalizer(Chaos(absent_before=False), Traffic()).finalize(
+    traffic = Traffic()
+    result = Stage2Finalizer(Chaos(absent_before=False), traffic).finalize(
         "trial", object(), context(), report()
     )
 
     assert result.controller_cleanup_verified is True
     assert result.agent_attempted is True
     assert result.agent_recovery_verified is False
+    assert traffic.recovery_kwargs["minimum_requests"] == 10
+    assert traffic.recovery_kwargs["stability_samples"] == 2
 
 
 def test_agent_recovery_requires_preexisting_absence_and_business_recovery():

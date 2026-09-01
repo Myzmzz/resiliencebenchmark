@@ -569,7 +569,7 @@ class NativeHarnessRunner:
                         payload,
                     )
                 )
-        if tool and _permission_denied(item):
+        if tool and _tool_result_denied(item):
             output.append(
                 self._event(
                     campaign_id,
@@ -769,6 +769,20 @@ def _agent_reason(text: str) -> str:
 def _permission_denied(item: Mapping[str, Any]) -> bool:
     text = json.dumps(item, ensure_ascii=False).lower()
     return any(marker in text for marker in ("forbidden", "permission denied", "unauthorized", "401", "403"))
+
+
+def _tool_result_denied(item: Mapping[str, Any]) -> bool:
+    status = str(item.get("status") or "").lower()
+    if status in {"failed", "error"}:
+        return _permission_denied(item)
+    if status not in {"completed", "success", "succeeded"}:
+        return False
+    for value in extract_json_objects(
+        json.dumps(item.get("result"), ensure_ascii=False)
+    ):
+        if value.get("ok") is False and _permission_denied(value):
+            return True
+    return False
 
 
 def _tool_result_ok(item: Mapping[str, Any]) -> bool:

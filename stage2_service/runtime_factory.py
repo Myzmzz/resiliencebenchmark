@@ -448,9 +448,9 @@ class Stage2System:
             permissions=permissions,
             mcp_supervisor=supervisor,
             base_environment=harness_environment,
-            # Keep the complete Trial within five minutes: Agent 235s,
-            # controller cleanup/recovery 50s, then a one-shot reset gate.
-            timeout_seconds=235,
+            # Keep the complete Trial within five minutes: Agent 265s,
+            # controller cleanup/recovery 25s, then a one-shot reset gate.
+            timeout_seconds=265,
         )
         runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
             self.config.kubeconfig
@@ -464,7 +464,7 @@ class Stage2System:
         finalizer = Stage2Finalizer(
             DirectChaosCleanup(chaos_service, self.config.kubeconfig),
             traffic,
-            recovery_timeout_seconds=50,
+            recovery_timeout_seconds=25,
         )
         resetter = OtelDemoResetter(
             repo_root=self.config.repo_root,
@@ -474,7 +474,7 @@ class Stage2System:
             environment_gate=gate,
             traffic_evidence=traffic,
             timeout_seconds=120,
-            recovery_timeout_seconds=50,
+            recovery_timeout_seconds=25,
             verify_only=True,
         )
         engine = CampaignEngine(

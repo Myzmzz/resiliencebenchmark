@@ -130,6 +130,29 @@ def test_main_fault_running_requires_explicit_successful_create_result(tmp_path:
     assert [event.kind for event in accepted] == ["main_fault_running"]
 
 
+def test_successful_tool_metadata_does_not_create_false_permission_denial(tmp_path: Path):
+    events = runner(tmp_path)._normalize_tool_event(
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-t6",
+        harness=HarnessKind.CODEX,
+        item={
+            "type": "mcp_tool_call",
+            "server": "chaos_control",
+            "tool": "chaos_create_experiment",
+            "status": "completed",
+            "arguments": {"target_uid": "uid-current"},
+            "result": {
+                "structured_content": {
+                    "ok": True,
+                    "safety": {"direct_kubernetes_bypass_forbidden": True},
+                }
+            },
+        },
+    )
+
+    assert [event.kind for event in events] == ["main_fault_running"]
+
+
 def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
     events = runner(tmp_path)._normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
