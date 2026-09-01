@@ -669,11 +669,14 @@ class Stage2System:
             artifacts=ArtifactStore(self.config.artifact_root),
             qualification_gate=self.d0_gate,
         )
-        return engine.run(
-            request,
-            event_observer=event_observer,
-            stop_requested=stop_requested,
-        )
+        try:
+            return engine.run(
+                request,
+                event_observer=event_observer,
+                stop_requested=stop_requested,
+            )
+        finally:
+            supervisor.stop()
 
 
 def write_incluster_kubeconfig(path: Path) -> None:

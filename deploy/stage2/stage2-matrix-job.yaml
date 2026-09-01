@@ -36,6 +36,8 @@ spec:
             - /var/lib/resbench-stage2/integration/qualification/qualification-matrix.json
             - --matrix-id
             - __MATRIX_ID__
+            - --resume-from
+            - __RESUME_MATRIX_ID__
           env:
             - name: STAGE2_POD_NAME
               valueFrom:

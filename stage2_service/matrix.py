@@ -128,6 +128,32 @@ def build_matrix_requests(
     return tuple(requests)
 
 
+def load_completed_matrix_results(
+    artifact_root: Path, matrix_id: str
+) -> tuple[CampaignResult, ...]:
+    if not SAFE_MATRIX_ID.fullmatch(matrix_id):
+        raise ValueError("invalid prior Stage-2 matrix id")
+    root = (artifact_root / matrix_id).resolve()
+    root.relative_to(artifact_root.resolve())
+    checkpoint_path = root / "checkpoint.json"
+    if not checkpoint_path.is_file():
+        raise ValueError("prior matrix checkpoint is missing")
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    results = []
+    for item in checkpoint.get("campaigns", []):
+        campaign_id = str(item.get("campaign_id") or "")
+        result_path = artifact_root / campaign_id / "campaign/result.json"
+        manifest_path = artifact_root / campaign_id / "manifest.sha256"
+        if not result_path.is_file() or not manifest_path.is_file():
+            continue
+        result = CampaignResult.model_validate_json(
+            result_path.read_text(encoding="utf-8")
+        )
+        if len(result.trials) == len(CORE_STAGE2_CASE_IDS):
+            results.append(result)
+    return tuple(results)
+
+
 def run_matrix(
     *,
     matrix_id: str,
@@ -135,6 +161,7 @@ def run_matrix(
     requests: tuple[CampaignRequest, ...],
     run_campaign: Callable[[CampaignRequest, Callable[[dict[str, Any]], None]], CampaignResult],
     preflight: Mapping[str, Any],
+    prior_results: tuple[CampaignResult, ...] = (),
 ) -> dict[str, Any]:
     matrix_root = (artifact_root / matrix_id).resolve()
     matrix_root.relative_to(artifact_root.resolve())
@@ -171,9 +198,23 @@ def run_matrix(
             * len(MATRIX_HARNESSES)
             * len(CORE_STAGE2_CASE_IDS),
             "campaigns": [item.model_dump(mode="json") for item in requests],
+            "resumed_campaigns": [item.campaign_id for item in prior_results],
         },
     )
-    results: list[CampaignResult] = []
+    request_pairs = {
+        (
+            request.harnesses[0],
+            next(iter(request.model_by_harness.values())),
+        )
+        for request in requests
+    }
+    prior_pairs = {
+        (result.harnesses[0], next(iter(result.model_by_harness.values())))
+        for result in prior_results
+    }
+    if len(prior_pairs) != len(prior_results) or not prior_pairs <= request_pairs:
+        raise ValueError("prior matrix results contain duplicate or unexpected pairs")
+    results: list[CampaignResult] = list(prior_results)
     event_path = matrix_root / "events.jsonl"
 
     def observe(model: str, event: dict[str, Any]) -> None:
@@ -188,6 +229,9 @@ def run_matrix(
 
     for request in requests:
         model = next(iter(request.model_by_harness.values()))
+        pair = (request.harnesses[0], model)
+        if pair in prior_pairs:
+            continue
         result = run_campaign(request, lambda event, model=model: observe(model, event))
         results.append(result)
         _atomic_json(

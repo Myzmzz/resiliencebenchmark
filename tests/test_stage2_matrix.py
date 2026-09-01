@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from stage2_service.matrix import (
     MATRIX_HARNESSES,
     build_matrix_report,
     build_matrix_requests,
+    load_completed_matrix_results,
     run_matrix,
 )
 
@@ -229,3 +231,74 @@ def test_platform_invalid_pair_runs_diagnostic_without_blocking_other_pairs():
         for item in requests
         if item is not diagnostic
     )
+
+
+def test_resume_skips_only_pairs_with_seven_sealed_trials(tmp_path):
+    requests = build_matrix_requests(
+        matrix_id="matrix-otel-20260901-120005",
+        repo_root=REPO_ROOT,
+        qualification_matrix=qualifications(),
+    )
+    prior = campaign_result(requests[0], "campaign-" + "a" * 16)
+    sequence = iter(f"campaign-{index:016x}" for index in range(20, 27))
+    calls = []
+
+    def execute(request, _observer):
+        calls.append(request.request_id)
+        return campaign_result(request, next(sequence))
+
+    report = run_matrix(
+        matrix_id="matrix-otel-20260901-120005",
+        artifact_root=tmp_path,
+        requests=requests,
+        run_campaign=execute,
+        preflight={
+            "available_models": list(STAGE2_MODEL_MATRIX),
+            "model_matrix": {
+                harness.value: {model: True for model in STAGE2_MODEL_MATRIX}
+                for harness in MATRIX_HARNESSES
+            },
+        },
+        prior_results=(prior,),
+    )
+
+    assert len(calls) == 7
+    assert report["completed_trial_count"] == 56
+
+
+def test_load_prior_results_requires_seven_trials_and_sealed_campaign(tmp_path):
+    requests = build_matrix_requests(
+        matrix_id="matrix-otel-20260901-120006",
+        repo_root=REPO_ROOT,
+        qualification_matrix=qualifications(),
+    )
+    complete = campaign_result(requests[0], "campaign-" + "b" * 16)
+    incomplete = campaign_result(requests[1], "campaign-" + "c" * 16).model_copy(
+        update={"trials": ()}
+    )
+    matrix_root = tmp_path / "matrix-otel-20260901-120006"
+    matrix_root.mkdir()
+    (matrix_root / "checkpoint.json").write_text(
+        json.dumps(
+            {
+                "campaigns": [
+                    {"campaign_id": complete.campaign_id},
+                    {"campaign_id": incomplete.campaign_id},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    for result in (complete, incomplete):
+        root = tmp_path / result.campaign_id
+        (root / "campaign").mkdir(parents=True)
+        (root / "campaign/result.json").write_text(
+            result.model_dump_json(), encoding="utf-8"
+        )
+        (root / "manifest.sha256").write_text("sealed\n", encoding="utf-8")
+
+    loaded = load_completed_matrix_results(
+        tmp_path, "matrix-otel-20260901-120006"
+    )
+
+    assert [item.campaign_id for item in loaded] == [complete.campaign_id]

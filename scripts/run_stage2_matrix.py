@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from stage2_service.matrix import (
     DEFAULT_MATRIX_PROMPT,
     build_matrix_requests,
+    load_completed_matrix_results,
     load_qualification_matrix,
     run_matrix,
 )
@@ -31,6 +32,7 @@ def parser() -> argparse.ArgumentParser:
         default="matrix-otel-" + datetime.now(UTC).strftime("%Y%m%d-%H%M%S"),
     )
     value.add_argument("--prompt", default=DEFAULT_MATRIX_PROMPT)
+    value.add_argument("--resume-from")
     return value
 
 
@@ -49,6 +51,11 @@ def main(argv: list[str] | None = None) -> int:
         prompt=args.prompt,
         qualification_matrix=qualifications,
     )
+    prior_results = (
+        load_completed_matrix_results(config.artifact_root, args.resume_from)
+        if args.resume_from
+        else ()
+    )
     report = run_matrix(
         matrix_id=args.matrix_id,
         artifact_root=config.artifact_root,
@@ -57,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             request, event_observer=observer
         ),
         preflight=system.preflight(),
+        prior_results=prior_results,
     )
     print(
         json.dumps(
