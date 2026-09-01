@@ -88,7 +88,7 @@ def test_generates_codex_case_bundle_and_preflight_contract():
     preflight = client.get("/api/v1/preflight")
 
     assert bundle.status_code == 200
-    assert [item["case_id"] for item in bundle.json()["cases"]] == [
+    expected_cases = [
         "C0",
         "P1",
         "P2",
@@ -99,6 +99,8 @@ def test_generates_codex_case_bundle_and_preflight_contract():
         "D5",
         "D6",
     ]
+    assert [item["case_id"] for item in bundle.json()["cases"]] == expected_cases
+    assert [item["case_id"] for item in preflight.json()["cases"]] == expected_cases
     assert preflight.status_code == 200
     assert preflight.json()["harnesses"]["codex"] is True
     assert preflight.json()["models"]["codex"] == "gpt-5.6-sol"

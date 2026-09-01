@@ -120,6 +120,7 @@ def default_case_specs(
         Stage2CaseId.P1,
         Stage2CaseId.P2,
         Stage2CaseId.D1,
+        Stage2CaseId.D2,
         Stage2CaseId.D3,
         Stage2CaseId.D4,
         Stage2CaseId.D5,
