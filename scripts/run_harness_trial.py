@@ -50,6 +50,32 @@ MIN_MCP_TOKEN_LENGTH = 32
 MAX_TRIAL_ID_LENGTH = 128
 TRIAL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 SAFE_PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+FORMAL_HARNESS_COMMANDS = {
+    "codex": "codex",
+    "claude-code": "claude",
+    "deepseek-harness": "dsh",
+}
+FORBIDDEN_FORMAL_ARGUMENTS = {
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--dangerously-skip-permissions",
+    "--yolo",
+    "bypassPermissions",
+    "danger-full-access",
+}
+FORBIDDEN_FORMAL_ENV = {
+    "BLADE_AI_KUBECONFIG_PATH",
+    "CLAUDE_CONFIG_FILE",
+    "DSH_PERMISSION_MODE",
+    "KUBECONFIG",
+}
+FORBIDDEN_LAUNCHER_MARKERS = {
+    "acucompute.env",
+    "resbench-mcp.json",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--dangerously-skip-permissions",
+    "DSH_PERMISSION_MODE",
+    "danger-full-access",
+}
 
 ALLOWED_RUNTIME_ENV = {
     "RESBENCH_LLM_BASE_URL",
@@ -493,6 +519,182 @@ def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], home
     return child
 
 
+def _path_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(root.resolve(strict=False))
+    except ValueError:
+        return False
+    return True
+
+
+def validate_formal_harness_runtime(
+    harness_name: str,
+    argv: Sequence[str],
+    child_env: Mapping[str, str],
+    homes: Mapping[str, str],
+    paths: Mapping[str, Path],
+    trial_root: Path,
+    expected_mcp_token: str,
+) -> None:
+    """Fail closed when a formal Trial could inherit a global or privileged runtime."""
+
+    expected_command = FORMAL_HARNESS_COMMANDS.get(harness_name)
+    if not expected_command:
+        raise ValueError(f"formal runtime validation is unavailable for harness: {harness_name}")
+    if not argv:
+        raise ValueError("formal harness argv is empty")
+    arguments = list(argv)
+    command = Path(argv[0])
+    if command.name != expected_command or (not command.is_absolute() and argv[0] != expected_command):
+        raise ValueError(
+            f"formal harness command must resolve from the trusted name {expected_command!r}"
+        )
+
+    unsafe_arguments = sorted(
+        marker
+        for marker in FORBIDDEN_FORMAL_ARGUMENTS
+        if any(marker in argument for argument in argv[1:])
+    )
+    if unsafe_arguments:
+        raise ValueError(
+            "formal harness invocation contains forbidden permission bypass arguments: "
+            + ", ".join(unsafe_arguments)
+        )
+
+    leaked_env = sorted(FORBIDDEN_FORMAL_ENV.intersection(child_env))
+    if leaked_env:
+        raise ValueError(
+            "formal harness environment contains forbidden host capability variables: "
+            + ", ".join(leaked_env)
+        )
+    if child_env.get("PATH") != SAFE_PATH:
+        raise ValueError("formal harness PATH does not match SAFE_PATH")
+    if not expected_mcp_token or child_env.get("RESBENCH_MCP_TOKEN") != expected_mcp_token:
+        raise ValueError("formal harness did not receive the current Trial MCP token")
+
+    home_key = {
+        "codex": "CODEX_HOME",
+        "claude-code": "CLAUDE_CONFIG_DIR",
+        "deepseek-harness": "DSH_HOME",
+    }[harness_name]
+    expected_home = homes.get(home_key, "")
+    if not expected_home or child_env.get(home_key) != expected_home:
+        raise ValueError(f"formal harness did not receive its Trial-local {home_key}")
+    if child_env.get("HOME") != expected_home:
+        raise ValueError(f"formal harness HOME must equal its Trial-local {home_key}")
+    home_path = Path(expected_home)
+    if not home_path.is_dir() or not _path_within(home_path, trial_root):
+        raise ValueError(f"formal harness {home_key} is outside the Trial-private directory")
+
+    if harness_name == "codex":
+        if (
+            "--sandbox" not in arguments
+            or arguments[arguments.index("--sandbox") + 1 :][:1] != ["read-only"]
+        ):
+            raise ValueError("formal Codex invocation must use the read-only sandbox")
+        codex_config = home_path / "config.toml"
+        if not codex_config.is_file() or not _path_within(codex_config, trial_root):
+            raise ValueError("formal Codex config is not Trial-local")
+        config_text = codex_config.read_text(encoding="utf-8")
+        required_settings = (
+            'approval_policy = "never"',
+            "shell_tool = false",
+            "unified_exec = false",
+            "browser_use = false",
+            "computer_use = false",
+        )
+        if any(setting not in config_text for setting in required_settings):
+            raise ValueError("formal Codex config does not disable non-MCP execution tools")
+    elif harness_name == "claude-code":
+        try:
+            config_index = arguments.index("--mcp-config") + 1
+            configured_path = Path(arguments[config_index])
+        except (ValueError, IndexError) as exc:
+            raise ValueError("formal Claude invocation requires a Trial-local --mcp-config") from exc
+        expected_config = paths.get("mcp_config_file")
+        if (
+            expected_config is None
+            or configured_path.resolve(strict=False) != expected_config.resolve(strict=False)
+            or not configured_path.is_file()
+            or not _path_within(configured_path, trial_root)
+        ):
+            raise ValueError("formal Claude MCP config is not the rendered Trial-local config")
+        if "--strict-mcp-config" not in argv:
+            raise ValueError("formal Claude invocation must use --strict-mcp-config")
+        try:
+            tools_value = arguments[arguments.index("--tools") + 1]
+            allowed_tools = arguments[arguments.index("--allowedTools") + 1]
+        except (ValueError, IndexError) as exc:
+            raise ValueError("formal Claude invocation must declare its MCP-only tool surface") from exc
+        if tools_value or not allowed_tools:
+            raise ValueError("formal Claude invocation must disable built-in tools")
+        if any(not item.startswith("mcp__") for item in allowed_tools.split(",")):
+            raise ValueError("formal Claude invocation allows a non-MCP tool")
+    elif harness_name == "deepseek-harness":
+        if child_env.get("DSH_TOOLS_MODE") != "native":
+            raise ValueError("formal DeepSeek Harness must use the Trial-local native tool graph")
+        cordis_path = home_path / "cordis.patch.yml"
+        if not cordis_path.is_file() or not _path_within(cordis_path, trial_root):
+            raise ValueError("formal DeepSeek Harness Cordis graph is not Trial-local")
+        cordis_text = cordis_path.read_text(encoding="utf-8")
+        required_disabled_tools = (
+            "- id: code-runtime\n  disabled: true",
+            "- id: tool-bash\n  disabled: true",
+            "- id: tool-fs\n  disabled: true",
+            "- id: tool-web\n  disabled: true",
+        )
+        if any(setting not in cordis_text for setting in required_disabled_tools):
+            raise ValueError("formal DeepSeek Harness graph does not disable non-MCP tools")
+
+
+def resolve_formal_harness_command(harness_name: str, command: str) -> str:
+    """Resolve one formal harness through SAFE_PATH and reject mutable or polluted launchers."""
+
+    expected_command = FORMAL_HARNESS_COMMANDS.get(harness_name)
+    if command != expected_command:
+        raise ValueError(
+            f"formal harness command must be the trusted basename {expected_command!r}, got {command!r}"
+        )
+    if os.geteuid() == 0:
+        raise ValueError("formal harness runner must execute as a non-root OS user")
+    resolved = shutil.which(command, path=SAFE_PATH)
+    if not resolved:
+        raise ValueError(f"harness command is not available on SAFE_PATH: {command}")
+    launcher = Path(resolved)
+    safe_roots = [Path(item) for item in SAFE_PATH.split(os.pathsep) if item]
+    if not launcher.is_absolute() or not any(_path_within(launcher, root) for root in safe_roots):
+        raise ValueError(f"formal harness launcher is outside SAFE_PATH: {launcher}")
+    try:
+        launcher_lstat = launcher.lstat()
+        target_stat = launcher.stat()
+    except OSError as exc:
+        raise ValueError(f"formal harness launcher cannot be inspected: {launcher}") from exc
+    if not stat.S_ISREG(target_stat.st_mode) or not os.access(launcher, os.X_OK):
+        raise ValueError(f"formal harness launcher is not an executable regular file: {launcher}")
+    if launcher_lstat.st_uid != 0 or target_stat.st_uid != 0:
+        raise ValueError(f"formal harness launcher must be root-owned: {launcher}")
+    if (
+        (not stat.S_ISLNK(launcher_lstat.st_mode) and launcher_lstat.st_mode & 0o022)
+        or target_stat.st_mode & 0o022
+    ):
+        raise ValueError(f"formal harness launcher must not be group/world writable: {launcher}")
+    try:
+        prefix = launcher.read_bytes()[:131_072]
+    except OSError as exc:
+        raise ValueError(f"formal harness launcher cannot be read: {launcher}") from exc
+    if prefix.startswith(b"#!"):
+        script_text = prefix.decode("utf-8", errors="ignore")
+        polluted = sorted(
+            marker for marker in FORBIDDEN_LAUNCHER_MARKERS if marker in script_text
+        )
+        if polluted:
+            raise ValueError(
+                "formal harness launcher script contains global or privileged "
+                f"configuration markers: {launcher}"
+            )
+    return launcher.as_posix()
+
+
 def subprocess_runner(argv: Sequence[str], stdin: bytes, env: Mapping[str, str], timeout_seconds: int) -> CommandResult:
     try:
         completed = subprocess.run(
@@ -568,18 +770,17 @@ def subprocess_streaming_runner(
     while process.poll() is None:
         if cancel_requested is not None and cancel_requested():
             cancelled = True
-            process.terminate()
             break
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             timed_out = True
-            process.terminate()
             break
         try:
             process.wait(timeout=min(0.25, remaining))
         except subprocess.TimeoutExpired:
             continue
-    if process.poll() is None:
+    if (timed_out or cancelled) and process.poll() is None:
+        process.terminate()
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -660,6 +861,34 @@ def extract_json_objects(text: str) -> list[dict[str, Any]]:
                 continue
             collect(parsed)
     return objects
+
+
+def extract_provider_reported_model(text: str) -> str | None:
+    """Read model identity only from known CLI/runtime metadata events."""
+
+    metadata_markers = {
+        "assistant",
+        "message",
+        "message_start",
+        "response.completed",
+        "response.created",
+        "session",
+        "system",
+        "thread.started",
+        "turn.started",
+    }
+    for item in extract_json_objects(text):
+        marker = str(item.get("type") or item.get("event") or "")
+        if marker in metadata_markers:
+            candidate = item.get("provider_reported_model") or item.get("model")
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        usage = item.get("modelUsage")
+        if isinstance(usage, Mapping) and len(usage) == 1:
+            candidate = next(iter(usage))
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+    return None
 
 
 def string_json_candidates(value: str) -> list[Any]:
@@ -840,6 +1069,57 @@ def validate_final_agent_result(
     return "", "agent output did not contain a JSON object matching agent-result.schema.json"
 
 
+def capture_dsh_session_trace(
+    dsh_home: Path,
+    artifact_dir: Path,
+    env: Mapping[str, str],
+    events: list[dict[str, Any]],
+) -> list[str]:
+    """Export DSH Trial-local compressed sessions before the ephemeral home is deleted."""
+    references: list[str] = []
+    zstd = shutil.which("zstd")
+    for index, source in enumerate(sorted(dsh_home.rglob("session.jsonl.zstd"))):
+        raw_name = f"dsh-session-{index:02d}.jsonl.zstd"
+        raw_path = artifact_dir / raw_name
+        shutil.copyfile(source, raw_path)
+        references.append(raw_name)
+        if not zstd:
+            continue
+        completed = subprocess.run(
+            [zstd, "-dc", str(source)],
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode:
+            continue
+        text = redact_text(completed.stdout, env)
+        jsonl_name = f"dsh-session-{index:02d}.jsonl"
+        (artifact_dir / jsonl_name).write_text(text, encoding="utf-8")
+        references.append(jsonl_name)
+        for event_index, line in enumerate(text.splitlines()):
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            event_type = str(value.get("type") or "")
+            if "tool" not in event_type and "mcp" not in event_type:
+                continue
+            ref = f"dsh-session-{index:02d}-event-{event_index:04d}.json"
+            write_json(artifact_dir / ref, value)
+            kind = "tool_result" if any(
+                marker in event_type for marker in ("result", "response", "end")
+            ) else "tool_call"
+            events.append(
+                {
+                    "ts": utc_now(),
+                    "kind": kind,
+                    "payload_ref": ref,
+                    "redacted": True,
+                }
+            )
+    return references
+
+
 def run_trial(
     repo_root: Path,
     harness_name: str,
@@ -854,6 +1134,10 @@ def run_trial(
     runner: Runner | None = None,
     event_observer: EventObserver | None = None,
     trial_id: str | None = None,
+    prompt_text_override: str | None = None,
+    require_structured_result: bool = True,
+    enforce_formal_runtime: bool = True,
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     env = dict(parent_env if parent_env is not None else os.environ)
     repo = repo_root.resolve()
@@ -879,9 +1163,19 @@ def run_trial(
 
     common_prompt_file = resolve_prompt_file(harnesses, "common_task", repo)
     prompt_file = resolve_prompt_file(harnesses, prompt_ref, repo)
-    prompt_text = render_prompt(common_prompt_file, prompt_file, episode)
+    prompt_text = (
+        str(prompt_text_override)
+        if prompt_text_override is not None
+        else render_prompt(common_prompt_file, prompt_file, episode)
+    )
     validate_prompt_text(prompt_text)
-    prompt_text = append_runtime_capability_prompt(prompt_text, env)
+    if prompt_text_override is None:
+        prompt_text = append_runtime_capability_prompt(prompt_text, env)
+        trace_prompt_ref = prompt_file.relative_to(repo).as_posix()
+    else:
+        trace_prompt_ref = "inline-sha256:" + hashlib.sha256(
+            prompt_text.encode("utf-8")
+        ).hexdigest()
     episode_id = str(episode.get("episode_id") or "unknown-episode")
     trial = validate_trial_id(trial_id) if trial_id else make_trial_id(harness_name, episode_id, model_alias)
     resolved_artifact_root = resolve_artifact_root(repo, artifact_root)
@@ -919,6 +1213,7 @@ def run_trial(
     agent_ref = ""
     result: CommandResult | None = None
     homes_deleted = False
+    native_session_refs: list[str] = []
 
     try:
         paths: dict[str, Path] = {
@@ -930,21 +1225,35 @@ def run_trial(
         paths["mcp_config_file"] = render_claude_config(repo, claude_home)
         render_dsh_contract(repo, dsh_home, env, model_alias)
 
-        child_env = child_env_for_harness(
-            harness_name,
-            env,
-            {
-                "CODEX_HOME": codex_home.as_posix(),
-                "CLAUDE_CONFIG_DIR": claude_home.as_posix(),
-                "DSH_HOME": dsh_home.as_posix(),
-            },
-        )
+        homes = {
+            "CODEX_HOME": codex_home.as_posix(),
+            "CLAUDE_CONFIG_DIR": claude_home.as_posix(),
+            "DSH_HOME": dsh_home.as_posix(),
+        }
+        child_env = child_env_for_harness(harness_name, env, homes)
+        if not enforce_formal_runtime:
+            child_env["PATH"] = env.get("RESBENCH_D0_NATIVE_PATH") or env.get(
+                "PATH", SAFE_PATH
+            )
         harness = registry[harness_name]
         argv, stdin, fail_closed_reason = build_argv(harness_name, harness, model_alias, prompt_text, paths)
-        if execute and runner is None and not fail_closed_reason:
-            resolved_command = shutil.which(argv[0], path=SAFE_PATH)
+        if execute and not fail_closed_reason and enforce_formal_runtime:
+            validate_formal_harness_runtime(
+                harness_name,
+                argv,
+                child_env,
+                homes,
+                paths,
+                temp_root,
+                env.get("RESBENCH_MCP_TOKEN", ""),
+            )
+            if runner is None:
+                resolved_command = resolve_formal_harness_command(harness_name, argv[0])
+                argv = [resolved_command, *argv[1:]]
+        elif execute and not fail_closed_reason and runner is None:
+            resolved_command = shutil.which(argv[0])
             if not resolved_command:
-                raise ValueError(f"harness command is not available on SAFE_PATH: {argv[0]}")
+                raise ValueError(f"D0 native harness command is unavailable: {argv[0]}")
             argv = [resolved_command, *argv[1:]]
         planned = {
             "argv": artifact_argv(
@@ -1008,6 +1317,7 @@ def run_trial(
                     child_env,
                     timeout_seconds,
                     observe_stdout_line,
+                    cancel_requested,
                 )
             stdout_ref, stdout_truncated = write_payload(artifact_dir, "stdout.txt", result.stdout, env, max_output_bytes)
             stderr_ref, stderr_truncated = write_payload(artifact_dir, "stderr.txt", result.stderr, env, max_output_bytes)
@@ -1042,6 +1352,9 @@ def run_trial(
             if result.timed_out:
                 status = "timeout"
                 error = "agent process exceeded timeout_seconds"
+            elif result.cancelled:
+                status = "aborted_by_controller"
+                error = "agent process cancelled by D0 Controller deadline"
             elif result.returncode != 0:
                 status = "failed"
                 error = f"agent process exited with code {result.returncode}"
@@ -1049,19 +1362,26 @@ def run_trial(
                 status = "failed"
                 error = "harness exposed or used a non-MCP tool"
             else:
-                agent_ref, validation_error = validate_final_agent_result(
-                    result.stdout,
-                    [paths["codex_last_message_file"]],
-                    artifact_dir,
-                    output_schema,
-                    env,
-                )
-                if validation_error:
-                    status = "failed"
-                    error = validation_error
+                if require_structured_result:
+                    agent_ref, validation_error = validate_final_agent_result(
+                        result.stdout,
+                        [paths["codex_last_message_file"]],
+                        artifact_dir,
+                        output_schema,
+                        env,
+                    )
+                    if validation_error:
+                        status = "failed"
+                        error = validation_error
+                    else:
+                        status = "completed"
                 else:
                     status = "completed"
     finally:
+        if harness_name == "deepseek-harness" and dsh_home.exists():
+            native_session_refs = capture_dsh_session_trace(
+                dsh_home, artifact_dir, env, events
+            )
         shutil.rmtree(temp_root, ignore_errors=True)
         homes_deleted = not temp_root.exists()
 
@@ -1075,7 +1395,7 @@ def run_trial(
         "episode_id": episode_id,
         "harness": harness_name,
         "model_alias": model_alias,
-        "prompt_ref": prompt_file.relative_to(repo).as_posix(),
+        "prompt_ref": trace_prompt_ref,
         "started_at": started_at,
         "finished_at": utc_now(),
         "events": events,
@@ -1094,6 +1414,8 @@ def run_trial(
         "runTraceRef": f"{trial}/run-trace.json",
         "eventsJsonlRef": f"{trial}/events.jsonl",
         "agentResultRef": f"{trial}/{agent_ref}" if agent_ref else "",
+        "nativeSessionRefs": [f"{trial}/{value}" for value in native_session_refs],
+        "promptSha256": hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
         "error": final_output.get("error", ""),
     }
 

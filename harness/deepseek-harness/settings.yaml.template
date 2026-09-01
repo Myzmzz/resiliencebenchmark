@@ -6,6 +6,7 @@ llm-pi-ai:
       baseURL: __RESBENCH_LLM_BASE_URL__
       models:
         - id: gpt-5.6
+        - id: gpt-5.6-sol
         - id: deepseek-v4-pro
         - id: qwen3.8-max
         - id: claude-opus-5
