@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
+import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from .contracts import HarnessReport, RecoveryResult, TrialRuntimeContext
@@ -36,10 +39,14 @@ class Stage2Finalizer:
         chaos: ChaosCleanupBackend,
         recovery_evidence: RecoveryEvidenceProvider,
         recovery_timeout_seconds: int = 180,
+        poll_seconds: int = 5,
+        sleep=time.sleep,
     ):
         self.chaos = chaos
         self.recovery_evidence = recovery_evidence
         self.recovery_timeout_seconds = recovery_timeout_seconds
+        self.poll_seconds = poll_seconds
+        self.sleep = sleep
 
     def finalize(
         self,
@@ -60,7 +67,24 @@ class Stage2Finalizer:
             and pre_status.get("target_uid") == runtime.target.uid
             and pre_status.get("fault_type") == runtime.main_fault.get("fault_type")
         )
+        timeout_recovery_observed = False
+        timeout_wait_seconds = 0.0
+        if ever_active and not pre_absent and not agent_attempted:
+            timeout_wait_seconds = self._remaining_fault_seconds(
+                pre_status, runtime
+            )
+            checks = max(1, math.ceil(timeout_wait_seconds / self.poll_seconds))
+            for _ in range(checks):
+                self.sleep(min(self.poll_seconds, timeout_wait_seconds or self.poll_seconds))
+                observed = self._safe(self.chaos.status, runtime.cleanup_handle)
+                if observed.get("resource_absent") is True:
+                    pre_status = observed
+                    pre_absent = True
+                    timeout_recovery_observed = True
+                    break
         effect = dict(self.recovery_evidence.effect_since(trial_id))
+        effect["timeout_recovery_observed"] = timeout_recovery_observed
+        effect["timeout_wait_seconds"] = round(timeout_wait_seconds, 3)
         destroy = self._safe(self.chaos.destroy, runtime.cleanup_handle)
         status = self._safe(self.chaos.status, runtime.cleanup_handle)
         inventory = self._safe(self.chaos.inventory, runtime.target.namespace)
@@ -110,6 +134,21 @@ class Stage2Finalizer:
                 "application://builtin-load-generator/recovery",
             ),
         )
+
+    @staticmethod
+    def _remaining_fault_seconds(
+        status: Mapping[str, Any], runtime: TrialRuntimeContext
+    ) -> float:
+        raw_deadline = status.get("deadline_at")
+        if raw_deadline:
+            try:
+                deadline = datetime.fromisoformat(
+                    str(raw_deadline).replace("Z", "+00:00")
+                )
+                return max(0.0, (deadline - datetime.now(UTC)).total_seconds()) + 10
+            except ValueError:
+                pass
+        return float(runtime.main_fault.get("duration_seconds") or 0) + 10
 
     @staticmethod
     def _safe(operation, *args) -> dict[str, Any]:

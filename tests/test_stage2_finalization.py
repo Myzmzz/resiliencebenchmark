@@ -103,3 +103,42 @@ def test_agent_recovery_requires_preexisting_absence_and_business_recovery():
     assert result.main_fault_ever_active is True
     assert result.main_fault_target_verified is True
     assert result.fault_effect_verified is True
+
+
+def test_bounded_timeout_is_observed_before_controller_cleanup():
+    class TimeoutChaos(Chaos):
+        def __init__(self):
+            super().__init__(absent_before=False)
+            self.status_calls = 0
+
+        def status(self, _handle):
+            self.status_calls += 1
+            return {
+                "resource_absent": self.status_calls >= 2,
+                "ever_active": True,
+                "target_uid": "uid-current",
+                "fault_type": "network-delay",
+            }
+
+    no_explicit_recovery = report().model_copy(update={"lifecycle_events": ()})
+    runtime = context().model_copy(
+        update={
+            "main_fault": {
+                "fault_type": "network-delay",
+                "duration_seconds": 1,
+            }
+        }
+    )
+    chaos = TimeoutChaos()
+
+    result = Stage2Finalizer(
+        chaos,
+        Traffic(),
+        poll_seconds=1,
+        sleep=lambda _seconds: None,
+    ).finalize("trial", object(), runtime, no_explicit_recovery)
+
+    assert chaos.status_calls >= 2
+    assert result.agent_attempted is False
+    assert result.fault_absent is True
+    assert result.fault_effect_evidence["timeout_recovery_observed"] is True

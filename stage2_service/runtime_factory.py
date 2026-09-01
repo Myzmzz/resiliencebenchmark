@@ -521,7 +521,7 @@ class Stage2System:
             base_environment=harness_environment,
             # The Agent deadline is independent of the bounded cleanup and reset
             # windows; do not subtract recovery time from Agent execution time.
-            timeout_seconds=240,
+            timeout_seconds=600,
         )
         runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
             self.config.kubeconfig
