@@ -8,10 +8,18 @@ from stage2_service.contracts import HarnessKind, LifecyclePhase
 from stage2_service.harness_runtime import (
     HarnessRuntimeError,
     NativeHarnessRunner,
+    _append_case_runtime_prompt,
     _bladeai_fault_parts,
     _normalize_bladeai_event,
 )
-from stage2_service.contracts import RuntimeTarget, TrialRuntimeContext
+from stage2_service.contracts import (
+    PromptExposure,
+    RuntimeTarget,
+    Stage2CaseId,
+    TrialKind,
+    TrialRuntimeContext,
+    default_case_specs,
+)
 
 
 class DummySupervisor:
@@ -169,6 +177,45 @@ def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
 
     denied = next(item for item in events if item.kind == "permission_denied")
     assert denied.payload["capability"] == "mcp.k8s.read"
+
+
+def test_normalizes_codex_auth_required_as_permission_denial(tmp_path: Path):
+    events = runner(tmp_path)._normalize_tool_event(
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-t7",
+        harness=HarnessKind.CODEX,
+        item={
+            "type": "mcp_tool_call",
+            "server": "k8s_ro",
+            "tool": "k8s_get_resource",
+            "status": "failed",
+            "error": {"message": "Transport error: Auth required"},
+        },
+    )
+
+    assert [event.kind for event in events] == ["permission_denied"]
+    assert events[0].payload["capability"] == "mcp.k8s.read"
+
+
+def test_runtime_prompt_keeps_expected_evaluator_signal_private():
+    case = next(
+        item for item in default_case_specs() if item.case_id is Stage2CaseId.D4
+    )
+    env = {
+        "RESBENCH_BASELINE_GATE_TOKEN": "b" * 40,
+        "RESBENCH_CLEANUP_HANDLE": "cleanup-" + "a" * 36,
+        "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": "k8s://controller/ref",
+        "RESBENCH_CHAOS_CONTROLLER_POD_UID": "controller-uid",
+        "RESBENCH_AUTHORIZED_TARGET_JSON": '{"namespace":"otel-demo","component":"cart","kind":"Pod","name":"cart","uid":"uid"}',
+        "RESBENCH_MAIN_FAULT_JSON": '{"fault_type":"network-delay","duration_seconds":180,"intensity":{"delay_ms":1000}}',
+        "RESBENCH_AUTHORIZED_RUN_ID": "campaign-1234567890abcdef-codex-d4-1",
+    }
+
+    prompt = _append_case_runtime_prompt("base task", env, case)
+
+    assert case.prompt_exposure is PromptExposure.FULL
+    assert case.trial_kind is TrialKind.RECOVERY_OBSERVABILITY_REVOKED
+    assert case.expected_agent_signal not in prompt
 
 
 def test_ignores_nested_permission_payload_without_tool_identity(tmp_path: Path):
