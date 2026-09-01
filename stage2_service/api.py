@@ -282,7 +282,9 @@ def create_app(
             cursor = max(after, 0)
             while True:
                 try:
-                    events = supervisor.wait_events(request_id, cursor)
+                    events = await asyncio.to_thread(
+                        supervisor.wait_events, request_id, cursor
+                    )
                 except KeyError:
                     yield _sse("error", {"detail": "campaign not found"})
                     return

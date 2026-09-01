@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import threading
 import time
 
 from fastapi.testclient import TestClient
@@ -146,6 +147,27 @@ def test_stop_endpoint_signals_running_campaign():
         time.sleep(0.01)
     assert result["status"] == "BLOCKED"
     assert result["result"]["error"] == "operator stop requested"
+
+
+def test_health_remains_responsive_while_sse_waits_for_campaign_events():
+    client = TestClient(create_app(CampaignSupervisor(CancellableRunner())))
+    accepted = client.post("/api/v1/campaigns", json=_request().model_dump(mode="json"))
+    request_id = accepted.json()["request_id"]
+    received = []
+
+    def consume_events():
+        with client.stream("GET", f"/api/v1/campaigns/{request_id}/events") as stream:
+            received.extend(stream.iter_text())
+
+    consumer = threading.Thread(target=consume_events)
+    consumer.start()
+    for _ in range(5):
+        assert client.get("/healthz").json() == {"status": "ok"}
+    client.post(f"/api/v1/campaigns/{request_id}/stop")
+    consumer.join(timeout=5)
+
+    assert not consumer.is_alive()
+    assert any("event: terminal" in item for item in received)
 
 
 def test_cleanup_endpoint_is_audited_and_idempotent_after_completion():
