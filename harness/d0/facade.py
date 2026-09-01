@@ -306,6 +306,7 @@ class BladeAIServerProcess:
         self.process: subprocess.Popen[bytes] | None = None
         self.log_handle = None
         self.owned = False
+        self.runtime_root: Path | None = None
 
     def _healthy(self) -> bool:
         try:
@@ -327,6 +328,8 @@ class BladeAIServerProcess:
         if not resolved:
             raise RuntimeError("BladeAI command is unavailable")
         self.artifact_root.mkdir(parents=True, exist_ok=True)
+        self.runtime_root = self.artifact_root / ".bladeai-runtime"
+        self.runtime_root.mkdir(mode=0o700, exist_ok=False)
         self.log_handle = (self.artifact_root / "bladeai-server.log").open("ab")
         self.process = subprocess.Popen(
             [
@@ -342,6 +345,7 @@ class BladeAIServerProcess:
             stdout=self.log_handle,
             stderr=subprocess.STDOUT,
             env={**os.environ, **self.environment},
+            cwd=self.runtime_root,
         )
         self.owned = True
         deadline = time.monotonic() + 45
@@ -365,3 +369,6 @@ class BladeAIServerProcess:
         if self.log_handle is not None:
             self.log_handle.close()
             self.log_handle = None
+        if self.runtime_root is not None:
+            shutil.rmtree(self.runtime_root, ignore_errors=True)
+            self.runtime_root = None
