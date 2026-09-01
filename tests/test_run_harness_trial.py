@@ -592,8 +592,9 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert "OPENAI_API_KEY" not in calls[0]["env"]
     assert "ANTHROPIC_AUTH_TOKEN" not in calls[0]["env"]
     assert "baseURL: https://gateway.example/v1" in calls[0]["settings"]
+    assert "api: openai-completions" in calls[0]["settings"]
     assert "model: gpt-5.6-sol" in calls[0]["settings"]
-    assert "id: claude-opus-5" in calls[0]["settings"]
+    assert "id: gpt-5.6-sol" in calls[0]["settings"]
     assert "deepseek-v4-pro" not in calls[0]["settings"]
     assert "agent-default-model:" in calls[0]["settings"]
     assert "streamable-http" in calls[0]["cordis"]
@@ -606,6 +607,38 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert "KUBECONFIG" not in calls[0]["env"]
     assert "BLADE_AI_KUBECONFIG_PATH" not in calls[0]["env"]
     assert "DSH_PERMISSION_MODE" not in calls[0]["env"]
+
+
+def test_deepseek_claude_model_uses_anthropic_protocol(tmp_path):
+    calls = []
+
+    def fake_runner(argv, stdin, env, timeout_seconds):
+        del argv, stdin, timeout_seconds
+        calls.append(
+            (Path(env["DSH_HOME"]) / "settings.yaml").read_text(encoding="utf-8")
+        )
+        return trial.CommandResult(
+            returncode=0,
+            stdout=json.dumps(valid_agent_result("opus through dsh")).encode(),
+            stderr=b"",
+        )
+
+    report = trial.run_trial(
+        REPO_ROOT,
+        "deepseek-harness",
+        "claude-opus-5",
+        execute=True,
+        artifact_root=tmp_path,
+        parent_env=runtime_env(),
+        runner=fake_runner,
+        trial_id="dsh-opus-protocol",
+    )
+
+    assert report["status"] == "completed"
+    assert "api: anthropic-messages" in calls[0]
+    assert "baseURL: https://gateway.example" in calls[0]
+    assert "id: claude-opus-5" in calls[0]
+    assert "gpt-5.6-sol" not in calls[0]
 
 
 def test_formal_runtime_preflight_rejects_bypass_arguments_and_host_permissions(tmp_path):

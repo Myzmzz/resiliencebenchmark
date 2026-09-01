@@ -423,7 +423,13 @@ def render_dsh_contract(repo_root: Path, dsh_home: Path, env: Mapping[str, str],
     source_dir = repo_root / "harness" / "deepseek-harness"
     dsh_home.mkdir(parents=True, exist_ok=True)
     settings = (source_dir / "settings.yaml.template").read_text(encoding="utf-8")
-    settings = settings.replace("__RESBENCH_LLM_BASE_URL__", env.get("RESBENCH_LLM_BASE_URL", ""))
+    base_url = env.get("RESBENCH_LLM_BASE_URL", "")
+    api = "openai-completions"
+    if model_alias == "claude-opus-5":
+        api = "anthropic-messages"
+        base_url = anthropic_base_url(base_url)
+    settings = settings.replace("__RESBENCH_DSH_API__", api)
+    settings = settings.replace("__RESBENCH_DSH_BASE_URL__", base_url)
     settings = settings.replace("__RESBENCH_MODEL_ALIAS__", model_alias)
     (dsh_home / "settings.yaml").write_text(settings, encoding="utf-8")
     shutil.copyfile(source_dir / "mcp.cordis.patch.yml", dsh_home / "cordis.patch.yml")
