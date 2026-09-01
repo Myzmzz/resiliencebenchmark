@@ -6,7 +6,8 @@ FROM otel-chart AS otel_chart
 FROM node_runtime AS frontend_build
 WORKDIR /frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN corepack enable && corepack prepare pnpm@8.15.9 --activate \
+    && pnpm install --frozen-lockfile
 COPY frontend /frontend
 RUN pnpm build
 

@@ -3,7 +3,8 @@ ARG STAGE2_RUNTIME_BASE=1.94.151.57:85/observe/resbench-stage2:stage2-85c382bcad
 FROM node:24.13.0-bookworm-slim AS frontend_build
 WORKDIR /frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN corepack enable && corepack prepare pnpm@8.15.9 --activate \
+    && pnpm install --frozen-lockfile
 COPY frontend /frontend
 RUN pnpm build
 
