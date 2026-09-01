@@ -40,6 +40,8 @@ def source_digest() -> str:
             REPO_ROOT / "scripts/run_otel_accounting_cpu_matrix.py",
             REPO_ROOT / "scripts/run_stage2_matrix.py",
             REPO_ROOT / "scripts/build_stage2_qualification_matrix.py",
+            REPO_ROOT
+            / "tasks/examples/public/episode.otel-accounting-cpu-d0.v1.yaml",
             REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay",
             REPO_ROOT / "deploy/stage2/codex-eval",
         ]
