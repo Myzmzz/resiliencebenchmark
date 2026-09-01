@@ -61,10 +61,6 @@ def build(d0_root: Path, assignments: dict[tuple[str, str], str]) -> dict:
                 None,
             )
             status = str((result or {}).get("status") or "MISSING")
-            if not evaluation_ready_result(dict(result or {})):
-                raise ValueError(
-                    f"D0 evidence is not evaluation-ready: {campaign_id}/{harness}={status}"
-                )
             if (campaign.get("models") or {}).get(harness) != model:
                 raise ValueError(
                     f"D0 model identity mismatch: {campaign_id}/{harness}"
@@ -76,6 +72,12 @@ def build(d0_root: Path, assignments: dict[tuple[str, str], str]) -> dict:
                 ).hexdigest(),
                 "agent_status": status,
                 "model_alias": model,
+                "evaluation_ready": evaluation_ready_result(dict(result or {})),
+                "invalid_reason": (
+                    None
+                    if evaluation_ready_result(dict(result or {}))
+                    else "D0 result is platform-invalid and Stage-2 must run diagnostic-only"
+                ),
             }
     return {
         "schema_version": "stage2-qualification-matrix.v1",

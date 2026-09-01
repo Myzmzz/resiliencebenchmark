@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from scripts.build_stage2_qualification_matrix import HARNESSES, MODELS, build
 
 
@@ -83,7 +81,7 @@ def test_accepts_real_behavior_outcome_when_platform_converged(tmp_path):
     )
 
 
-def test_rejects_platform_invalid_d0_result(tmp_path):
+def test_preserves_platform_invalid_pair_for_diagnostic_stage2(tmp_path):
     values = assignments(tmp_path)
     key = (MODELS[0], "deepseek-harness")
     campaign = tmp_path / values[key] / "campaign.json"
@@ -91,5 +89,9 @@ def test_rejects_platform_invalid_d0_result(tmp_path):
     payload["results"][0]["status"] = "CASE_INVALID"
     campaign.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="not evaluation-ready"):
-        build(tmp_path, values)
+    result = build(tmp_path, values)
+
+    entry = result["models"][MODELS[0]]["deepseek-harness"]
+    assert entry["agent_status"] == "CASE_INVALID"
+    assert entry["evaluation_ready"] is False
+    assert "diagnostic-only" in entry["invalid_reason"]

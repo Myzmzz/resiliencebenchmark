@@ -51,14 +51,17 @@ def fixed_otel_episode_ref(repo_root: Path) -> FixedEpisodeRef:
     )
 
 
-def load_qualification_matrix(path: Path) -> dict[str, dict[HarnessKind, D0QualificationRef]]:
+QualificationEntry = tuple[D0QualificationRef, bool]
+
+
+def load_qualification_matrix(path: Path) -> dict[str, dict[HarnessKind, QualificationEntry]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("schema_version") != "stage2-qualification-matrix.v1":
         raise ValueError("qualification matrix schema is not stage2-qualification-matrix.v1")
     raw_models = payload.get("models")
     if not isinstance(raw_models, Mapping):
         raise ValueError("qualification matrix models are missing")
-    result: dict[str, dict[HarnessKind, D0QualificationRef]] = {}
+    result: dict[str, dict[HarnessKind, QualificationEntry]] = {}
     for model in STAGE2_MODEL_MATRIX:
         raw_harnesses = raw_models.get(model)
         if not isinstance(raw_harnesses, Mapping):
@@ -70,12 +73,17 @@ def load_qualification_matrix(path: Path) -> dict[str, dict[HarnessKind, D0Quali
                 raise ValueError(
                     f"qualification matrix is missing {harness.value}/{model}"
                 )
-            ref = D0QualificationRef.model_validate(raw_ref)
+            ref = D0QualificationRef.model_validate(
+                {key: value for key, value in raw_ref.items() if key in D0QualificationRef.model_fields}
+            )
             if ref.model_alias != model:
                 raise ValueError(
                     f"qualification model mismatch for {harness.value}/{model}"
                 )
-            result[model][harness] = ref
+            result[model][harness] = (
+                ref,
+                raw_ref.get("evaluation_ready") is True,
+            )
     return result
 
 
@@ -84,9 +92,7 @@ def build_matrix_requests(
     matrix_id: str,
     repo_root: Path,
     prompt: str = DEFAULT_MATRIX_PROMPT,
-    qualification_matrix: Mapping[
-        str, Mapping[HarnessKind, D0QualificationRef]
-    ],
+    qualification_matrix: Mapping[str, Mapping[HarnessKind, QualificationEntry]],
 ) -> tuple[CampaignRequest, ...]:
     if not SAFE_MATRIX_ID.fullmatch(matrix_id):
         raise ValueError("invalid Stage-2 matrix id")
@@ -97,23 +103,28 @@ def build_matrix_requests(
         refs = qualification_matrix.get(model)
         if refs is None or set(refs) != set(MATRIX_HARNESSES):
             raise ValueError(f"formal qualification refs are incomplete for {model}")
-        slug = model.replace(".", "-")
-        requests.append(
-            CampaignRequest(
-                request_id=f"{matrix_id}-{slug}",
-                episode=episode,
-                harnesses=MATRIX_HARNESSES,
-                model_by_harness={harness: model for harness in MATRIX_HARNESSES},
-                qualification_mode="required",
-                qualification_refs=dict(refs),
-                case_bundle=CaseBundle(
-                    bundle_id=f"{matrix_id}-{slug}",
-                    base_prompt=prompt,
-                    cases=cases,
-                ),
-                cases=CORE_STAGE2_CASE_IDS,
+        model_slug = model.replace(".", "-")
+        for harness in MATRIX_HARNESSES:
+            ref, evaluation_ready = refs[harness]
+            pair_slug = f"{model_slug}-{harness.value}"
+            requests.append(
+                CampaignRequest(
+                    request_id=f"{matrix_id}-{pair_slug}",
+                    episode=episode,
+                    harnesses=(harness,),
+                    model_by_harness={harness: model},
+                    qualification_mode=(
+                        "required" if evaluation_ready else "diagnostic"
+                    ),
+                    qualification_refs={harness: ref},
+                    case_bundle=CaseBundle(
+                        bundle_id=f"{matrix_id}-{pair_slug}",
+                        base_prompt=prompt,
+                        cases=cases,
+                    ),
+                    cases=CORE_STAGE2_CASE_IDS,
+                )
             )
-        )
     return tuple(requests)
 
 
@@ -184,8 +195,12 @@ def run_matrix(
             {
                 "schema_version": "stage2-matrix-checkpoint.v1",
                 "matrix_id": matrix_id,
-                "completed_models": [
-                    next(iter(item.model_by_harness.values())) for item in results
+                "completed_pairs": [
+                    {
+                        "harness": item.harnesses[0].value,
+                        "model": next(iter(item.model_by_harness.values())),
+                    }
+                    for item in results
                 ],
                 "campaigns": [
                     {

@@ -30,11 +30,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def qualifications():
     return {
         model: {
-            harness: D0QualificationRef(
-                campaign_id=f"d0-otel-accounting-{model.replace('.', '-')}-{harness.value}",
-                manifest_sha256="a" * 64,
-                agent_status="PASS",
-                model_alias=model,
+            harness: (
+                D0QualificationRef(
+                    campaign_id=f"d0-otel-accounting-{model.replace('.', '-')}-{harness.value}",
+                    manifest_sha256="a" * 64,
+                    agent_status="PASS",
+                    model_alias=model,
+                ),
+                True,
             )
             for harness in MATRIX_HARNESSES
         }
@@ -95,11 +98,12 @@ def test_builds_exact_four_by_two_by_seven_formal_matrix():
         qualification_matrix=qualifications(),
     )
 
-    assert len(requests) == 2
+    assert len(requests) == 8
     assert {next(iter(item.model_by_harness.values())) for item in requests} == set(
         STAGE2_MODEL_MATRIX
     )
-    assert all(item.harnesses == MATRIX_HARNESSES for item in requests)
+    assert all(len(item.harnesses) == 1 for item in requests)
+    assert {item.harnesses[0] for item in requests} == set(MATRIX_HARNESSES)
     assert all(item.cases == CORE_STAGE2_CASE_IDS for item in requests)
     assert all(item.qualification_mode == "required" for item in requests)
     assert sum(len(item.harnesses) * len(item.cases) for item in requests) == 56
@@ -111,7 +115,7 @@ def test_matrix_runner_writes_scored_report_and_manifest(tmp_path):
         repo_root=REPO_ROOT,
         qualification_matrix=qualifications(),
     )
-    sequence = iter(("campaign-" + "1" * 16, "campaign-" + "2" * 16))
+    sequence = iter(f"campaign-{index:016x}" for index in range(1, 9))
 
     report = run_matrix(
         matrix_id="matrix-otel-20260901-120001",
@@ -194,9 +198,34 @@ def test_matrix_stops_before_second_model_after_reset_failure(tmp_path):
     )
 
     assert len(calls) == 1
-    assert report["completed_trial_count"] == 28
+    assert report["completed_trial_count"] == 7
     events = (
         tmp_path / "matrix-otel-20260901-120003" / "events.jsonl"
     ).read_text(encoding="utf-8")
     assert '"kind": "matrix_stopped"' in events
     assert '"reason": "RESET_FAILED"' in events
+
+
+def test_platform_invalid_pair_runs_diagnostic_without_blocking_other_pairs():
+    values = qualifications()
+    ref, _ = values["claude-opus-5"][HarnessKind.CODEX]
+    values["claude-opus-5"][HarnessKind.CODEX] = (ref, False)
+
+    requests = build_matrix_requests(
+        matrix_id="matrix-otel-20260901-120004",
+        repo_root=REPO_ROOT,
+        qualification_matrix=values,
+    )
+
+    diagnostic = next(
+        item
+        for item in requests
+        if item.harnesses == (HarnessKind.CODEX,)
+        and item.model_by_harness[HarnessKind.CODEX] == "claude-opus-5"
+    )
+    assert diagnostic.qualification_mode == "diagnostic"
+    assert all(
+        item.qualification_mode == "required"
+        for item in requests
+        if item is not diagnostic
+    )
