@@ -21,6 +21,7 @@ from .contracts import (
     D0QualificationRef,
     FixedEpisodeRef,
     HarnessKind,
+    PlatformStatus,
     default_case_specs,
 )
 
@@ -196,6 +197,21 @@ def run_matrix(
                 ],
             },
         )
+        if result.platform_status in {
+            PlatformStatus.RESET_FAILED,
+            PlatformStatus.BLOCKED,
+        }:
+            _append_jsonl(
+                event_path,
+                {
+                    "observed_at": datetime.now(UTC).isoformat(),
+                    "model": model,
+                    "kind": "matrix_stopped",
+                    "reason": result.platform_status.value,
+                    "campaign_id": result.campaign_id,
+                },
+            )
+            break
     report = build_matrix_report(matrix_id, requests[0].case_bundle.base_prompt, results)
     _atomic_json(matrix_root / "report.json", report)
     (matrix_root / "report.md").write_text(

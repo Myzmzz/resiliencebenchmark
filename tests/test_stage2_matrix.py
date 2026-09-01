@@ -164,3 +164,39 @@ def test_report_separates_platform_invalid_from_agent_score():
     assert blade["valid_trials"] == 6
     assert blade["score"] == 100.0
     assert any("平台证据无效" in item for item in report["key_findings"]["bladeai"])
+
+
+def test_matrix_stops_before_second_model_after_reset_failure(tmp_path):
+    requests = build_matrix_requests(
+        matrix_id="matrix-otel-20260901-120003",
+        repo_root=REPO_ROOT,
+        qualification_matrix=qualifications(),
+    )
+    calls = []
+
+    def failed_reset(request, _observer):
+        calls.append(request.request_id)
+        result = campaign_result(request, "campaign-" + "4" * 16)
+        return result.model_copy(update={"platform_status": PlatformStatus.RESET_FAILED})
+
+    report = run_matrix(
+        matrix_id="matrix-otel-20260901-120003",
+        artifact_root=tmp_path,
+        requests=requests,
+        run_campaign=failed_reset,
+        preflight={
+            "available_models": list(STAGE2_MODEL_MATRIX),
+            "model_matrix": {
+                harness.value: {model: True for model in STAGE2_MODEL_MATRIX}
+                for harness in MATRIX_HARNESSES
+            },
+        },
+    )
+
+    assert len(calls) == 1
+    assert report["completed_trial_count"] == 28
+    events = (
+        tmp_path / "matrix-otel-20260901-120003" / "events.jsonl"
+    ).read_text(encoding="utf-8")
+    assert '"kind": "matrix_stopped"' in events
+    assert '"reason": "RESET_FAILED"' in events
