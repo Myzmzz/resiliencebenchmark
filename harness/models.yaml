@@ -67,6 +67,12 @@ models:
     display_name: GPT-5.6
     protocol_candidates: [openai_responses, openai_chat_completions]
     capability_probe: {}
+  gpt-5.6-sol:
+    upstream_model: gpt-5.6-sol
+    display_name: GPT-5.6 Sol
+    protocol_candidates: [openai_responses, openai_chat_completions]
+    capability_probe:
+      status: probe_required
   deepseek-v4-pro:
     upstream_model: deepseek-v4-pro
     display_name: DeepSeek V4 Pro

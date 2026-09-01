@@ -1,4 +1,6 @@
 import json
+import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -19,6 +21,10 @@ def runtime_env():
         "RESBENCH_CHAOS_CONTROL_MCP_URL": "http://127.0.0.1:18184/mcp",
         "RESBENCH_MCP_TOKEN": "mcp-token-that-must-not-leak-000000",
         "KUBECONFIG": "/tmp/should-not-pass",
+        "BLADE_AI_KUBECONFIG_PATH": "/tmp/bladeai-should-not-pass",
+        "CLAUDE_CONFIG_FILE": "/root/.claude/resbench-mcp.json",
+        "DSH_PERMISSION_MODE": "danger-full-access",
+        "HOME": "/root",
         "HARBOR_REGISTRY": "registry.example",
         "RESBENCH_SSH_BOOTSTRAP_IDENTITY": "/tmp/key",
     }
@@ -38,6 +44,34 @@ def artifact_dir(report, root: Path) -> Path:
 
 def artifact_ref_path(report, root: Path, key: str) -> Path:
     return root / report[key]
+
+
+def test_streaming_runner_honors_controller_cancellation():
+    cancel = threading.Event()
+    timer = threading.Timer(0.2, cancel.set)
+    timer.start()
+    try:
+        result = trial.subprocess_streaming_runner(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            b"",
+            {},
+            60,
+            lambda _line: None,
+            cancel,
+        )
+    finally:
+        timer.cancel()
+
+    assert result.cancelled is True
+    assert result.timed_out is False
+
+
+def test_run_trace_schema_uses_existing_controller_abort_status():
+    schema = load_json(REPO_ROOT / "harness/schemas/run-trace.schema.json")
+    allowed = schema["properties"]["final_output"]["properties"]["status"]["enum"]
+
+    assert "aborted_by_controller" in allowed
+    assert "cancelled_by_controller" not in allowed
 
 
 def valid_agent_result(defect: str = "missing outbound timeout"):
@@ -104,6 +138,9 @@ def test_dry_run_records_template_hashes_without_resolved_urls_or_homes(tmp_path
     assert planned["homes"] == {"isolated": True, "retainedInArtifacts": False}
     assert not any(path.is_dir() for path in output_dir.iterdir())
     assert "KUBECONFIG" not in planned["envKeys"]
+    assert "BLADE_AI_KUBECONFIG_PATH" not in planned["envKeys"]
+    assert "CLAUDE_CONFIG_FILE" not in planned["envKeys"]
+    assert "DSH_PERMISSION_MODE" not in planned["envKeys"]
     assert "HARBOR_REGISTRY" not in planned["envKeys"]
     assert "RESBENCH_SSH_BOOTSTRAP_IDENTITY" not in planned["envKeys"]
     assert planned["runtimeEnv"]["RESBENCH_MCP_TOKEN"] == {"present": True}
@@ -278,12 +315,42 @@ def test_execute_codex_uses_fixed_argv_stdin_and_allowlisted_env(tmp_path):
     assert calls[0]["env"]["PATH"] == trial.SAFE_PATH
     assert calls[0]["env"]["HOME"] == calls[0]["env"]["CODEX_HOME"]
     assert "KUBECONFIG" not in calls[0]["env"]
+    assert "BLADE_AI_KUBECONFIG_PATH" not in calls[0]["env"]
+    assert "DSH_PERMISSION_MODE" not in calls[0]["env"]
     assert "HARBOR_REGISTRY" not in calls[0]["env"]
     trace = load_json(artifact_ref_path(report, tmp_path, "runTraceRef"))
     assert trace["events"][1]["kind"] == "agent_message"
     assert any(event["kind"] == "tool_call" and event["tool"] == "k8s_ro.k8s_cluster_inventory" for event in trace["events"])
     assert load_json(artifact_ref_path(report, tmp_path, "agentResultRef"))["suspected_defect"] == "missing outbound timeout"
     assert not any(path.is_dir() for path in artifact_dir(report, tmp_path).iterdir())
+
+
+def test_d0_exact_prompt_override_is_not_wrapped_and_does_not_require_result_schema(tmp_path):
+    calls = []
+    prompt = "请针对otel-demo下的accounting服务的一个 pod 注入高 cpu 故障，持续 5 分钟，5 分钟后需要自动恢复"
+
+    def fake_runner(argv, stdin, env, timeout_seconds):
+        calls.append({"stdin": stdin, "argv": argv})
+        return trial.CommandResult(returncode=0, stdout=b"agent finished\n", stderr=b"")
+
+    report = trial.run_trial(
+        REPO_ROOT,
+        "codex",
+        "gpt-5.6",
+        execute=True,
+        artifact_root=tmp_path,
+        parent_env=runtime_env(),
+        runner=fake_runner,
+        trial_id="d0-exact-prompt",
+        prompt_text_override=prompt,
+        require_structured_result=False,
+        enforce_formal_runtime=False,
+    )
+
+    assert report["status"] == "completed"
+    assert calls[0]["stdin"] == prompt.encode("utf-8")
+    assert b"Public episode contract follows" not in calls[0]["stdin"]
+    assert report["promptSha256"] == trial.hashlib.sha256(prompt.encode()).hexdigest()
 
 
 def test_execute_codex_prefers_output_last_message_file(tmp_path):
@@ -447,6 +514,8 @@ def test_execute_claude_stream_json_extracts_nested_final_json(tmp_path):
     assert calls[0]["env"]["HOME"] == calls[0]["env"]["CLAUDE_CONFIG_DIR"]
     assert "OPENAI_API_KEY" not in calls[0]["env"]
     assert "KUBECONFIG" not in calls[0]["env"]
+    assert "CLAUDE_CONFIG_FILE" not in calls[0]["env"]
+    assert "DSH_PERMISSION_MODE" not in calls[0]["env"]
     assert load_json(artifact_ref_path(report, tmp_path, "agentResultRef"))["suspected_defect"] == "from claude stream-json"
 
 
@@ -514,8 +583,7 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     encoded_artifacts = artifact_text(output_dir)
     assert report["status"] == "completed"
     assert calls
-    assert calls[0]["argv"][0].endswith("/dsh")
-    assert calls[0]["argv"][0].startswith("/")
+    assert calls[0]["argv"][0] == "dsh"
     assert calls[0]["argv"][1:3] == ["--profile", "headless"]
     assert "Public episode contract follows" in calls[0]["argv"][-1]
     assert calls[0]["stdin"] == b""
@@ -528,11 +596,120 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert "agent-default-model:" in calls[0]["settings"]
     assert "streamable-http" in calls[0]["cordis"]
     assert calls[0]["cordis"].count("failOnStartupError: true") == 4
-    assert planned["argv"][0] == "<absolute-command:dsh>"
+    assert planned["argv"][0] == "dsh"
     assert "Public episode contract follows" not in encoded_artifacts
     assert "<prompt omitted from artifacts>" in encoded_artifacts
     assert not Path(calls[0]["env"]["DSH_HOME"]).exists()
     assert calls[0]["env"]["HOME"] == calls[0]["env"]["DSH_HOME"]
+    assert "KUBECONFIG" not in calls[0]["env"]
+    assert "BLADE_AI_KUBECONFIG_PATH" not in calls[0]["env"]
+    assert "DSH_PERMISSION_MODE" not in calls[0]["env"]
+
+
+def test_formal_runtime_preflight_rejects_bypass_arguments_and_host_permissions(tmp_path):
+    trial_root = tmp_path / "trial"
+    codex_home = trial_root / "codex-home"
+    codex_home.mkdir(parents=True)
+    (codex_home / "config.toml").write_text(
+        '\n'.join(
+            (
+                'approval_policy = "never"',
+                'shell_tool = false',
+                'unified_exec = false',
+                'browser_use = false',
+                'computer_use = false',
+            )
+        ),
+        encoding="utf-8",
+    )
+    homes = {
+        "CODEX_HOME": str(codex_home),
+        "CLAUDE_CONFIG_DIR": str(trial_root / "claude-home"),
+        "DSH_HOME": str(trial_root / "dsh-home"),
+    }
+    token = runtime_env()["RESBENCH_MCP_TOKEN"]
+    child_env = {
+        "PATH": trial.SAFE_PATH,
+        "HOME": str(codex_home),
+        "CODEX_HOME": str(codex_home),
+        "RESBENCH_MCP_TOKEN": token,
+    }
+
+    trial.validate_formal_harness_runtime(
+        "codex",
+        ["codex", "exec", "--sandbox", "read-only"],
+        child_env,
+        homes,
+        {},
+        trial_root,
+        token,
+    )
+
+    with pytest.raises(ValueError, match="permission bypass"):
+        trial.validate_formal_harness_runtime(
+            "codex",
+            ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox"],
+            child_env,
+            homes,
+            {},
+            trial_root,
+            token,
+        )
+
+    polluted_env = {**child_env, "KUBECONFIG": "/root/.kube/config"}
+    with pytest.raises(ValueError, match="host capability"):
+        trial.validate_formal_harness_runtime(
+            "codex",
+            ["codex", "exec", "--sandbox", "read-only"],
+            polluted_env,
+            homes,
+            {},
+            trial_root,
+            token,
+        )
+
+
+def test_formal_claude_preflight_rejects_global_mcp_config(tmp_path):
+    trial_root = tmp_path / "trial"
+    claude_home = trial_root / "claude-home"
+    claude_home.mkdir(parents=True)
+    global_config = tmp_path / "global-resbench-mcp.json"
+    global_config.write_text("{}", encoding="utf-8")
+    homes = {
+        "CODEX_HOME": str(trial_root / "codex-home"),
+        "CLAUDE_CONFIG_DIR": str(claude_home),
+        "DSH_HOME": str(trial_root / "dsh-home"),
+    }
+    token = runtime_env()["RESBENCH_MCP_TOKEN"]
+    child_env = {
+        "PATH": trial.SAFE_PATH,
+        "HOME": str(claude_home),
+        "CLAUDE_CONFIG_DIR": str(claude_home),
+        "RESBENCH_MCP_TOKEN": token,
+    }
+
+    with pytest.raises(ValueError, match="Trial-local config"):
+        trial.validate_formal_harness_runtime(
+            "claude-code",
+            ["claude", "--mcp-config", str(global_config), "--strict-mcp-config"],
+            child_env,
+            homes,
+            {"mcp_config_file": global_config},
+            trial_root,
+            token,
+        )
+
+
+def test_formal_command_resolution_rejects_non_registry_command():
+    with pytest.raises(ValueError, match="trusted basename"):
+        trial.resolve_formal_harness_command("deepseek-harness", "/root/bin/dsh")
+
+
+def test_formal_command_resolution_rejects_root_runner(monkeypatch):
+    monkeypatch.setattr(trial.os, "geteuid", lambda: 0)
+
+    with pytest.raises(ValueError, match="non-root"):
+        trial.resolve_formal_harness_command("codex", "codex")
 
 
 def test_extract_json_objects_accepts_multiline_fenced_agent_result():
@@ -542,6 +719,29 @@ def test_extract_json_objects_accepts_multiline_fenced_agent_result():
     candidates = trial.extract_json_objects(text)
 
     assert final in candidates
+
+
+def test_extract_provider_reported_model_uses_only_runtime_metadata():
+    output = "\n".join(
+        (
+            json.dumps({"status": "completed", "model": "agent-claimed-model"}),
+            json.dumps(
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "model": "claude-opus-5",
+                }
+            ),
+        )
+    )
+
+    assert trial.extract_provider_reported_model(output) == "claude-opus-5"
+    assert (
+        trial.extract_provider_reported_model(
+            json.dumps({"status": "completed", "model": "agent-claimed-model"})
+        )
+        is None
+    )
 
 
 def test_unknown_harness_and_model_are_rejected(tmp_path):
