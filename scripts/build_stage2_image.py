@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     if not digest.startswith("sha256:"):
         raise RuntimeError("buildx did not report a pushed manifest digest")
     output = {
-        "schema_version": "stage2-backend-overlay-image.v1",
+        "schema_version": "stage2-runtime-overlay-image.v1",
         "image": image,
         "digest": digest,
         "immutable_ref": f"{image}@{digest}",
