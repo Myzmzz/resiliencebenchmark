@@ -175,6 +175,127 @@ class D0ChaosFacade:
         }
 
 
+class D0ReadOnlyMcpStack:
+    """Campaign-scoped read-only MCP servers for native Headless Harnesses."""
+
+    PORTS = {"k8s_ro": 18081, "telemetry_ro": 18082, "source_ro": 18083}
+
+    def __init__(
+        self,
+        *,
+        repo_root: Path,
+        kubeconfig: Path,
+        campaign_dir: Path,
+        environment: Mapping[str, str],
+    ):
+        self.repo_root = repo_root
+        self.kubeconfig = kubeconfig
+        self.campaign_dir = campaign_dir
+        self.environment = dict(environment)
+        self.processes: list[subprocess.Popen[bytes]] = []
+        self.logs: list[Any] = []
+
+    def start(self) -> dict[str, str]:
+        token = self.environment.get("RESBENCH_MCP_TOKEN", "")
+        if len(token) < 32 or any(char.isspace() for char in token):
+            raise RuntimeError("RESBENCH_MCP_TOKEN is required for D0 read-only MCP")
+        log_root = self.campaign_dir / "d0-readonly-mcp"
+        log_root.mkdir(mode=0o700, parents=True, exist_ok=False)
+        source_root = self.environment.get(
+            "STAGE2_SOURCE_ROOT", "/opt/resiliencebenchmark/sources"
+        )
+        common = {
+            **os.environ,
+            **self.environment,
+            "PYTHONPATH": str(self.repo_root),
+            "RESBENCH_MCP_TOKEN": token,
+            "RESBENCH_MCP_TRANSPORT": "streamable-http",
+            "RESBENCH_MCP_HTTP_HOST": "127.0.0.1",
+            "RESBENCH_MCP_HTTP_PATH": "/mcp",
+            "RESBENCH_MCP_ISSUER_URL": "http://127.0.0.1:17999",
+            "RESBENCH_MCP_SCOPE": "d0:readonly",
+        }
+        per_server = {
+            "k8s_ro": {
+                "RESBENCH_K8S_RO_KUBECONFIG": str(self.kubeconfig),
+                "RESBENCH_K8S_RO_NAMESPACE_ALLOWLIST": "otel-demo",
+            },
+            "telemetry_ro": {
+                "RESBENCH_PROMETHEUS_URL": "http://prometheus.observability.svc:9090",
+                "RESBENCH_JAEGER_URL": "http://jaeger-query.observability.svc:16686",
+                "RESBENCH_LOKI_URL": "http://loki.observability.svc:3100",
+                "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": "otel-demo",
+                "RESBENCH_JAEGER_ALLOWED_SERVICES": (
+                    "accounting,frontend,frontend-proxy,checkout,cart,payment,shipping"
+                ),
+                "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
+                "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(
+                    self.campaign_dir / ".telemetry"
+                ),
+            },
+            "source_ro": {
+                "RESBENCH_SOURCE_ROOT": source_root,
+                "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": "otel-demo",
+            },
+        }
+        urls = {}
+        try:
+            for name, port in self.PORTS.items():
+                if _port_open(port):
+                    raise RuntimeError(f"D0 read-only MCP port is in use: {port}")
+                resource = f"http://127.0.0.1:{port}/mcp"
+                log = (log_root / f"{name}.log").open("ab")
+                env = {
+                    **common,
+                    **per_server[name],
+                    "RESBENCH_MCP_HTTP_PORT": str(port),
+                    "RESBENCH_MCP_RESOURCE_URL": resource,
+                }
+                process = subprocess.Popen(
+                    [sys.executable, "-m", f"mcp_servers.{name}"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                )
+                self.logs.append(log)
+                self.processes.append(process)
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    if process.poll() is not None:
+                        raise RuntimeError(f"D0 read-only MCP exited: {name}")
+                    if _port_open(port):
+                        break
+                    time.sleep(0.1)
+                else:
+                    raise RuntimeError(f"D0 read-only MCP did not become ready: {name}")
+                urls[name] = resource
+        except Exception:
+            self.stop()
+            raise
+        return {
+            "RESBENCH_K8S_MCP_URL": urls["k8s_ro"],
+            "RESBENCH_TELEMETRY_MCP_URL": urls["telemetry_ro"],
+            "RESBENCH_SOURCE_MCP_URL": urls["source_ro"],
+        }
+
+    def stop(self) -> None:
+        for process in self.processes:
+            if process.poll() is None:
+                process.terminate()
+        for process in self.processes:
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+        self.processes.clear()
+        for log in self.logs:
+            log.close()
+        self.logs.clear()
+
+
 class BladeAIServerProcess:
     """Start the native BladeAI API only when the configured endpoint is absent."""
 

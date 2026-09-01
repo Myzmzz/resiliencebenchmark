@@ -7,7 +7,8 @@ LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
 ENV RESBENCH_CODEX_EVAL_BIN=/app/runtime/bin/codex-eval
 
 USER root
-RUN rm -rf /app/frontend-dist
+RUN rm -rf /app/frontend-dist \
+    && chmod 0755 /opt/blade-ai/vendor/chaosblade/blade
 
 # The immutable base contains every pinned native runtime and the vendored OTel
 # chart. Runtime-only releases replace the monolith's Python modules without

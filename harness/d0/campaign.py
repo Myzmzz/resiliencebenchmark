@@ -33,7 +33,7 @@ from .common import (
     write_manifest,
 )
 from .observer import KubectlD0Observer
-from .facade import BladeAIServerProcess, D0ChaosFacade
+from .facade import BladeAIServerProcess, D0ChaosFacade, D0ReadOnlyMcpStack
 from .inventory import collect_execution_inventory
 from .visualization import generate_visualizations
 
@@ -67,6 +67,7 @@ class D0Campaign:
         inventory_provider=collect_execution_inventory,
         facade_factory=D0ChaosFacade,
         bladeai_server_factory=BladeAIServerProcess,
+        read_only_stack_factory=D0ReadOnlyMcpStack,
     ):
         self.config = config
         self.environment = dict(environment or os.environ)
@@ -85,6 +86,7 @@ class D0Campaign:
         self.inventory_provider = inventory_provider
         self.facade_factory = facade_factory
         self.bladeai_server_factory = bladeai_server_factory
+        self.read_only_stack_factory = read_only_stack_factory
         self.models = adapter_models(self.environment)
         self.environment.setdefault("BLADE_AI_MODEL_NAME", self.models["bladeai"])
         self.adapters = dict(adapters or self._default_adapters())
@@ -184,8 +186,24 @@ class D0Campaign:
             artifact_root=campaign_dir,
             environment=self.environment,
         )
-        bladeai_server.start()
+        read_only_stack = None
         try:
+            if any(
+                isinstance(self.adapters[agent], HeadlessAdapter)
+                for agent in self.config.agents
+                if agent != "bladeai"
+            ):
+                read_only_stack = self.read_only_stack_factory(
+                    repo_root=self.config.repo_root,
+                    kubeconfig=self.config.kubeconfig,
+                    campaign_dir=campaign_dir,
+                    environment=self.environment,
+                )
+                read_only_overrides = read_only_stack.start()
+                for agent in self.config.agents:
+                    if agent != "bladeai":
+                        self.adapters[agent].update_environment(read_only_overrides)
+            bladeai_server.start()
             for agent in self.config.agents:
                 result = self._run_agent(campaign, campaign_dir, agent)
                 metadata["results"].append(result)
@@ -198,6 +216,8 @@ class D0Campaign:
                     break
         finally:
             bladeai_server.stop()
+            if read_only_stack is not None:
+                read_only_stack.stop()
         if metadata["status"] == "RUNNING":
             statuses = {value["status"] for value in metadata["results"]}
             if statuses == {"PASS"}:
