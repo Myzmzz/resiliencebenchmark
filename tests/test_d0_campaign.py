@@ -98,6 +98,28 @@ class FakeAdapter:
         )
 
 
+def test_d0_maps_unified_gateway_config_into_bladeai_environment(tmp_path):
+    adapters = {name: FakeAdapter(name) for name in AGENTS}
+    campaign = D0Campaign(
+        D0CampaignConfig(
+            repo_root=tmp_path,
+            artifact_root=tmp_path / "artifacts",
+            kubeconfig=tmp_path / "kubeconfig",
+            episode_file=tmp_path / "episode.yaml",
+        ),
+        environment={
+            "RESBENCH_LLM_BASE_URL": "https://gateway.example/v1",
+            "RESBENCH_LLM_API_KEY": "secret-value",
+            "RESBENCH_D0_BLADEAI_MODEL": "gpt-5.6-sol",
+        },
+        adapters=adapters,
+    )
+
+    assert campaign.environment["BLADE_AI_API_BASE_URL"] == "https://gateway.example/v1"
+    assert campaign.environment["BLADE_AI_LLM_API_KEY"] == "secret-value"
+    assert campaign.environment["BLADE_AI_MODEL_NAME"] == "gpt-5.6-sol"
+
+
 @dataclass
 class FakeState:
     baseline_cpu: dict[str, int] = field(default_factory=lambda: {"accounting-pod": 3})

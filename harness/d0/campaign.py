@@ -70,12 +70,23 @@ class D0Campaign:
     ):
         self.config = config
         self.environment = dict(environment or os.environ)
+        if self.environment.get("RESBENCH_LLM_BASE_URL"):
+            self.environment.setdefault(
+                "BLADE_AI_API_BASE_URL",
+                self.environment["RESBENCH_LLM_BASE_URL"],
+            )
+        if self.environment.get("RESBENCH_LLM_API_KEY"):
+            self.environment.setdefault(
+                "BLADE_AI_LLM_API_KEY",
+                self.environment["RESBENCH_LLM_API_KEY"],
+            )
         self.observer_factory = observer_factory
         self.host_evidence_provider = host_evidence_provider
         self.inventory_provider = inventory_provider
         self.facade_factory = facade_factory
         self.bladeai_server_factory = bladeai_server_factory
         self.models = adapter_models(self.environment)
+        self.environment.setdefault("BLADE_AI_MODEL_NAME", self.models["bladeai"])
         self.adapters = dict(adapters or self._default_adapters())
 
     def _default_adapters(self) -> dict[str, D0Adapter]:

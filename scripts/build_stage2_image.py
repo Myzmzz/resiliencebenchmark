@@ -21,7 +21,11 @@ DEFAULT_RUNTIME_BASE = (
 
 def source_digest() -> str:
     digest = hashlib.sha256()
-    roots = [REPO_ROOT / "stage2_service", REPO_ROOT / "harness"]
+    roots = [
+        REPO_ROOT / "stage2_service",
+        REPO_ROOT / "harness",
+        REPO_ROOT / "mcp_servers",
+    ]
     files = [
         path
         for root in roots
