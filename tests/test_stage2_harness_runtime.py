@@ -148,6 +148,17 @@ def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
     assert denied.payload["capability"] == "mcp.k8s.read"
 
 
+def test_ignores_nested_permission_payload_without_tool_identity(tmp_path: Path):
+    events = runner(tmp_path)._normalize_tool_event(
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-t5",
+        harness=HarnessKind.CODEX,
+        item={"error": "401 Unauthorized"},
+    )
+
+    assert events == []
+
+
 def test_bladeai_native_l4_events_map_to_c1_c6_contract():
     runtime = TrialRuntimeContext(
         trial_id="campaign-1234567890abcdef-bladeai-t1",

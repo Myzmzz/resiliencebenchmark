@@ -569,7 +569,7 @@ class NativeHarnessRunner:
                         payload,
                     )
                 )
-        if _permission_denied(item):
+        if tool and _permission_denied(item):
             output.append(
                 self._event(
                     campaign_id,
