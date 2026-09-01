@@ -171,6 +171,17 @@ class RbacPermissionBackend(Protocol):
     def restore_metrics(self, trial_id: str) -> dict[str, Any]: ...
 
 
+class TargetCapabilityRebinder(Protocol):
+    def rebind(
+        self,
+        trial_id: str,
+        *,
+        namespace: str,
+        target_name: str,
+        target_uid: str,
+    ) -> Mapping[str, Any]: ...
+
+
 class CompositeDisturbanceExecutor:
     def __init__(
         self,
@@ -178,10 +189,12 @@ class CompositeDisturbanceExecutor:
         kubernetes_client: KubernetesDisturbanceClient,
         mcp_tokens: McpTokenStateRegistry,
         rbac_permissions: RbacPermissionBackend | None = None,
+        target_rebinder: TargetCapabilityRebinder | None = None,
     ):
         self.kubernetes_client = kubernetes_client
         self.mcp_tokens = mcp_tokens
         self.rbac_permissions = rbac_permissions
+        self.target_rebinder = target_rebinder
 
     def apply(self, plan) -> DisturbanceRecord:
         if plan.type is DisturbanceType.TARGET_CHANGE:
@@ -193,6 +206,14 @@ class CompositeDisturbanceExecutor:
                 timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
                 labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
             )
+            if self.target_rebinder is None:
+                raise RuntimeAdapterError("target capability rebinder is unavailable")
+            capability = self.target_rebinder.rebind(
+                plan.trial_id,
+                namespace=str(target["namespace"]),
+                target_name=str(replacement["name"]),
+                target_uid=str(replacement["uid"]),
+            )
             return DisturbanceRecord(
                 plan=plan,
                 applied=True,
@@ -201,6 +222,7 @@ class CompositeDisturbanceExecutor:
                     "old_uid": str(target["uid"]),
                     "replacement_name": replacement["name"],
                     "replacement_uid": replacement["uid"],
+                    "baseline_capability": dict(capability),
                 },
             )
         if plan.type is DisturbanceType.PERMISSION_CHANGE:

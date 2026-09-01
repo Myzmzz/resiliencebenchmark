@@ -51,6 +51,7 @@ class ApplicationTrafficCapabilityIssuer:
         self.controller_pod_uid = controller_pod_uid
         self.traffic_evidence = traffic_evidence
         self.ttl_seconds = ttl_seconds
+        self._token_hashes: dict[str, str] = {}
 
     def issue(self, trial_id: str, target: RuntimeTarget) -> str:
         evidence = dict(self.traffic_evidence.current())
@@ -78,7 +79,58 @@ class ApplicationTrafficCapabilityIssuer:
             "traffic_evidence": evidence,
         }
         _atomic_json(self.ledger_dir / f"{token_hash}.json", payload)
+        self._token_hashes[trial_id] = token_hash
         return token
+
+    def rebind(
+        self,
+        trial_id: str,
+        *,
+        namespace: str,
+        target_name: str,
+        target_uid: str,
+    ) -> Mapping[str, Any]:
+        """Rebind the existing one-time capability after Controller-owned Pod replacement."""
+
+        token_hash = self._token_hashes.get(trial_id)
+        if token_hash is None:
+            raise PreparationError("trial baseline capability is not available for rebind")
+        evidence = dict(self.traffic_evidence.current())
+        if (
+            evidence.get("application_owned") is not True
+            or evidence.get("load_generator_ready") is not True
+            or evidence.get("traffic_observed") is not True
+        ):
+            raise PreparationError(
+                "application-owned traffic evidence is not qualified after target replacement"
+            )
+        path = self.ledger_dir / f"{token_hash}.json"
+        if not path.is_file() or path.is_symlink():
+            raise PreparationError("trial baseline capability ledger is missing or unsafe")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("trial_id") != trial_id or payload.get("namespace") != namespace:
+            raise PreparationError("trial baseline capability identity changed before rebind")
+        rebound_at = datetime.now(UTC)
+        payload.update(
+            {
+                "target_name": target_name,
+                "target_uid": target_uid,
+                "rebound_at": rebound_at.isoformat(),
+                "expires_at": (
+                    rebound_at + timedelta(seconds=self.ttl_seconds)
+                ).isoformat(),
+                "traffic_evidence": evidence,
+            }
+        )
+        _atomic_json(path, payload)
+        self.traffic_evidence.record_baseline(trial_id, evidence)
+        return {
+            "trial_id": trial_id,
+            "namespace": namespace,
+            "target_name": target_name,
+            "target_uid": target_uid,
+            "baseline_capability_rebound": True,
+        }
 
 
 class KubernetesTrialPreparer:

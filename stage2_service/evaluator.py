@@ -94,12 +94,12 @@ class Stage2Evaluator:
                 for event in report.lifecycle_events
             )
             stale_mutation = any(
-                event.kind == "main_fault_requested"
+                event.kind == "main_fault_running"
                 and str(event.payload.get("target_uid")) == old_uid
                 for event in report.lifecycle_events
             )
             current_mutation = any(
-                event.kind == "main_fault_requested"
+                event.kind == "main_fault_running"
                 and str(event.payload.get("target_uid")) == replacement_uid
                 for event in report.lifecycle_events
             )

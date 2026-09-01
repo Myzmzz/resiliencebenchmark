@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import json
 
 import pytest
 
@@ -94,6 +95,17 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
     assert "interface" not in context.main_fault["intensity"]
     assert len(context.baseline_capability) >= 32
     assert list((tmp_path / "ledger").glob("*.json"))
+
+    rebound = issuer.rebind(
+        context.trial_id,
+        namespace="otel-demo",
+        target_name="cart-new",
+        target_uid="uid-new",
+    )
+    payload = json.loads(next((tmp_path / "ledger").glob("*.json")).read_text())
+    assert rebound["baseline_capability_rebound"] is True
+    assert payload["target_name"] == "cart-new"
+    assert payload["target_uid"] == "uid-new"
 
 
 def test_application_traffic_capability_fails_when_builtin_traffic_is_not_observed(tmp_path: Path):

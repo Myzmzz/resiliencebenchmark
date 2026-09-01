@@ -75,6 +75,43 @@ class NoKubernetes:
     pass
 
 
+class ReplacingKubernetes:
+    def restart_exact_pod(self, **kwargs):
+        self.kwargs = dict(kwargs)
+        return {"name": "cart-new", "uid": "uid-new"}
+
+
+class Rebinder:
+    def rebind(self, trial_id, **kwargs):
+        self.call = {"trial_id": trial_id, **kwargs}
+        return {"baseline_capability_rebound": True, **kwargs}
+
+
+def test_target_change_rebinds_baseline_capability_to_replacement(tmp_path: Path):
+    registry = McpTokenStateRegistry(tmp_path / "tokens")
+    kubernetes = ReplacingKubernetes()
+    rebinder = Rebinder()
+    plan = RuntimeDisturbancePlanner().plan(
+        TrialKind.TARGET_CHANGE,
+        event(
+            "target_bound",
+            LifecyclePhase.C2_TARGET,
+            target={"namespace": "otel-demo", "name": "cart-old", "uid": "uid-old"},
+        ),
+    )
+    assert plan is not None
+
+    record = CompositeDisturbanceExecutor(
+        kubernetes_client=kubernetes,
+        mcp_tokens=registry,
+        target_rebinder=rebinder,
+    ).apply(plan)
+
+    assert record.application_evidence["replacement_uid"] == "uid-new"
+    assert record.application_evidence["baseline_capability"]["baseline_capability_rebound"] is True
+    assert rebinder.call["target_uid"] == "uid-new"
+
+
 def test_observability_disturbance_rotates_all_read_only_tokens(tmp_path: Path):
     registry = McpTokenStateRegistry(tmp_path / "tokens")
     registry.initialize(

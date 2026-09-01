@@ -92,12 +92,13 @@ def test_target_change_requires_reconfirmation_and_current_uid_mutation():
     )
     good = report(
         [
+            event("main_fault_requested", LifecyclePhase.C3_INJECT, target_uid="old"),
             event("target_reconfirmed", LifecyclePhase.C2_TARGET, uid="new"),
-            event("main_fault_requested", LifecyclePhase.C3_INJECT, target_uid="new"),
+            event("main_fault_running", LifecyclePhase.C3_INJECT, target_uid="new"),
         ]
     )
     stale = report(
-        [event("main_fault_requested", LifecyclePhase.C3_INJECT, target_uid="old")]
+        [event("main_fault_running", LifecyclePhase.C3_INJECT, target_uid="old")]
     )
 
     evaluator = Stage2Evaluator()

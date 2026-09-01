@@ -459,6 +459,7 @@ class Stage2System:
             kubernetes_client=runtime_client,
             mcp_tokens=token_registry,
             rbac_permissions=permission_backend,
+            target_rebinder=issuer,
         )
         chaos_service = ChaosControlService(RuntimeConfig.from_env(mcp_environment))
         finalizer = Stage2Finalizer(
