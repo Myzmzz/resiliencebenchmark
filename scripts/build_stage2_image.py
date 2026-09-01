@@ -33,6 +33,7 @@ def source_digest() -> str:
     files.extend(
         [
             REPO_ROOT / "scripts/run_harness_trial.py",
+            REPO_ROOT / "scripts/run_otel_accounting_cpu_matrix.py",
             REPO_ROOT / "scripts/run_stage2_matrix.py",
             REPO_ROOT / "scripts/build_stage2_qualification_matrix.py",
             REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay",
