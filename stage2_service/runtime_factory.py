@@ -385,6 +385,68 @@ class DirectChaosCleanup:
             )
         )
 
+    def external_status(self, runtime):
+        inventory = self.inventory(runtime.target.namespace)
+        candidates = [
+            item
+            for item in inventory.get("experiments", [])
+            if item.get("terminal") is not True
+            and item.get("owned") is not True
+            and item.get("target_name") == runtime.target.name
+            and item.get("fault_type") == runtime.main_fault.get("fault_type")
+        ]
+        if not candidates:
+            return {"resource_absent": True, "ever_active": False, "candidates": []}
+        if len(candidates) != 1:
+            return {
+                "resource_absent": False,
+                "ever_active": False,
+                "ambiguous": True,
+                "candidates": [item.get("name") for item in candidates],
+            }
+        candidate = candidates[0]
+        return {
+            "resource_absent": False,
+            "ever_active": True,
+            "external": True,
+            "experiment_name": candidate.get("name"),
+            "target_name": runtime.target.name,
+            "target_uid": runtime.target.uid,
+            "fault_type": runtime.main_fault.get("fault_type"),
+        }
+
+    def cleanup_external(self, runtime):
+        status = self.external_status(runtime)
+        if status.get("resource_absent") is True:
+            return {"verified_absent": True, "idempotent": True}
+        if status.get("ever_active") is not True:
+            return {
+                "verified_absent": False,
+                "reason": "external ChaosBlade candidate is ambiguous",
+                "candidates": status.get("candidates", []),
+            }
+        name = str(status["experiment_name"])
+
+        async def cleanup():
+            await self.service.backend.delete_experiment(
+                runtime.target.namespace, name, self.kubeconfig
+            )
+            for _ in range(30):
+                after = await self.service.backend.get_experiment(
+                    runtime.target.namespace, name, self.kubeconfig
+                )
+                if after is None:
+                    return True
+                await asyncio.sleep(1)
+            return False
+
+        verified = asyncio.run(cleanup())
+        return {
+            "external_experiment": name,
+            "verified_absent": verified,
+            "idempotent": True,
+        }
+
 
 class Stage2System:
     def __init__(self, config: Stage2RuntimeConfig):

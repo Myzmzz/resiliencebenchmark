@@ -142,3 +142,50 @@ def test_bounded_timeout_is_observed_before_controller_cleanup():
     assert result.agent_attempted is False
     assert result.fault_absent is True
     assert result.fault_effect_evidence["timeout_recovery_observed"] is True
+
+
+def test_unique_external_bladeai_fault_is_reconciled_by_target_and_type():
+    class ExternalChaos(Chaos):
+        def __init__(self):
+            super().__init__()
+            self.external_calls = 0
+
+        def status(self, _handle):
+            return {"error_type": "missing-ledger"}
+
+        def external_status(self, runtime):
+            self.external_calls += 1
+            if self.external_calls >= 2:
+                return {"resource_absent": True, "ever_active": False}
+            return {
+                "resource_absent": False,
+                "ever_active": True,
+                "external": True,
+                "target_uid": runtime.target.uid,
+                "fault_type": runtime.main_fault["fault_type"],
+            }
+
+        def cleanup_external(self, _runtime):
+            return {"verified_absent": True, "external_experiment": "bladeai-cr"}
+
+    runtime = context().model_copy(
+        update={
+            "main_fault": {
+                "fault_type": "network-delay",
+                "duration_seconds": 1,
+            }
+        }
+    )
+    no_explicit_recovery = report().model_copy(update={"lifecycle_events": ()})
+
+    result = Stage2Finalizer(
+        ExternalChaos(),
+        Traffic(),
+        poll_seconds=1,
+        sleep=lambda _seconds: None,
+    ).finalize("trial", object(), runtime, no_explicit_recovery)
+
+    assert result.main_fault_ever_active is True
+    assert result.main_fault_target_verified is True
+    assert result.fault_absent is True
+    assert result.fault_effect_evidence["external_chaos_reconciled"] is True

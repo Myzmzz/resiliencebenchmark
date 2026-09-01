@@ -18,6 +18,10 @@ class ChaosCleanupBackend(Protocol):
 
     def inventory(self, namespace: str) -> Mapping[str, Any]: ...
 
+    def external_status(self, runtime: TrialRuntimeContext) -> Mapping[str, Any]: ...
+
+    def cleanup_external(self, runtime: TrialRuntimeContext) -> Mapping[str, Any]: ...
+
 
 class RecoveryEvidenceProvider(Protocol):
     def current(self) -> Mapping[str, Any]: ...
@@ -60,6 +64,14 @@ class Stage2Finalizer:
             event.kind == "recovery_requested" for event in report.lifecycle_events
         )
         pre_status = self._safe(self.chaos.status, runtime.cleanup_handle)
+        external_managed = False
+        if pre_status.get("ever_active") is not True and hasattr(
+            self.chaos, "external_status"
+        ):
+            external_status = self._safe(self.chaos.external_status, runtime)
+            if external_status.get("ever_active") is True:
+                pre_status = external_status
+                external_managed = True
         pre_absent = pre_status.get("resource_absent") is True
         ever_active = pre_status.get("ever_active") is True
         target_verified = (
@@ -76,7 +88,11 @@ class Stage2Finalizer:
             checks = max(1, math.ceil(timeout_wait_seconds / self.poll_seconds))
             for _ in range(checks):
                 self.sleep(min(self.poll_seconds, timeout_wait_seconds or self.poll_seconds))
-                observed = self._safe(self.chaos.status, runtime.cleanup_handle)
+                observed = (
+                    self._safe(self.chaos.external_status, runtime)
+                    if external_managed
+                    else self._safe(self.chaos.status, runtime.cleanup_handle)
+                )
                 if observed.get("resource_absent") is True:
                     pre_status = observed
                     pre_absent = True
@@ -85,8 +101,17 @@ class Stage2Finalizer:
         effect = dict(self.recovery_evidence.effect_since(trial_id))
         effect["timeout_recovery_observed"] = timeout_recovery_observed
         effect["timeout_wait_seconds"] = round(timeout_wait_seconds, 3)
-        destroy = self._safe(self.chaos.destroy, runtime.cleanup_handle)
-        status = self._safe(self.chaos.status, runtime.cleanup_handle)
+        effect["external_chaos_reconciled"] = external_managed
+        destroy = (
+            self._safe(self.chaos.cleanup_external, runtime)
+            if external_managed
+            else self._safe(self.chaos.destroy, runtime.cleanup_handle)
+        )
+        status = (
+            self._safe(self.chaos.external_status, runtime)
+            if external_managed
+            else self._safe(self.chaos.status, runtime.cleanup_handle)
+        )
         inventory = self._safe(self.chaos.inventory, runtime.target.namespace)
         fault_absent = (
             pre_absent
