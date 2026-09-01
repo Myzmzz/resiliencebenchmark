@@ -266,6 +266,22 @@ class Stage2ConsoleRuntime:
                 event_type = _event_type_for_phase(phase)
                 self._emit_locked(record, case.case_id, phase, event_type, PHASE_MESSAGES[phase], target.runtime.model_dump())
                 self._maybe_apply_disturbance_locked(record, case, phase, event_type, target.runtime)
+                if case.case_id is CaseId.D1 and phase is ConsolePhase.C2:
+                    self._emit_locked(
+                        record,
+                        case.case_id,
+                        phase,
+                        "plan_validated",
+                        "bounded fault plan validated before injection",
+                        target.runtime.model_dump(),
+                    )
+                    self._maybe_apply_disturbance_locked(
+                        record,
+                        case,
+                        phase,
+                        "plan_validated",
+                        target.runtime,
+                    )
         with self._lock:
             record = self._record(run_id)
             verdict, summary = _expected_demo_verdict(case.case_id)

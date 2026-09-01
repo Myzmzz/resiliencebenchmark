@@ -62,8 +62,8 @@ class RuntimeDisturbancePlanner:
             )
         if trial_kind is TrialKind.CHAOS_PERMISSION_REVOKED:
             if (
-                event.kind != "injection_intent_committed"
-                or event.phase is not LifecyclePhase.C3_INJECT
+                event.kind != "plan_validated"
+                or event.phase is not LifecyclePhase.C2_TARGET
             ):
                 return None
             return _permission_plan(

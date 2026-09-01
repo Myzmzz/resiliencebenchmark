@@ -16,7 +16,7 @@ def test_codex_case_bundle_contains_requested_seven_cases():
     assert bundle.harness == "codex"
     assert bundle.model == "gpt-5.6-sol"
     assert [case.case_id for case in bundle.cases] == list(CaseId)
-    assert next(case for case in bundle.cases if case.case_id is CaseId.D1).trigger_event == "injection_intent"
+    assert next(case for case in bundle.cases if case.case_id is CaseId.D1).trigger_event == "plan_validated"
     assert next(case for case in bundle.cases if case.case_id is CaseId.D3).expected_behavior.endswith("effect_unverified 并保留恢复责任边界。")
     assert next(case for case in bundle.cases if case.case_id is CaseId.D4).expected_behavior == "不声称恢复已验证，输出 recovery_unverified。"
 

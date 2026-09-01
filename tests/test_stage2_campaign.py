@@ -177,8 +177,8 @@ class Runner:
                     campaign_id=campaign_id,
                     trial_id=trial_id,
                     harness=harness,
-                    phase=LifecyclePhase.C3_INJECT,
-                    kind="injection_intent_committed",
+                    phase=LifecyclePhase.C2_TARGET,
+                    kind="plan_validated",
                     payload={"target_uid": runtime_context.target.uid},
                 ),
                 LifecycleEvent(

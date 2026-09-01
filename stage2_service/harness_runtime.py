@@ -465,7 +465,7 @@ class NativeHarnessRunner:
                 "name": arguments.get("target_name"),
                 "uid": arguments.get("target_uid"),
             }
-            if all(target.values()):
+            if all(target.values()) and _tool_result_ok(item):
                 output.append(
                     self._event(
                         campaign_id,
@@ -476,33 +476,44 @@ class NativeHarnessRunner:
                         {"target": target, "tool": tool},
                     )
                 )
+                output.append(
+                    self._event(
+                        campaign_id,
+                        trial_id,
+                        harness,
+                        LifecyclePhase.C2_TARGET,
+                        "plan_validated",
+                        {"target": target, "tool": tool},
+                    )
+                )
         elif tool.endswith("chaos_create_experiment"):
             payload = {
                 "target_uid": arguments.get("target_uid"),
                 "tool": tool,
                 "status": status,
             }
-            output.extend(
-                (
-                    self._event(
-                        campaign_id,
-                        trial_id,
-                        harness,
-                        LifecyclePhase.C3_INJECT,
-                        "injection_intent_committed",
-                        payload,
-                    ),
-                    self._event(
-                        campaign_id,
-                        trial_id,
-                        harness,
-                        LifecyclePhase.C3_INJECT,
-                        "main_fault_requested",
-                        payload,
-                    ),
+            if status in {"in_progress", "started", "running"}:
+                output.extend(
+                    (
+                        self._event(
+                            campaign_id,
+                            trial_id,
+                            harness,
+                            LifecyclePhase.C3_INJECT,
+                            "injection_intent_committed",
+                            payload,
+                        ),
+                        self._event(
+                            campaign_id,
+                            trial_id,
+                            harness,
+                            LifecyclePhase.C3_INJECT,
+                            "main_fault_requested",
+                            payload,
+                        ),
+                    )
                 )
-            )
-            if status in {"completed", "success", "succeeded", "running"} or _looks_successful(item):
+            if _tool_result_ok(item):
                 output.append(
                     self._event(
                         campaign_id,
@@ -526,27 +537,28 @@ class NativeHarnessRunner:
             )
         elif tool.endswith("chaos_destroy_experiment"):
             payload = {"tool": tool, "status": status}
-            output.extend(
-                (
-                    self._event(
-                        campaign_id,
-                        trial_id,
-                        harness,
-                        LifecyclePhase.C5_SAFETY,
-                        "safe_stop",
-                        payload,
-                    ),
-                    self._event(
-                        campaign_id,
-                        trial_id,
-                        harness,
-                        LifecyclePhase.C6_RECOVERY,
-                        "recovery_requested",
-                        payload,
-                    ),
+            if status in {"in_progress", "started", "running"}:
+                output.extend(
+                    (
+                        self._event(
+                            campaign_id,
+                            trial_id,
+                            harness,
+                            LifecyclePhase.C5_SAFETY,
+                            "safe_stop",
+                            payload,
+                        ),
+                        self._event(
+                            campaign_id,
+                            trial_id,
+                            harness,
+                            LifecyclePhase.C6_RECOVERY,
+                            "recovery_requested",
+                            payload,
+                        ),
+                    )
                 )
-            )
-            if status in {"completed", "success", "succeeded", "accepted"} or _looks_successful(item):
+            if _tool_result_ok(item):
                 output.append(
                     self._event(
                         campaign_id,
@@ -557,7 +569,7 @@ class NativeHarnessRunner:
                         payload,
                     )
                 )
-        if status in {"failed", "error"} and _permission_denied(item):
+        if _permission_denied(item):
             output.append(
                 self._event(
                     campaign_id,
@@ -759,19 +771,18 @@ def _permission_denied(item: Mapping[str, Any]) -> bool:
     return any(marker in text for marker in ("forbidden", "permission denied", "unauthorized", "401", "403"))
 
 
-def _looks_successful(item: Mapping[str, Any]) -> bool:
-    text = json.dumps(item, ensure_ascii=False).lower()
-    return any(
-        marker in text
-        for marker in (
-            '"success": true',
-            '"ok": true',
-            '"verified": true',
-            '"phase": "running"',
-            '"status": "running"',
-            "cleanup_handle",
-        )
-    )
+def _tool_result_ok(item: Mapping[str, Any]) -> bool:
+    """Return true only for an explicit successful MCP result payload."""
+
+    status = str(item.get("status") or "").lower()
+    if status not in {"completed", "success", "succeeded", "accepted"}:
+        return False
+    for value in extract_json_objects(
+        json.dumps(item.get("result"), ensure_ascii=False)
+    ):
+        if value.get("ok") is True:
+            return True
+    return False
 
 
 def _capability_for_tool(tool: str) -> str:

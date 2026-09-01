@@ -49,7 +49,7 @@ def test_case_planner_maps_only_dynamic_cases_to_runtime_disturbances():
 
     d1 = planner.plan(
         TrialKind.CHAOS_PERMISSION_REVOKED,
-        event("injection_intent_committed", LifecyclePhase.C3_INJECT),
+        event("plan_validated", LifecyclePhase.C2_TARGET),
     )
     d3 = planner.plan(
         TrialKind.EFFECT_OBSERVABILITY_REVOKED,

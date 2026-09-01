@@ -63,11 +63,13 @@ def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):
             "type": "mcp_tool_call",
             "server": "chaos_control",
             "tool": "chaos_validate_plan",
+            "status": "completed",
             "arguments": {
                 "namespace": "otel-demo",
                 "target_name": "cart-old",
                 "target_uid": "old-uid",
             },
+            "result": {"structured_content": {"ok": True}},
         },
     )
     create = runtime._normalize_tool_event(
@@ -76,6 +78,7 @@ def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):
             "type": "mcp_tool_call",
             "server": "chaos_control",
             "tool": "chaos_create_experiment",
+            "status": "in_progress",
             "arguments": {"target_uid": "new-uid"},
         },
     )
@@ -83,8 +86,48 @@ def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):
     assert target[0].phase is LifecyclePhase.C2_TARGET
     assert target[0].kind == "target_bound"
     assert target[0].payload["target"]["uid"] == "old-uid"
+    assert target[1].kind == "plan_validated"
     assert create[0].phase is LifecyclePhase.C3_INJECT
     assert create[0].payload["target_uid"] == "new-uid"
+
+
+def test_main_fault_running_requires_explicit_successful_create_result(tmp_path: Path):
+    runtime = runner(tmp_path)
+    common = {
+        "campaign_id": "campaign-1234567890abcdef",
+        "trial_id": "campaign-1234567890abcdef-codex-t4",
+        "harness": HarnessKind.CODEX,
+    }
+    rejected = runtime._normalize_tool_event(
+        **common,
+        item={
+            "type": "mcp_tool_call",
+            "server": "chaos_control",
+            "tool": "chaos_create_experiment",
+            "status": "completed",
+            "arguments": {"target_uid": "uid-current"},
+            "result": {
+                "structured_content": {
+                    "ok": False,
+                    "error": {"code": "CONCURRENCY_BUDGET_EXCEEDED"},
+                }
+            },
+        },
+    )
+    accepted = runtime._normalize_tool_event(
+        **common,
+        item={
+            "type": "mcp_tool_call",
+            "server": "chaos_control",
+            "tool": "chaos_create_experiment",
+            "status": "completed",
+            "arguments": {"target_uid": "uid-current"},
+            "result": {"structured_content": {"ok": True}},
+        },
+    )
+
+    assert all(event.kind != "main_fault_running" for event in rejected)
+    assert [event.kind for event in accepted] == ["main_fault_running"]
 
 
 def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
