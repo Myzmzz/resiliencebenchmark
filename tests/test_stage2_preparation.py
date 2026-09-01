@@ -52,7 +52,13 @@ class Binding:
 class MainFault:
     def model_dump(self, mode):
         del mode
-        return {"fault_type": "network-delay", "target": {}}
+        return {
+            "fault_type": "network-delay",
+            "target": {},
+            "parameters": {"delay_ms": 1200, "interface": "eth0"},
+            "duration_seconds": 600,
+            "effect_verification": [{"criterion_id": "latency_delta"}],
+        }
 
 
 class Identity:
@@ -82,6 +88,10 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
     assert context.target.name == "cart-abc"
     assert context.target.uid == "uid-current"
     assert context.main_fault["target"]["pod_uid"] == "uid-current"
+    assert context.main_fault["duration_seconds"] == 180
+    assert context.main_fault["intensity"] == {"delay_ms": 1000}
+    assert context.main_fault["request_contract"]["omit_selector"] is True
+    assert "interface" not in context.main_fault["intensity"]
     assert len(context.baseline_capability) >= 32
     assert list((tmp_path / "ledger").glob("*.json"))
 

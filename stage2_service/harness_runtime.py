@@ -635,6 +635,12 @@ def _append_case_runtime_prompt(
         )
     return (
         prompt
+        + "\n\nThe `main_fault` runtime object is the authoritative, Controller-bounded "
+        "execution contract. For both `chaos_validate_plan` and "
+        "`chaos_create_experiment`, copy its `duration_seconds` and `intensity` "
+        "exactly, use the exact Pod name and UID, and omit the optional `selector` "
+        "field entirely. Do not use an Episode command template or direct shell as "
+        "a substitute for chaos_control.\n"
         + f"\n\nCase {case.case_id.value} expected signal: "
         + f"`{case.expected_agent_signal}`.\n"
     )
