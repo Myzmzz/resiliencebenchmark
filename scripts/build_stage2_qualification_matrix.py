@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build model-bound Stage-2 qualification refs from two sealed D0 campaigns."""
+"""Build model/Harness-bound Stage-2 refs from sealed D0 campaigns."""
 
 from __future__ import annotations
 
@@ -7,7 +7,14 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from harness.d0.common import evaluation_ready_result
 
 HARNESSES = ("bladeai", "claude-code", "codex", "deepseek-harness")
 MODELS = ("gpt-5.6-sol", "claude-opus-5")
@@ -20,40 +27,45 @@ def parser() -> argparse.ArgumentParser:
         "--campaign",
         action="append",
         required=True,
-        metavar="MODEL=CAMPAIGN_ID",
-        help="repeat once for gpt-5.6-sol and once for claude-opus-5",
+        metavar="MODEL/HARNESS=CAMPAIGN_ID",
+        help="repeat once for every one of the eight model/Harness pairs",
     )
     value.add_argument("--output", type=Path, required=True)
     return value
 
 
-def build(d0_root: Path, assignments: dict[str, str]) -> dict:
-    if set(assignments) != set(MODELS):
-        raise ValueError("exactly one D0 campaign is required for each matrix model")
+def build(d0_root: Path, assignments: dict[tuple[str, str], str]) -> dict:
+    expected = {(model, harness) for model in MODELS for harness in HARNESSES}
+    if set(assignments) != expected:
+        raise ValueError("exactly one D0 campaign is required for each model/Harness pair")
     models = {}
     for model in MODELS:
-        campaign_id = assignments[model]
-        root = (d0_root / campaign_id).resolve()
-        root.relative_to(d0_root.resolve())
-        campaign_path = root / "campaign.json"
-        manifest_path = root / "manifest.sha256"
-        if not campaign_path.is_file() or not manifest_path.is_file():
-            raise ValueError(f"D0 campaign evidence is incomplete: {campaign_id}")
-        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
-        if campaign.get("host", {}).get("verified") is not True:
-            raise ValueError(f"D0 campaign host is not verified: {campaign_id}")
-        results = {
-            item.get("agent"): item for item in campaign.get("results", [])
-        }
-        campaign_models = campaign.get("models") or {}
         models[model] = {}
         for harness in HARNESSES:
-            status = str((results.get(harness) or {}).get("status") or "MISSING")
-            if status != "PASS":
+            campaign_id = assignments[(model, harness)]
+            root = (d0_root / campaign_id).resolve()
+            root.relative_to(d0_root.resolve())
+            campaign_path = root / "campaign.json"
+            manifest_path = root / "manifest.sha256"
+            if not campaign_path.is_file() or not manifest_path.is_file():
+                raise ValueError(f"D0 campaign evidence is incomplete: {campaign_id}")
+            campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+            if campaign.get("host", {}).get("verified") is not True:
+                raise ValueError(f"D0 campaign host is not verified: {campaign_id}")
+            result = next(
+                (
+                    item
+                    for item in campaign.get("results", [])
+                    if item.get("agent") == harness
+                ),
+                None,
+            )
+            status = str((result or {}).get("status") or "MISSING")
+            if not evaluation_ready_result(dict(result or {})):
                 raise ValueError(
-                    f"D0 qualification is not PASS: {campaign_id}/{harness}={status}"
+                    f"D0 evidence is not evaluation-ready: {campaign_id}/{harness}={status}"
                 )
-            if campaign_models.get(harness) != model:
+            if (campaign.get("models") or {}).get(harness) != model:
                 raise ValueError(
                     f"D0 model identity mismatch: {campaign_id}/{harness}"
                 )
@@ -75,12 +87,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     assignments = {}
     for raw in args.campaign:
-        if "=" not in raw:
-            raise SystemExit("--campaign must use MODEL=CAMPAIGN_ID")
-        model, campaign_id = raw.split("=", 1)
-        if model in assignments:
-            raise SystemExit(f"duplicate --campaign model: {model}")
-        assignments[model] = campaign_id
+        if "=" not in raw or "/" not in raw.split("=", 1)[0]:
+            raise SystemExit("--campaign must use MODEL/HARNESS=CAMPAIGN_ID")
+        pair, campaign_id = raw.split("=", 1)
+        model, harness = pair.split("/", 1)
+        key = (model, harness)
+        if key in assignments:
+            raise SystemExit(f"duplicate --campaign pair: {pair}")
+        assignments[key] = campaign_id
     payload = build(args.d0_root.expanduser().resolve(), assignments)
     output = args.output.expanduser().resolve()
     output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

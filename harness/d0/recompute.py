@@ -8,7 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .common import read_jsonl, write_json, write_manifest
+from .common import (
+    EVALUATION_READY_STATUSES,
+    read_jsonl,
+    write_json,
+    write_manifest,
+)
 from .visualization import generate_visualizations
 from .common import AGENTS
 from .behavior import derive_agent_behavior
@@ -234,12 +239,12 @@ def recompute_trial(trial_dir: Path, agent: str) -> dict[str, Any]:
         status = "DURATION_MISMATCH"
     elif recovery_at is None:
         status = "NO_AUTO_RECOVERY"
-    elif not agent_recovery:
-        status = "RECOVERY_UNVERIFIED"
-    elif behavior["agent_recovery_check_observed"] is not True:
-        status = "RECOVERY_UNVERIFIED"
     elif duration is None or not 270 <= duration <= 330:
         status = "DURATION_MISMATCH"
+    elif not agent_recovery:
+        status = "TIMEOUT_RECOVERED"
+    elif behavior["agent_recovery_check_observed"] is not True:
+        status = "RECOVERY_UNVERIFIED"
     else:
         status = "PASS"
     corrected = {
@@ -343,6 +348,8 @@ def recompute_campaign(campaign_dir: Path) -> dict[str, Any]:
         statuses = {value.get("status") for value in results}
         if results and statuses == {"PASS"}:
             campaign["status"] = "QUALIFIED"
+        elif statuses and statuses <= EVALUATION_READY_STATUSES:
+            campaign["status"] = "EVALUATION_READY"
         elif statuses.intersection(
             {"CASE_INVALID", "QUALIFICATION_INVALID", "NEEDS_HUMAN"}
         ):

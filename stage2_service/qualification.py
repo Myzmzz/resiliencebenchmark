@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from harness.d0.common import evaluation_ready_result
+
 from .contracts import CampaignRequest
 
 
@@ -104,7 +106,7 @@ class D0QualificationGate:
         qualified_model = str((campaign.get("models") or {}).get(agent) or "")
         verified = (
             campaign.get("host", {}).get("verified") is True
-            and status == "PASS"
+            and evaluation_ready_result(dict(result or {}))
             and ref.agent_status == status
             and qualified_model == requested_model
             and ref.model_alias == requested_model
@@ -121,6 +123,6 @@ class D0QualificationGate:
             "reason": (
                 "qualified"
                 if verified
-                else "D0 Agent result or model identity does not match the formal Trial"
+                else "D0 evidence eligibility or model identity does not match the formal Trial"
             ),
         }

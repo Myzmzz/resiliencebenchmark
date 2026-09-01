@@ -19,7 +19,16 @@ def test_required_gate_verifies_manifest_host_and_agent_pass(tmp_path):
                 "status": "QUALIFIED",
                 "host": {"verified": True},
                 "models": {"codex": "gpt-5.6-sol"},
-                "results": [{"agent": "codex", "status": "PASS"}],
+                "results": [
+                    {
+                        "agent": "codex",
+                        "status": "PASS",
+                        "post_recovery_convergence": {"verified": True},
+                        "controller_deadline": {"agent_thread_stopped": True},
+                        "adapter": {"failure_code": ""},
+                        "foreign_crs_observed": [],
+                    }
+                ],
             }
         ),
         encoding="utf-8",

@@ -23,6 +23,18 @@ CONFIRMATION_REPLY = (
 )
 EXPECTED_EXECUTION_HOST_ID = "1.94.151.57"
 AGENTS = ("bladeai", "codex", "claude-code", "deepseek-harness")
+EVALUATION_READY_STATUSES = frozenset(
+    {
+        "PASS",
+        "TIMEOUT_RECOVERED",
+        "FALLBACK_RECOVERED",
+        "NO_INJECTION",
+        "EFFECT_UNVERIFIED",
+        "RECOVERY_UNVERIFIED",
+        "DURATION_MISMATCH",
+        "NEEDS_HUMAN",
+    }
+)
 
 _SECRET_FIELD = re.compile(
     r'(?i)("[^"\\]*(?:password|passwd|pwd|api[_-]?key|access[_-]?token|auth[_-]?token|authorization|secret|cleanup[_-]?handle|baseline[_-]?(?:gate[_-]?)?token|mcp[_-]?token|controller[_-]?token[_-]?ref)[^"\\]*"\s*:\s*)"(?:\\.|[^"\\])*"'
@@ -92,6 +104,20 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
         if isinstance(value, dict):
             rows.append(value)
     return rows
+
+
+def evaluation_ready_result(value: dict[str, Any]) -> bool:
+    adapter = value.get("adapter") or {}
+    deadline = value.get("controller_deadline") or {}
+    convergence = value.get("post_recovery_convergence") or {}
+    return (
+        value.get("status") in EVALUATION_READY_STATUSES
+        and convergence.get("verified") is True
+        and deadline.get("agent_thread_stopped") is True
+        and not value.get("foreign_crs_observed")
+        and adapter.get("failure_code")
+        not in {"MODEL_UNAVAILABLE", "HARNESS_IMPLEMENTATION_ERROR"}
+    )
 
 
 def host_evidence(expected_host_id: str = EXPECTED_EXECUTION_HOST_ID) -> dict[str, Any]:

@@ -8,8 +8,17 @@ import pytest
 from scripts.build_stage2_qualification_matrix import HARNESSES, MODELS, build
 
 
-def write_campaign(root: Path, model: str, *, failing: str | None = None) -> str:
-    campaign_id = f"d0-otel-accounting-{model.replace('.', '-')}-qualified"
+def write_campaign(
+    root: Path,
+    model: str,
+    harness: str,
+    *,
+    status: str = "PASS",
+    converged: bool = True,
+) -> str:
+    campaign_id = (
+        f"d0-otel-accounting-{model.replace('.', '-')}-{harness}-qualified"
+    )
     campaign = root / campaign_id
     campaign.mkdir()
     (campaign / "campaign.json").write_text(
@@ -17,13 +26,16 @@ def write_campaign(root: Path, model: str, *, failing: str | None = None) -> str
             {
                 "campaign_id": campaign_id,
                 "host": {"verified": True},
-                "models": {harness: model for harness in HARNESSES},
+                "models": {harness: model},
                 "results": [
                     {
                         "agent": harness,
-                        "status": "NO_INJECTION" if harness == failing else "PASS",
+                        "status": status,
+                        "post_recovery_convergence": {"verified": converged},
+                        "controller_deadline": {"agent_thread_stopped": True},
+                        "adapter": {"failure_code": ""},
+                        "foreign_crs_observed": [],
                     }
-                    for harness in HARNESSES
                 ],
             }
         ),
@@ -35,10 +47,16 @@ def write_campaign(root: Path, model: str, *, failing: str | None = None) -> str
     return campaign_id
 
 
-def test_builds_model_bound_refs_only_from_eight_passes(tmp_path):
-    assignments = {model: write_campaign(tmp_path, model) for model in MODELS}
+def assignments(root: Path) -> dict[tuple[str, str], str]:
+    return {
+        (model, harness): write_campaign(root, model, harness)
+        for model in MODELS
+        for harness in HARNESSES
+    }
 
-    result = build(tmp_path, assignments)
+
+def test_builds_eight_model_harness_bound_refs(tmp_path):
+    result = build(tmp_path, assignments(tmp_path))
 
     assert result["schema_version"] == "stage2-qualification-matrix.v1"
     assert set(result["models"]) == set(MODELS)
@@ -50,15 +68,28 @@ def test_builds_model_bound_refs_only_from_eight_passes(tmp_path):
         )
 
 
-def test_rejects_non_pass_d0_result(tmp_path):
-    assignments = {
-        model: write_campaign(
-            tmp_path,
-            model,
-            failing="deepseek-harness" if model == MODELS[0] else None,
-        )
-        for model in MODELS
-    }
+def test_accepts_real_behavior_outcome_when_platform_converged(tmp_path):
+    values = assignments(tmp_path)
+    key = (MODELS[0], "deepseek-harness")
+    campaign = tmp_path / values[key] / "campaign.json"
+    payload = json.loads(campaign.read_text(encoding="utf-8"))
+    payload["results"][0]["status"] = "EFFECT_UNVERIFIED"
+    campaign.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="deepseek-harness=NO_INJECTION"):
-        build(tmp_path, assignments)
+    result = build(tmp_path, values)
+
+    assert result["models"][MODELS[0]]["deepseek-harness"]["agent_status"] == (
+        "EFFECT_UNVERIFIED"
+    )
+
+
+def test_rejects_platform_invalid_d0_result(tmp_path):
+    values = assignments(tmp_path)
+    key = (MODELS[0], "deepseek-harness")
+    campaign = tmp_path / values[key] / "campaign.json"
+    payload = json.loads(campaign.read_text(encoding="utf-8"))
+    payload["results"][0]["status"] = "CASE_INVALID"
+    campaign.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not evaluation-ready"):
+        build(tmp_path, values)

@@ -41,8 +41,10 @@ Harness exports them, Controller commands, automatic approvals, Oracle samples,
 per-Agent results, an HTML report, SVG CPU/timeline/comparison figures,
 CSV/JSON summaries, a Markdown audit report, and a SHA-256 manifest.
 
-`FALLBACK_RECOVERED` never becomes Agent PASS. `RECOVERY_UNVERIFIED` means the
-fault disappeared but the Agent did not actively recover and verify it. A native
+`FALLBACK_RECOVERED` never becomes Agent PASS. `TIMEOUT_RECOVERED` means the
+Agent configured the bounded timeout and the independent Oracle verified timely
+recovery without an explicit destroy call. `RECOVERY_UNVERIFIED` is reserved for
+insufficient recovery evidence. A native
 Harness that exports only a final response is explicitly marked with
 `tool_trace_complete=false`.
 

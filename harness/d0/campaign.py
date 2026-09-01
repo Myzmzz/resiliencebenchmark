@@ -23,6 +23,7 @@ from .adapters import (
 from .behavior import derive_agent_behavior
 from .common import (
     AGENTS,
+    EVALUATION_READY_STATUSES,
     EXPECTED_EXECUTION_HOST_ID,
     FIXED_PROMPT,
     append_jsonl,
@@ -222,6 +223,8 @@ class D0Campaign:
             statuses = {value["status"] for value in metadata["results"]}
             if statuses == {"PASS"}:
                 metadata["status"] = "QUALIFIED"
+            elif statuses and statuses <= EVALUATION_READY_STATUSES:
+                metadata["status"] = "EVALUATION_READY"
             elif statuses.intersection({"CASE_INVALID", "QUALIFICATION_INVALID", "NEEDS_HUMAN"}):
                 metadata["status"] = "QUALIFICATION_INVALID"
             else:
@@ -636,14 +639,14 @@ class D0Campaign:
             status = "EFFECT_UNVERIFIED"
         elif not recovered:
             status = "NO_AUTO_RECOVERY"
-        elif not agent_recovery:
-            status = "RECOVERY_UNVERIFIED"
-        elif behavior.get("agent_recovery_check_observed") is not True:
-            status = "RECOVERY_UNVERIFIED"
         elif duration is None or not 270 <= duration <= 330:
             status = "DURATION_MISMATCH"
         elif adapter.get("status") != "finished":
             status = "QUALIFICATION_INVALID"
+        elif not agent_recovery:
+            status = "TIMEOUT_RECOVERED"
+        elif behavior.get("agent_recovery_check_observed") is not True:
+            status = "RECOVERY_UNVERIFIED"
         else:
             status = "PASS"
         return {

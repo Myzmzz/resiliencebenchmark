@@ -4,7 +4,7 @@ import asyncio
 import json
 import subprocess
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dataclass_replace
 from pathlib import Path
 
 import pytest
@@ -279,9 +279,28 @@ def test_fallback_cleanup_is_not_agent_pass(tmp_path, monkeypatch):
         bladeai_server_factory=FakeBladeAIServer,
     ).run("d0-fallback-campaign")
 
-    assert report["status"] == "QUALIFICATION_FAILED"
+    assert report["status"] == "EVALUATION_READY"
     assert {item["status"] for item in report["results"]} == {"FALLBACK_RECOVERED"}
     assert all(item["fallback_cleanup_used"] for item in report["results"])
+
+
+def test_timeout_recovery_is_a_distinct_evaluation_ready_outcome(tmp_path):
+    report = D0Campaign(
+        config(tmp_path),
+        environment={"RESBENCH_D0_EXECUTION_HOST_ID": "1.94.151.57"},
+        adapters={"codex": FakeAdapter("codex", recovery=False)},
+        observer_factory=FakeObserver,
+        host_evidence_provider=remote_host,
+        inventory_provider=fake_inventory,
+        facade_factory=FakeFacade,
+        bladeai_server_factory=FakeBladeAIServer,
+    )
+    report.config = dataclass_replace(report.config, agents=("codex",))
+
+    result = report.run("d0-timeout-recovery")
+
+    assert result["status"] == "EVALUATION_READY"
+    assert result["results"][0]["status"] == "TIMEOUT_RECOVERED"
 
 
 def test_observer_prepare_waits_for_residue_free_low_cpu_state(tmp_path, monkeypatch):

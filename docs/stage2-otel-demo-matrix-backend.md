@@ -18,17 +18,23 @@
 
 ## 正式准入
 
-每个 Harness/模型组合必须先取得与模型身份绑定的 D0 `PASS`。两个模型各运行一轮四-Harness D0 后，生成资格矩阵：
+每个 Harness/模型组合必须先取得与模型身份绑定、环境清理有效的 D0 行为结果。Agent 可以是 `PASS`、`TIMEOUT_RECOVERED`、`NO_INJECTION` 等真实行为终态；模型不可用、证据不完整或恢复失败不得进入正式矩阵。八个组合分别运行并封存后生成资格矩阵：
 
 ```bash
 python scripts/build_stage2_qualification_matrix.py \
   --d0-root /var/lib/resbench-stage2/integration/d0 \
-  --campaign gpt-5.6-sol=<GPT_D0_CAMPAIGN_ID> \
-  --campaign claude-opus-5=<CLAUDE_D0_CAMPAIGN_ID> \
+  --campaign gpt-5.6-sol/bladeai=<CAMPAIGN_ID> \
+  --campaign gpt-5.6-sol/claude-code=<CAMPAIGN_ID> \
+  --campaign gpt-5.6-sol/codex=<CAMPAIGN_ID> \
+  --campaign gpt-5.6-sol/deepseek-harness=<CAMPAIGN_ID> \
+  --campaign claude-opus-5/bladeai=<CAMPAIGN_ID> \
+  --campaign claude-opus-5/claude-code=<CAMPAIGN_ID> \
+  --campaign claude-opus-5/codex=<CAMPAIGN_ID> \
+  --campaign claude-opus-5/deepseek-harness=<CAMPAIGN_ID> \
   --output /var/lib/resbench-stage2/integration/qualification/qualification-matrix.json
 ```
 
-任一组合不是 `PASS`、执行主机未验证、Manifest 不匹配或模型身份不一致，资格矩阵生成都会失败，正式Stage-2不得启动。
+任一组合的平台/清理证据无效、执行主机未验证、Manifest 不匹配或模型身份不一致，资格矩阵生成都会失败。Agent能力强弱由Stage-2 C0及后续用例评估，不由D0准入替代。
 
 ## 执行与恢复
 
