@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and push the backend-only linux/amd64 Stage-2 overlay image."""
+"""Build and push the linux/amd64 Stage-2 service and review UI overlay."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ def source_digest() -> str:
         REPO_ROOT / "stage2_service",
         REPO_ROOT / "harness",
         REPO_ROOT / "mcp_servers",
+        REPO_ROOT / "frontend",
     ]
     files = [
         path
@@ -32,6 +33,8 @@ def source_digest() -> str:
         for path in root.rglob("*")
         if path.is_file()
         and "__pycache__" not in path.parts
+        and "node_modules" not in path.parts
+        and "dist" not in path.parts
         and path.suffix not in {".pyc", ".pyo"}
     ]
     files.extend(
@@ -119,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
         "source_head": head,
         "source_sha256": content_sha,
         "platform": "linux/amd64",
-        "frontend_included": False,
+        "frontend_included": True,
     }
     destination = args.metadata.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
-# Stage-2 OTel Demo 后端矩阵
+# Stage-2 OTel Demo 实验矩阵与审计控制台
 
-本轮不接入前端。唯一执行入口是后端矩阵命令和 Kubernetes Job，所有 Agent、MCP、ChaosBlade、独立 Oracle、清理与恢复动作都必须运行在 `1.94.151.57` 所连接的被测集群中。
+正式执行入口是后端矩阵命令和 Kubernetes Job，所有 Agent、MCP、ChaosBlade、独立 Oracle、清理与恢复动作都必须运行在 `1.94.151.57` 所连接的被测集群中。实验结束后，同一 Stage2 服务通过 `/evaluation/stage2-matrices` 提供只读审计控制台；页面从密封制品重算结果，不修改原始证据，也不把执行完成等同于 Agent 通过。
 
 ## 固定矩阵
 
