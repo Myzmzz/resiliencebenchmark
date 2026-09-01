@@ -49,7 +49,10 @@ MAX_OUTPUT_BYTES = 10_000_000
 MIN_MCP_TOKEN_LENGTH = 32
 MAX_TRIAL_ID_LENGTH = 128
 TRIAL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-SAFE_PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+SAFE_PATH = (
+    "/usr/local/bin:/opt/resiliencebenchmark/deepseek-harness/bin:"
+    "/opt/homebrew/bin:/usr/bin:/bin"
+)
 FORMAL_HARNESS_COMMANDS = {
     "codex": "codex",
     "claude-code": "claude",
