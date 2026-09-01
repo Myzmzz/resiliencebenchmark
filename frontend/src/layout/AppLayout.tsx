@@ -53,6 +53,7 @@ const menuItems: MenuProps["items"] = [
     children: [
       { key: "/evaluation/tasks", label: "评测任务" },
       { key: "/evaluation/stage2-console", label: "Stage2 控制台" },
+      { key: "/evaluation/stage2-matrices", label: "Stage2 实验审计" },
       { key: "/evaluation/monitoring", label: "运行监控" },
       { key: "/evaluation/results", label: "结果分析" },
     ],

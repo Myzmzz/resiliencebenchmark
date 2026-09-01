@@ -10,6 +10,7 @@ export default defineConfig({
       "/api/v1/preflight": "http://localhost:18080",
       "/api/v1/campaigns": "http://localhost:18080",
       "/api/v1/artifacts": "http://localhost:18080",
+      "/api/v1/matrices": "http://localhost:18080",
       "/api": "http://localhost:8000",
     },
   },

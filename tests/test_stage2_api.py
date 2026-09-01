@@ -104,6 +104,16 @@ def test_generates_codex_case_bundle_and_preflight_contract():
     }
 
 
+def test_stage2_frontend_health_contract_uses_the_active_repo():
+    client = TestClient(create_app(CampaignSupervisor(Runner())))
+
+    response = client.get("/api/v1/meta/health")
+
+    assert response.status_code == 200
+    assert response.json()["service"] == "ok"
+    assert response.json()["repo"]["factory_config_found"] is True
+
+
 def test_campaign_events_are_available_for_sse_timeline():
     client = TestClient(create_app(CampaignSupervisor(EventRunner())))
     request = _request().model_dump(mode="json")

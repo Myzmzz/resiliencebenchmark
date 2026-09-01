@@ -22,6 +22,7 @@ from .contracts import (
     PlatformStatus,
     default_case_specs,
 )
+from .matrix_evidence import MatrixEvidenceNotFound, MatrixEvidenceStore
 
 
 class CampaignRunner(Protocol):
@@ -209,10 +210,24 @@ def create_app(
     frontend_root: Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Resilience Benchmark Stage-2 Service", docs_url="/api/docs")
+    matrix_evidence = MatrixEvidenceStore(artifact_root) if artifact_root is not None else None
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/v1/meta/health")
+    def frontend_health() -> dict:
+        repo_root = Path.cwd().resolve()
+        return {
+            "service": "ok",
+            "version": "stage2-matrix-v1",
+            "repo": {
+                "path": str(repo_root),
+                "exists": repo_root.is_dir(),
+                "factory_config_found": (repo_root / "benchmarkfactory.yaml").is_file(),
+            },
+        }
 
     @app.post("/api/v1/case-bundles")
     def generate_case_bundle(request: CaseBundleGenerationRequest) -> dict:
@@ -266,6 +281,39 @@ def create_app(
         if qualification_inventory is None:
             return {"artifact_root_configured": False, "campaigns": []}
         return dict(qualification_inventory())
+
+    @app.get("/api/v1/matrices")
+    def list_matrices() -> dict:
+        if matrix_evidence is None:
+            return {"matrices": []}
+        return {"matrices": matrix_evidence.list_matrices()}
+
+    @app.get("/api/v1/matrices/{matrix_id}")
+    def get_matrix(matrix_id: str) -> dict:
+        if matrix_evidence is None:
+            raise HTTPException(status_code=404, detail="matrix artifacts are not configured")
+        try:
+            return matrix_evidence.overview(matrix_id)
+        except MatrixEvidenceNotFound as exc:
+            raise HTTPException(status_code=404, detail="matrix not found") from exc
+
+    @app.get("/api/v1/matrices/{matrix_id}/trials/{trial_id}")
+    def get_matrix_trial(matrix_id: str, trial_id: str) -> dict:
+        if matrix_evidence is None:
+            raise HTTPException(status_code=404, detail="matrix artifacts are not configured")
+        try:
+            return matrix_evidence.trial_detail(matrix_id, trial_id)
+        except MatrixEvidenceNotFound as exc:
+            raise HTTPException(status_code=404, detail="matrix Trial not found") from exc
+
+    @app.get("/api/v1/matrices/{matrix_id}/artifacts/{artifact_path:path}")
+    def download_matrix_artifact(matrix_id: str, artifact_path: str):
+        if matrix_evidence is None:
+            raise HTTPException(status_code=404, detail="matrix artifacts are not configured")
+        try:
+            return FileResponse(matrix_evidence.matrix_artifact(matrix_id, artifact_path))
+        except MatrixEvidenceNotFound as exc:
+            raise HTTPException(status_code=404, detail="matrix artifact not found") from exc
 
     @app.post("/api/v1/campaigns", status_code=status.HTTP_202_ACCEPTED)
     def create_campaign(request: CampaignRequest) -> dict[str, str]:
