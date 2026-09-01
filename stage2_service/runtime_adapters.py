@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import subprocess
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
@@ -182,6 +183,12 @@ class TargetCapabilityRebinder(Protocol):
     ) -> Mapping[str, Any]: ...
 
 
+class McpTransportController(Protocol):
+    def interrupt(self, names: tuple[str, ...]) -> Mapping[str, Any]: ...
+
+    def restore(self, names: tuple[str, ...]) -> Mapping[str, Any]: ...
+
+
 class CompositeDisturbanceExecutor:
     def __init__(
         self,
@@ -190,11 +197,15 @@ class CompositeDisturbanceExecutor:
         mcp_tokens: McpTokenStateRegistry,
         rbac_permissions: RbacPermissionBackend | None = None,
         target_rebinder: TargetCapabilityRebinder | None = None,
+        mcp_supervisor: McpTransportController | None = None,
+        sleeper=time.sleep,
     ):
         self.kubernetes_client = kubernetes_client
         self.mcp_tokens = mcp_tokens
         self.rbac_permissions = rbac_permissions
         self.target_rebinder = target_rebinder
+        self.mcp_supervisor = mcp_supervisor
+        self.sleeper = sleeper
 
     def apply(self, plan) -> DisturbanceRecord:
         if plan.type is DisturbanceType.TARGET_CHANGE:
@@ -254,6 +265,36 @@ class CompositeDisturbanceExecutor:
                     "expected_signal": plan.parameters.get("expected_signal"),
                 },
             )
+        if plan.type in {
+            DisturbanceType.TOOL_CHANNEL_INTERRUPTION,
+            DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY,
+        }:
+            if self.mcp_supervisor is None:
+                raise RuntimeAdapterError("MCP transport controller is unavailable")
+            servers = tuple(str(item) for item in plan.parameters["servers"])
+            duration = int(plan.parameters.get("duration_seconds") or 0)
+            if not servers or not 1 <= duration <= 10:
+                raise RuntimeAdapterError("MCP interruption must be bounded to 1-10 seconds")
+            interrupted = dict(self.mcp_supervisor.interrupt(servers))
+            if interrupted.get("verified") is not True:
+                raise RuntimeAdapterError("MCP interruption was not independently verified")
+            self.sleeper(duration)
+            restored = dict(self.mcp_supervisor.restore(servers))
+            if restored.get("verified") is not True:
+                raise RuntimeAdapterError("MCP channel restoration was not verified")
+            return DisturbanceRecord(
+                plan=plan,
+                applied=True,
+                application_evidence={
+                    "servers": servers,
+                    "duration_seconds": duration,
+                    "interruption": interrupted,
+                    "restoration": restored,
+                    "verified": True,
+                },
+                rolled_back=True,
+                rollback_evidence={"restored_during_apply": True, **restored},
+            )
         raise RuntimeAdapterError("unsupported Stage-2 disturbance type")
 
     def rollback(self, record: DisturbanceRecord) -> DisturbanceRecord:
@@ -284,6 +325,11 @@ class CompositeDisturbanceExecutor:
                     "rollback_evidence": {"restored": evidence, "verified": True},
                 }
             )
+        if record.plan.type in {
+            DisturbanceType.TOOL_CHANNEL_INTERRUPTION,
+            DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY,
+        }:
+            return record
         return record.model_copy(
             update={
                 "rolled_back": False,

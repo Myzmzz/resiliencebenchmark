@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -28,6 +29,8 @@ from .contracts import (
 )
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
+from .qualification import D0QualificationGate
+from .reporting import build_evaluation_summary
 
 
 EventObserver = Callable[[Any], None]
@@ -112,6 +115,8 @@ class CampaignEngine:
         evaluator: TrialEvaluator,
         resetter: EnvironmentResetter,
         artifacts: ArtifactStore,
+        qualification_gate: D0QualificationGate | None = None,
+        max_campaign_seconds: int = 7200,
     ):
         self.episode = episode
         self.environment_gate = environment_gate
@@ -124,6 +129,8 @@ class CampaignEngine:
         self.evaluator = evaluator
         self.resetter = resetter
         self.artifacts = artifacts
+        self.qualification_gate = qualification_gate or D0QualificationGate(None)
+        self.max_campaign_seconds = max_campaign_seconds
 
     def run(
         self,
@@ -135,7 +142,11 @@ class CampaignEngine:
         campaign_id = f"campaign-{uuid4().hex[:16]}"
         results: list[TrialResult] = []
         selected_cases = _selected_cases(request)
-        should_stop = stop_requested or (lambda: False)
+        external_stop = stop_requested or (lambda: False)
+        campaign_deadline = time.monotonic() + self.max_campaign_seconds
+
+        def should_stop() -> bool:
+            return external_stop() or time.monotonic() >= campaign_deadline
 
         def emit(kind: str, payload: Mapping[str, Any]) -> None:
             if event_observer is not None:
@@ -159,6 +170,22 @@ class CampaignEngine:
                     PlatformStatus.BLOCKED,
                     results,
                     "operator stop requested",
+                )
+            d0_qualification = dict(self.qualification_gate.qualify(request))
+            self.artifacts.write(
+                campaign_id,
+                "qualification/d0.json",
+                d0_qualification,
+            )
+            emit("d0_qualification_checked", d0_qualification)
+            if d0_qualification.get("execution_allowed") is not True:
+                return self._finish(
+                    campaign_id,
+                    request,
+                    started_at,
+                    PlatformStatus.BLOCKED,
+                    results,
+                    "D0 qualification gate did not pass",
                 )
             qualification = dict(self.environment_gate.qualify(self.episode))
             self.artifacts.write(campaign_id, "environment/qualification.json", qualification)
@@ -233,6 +260,7 @@ class CampaignEngine:
                                     "lifecycle_event",
                                     {
                                         "trial_id": event.trial_id,
+                                        "harness": event.harness.value,
                                         "case_id": case.case_id.value,
                                         "phase": event.phase.value,
                                         "event_kind": event.kind,
@@ -286,7 +314,8 @@ class CampaignEngine:
                             for record in disturbance_records
                         ]
                         diagnostic_only = (
-                            kind is not TrialKind.CONTROL and not control_passed
+                            d0_qualification.get("scored") is not True
+                            or (kind is not TrialKind.CONTROL and not control_passed)
                         )
                         verdict = self.evaluator.evaluate(
                             kind=kind,
@@ -302,6 +331,8 @@ class CampaignEngine:
                             TrialKind.TARGET_CHANGE,
                             TrialKind.EFFECT_OBSERVABILITY_REVOKED,
                             TrialKind.RECOVERY_OBSERVABILITY_REVOKED,
+                            TrialKind.TOOL_CHANNEL_INTERRUPTED,
+                            TrialKind.OPERATION_OUTCOME_UNCERTAIN,
                         }
                         platform_valid = (
                             (
@@ -355,22 +386,6 @@ class CampaignEngine:
                             recovery=recovery,
                             artifact_refs=tuple(refs),
                         )
-                        results.append(result)
-                        emit(
-                            "trial_finished",
-                            {
-                                "trial_id": trial_id,
-                                "case_id": case.case_id.value,
-                                "platform_valid": result.platform_valid,
-                                "agent_verdict": result.agent_verdict.value,
-                                "artifact_refs": result.artifact_refs,
-                            },
-                        )
-                        self.artifacts.write(
-                            campaign_id,
-                            f"trials/{trial_id}/result.json",
-                            result.model_dump(mode="json"),
-                        )
                     except Exception as exc:  # noqa: BLE001 - cleanup is mandatory.
                         emergency = self._emergency_cleanup(
                             campaign_id=campaign_id,
@@ -400,7 +415,43 @@ class CampaignEngine:
                     )
                     restore = cleanup["permission_restore"]
                     reset = cleanup["environment_reset"]
-                    if restore.get("verified") is not True or reset.get("verified") is not True:
+                    cleanup_verified = (
+                        restore.get("verified") is True
+                        and reset.get("verified") is True
+                    )
+                    result = result.model_copy(
+                        update={
+                            "platform_valid": result.platform_valid and cleanup_verified,
+                            "agent_verdict": (
+                                result.agent_verdict
+                                if result.platform_valid and cleanup_verified
+                                else AgentVerdict.CASE_INVALID
+                            ),
+                            "artifact_refs": (
+                                *result.artifact_refs,
+                                f"{campaign_id}/trials/{trial_id}/permission-restore.json",
+                                f"{campaign_id}/trials/{trial_id}/environment-reset.json",
+                            ),
+                        }
+                    )
+                    results.append(result)
+                    emit(
+                        "trial_finished",
+                        {
+                            "trial_id": trial_id,
+                            "harness": harness.value,
+                            "case_id": case.case_id.value,
+                            "platform_valid": result.platform_valid,
+                            "agent_verdict": result.agent_verdict.value,
+                            "artifact_refs": result.artifact_refs,
+                        },
+                    )
+                    self.artifacts.write(
+                        campaign_id,
+                        f"trials/{trial_id}/result.json",
+                        result.model_dump(mode="json"),
+                    )
+                    if not cleanup_verified:
                         return self._finish(
                             campaign_id,
                             request,
@@ -533,8 +584,8 @@ class CampaignEngine:
         )
         return {"permission_restore": restore, "environment_reset": reset}
 
-    @staticmethod
     def _finish(
+        self,
         campaign_id: str,
         request: CampaignRequest,
         started_at: datetime,
@@ -542,15 +593,30 @@ class CampaignEngine:
         results: list[TrialResult],
         error: str | None = None,
     ) -> CampaignResult:
-        return CampaignResult(
+        result = CampaignResult(
             campaign_id=campaign_id,
             request_id=request.request_id,
+            harnesses=request.harnesses,
+            model_by_harness=request.model_by_harness,
             platform_status=status,
             trials=tuple(results),
             started_at=started_at,
             finished_at=datetime.now(UTC),
+            qualification=dict(self.qualification_gate.qualify(request)),
             error=error,
         )
+        self.artifacts.write(
+            campaign_id,
+            "campaign/result.json",
+            result.model_dump(mode="json"),
+        )
+        self.artifacts.write(
+            campaign_id,
+            "campaign/evaluation.json",
+            build_evaluation_summary(result),
+        )
+        self.artifacts.seal(campaign_id)
+        return result
 
 
 def _selected_cases(request: CampaignRequest) -> tuple[CaseSpec, ...]:

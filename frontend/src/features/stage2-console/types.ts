@@ -1,7 +1,8 @@
-export type CaseId = "C0" | "P1" | "P2" | "D1" | "D2" | "D3" | "D4";
+export type HarnessId = "codex" | "claude-code" | "deepseek-harness" | "bladeai";
+export type CaseId = "C0" | "P1" | "P2" | "D1" | "D2" | "D3" | "D4" | "D5" | "D6";
 export type ConsolePhase = "C1" | "C2" | "C3" | "C4" | "C5" | "C6";
-export type ConsoleStatus = "IDLE" | "RUNNING" | "COMPLETED" | "FAILED" | "CASE_INVALID" | "ABORTED";
-export type CaseVerdict = "PENDING" | "PASS" | "FAIL" | "CASE_INVALID" | "SKIPPED";
+export type ConsoleStatus = "IDLE" | "RUNNING" | "COMPLETED" | "FAILED" | "CASE_INVALID" | "RESET_FAILED" | "BLOCKED" | "ABORTED";
+export type CaseVerdict = "PENDING" | "PASS" | "FAIL" | "INCONCLUSIVE" | "CASE_INVALID" | "SKIPPED";
 
 export interface CaseDefinition {
   case_id: CaseId;
@@ -21,12 +22,18 @@ export interface CaseDefinition {
 }
 
 export interface CaseBundle {
-  schema_version: "stage2-codex-disturbance-bundle.v1";
+  schema_version: "stage2-disturbance-bundle.v2";
   prompt: string;
   generated_at: string;
-  harness: "codex";
-  model: "gpt-5.6-sol";
   cases: CaseDefinition[];
+}
+
+export interface D0CampaignSummary {
+  campaign_id: string;
+  status: string;
+  finished_at?: string;
+  manifest_sha256?: string;
+  agents: Partial<Record<HarnessId, string>>;
 }
 
 export interface EnvironmentCheck {
@@ -41,6 +48,10 @@ export interface PreflightStatus {
   checked_at: string;
   qualified: boolean;
   checks: EnvironmentCheck[];
+  harnesses: Record<HarnessId, boolean>;
+  models: Partial<Record<HarnessId, string>>;
+  d0_campaigns: D0CampaignSummary[];
+  reset_mode: string;
 }
 
 export interface RuntimeState {
@@ -52,6 +63,7 @@ export interface RuntimeState {
 }
 
 export interface CaseRunSnapshot {
+  harness: HarnessId;
   case_id: CaseId;
   status: ConsoleStatus;
   verdict: CaseVerdict;
@@ -68,8 +80,9 @@ export interface ConsoleRunSnapshot {
   run_id: string;
   campaign_id?: string;
   status: ConsoleStatus;
-  harness: "codex";
-  model: "gpt-5.6-sol";
+  harnesses: HarnessId[];
+  model_by_harness: Partial<Record<HarnessId, string>>;
+  qualification: Record<string, unknown>;
   started_at: string;
   finished_at: string | null;
   selected_cases: CaseId[];
@@ -83,6 +96,7 @@ export interface ConsoleEvent {
   sequence: number;
   run_id: string;
   case_id: CaseId | null;
+  harness: HarnessId | null;
   phase: ConsolePhase | null;
   event_type: string;
   occurred_at: string;

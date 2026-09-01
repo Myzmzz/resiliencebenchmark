@@ -35,8 +35,9 @@ class McpSupervisor:
         self.private_root = private_root.resolve()
         self.private_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.base_environment = dict(base_environment)
-        self.processes: list[subprocess.Popen[bytes]] = []
-        self.logs: list[Any] = []
+        self.processes: dict[str, subprocess.Popen[bytes]] = {}
+        self.logs: dict[str, Any] = {}
+        self.specs: dict[str, tuple[int, dict[str, str], Path]] = {}
 
     def start_trial(
         self,
@@ -70,19 +71,9 @@ class McpSupervisor:
                 "RESBENCH_MCP_RESOURCE_URL": resource,
                 "RESBENCH_MCP_SCOPE": f"stage2:{trial_id}:{name}",
             }
-            log = (log_root / f"{name}.log").open("ab")
-            self.logs.append(log)
-            process = subprocess.Popen(
-                [sys.executable, "-m", f"mcp_servers.{name}"],
-                stdin=subprocess.DEVNULL,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                env=env,
-            )
-            self.processes.append(process)
+            self.specs[name] = (port, env, log_root / f"{name}.log")
+            self._start_server(name)
             urls[name] = resource
-        for process, port in zip(self.processes, ports.values(), strict=True):
-            _wait_process_port(process, port, timeout=30)
         return {
             "RESBENCH_K8S_MCP_URL": urls["k8s_ro"],
             "RESBENCH_TELEMETRY_MCP_URL": urls["telemetry_ro"],
@@ -95,19 +86,71 @@ class McpSupervisor:
         }
 
     def stop(self) -> None:
-        for process in reversed(self.processes):
-            if process.poll() is None:
+        self.interrupt(tuple(self.processes))
+        self.specs.clear()
+
+    def interrupt(self, names: tuple[str, ...]) -> dict[str, Any]:
+        stopped = []
+        for name in names:
+            process = self.processes.get(name)
+            if process is not None and process.poll() is None:
                 process.terminate()
-        for process in reversed(self.processes):
+        for name in names:
+            process = self.processes.pop(name, None)
+            if process is None:
+                continue
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
-        self.processes.clear()
-        for log in self.logs:
+            log = self.logs.pop(name, None)
+            if log is not None:
+                log.close()
+            stopped.append(name)
+        return {
+            "interrupted": sorted(stopped),
+            "verified": all(name not in self.processes for name in names),
+        }
+
+    def restore(self, names: tuple[str, ...]) -> dict[str, Any]:
+        restored = []
+        for name in names:
+            if name in self.processes:
+                continue
+            if name not in self.specs:
+                raise McpSupervisorError(f"MCP server has no restart specification: {name}")
+            self._start_server(name)
+            restored.append(name)
+        return {
+            "restored": sorted(restored),
+            "verified": all(name in self.processes for name in names),
+        }
+
+    def _start_server(self, name: str) -> None:
+        port, env, log_path = self.specs[name]
+        if _port_open(port):
+            raise McpSupervisorError(f"MCP loopback port is already in use: {port}")
+        log = log_path.open("ab")
+        process = subprocess.Popen(
+            [sys.executable, "-m", f"mcp_servers.{name}"],
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+        self.logs[name] = log
+        self.processes[name] = process
+        try:
+            _wait_process_port(process, port, timeout=30)
+        except Exception:
+            self.processes.pop(name, None)
+            self.logs.pop(name, None)
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
             log.close()
-        self.logs.clear()
+            raise
 
 
 def _port_open(port: int) -> bool:

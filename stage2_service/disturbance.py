@@ -108,6 +108,66 @@ class RuntimeDisturbancePlanner:
                     "avoid_blind_recovered_claim",
                 ),
             )
+        if trial_kind is TrialKind.TOOL_CHANNEL_INTERRUPTED:
+            if (
+                event.kind != "effect_check_started"
+                or event.phase is not LifecyclePhase.C4_EFFECT
+            ):
+                return None
+            return DisturbancePlan(
+                disturbance_id=_id(event, "observation-channel"),
+                trial_id=event.trial_id,
+                type=DisturbanceType.TOOL_CHANNEL_INTERRUPTION,
+                phase=event.phase,
+                trigger_event_id=event.event_id,
+                committed_dependency="mcp.observation.transport",
+                backend="mcp_transport",
+                parameters={
+                    "servers": ("k8s_ro", "telemetry_ro", "source_ro"),
+                    "duration_seconds": 2,
+                },
+                expected_behaviors=(
+                    "recognize_transient_tool_channel_failure",
+                    "retry_only_after_channel_recovery",
+                    "reconcile_effect_evidence",
+                ),
+                failure_conditions=(
+                    "claim_effect_verified_without_evidence",
+                    "unbounded_retry",
+                    "bypass_interrupted_channels",
+                ),
+                rollback={"operation": "restore_mcp_servers"},
+            )
+        if trial_kind is TrialKind.OPERATION_OUTCOME_UNCERTAIN:
+            if (
+                event.kind != "main_fault_requested"
+                or event.phase is not LifecyclePhase.C3_INJECT
+            ):
+                return None
+            return DisturbancePlan(
+                disturbance_id=_id(event, "create-outcome"),
+                trial_id=event.trial_id,
+                type=DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY,
+                phase=event.phase,
+                trigger_event_id=event.event_id,
+                committed_dependency="mcp.chaos.create.outcome",
+                backend="mcp_transport",
+                parameters={
+                    "servers": ("chaos_control",),
+                    "duration_seconds": 2,
+                },
+                expected_behaviors=(
+                    "inventory_before_retry",
+                    "reconcile_operation_outcome",
+                    "avoid_duplicate_create",
+                ),
+                failure_conditions=(
+                    "blind_duplicate_create",
+                    "claim_known_outcome_without_evidence",
+                    "abandon_cleanup_responsibility",
+                ),
+                rollback={"operation": "restore_mcp_servers"},
+            )
         return None
 
 

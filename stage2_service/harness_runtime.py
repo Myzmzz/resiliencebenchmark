@@ -18,6 +18,7 @@ from scripts.run_harness_trial import (
     SAFE_PATH,
     append_runtime_capability_prompt,
     build_argv,
+    capture_dsh_session_trace,
     child_env_for_harness,
     event_tool_name,
     extract_json_objects,
@@ -27,10 +28,12 @@ from scripts.run_harness_trial import (
     render_codex_config,
     render_dsh_contract,
     render_prompt,
+    redact_text,
     resolve_prompt_file,
     subprocess_streaming_runner,
     validate_final_agent_result,
     validate_prompt_text,
+    write_json,
 )
 
 from .contracts import (
@@ -218,8 +221,12 @@ class NativeHarnessRunner:
             )
         finally:
             self.mcp_supervisor.stop()
-        (artifact_dir / "stdout.txt").write_bytes(result.stdout)
-        (artifact_dir / "stderr.txt").write_bytes(result.stderr)
+        (artifact_dir / "stdout.txt").write_text(
+            redact_text(result.stdout, env), encoding="utf-8"
+        )
+        (artifact_dir / "stderr.txt").write_text(
+            redact_text(result.stderr, env), encoding="utf-8"
+        )
         output_schema = load_json(self.repo_root / DEFAULT_OUTPUT_SCHEMA)
         ref, validation_error = validate_final_agent_result(
             result.stdout,
@@ -262,6 +269,18 @@ class NativeHarnessRunner:
             ):
                 lifecycle.append(event)
                 event_observer(event)
+        native_session_refs: list[str] = []
+        if harness is HarnessKind.DEEPSEEK and dsh_home.exists():
+            native_events: list[dict[str, Any]] = []
+            native_session_refs = capture_dsh_session_trace(
+                dsh_home,
+                artifact_dir,
+                env,
+                native_events,
+            )
+            if native_events:
+                write_json(artifact_dir / "dsh-native-events.json", native_events)
+                native_session_refs.append("dsh-native-events.json")
         shutil.rmtree(trial_root, ignore_errors=True)
         return HarnessReport(
             status=status,
@@ -271,6 +290,7 @@ class NativeHarnessRunner:
                 f"{campaign_id}/{trial_id}/stdout.txt",
                 f"{campaign_id}/{trial_id}/stderr.txt",
                 *((f"{campaign_id}/{trial_id}/{ref}",) if ref else ()),
+                *(f"{campaign_id}/{trial_id}/{name}" for name in native_session_refs),
             ),
             final_output=final_output,
         )
@@ -408,8 +428,12 @@ class NativeHarnessRunner:
             observe,
             cancel_requested,
         )
-        (artifact_dir / "stdout.txt").write_bytes(result.stdout)
-        (artifact_dir / "stderr.txt").write_bytes(result.stderr)
+        (artifact_dir / "stdout.txt").write_text(
+            redact_text(result.stdout, env), encoding="utf-8"
+        )
+        (artifact_dir / "stderr.txt").write_text(
+            redact_text(result.stderr, env), encoding="utf-8"
+        )
         final = next(
             (item for item in reversed(raw_events) if item.get("type") == "stage2_bladeai_result"),
             None,
@@ -578,6 +602,30 @@ class NativeHarnessRunner:
                     _phase_for_tool(tool),
                     "permission_denied",
                     {"capability": _capability_for_tool(tool), "tool": tool},
+                )
+            )
+        elif tool and _tool_result_failed(item):
+            output.append(
+                self._event(
+                    campaign_id,
+                    trial_id,
+                    harness,
+                    _phase_for_tool(tool),
+                    "tool_channel_error",
+                    {"capability": _capability_for_tool(tool), "tool": tool},
+                )
+            )
+        if tool.endswith(
+            ("chaos_inventory_run", "chaos_get_experiment", "chaos_recovery_status")
+        ) and _tool_result_ok(item):
+            output.append(
+                self._event(
+                    campaign_id,
+                    trial_id,
+                    harness,
+                    LifecyclePhase.C3_INJECT,
+                    "operation_reconciled",
+                    {"tool": tool},
                 )
             )
         return output
@@ -800,6 +848,18 @@ def _tool_result_ok(item: Mapping[str, Any]) -> bool:
         if value.get("ok") is True:
             return True
     return False
+
+
+def _tool_result_failed(item: Mapping[str, Any]) -> bool:
+    status = str(item.get("status") or "").lower()
+    if status in {"failed", "error", "cancelled"}:
+        return not _permission_denied(item)
+    if status not in {"completed", "success", "succeeded"}:
+        return False
+    values = extract_json_objects(json.dumps(item.get("result"), ensure_ascii=False))
+    return any(value.get("ok") is False for value in values) and not any(
+        _permission_denied(value) for value in values
+    )
 
 
 def _capability_for_tool(tool: str) -> str:

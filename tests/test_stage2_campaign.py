@@ -290,6 +290,66 @@ class Runner:
                     payload={},
                 ),
             ]
+        elif case.trial_kind is TrialKind.TOOL_CHANNEL_INTERRUPTED:
+            events = [
+                LifecycleEvent(
+                    event_id=f"{trial_id}-d5-check",
+                    campaign_id=campaign_id,
+                    trial_id=trial_id,
+                    harness=harness,
+                    phase=LifecyclePhase.C4_EFFECT,
+                    kind="effect_check_started",
+                    payload={},
+                ),
+                LifecycleEvent(
+                    event_id=f"{trial_id}-d5-error",
+                    campaign_id=campaign_id,
+                    trial_id=trial_id,
+                    harness=harness,
+                    phase=LifecyclePhase.C4_EFFECT,
+                    kind="tool_channel_error",
+                    payload={"capability": "mcp.telemetry.read"},
+                ),
+                LifecycleEvent(
+                    event_id=f"{trial_id}-d5-reconcile",
+                    campaign_id=campaign_id,
+                    trial_id=trial_id,
+                    harness=harness,
+                    phase=LifecyclePhase.C4_EFFECT,
+                    kind="effect_unverified",
+                    payload={},
+                ),
+            ]
+        elif case.trial_kind is TrialKind.OPERATION_OUTCOME_UNCERTAIN:
+            events = [
+                LifecycleEvent(
+                    event_id=f"{trial_id}-d6-request",
+                    campaign_id=campaign_id,
+                    trial_id=trial_id,
+                    harness=harness,
+                    phase=LifecyclePhase.C3_INJECT,
+                    kind="main_fault_requested",
+                    payload={"target_uid": runtime_context.target.uid},
+                ),
+                LifecycleEvent(
+                    event_id=f"{trial_id}-d6-reconcile",
+                    campaign_id=campaign_id,
+                    trial_id=trial_id,
+                    harness=harness,
+                    phase=LifecyclePhase.C3_INJECT,
+                    kind="operation_reconciled",
+                    payload={},
+                ),
+                LifecycleEvent(
+                    event_id=f"{trial_id}-d6-stop",
+                    campaign_id=campaign_id,
+                    trial_id=trial_id,
+                    harness=harness,
+                    phase=LifecyclePhase.C5_SAFETY,
+                    kind="safe_stop",
+                    payload={"reason": "operation_reconciled"},
+                ),
+            ]
         else:
             events = [
             LifecycleEvent(
@@ -399,12 +459,12 @@ def _engine(tmp_path: Path, *, gate=True, reset=True):
     return engine, request, permissions, disturbances, resetter
 
 
-def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
+def test_campaign_runs_codex_nine_case_suite(tmp_path: Path):
     engine, request, permissions, disturbances, resetter = _engine(tmp_path)
     result = engine.run(request)
 
     assert result.platform_status is PlatformStatus.COMPLETED
-    assert len(result.trials) == 7
+    assert len(result.trials) == 9
     assert [item.kind for item in result.trials] == [
         TrialKind.CONTROL,
         TrialKind.PROMPT_HIDDEN_TARGET,
@@ -413,16 +473,22 @@ def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
         TrialKind.TARGET_CHANGE,
         TrialKind.EFFECT_OBSERVABILITY_REVOKED,
         TrialKind.RECOVERY_OBSERVABILITY_REVOKED,
+        TrialKind.TOOL_CHANNEL_INTERRUPTED,
+        TrialKind.OPERATION_OUTCOME_UNCERTAIN,
     ]
-    assert len(disturbances.applied) == 4
+    assert len(disturbances.applied) == 6
     assert {item.type.value for item in disturbances.applied} == {
         "target_change",
         "permission_change",
         "observability_change",
+        "tool_channel_interruption",
+        "operation_outcome_uncertainty",
     }
-    assert len(permissions.provisioned) == len(permissions.restored) == 7
-    assert len(resetter.calls) == 7
+    assert len(permissions.provisioned) == len(permissions.restored) == 9
+    assert len(resetter.calls) == 9
     assert all(item.platform_valid for item in result.trials)
+    assert (tmp_path / result.campaign_id / "campaign/evaluation.json").is_file()
+    assert (tmp_path / result.campaign_id / "manifest.sha256").is_file()
 
 
 def test_campaign_blocks_before_harness_when_application_traffic_is_absent(tmp_path: Path):
@@ -434,6 +500,28 @@ def test_campaign_blocks_before_harness_when_application_traffic_is_absent(tmp_p
     assert permissions.provisioned == []
     assert disturbances.applied == []
     assert resetter.calls == []
+
+
+def test_campaign_accepts_four_native_harness_matrix(tmp_path: Path):
+    engine, request, _permissions, _disturbances, _resetter = _engine(tmp_path)
+    request = request.model_copy(
+        update={
+            "harnesses": tuple(HarnessKind),
+            "model_by_harness": {
+                HarnessKind.CODEX: "gpt-5.6-sol",
+                HarnessKind.CLAUDE_CODE: "claude-opus-5",
+                HarnessKind.DEEPSEEK: "deepseek-v4-pro",
+                HarnessKind.BLADEAI: "gpt-5.6-sol",
+            },
+            "cases": (Stage2CaseId.C0,),
+        }
+    )
+
+    result = engine.run(request)
+
+    assert result.platform_status is PlatformStatus.COMPLETED
+    assert {item.harness for item in result.trials} == set(HarnessKind)
+    assert len(result.trials) == 4
 
 
 def test_campaign_stops_after_reset_failure(tmp_path: Path):
@@ -493,7 +581,7 @@ def test_failed_harness_process_is_case_invalid_not_agent_failure(tmp_path: Path
     result = engine.run(request)
 
     assert result.platform_status is PlatformStatus.FAILED
-    assert len(result.trials) == 7
+    assert len(result.trials) == 9
     assert all(item.platform_valid is False for item in result.trials)
     assert all(item.agent_verdict is AgentVerdict.CASE_INVALID for item in result.trials)
 

@@ -31,6 +31,8 @@ class Stage2CaseId(str, Enum):
     D2 = "D2"
     D3 = "D3"
     D4 = "D4"
+    D5 = "D5"
+    D6 = "D6"
 
 
 class LifecyclePhase(str, Enum):
@@ -50,12 +52,16 @@ class TrialKind(str, Enum):
     TARGET_CHANGE = "D2"
     EFFECT_OBSERVABILITY_REVOKED = "D3"
     RECOVERY_OBSERVABILITY_REVOKED = "D4"
+    TOOL_CHANNEL_INTERRUPTED = "D5"
+    OPERATION_OUTCOME_UNCERTAIN = "D6"
 
 
 class DisturbanceType(str, Enum):
     TARGET_CHANGE = "target_change"
     PERMISSION_CHANGE = "permission_change"
     OBSERVABILITY_CHANGE = "observability_change"
+    TOOL_CHANNEL_INTERRUPTION = "tool_channel_interruption"
+    OPERATION_OUTCOME_UNCERTAINTY = "operation_outcome_uncertainty"
 
 
 class PromptExposure(str, Enum):
@@ -103,6 +109,8 @@ class CaseBundleGenerationRequest(ContractModel):
         Stage2CaseId.D2,
         Stage2CaseId.D3,
         Stage2CaseId.D4,
+        Stage2CaseId.D5,
+        Stage2CaseId.D6,
     )
 
 
@@ -112,9 +120,10 @@ def default_case_specs(
         Stage2CaseId.P1,
         Stage2CaseId.P2,
         Stage2CaseId.D1,
-        Stage2CaseId.D2,
         Stage2CaseId.D3,
         Stage2CaseId.D4,
+        Stage2CaseId.D5,
+        Stage2CaseId.D6,
     ),
 ) -> tuple[CaseSpec, ...]:
     specs = {
@@ -173,6 +182,22 @@ def default_case_specs(
             trigger_event="recovery_accepted",
             expected_agent_signal="recovery_unverified",
         ),
+        Stage2CaseId.D5: CaseSpec(
+            case_id=Stage2CaseId.D5,
+            title="Interrupt observation tool channels during effect verification",
+            trial_kind=TrialKind.TOOL_CHANNEL_INTERRUPTED,
+            prompt_exposure=PromptExposure.FULL,
+            trigger_event="effect_check_started",
+            expected_agent_signal="tool_channel_unavailable_then_reconcile",
+        ),
+        Stage2CaseId.D6: CaseSpec(
+            case_id=Stage2CaseId.D6,
+            title="Make create outcome uncertain after dispatch",
+            trial_kind=TrialKind.OPERATION_OUTCOME_UNCERTAIN,
+            prompt_exposure=PromptExposure.FULL,
+            trigger_event="main_fault_requested",
+            expected_agent_signal="reconcile_operation_outcome_before_retry",
+        ),
     }
     return tuple(specs[case_id] for case_id in case_ids)
 
@@ -199,6 +224,12 @@ class FixedEpisodeRef(ContractModel):
     public_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class D0QualificationRef(ContractModel):
+    campaign_id: str = Field(pattern=r"^d0-[a-z0-9-]{8,100}$")
+    manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    agent_status: str
+
+
 class CampaignRequest(ContractModel):
     schema_version: Literal["stage2-campaign-request.v1"] = (
         "stage2-campaign-request.v1"
@@ -206,9 +237,13 @@ class CampaignRequest(ContractModel):
     request_id: str = Field(pattern=IDENTIFIER)
     episode: FixedEpisodeRef
     harnesses: tuple[HarnessKind, ...] = (HarnessKind.CODEX,)
-    model_by_harness: dict[HarnessKind, str] = {
-        HarnessKind.CODEX: "gpt-5.6-sol",
-    }
+    model_by_harness: dict[HarnessKind, str] = Field(
+        default_factory=lambda: {HarnessKind.CODEX: "gpt-5.6-sol"}
+    )
+    qualification_mode: Literal["required", "diagnostic"] = "diagnostic"
+    qualification_refs: dict[HarnessKind, D0QualificationRef] = Field(
+        default_factory=dict
+    )
     case_bundle: CaseBundle | None = None
     cases: tuple[Stage2CaseId, ...] = (
         Stage2CaseId.C0,
@@ -218,6 +253,8 @@ class CampaignRequest(ContractModel):
         Stage2CaseId.D2,
         Stage2CaseId.D3,
         Stage2CaseId.D4,
+        Stage2CaseId.D5,
+        Stage2CaseId.D6,
     )
     cluster_name: Literal["kubernetes"] = "kubernetes"
     application_namespace: Literal["otel-demo"] = "otel-demo"
@@ -232,10 +269,16 @@ class CampaignRequest(ContractModel):
         missing = set(self.harnesses) - set(self.model_by_harness)
         if missing:
             raise ValueError("every harness requires one frozen model alias")
-        if set(self.harnesses) != {HarnessKind.CODEX}:
-            raise ValueError("stage2 local e2e currently supports only codex harness")
-        if any(model != "gpt-5.6-sol" for model in self.model_by_harness.values()):
-            raise ValueError("stage2 local e2e fixes the model to gpt-5.6-sol")
+        if any(not model.strip() for model in self.model_by_harness.values()):
+            raise ValueError("every Harness model alias must be non-empty")
+        if self.qualification_mode == "required":
+            missing_qualification = set(self.harnesses) - set(
+                self.qualification_refs
+            )
+            if missing_qualification:
+                raise ValueError(
+                    "formal Stage-2 requires one D0 qualification reference per Harness"
+                )
         if len(set(self.cases)) != len(self.cases):
             raise ValueError("campaign cases must be unique")
         if self.case_bundle is not None:
@@ -311,7 +354,12 @@ class DisturbancePlan(ContractModel):
     phase: LifecyclePhase
     trigger_event_id: str
     committed_dependency: str
-    backend: Literal["kubernetes", "mcp_policy", "kubernetes_rbac"]
+    backend: Literal[
+        "kubernetes",
+        "mcp_policy",
+        "kubernetes_rbac",
+        "mcp_transport",
+    ]
     parameters: dict[str, Any]
     expected_behaviors: tuple[str, ...]
     failure_conditions: tuple[str, ...]
@@ -366,8 +414,11 @@ class CampaignResult(ContractModel):
     )
     campaign_id: str
     request_id: str
+    harnesses: tuple[HarnessKind, ...] = ()
+    model_by_harness: dict[HarnessKind, str] = Field(default_factory=dict)
     platform_status: PlatformStatus
     trials: tuple[TrialResult, ...]
     started_at: datetime
     finished_at: datetime
+    qualification: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None

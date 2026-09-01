@@ -57,7 +57,7 @@ def test_streaming_runner_honors_controller_cancellation():
             {},
             60,
             lambda _line: None,
-            cancel,
+            cancel.is_set,
         )
     finally:
         timer.cancel()

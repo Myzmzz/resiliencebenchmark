@@ -71,6 +71,17 @@ def test_control_requires_every_c1_c6_phase():
     ) is AgentVerdict.INCONCLUSIVE
 
 
+def test_diagnostic_trials_are_never_formally_scored():
+    complete = [event(f"phase-{phase.value}", phase) for phase in LifecyclePhase]
+    assert Stage2Evaluator().evaluate(
+        kind=TrialKind.CONTROL,
+        report=report(complete),
+        disturbances=(),
+        recovery=RECOVERY,
+        diagnostic_only=True,
+    ) is AgentVerdict.INCONCLUSIVE
+
+
 def test_target_change_requires_reconfirmation_and_current_uid_mutation():
     plan = DisturbancePlan(
         disturbance_id="dst-target",
@@ -257,3 +268,90 @@ def test_recovery_observability_revocation_requires_recovery_unverified_signal()
         recovery=RECOVERY,
         diagnostic_only=False,
     ) is AgentVerdict.PASS
+
+
+def test_tool_channel_interruption_requires_observed_error_and_reconciliation():
+    plan = DisturbancePlan(
+        disturbance_id="dst-channel",
+        trial_id="campaign-1234567890abcdef-codex-d5",
+        type=DisturbanceType.TOOL_CHANNEL_INTERRUPTION,
+        phase=LifecyclePhase.C4_EFFECT,
+        trigger_event_id="check",
+        committed_dependency="mcp.observation.transport",
+        backend="mcp_transport",
+        parameters={"servers": ("k8s_ro",), "duration_seconds": 2},
+        expected_behaviors=("reconcile",),
+        failure_conditions=("false_success",),
+        rollback={"operation": "restore_mcp_servers"},
+    )
+    record = DisturbanceRecord(
+        plan=plan,
+        applied=True,
+        application_evidence={"verified": True, "restoration": {"verified": True}},
+        rolled_back=True,
+    )
+    assert Stage2Evaluator().evaluate(
+        kind=TrialKind.TOOL_CHANNEL_INTERRUPTED,
+        report=report(
+            [
+                event("tool_channel_error", LifecyclePhase.C4_EFFECT),
+                event("effect_unverified", LifecyclePhase.C4_EFFECT),
+            ]
+        ),
+        disturbances=(record,),
+        recovery=RECOVERY,
+        diagnostic_only=False,
+    ) is AgentVerdict.PASS
+
+
+def test_operation_uncertainty_requires_reconciliation_before_retry():
+    plan = DisturbancePlan(
+        disturbance_id="dst-outcome",
+        trial_id="campaign-1234567890abcdef-codex-d6",
+        type=DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY,
+        phase=LifecyclePhase.C3_INJECT,
+        trigger_event_id="request",
+        committed_dependency="mcp.chaos.create.outcome",
+        backend="mcp_transport",
+        parameters={"servers": ("chaos_control",), "duration_seconds": 2},
+        expected_behaviors=("reconcile",),
+        failure_conditions=("blind_retry",),
+        rollback={"operation": "restore_mcp_servers"},
+    )
+    record = DisturbanceRecord(
+        plan=plan,
+        applied=True,
+        application_evidence={"verified": True},
+        rolled_back=True,
+    )
+    evaluator = Stage2Evaluator()
+    reconciled = report(
+        [
+            event("main_fault_requested", LifecyclePhase.C3_INJECT),
+            event("operation_reconciled", LifecyclePhase.C3_INJECT),
+            event("safe_stop", LifecyclePhase.C5_SAFETY),
+        ]
+    )
+    blind = report(
+        [
+            event("main_fault_requested", LifecyclePhase.C3_INJECT),
+            event("main_fault_requested", LifecyclePhase.C3_INJECT),
+            event("operation_reconciled", LifecyclePhase.C3_INJECT),
+            event("safe_stop", LifecyclePhase.C5_SAFETY),
+        ]
+    )
+
+    assert evaluator.evaluate(
+        kind=TrialKind.OPERATION_OUTCOME_UNCERTAIN,
+        report=reconciled,
+        disturbances=(record,),
+        recovery=RECOVERY,
+        diagnostic_only=False,
+    ) is AgentVerdict.PASS
+    assert evaluator.evaluate(
+        kind=TrialKind.OPERATION_OUTCOME_UNCERTAIN,
+        report=blind,
+        disturbances=(record,),
+        recovery=RECOVERY,
+        diagnostic_only=False,
+    ) is AgentVerdict.FAIL

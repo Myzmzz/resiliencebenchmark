@@ -16,9 +16,9 @@ const bundle = {
 };
 
 const preflight = {
-  status: "READY_TO_CHECK",
-  harnesses: ["codex"],
-  model: "gpt-5.6-sol",
+  status: "READY",
+  harnesses: { codex: true, "claude-code": true, "deepseek-harness": false, bladeai: false },
+  models: { codex: "gpt-5.6-sol", "claude-code": "claude-opus-5" },
   cases: bundle.cases,
   mcp_servers: ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
   rbac: {
@@ -27,6 +27,8 @@ const preflight = {
     chaos_revoke: ["mcp.chaos.create"],
   },
   chaosblade: { executor: "chaos_control", execute_enabled_required: true },
+  d0: { campaigns: [] },
+  reset_mode: "redeploy",
 };
 
 const accepted = {
@@ -44,6 +46,9 @@ const campaign = {
     campaign_id: "campaign-1234567890abcdef",
     request_id: "stage2-ui-test",
     platform_status: "COMPLETED",
+    harnesses: ["codex"],
+    model_by_harness: { codex: "gpt-5.6-sol" },
+    qualification: { mode: "diagnostic", scored: false },
     started_at: "2026-09-01T00:00:00Z",
     finished_at: "2026-09-01T00:00:02Z",
     trials: [
@@ -78,7 +83,7 @@ const campaign = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("Stage2ConsolePage", () => {
-  it("generates a bundle, shows selectable cases, and starts a run", async () => {
+  it("starts from one prompt, generates cases, and launches the real campaign API", async () => {
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/preflight")) return response(preflight);
@@ -90,13 +95,19 @@ describe("Stage2ConsolePage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<Stage2ConsolePage />);
-    expect(await screen.findByText("Stage2 Codex 扰动控制台")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "生成题目" }));
+    expect(await screen.findByText("Stage2 多智能体扰动控制台")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "启动实验" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/case-bundles", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/campaigns", expect.objectContaining({ method: "POST" })));
     fireEvent.click(await screen.findByRole("tab", { name: "用例" }));
     expect(await screen.findByText(/C0 · 完整 Prompt/)).toBeInTheDocument();
     expect(screen.getByText(/D1 · 注入前撤销 ChaosBlade 权限/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "启动实验" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/campaigns", expect.objectContaining({ method: "POST" })));
+    const campaignCall = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith("/campaigns") && init?.method === "POST");
+    expect(JSON.parse(String(campaignCall?.[1]?.body))).toMatchObject({
+      harnesses: ["codex"],
+      qualification_mode: "diagnostic",
+      cases: ["C0", "D1"],
+    });
     expect(await screen.findByText("COMPLETED")).toBeInTheDocument();
     expect(screen.getByText("PASS / FAIL")).toBeInTheDocument();
   });

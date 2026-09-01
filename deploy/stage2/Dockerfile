@@ -3,6 +3,13 @@ FROM bladeai-src AS bladeai_source
 FROM otel-src AS otel_source
 FROM otel-chart AS otel_chart
 
+FROM node_runtime AS frontend_build
+WORKDIR /frontend
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY frontend /frontend
+RUN pnpm build
+
 FROM python:3.12.13-slim-bookworm
 
 ARG TARGETARCH
@@ -16,6 +23,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     STAGE2_REPO_ROOT=/app \
     STAGE2_PRIVATE_ROOT=/var/lib/resbench-stage2/private \
     STAGE2_ARTIFACT_ROOT=/var/lib/resbench-stage2/artifacts \
+    STAGE2_D0_ARTIFACT_ROOT=/var/lib/resbench-stage2/d0 \
     STAGE2_SOURCE_ROOT=/opt/resiliencebenchmark/sources \
     STAGE2_OTEL_CHART_FILE=/opt/resiliencebenchmark/charts/opentelemetry-demo-0.40.5.tgz \
     STAGE2_KUBECONFIG=/var/lib/resbench-stage2/private/service.kubeconfig \
@@ -71,14 +79,17 @@ RUN npm ci --prefix /opt/resiliencebenchmark/deepseek-harness --omit=dev --ignor
 
 COPY --from=otel_source / /opt/resiliencebenchmark/sources/otel-demo-2.2.0
 COPY --from=otel_chart /opentelemetry-demo-0.40.5.tgz /opt/resiliencebenchmark/charts/opentelemetry-demo-0.40.5.tgz
+COPY --from=frontend_build /frontend/dist /app/frontend-dist
 
 RUN install -d -o 10001 -g 10001 -m 0700 \
       /var/lib/resbench-stage2 \
       /var/lib/resbench-stage2/private \
       /var/lib/resbench-stage2/artifacts \
+      /var/lib/resbench-stage2/d0 \
     && install -d -o 10001 -g 10001 -m 0750 /etc/resbench-stage2
 
-ENV HOME=/var/lib/resbench-stage2
+ENV HOME=/var/lib/resbench-stage2 \
+    STAGE2_FRONTEND_ROOT=/app/frontend-dist
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "stage2_service"]

@@ -96,10 +96,12 @@ def test_generates_codex_case_bundle_and_preflight_contract():
         "D2",
         "D3",
         "D4",
+        "D5",
+        "D6",
     ]
     assert preflight.status_code == 200
-    assert preflight.json()["harnesses"] == ["codex"]
-    assert preflight.json()["model"] == "gpt-5.6-sol"
+    assert preflight.json()["harnesses"]["codex"] is True
+    assert preflight.json()["models"]["codex"] == "gpt-5.6-sol"
 
 
 def test_campaign_events_are_available_for_sse_timeline():
@@ -139,3 +141,29 @@ def test_stop_endpoint_signals_running_campaign():
         time.sleep(0.01)
     assert result["status"] == "BLOCKED"
     assert result["result"]["error"] == "operator stop requested"
+
+
+def test_cleanup_endpoint_is_audited_and_idempotent_after_completion():
+    client = TestClient(create_app(CampaignSupervisor(Runner())))
+    accepted = client.post("/api/v1/campaigns", json=_request().model_dump(mode="json"))
+    request_id = accepted.json()["request_id"]
+    for _ in range(20):
+        if client.get(f"/api/v1/campaigns/{request_id}").json()["status"] != "RUNNING":
+            break
+
+    response = client.post(f"/api/v1/campaigns/{request_id}/cleanup")
+
+    assert response.status_code == 200
+    assert response.json()["cleanup_status"] == "ALREADY_FINALIZED"
+
+
+def test_stage2_service_serves_frontend_spa_from_same_origin(tmp_path):
+    (tmp_path / "index.html").write_text("<html>stage2-ui</html>", encoding="utf-8")
+    (tmp_path / "asset.txt").write_text("asset", encoding="utf-8")
+    client = TestClient(
+        create_app(CampaignSupervisor(Runner()), frontend_root=tmp_path)
+    )
+
+    assert client.get("/asset.txt").text == "asset"
+    assert "stage2-ui" in client.get("/evaluation/stage2-console").text
+    assert client.get("/healthz").json() == {"status": "ok"}

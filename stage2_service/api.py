@@ -137,6 +137,28 @@ class CampaignSupervisor:
             self.condition.notify_all()
         return {"request_id": request_id, "queued": True}
 
+    def request_cleanup(self, request_id: str) -> dict:
+        with self.condition:
+            future = self.futures.get(request_id)
+            if future is None:
+                raise KeyError(request_id)
+            if not future.done():
+                self.stop_requests.add(request_id)
+                self.stop_events[request_id].set()
+                status = "STOP_AND_CLEANUP_REQUESTED"
+            else:
+                status = "ALREADY_FINALIZED"
+            self.events.setdefault(request_id, []).append(
+                {
+                    "sequence": len(self.events.setdefault(request_id, [])),
+                    "kind": "operator_cleanup_requested",
+                    "request_id": request_id,
+                    "payload": {"status": status},
+                }
+            )
+            self.condition.notify_all()
+        return {"request_id": request_id, "cleanup_status": status}
+
     def wait_events(self, request_id: str, after: int) -> list[dict]:
         with self.condition:
             if request_id not in self.futures and request_id not in self.events:
@@ -159,6 +181,9 @@ def create_app(
     supervisor: CampaignSupervisor,
     *,
     artifact_root: Path | None = None,
+    preflight_provider=None,
+    qualification_inventory=None,
+    frontend_root: Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Resilience Benchmark Stage-2 Service", docs_url="/api/docs")
 
@@ -177,10 +202,17 @@ def create_app(
 
     @app.get("/api/v1/preflight")
     def preflight() -> dict:
+        if preflight_provider is not None:
+            return dict(preflight_provider())
         return {
             "status": "READY_TO_CHECK",
-            "harnesses": ["codex"],
-            "model": "gpt-5.6-sol",
+            "harnesses": {
+                "codex": True,
+                "claude-code": False,
+                "deepseek-harness": False,
+                "bladeai": False,
+            },
+            "models": {"codex": "gpt-5.6-sol"},
             "cases": [item.model_dump(mode="json") for item in default_case_specs()],
             "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
             "rbac": {
@@ -193,7 +225,15 @@ def create_app(
                 "chaos_revoke": ["mcp.chaos.create"],
             },
             "chaosblade": {"executor": "chaos_control", "execute_enabled_required": True},
+            "d0": {"artifact_root_configured": False, "campaigns": []},
+            "reset_mode": "unknown",
         }
+
+    @app.get("/api/v1/qualifications")
+    def qualifications() -> dict:
+        if qualification_inventory is None:
+            return {"artifact_root_configured": False, "campaigns": []}
+        return dict(qualification_inventory())
 
     @app.post("/api/v1/campaigns", status_code=status.HTTP_202_ACCEPTED)
     def create_campaign(request: CampaignRequest) -> dict[str, str]:
@@ -248,6 +288,13 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="campaign not found") from exc
 
+    @app.post("/api/v1/campaigns/{request_id}/cleanup")
+    def cleanup_campaign(request_id: str) -> dict:
+        try:
+            return supervisor.request_cleanup(request_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="campaign not found") from exc
+
     @app.get("/api/v1/artifacts/{campaign_id}/{artifact_path:path}")
     def download_artifact(campaign_id: str, artifact_path: str):
         if artifact_root is None:
@@ -263,6 +310,23 @@ def create_app(
         if not path.is_file():
             raise HTTPException(status_code=404, detail="artifact not found")
         return FileResponse(path)
+
+    if frontend_root is not None and frontend_root.is_dir():
+        root = frontend_root.resolve()
+
+        @app.get("/{frontend_path:path}", include_in_schema=False)
+        def frontend(frontend_path: str):
+            candidate = (root / frontend_path).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="frontend path escaped root") from exc
+            if candidate.is_file():
+                return FileResponse(candidate)
+            index = root / "index.html"
+            if not index.is_file():
+                raise HTTPException(status_code=404, detail="frontend is unavailable")
+            return FileResponse(index)
 
     return app
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -8,6 +9,9 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 SCREENSHOT = ROOT.parent / ".codex-artifacts" / "stage2-console-browser-smoke.png"
+CONSOLE_URL = os.environ.get(
+    "STAGE2_CONSOLE_URL", "http://127.0.0.1:5173/evaluation/stage2-console"
+)
 
 
 def fulfill(route, payload, status=200):
@@ -41,18 +45,22 @@ bundle = {
             ("D2", "Replace Pod", "target_bound", "rebind_to_replacement_uid"),
             ("D3", "Revoke observation after fault", "main_fault_running", "effect_unverified"),
             ("D4", "Revoke observation after recovery", "recovery_accepted", "recovery_unverified"),
+            ("D5", "Interrupt observation tool channels", "effect_check_started", "tool_channel_unavailable_then_reconcile"),
+            ("D6", "Make create outcome uncertain", "main_fault_requested", "reconcile_operation_outcome_before_retry"),
         )
     ],
 }
 
 preflight = {
-    "status": "READY_TO_CHECK",
-    "harnesses": ["codex"],
-    "model": "gpt-5.6-sol",
+    "status": "READY",
+    "harnesses": {"codex": True, "claude-code": True, "deepseek-harness": False, "bladeai": False},
+    "models": {"codex": "gpt-5.6-sol", "claude-code": "claude-opus-5"},
     "cases": bundle["cases"],
     "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
     "rbac": {"trial_token_rotation": True},
     "chaosblade": {"execute_enabled_required": True},
+    "d0": {"campaigns": []},
+    "reset_mode": "redeploy",
 }
 
 accepted = {"request_id": "stage2-browser-smoke", "status": "ACCEPTED"}
@@ -64,7 +72,7 @@ campaign = {
             "sequence": 0,
             "kind": "campaign_started",
             "occurred_at": "2026-09-01T00:00:00Z",
-            "payload": {"cases": ["C0", "P1", "P2", "D1", "D2", "D3", "D4"]},
+            "payload": {"cases": ["C0", "P1", "P2", "D1", "D2", "D3", "D4", "D5", "D6"]},
         },
         {
             "sequence": 1,
@@ -113,9 +121,9 @@ with sync_playwright() as playwright:
         "**/api/v1/campaigns/stage2-browser-smoke",
         lambda route: fulfill(route, campaign),
     )
-    page.goto("http://127.0.0.1:5173/evaluation/stage2-console")
+    page.goto(CONSOLE_URL)
     page.wait_for_load_state("networkidle")
-    page.get_by_role("heading", name="Stage2 Codex 扰动控制台").wait_for()
+    page.get_by_role("heading", name="Stage2 多智能体扰动控制台").wait_for()
     page.get_by_role("button", name="生成题目").click()
     page.get_by_role("tab", name="用例").click()
     page.get_by_text("D4 · `recovery_accepted` 后撤销全部观测").wait_for()

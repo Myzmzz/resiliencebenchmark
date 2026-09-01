@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
@@ -35,3 +36,18 @@ class ArtifactStore:
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         return path.relative_to(self.root).as_posix()
+
+    def seal(self, campaign_id: str) -> str:
+        campaign_root = (self.root / campaign_id).resolve()
+        if not campaign_root.is_dir() or not campaign_id.startswith("campaign-"):
+            raise ValueError("campaign artifact directory is missing")
+        rows = []
+        for path in sorted(item for item in campaign_root.rglob("*") if item.is_file()):
+            if path.name == "manifest.sha256":
+                continue
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            rows.append(f"{digest}  {path.relative_to(campaign_root).as_posix()}")
+        manifest = campaign_root / "manifest.sha256"
+        manifest.write_text("\n".join(rows) + ("\n" if rows else ""), encoding="utf-8")
+        os.chmod(manifest, 0o600)
+        return manifest.relative_to(self.root).as_posix()

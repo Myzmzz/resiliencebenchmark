@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import os
+import shutil
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 
 from .artifacts import ArtifactStore
 from .campaign import CampaignEngine
-from .contracts import CampaignRequest, CampaignResult
+from .contracts import CampaignRequest, CampaignResult, default_case_specs
 from .disturbance import RuntimeDisturbancePlanner
 from .episode import load_fixed_episode
 from .evaluator import Stage2Evaluator
@@ -30,6 +31,7 @@ from .kubernetes_permissions import KubernetesPermissionBackend
 from .mcp_supervisor import McpSupervisor
 from .permissions import Stage2PermissionManager
 from .preparation import ApplicationTrafficCapabilityIssuer, KubernetesTrialPreparer
+from .qualification import D0QualificationGate
 from .reset import OtelDemoResetter
 from .runtime_adapters import (
     CompositeDisturbanceExecutor,
@@ -56,6 +58,7 @@ class Stage2RuntimeConfig:
     controller_pod_namespace: str
     llm_base_url: str
     llm_api_key: str
+    d0_artifact_root: Path | None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None):
@@ -95,6 +98,11 @@ class Stage2RuntimeConfig:
             controller_pod_namespace=required["STAGE2_POD_NAMESPACE"],
             llm_base_url=required["RESBENCH_LLM_BASE_URL"],
             llm_api_key=required["RESBENCH_LLM_API_KEY"],
+            d0_artifact_root=(
+                Path(values["STAGE2_D0_ARTIFACT_ROOT"]).resolve()
+                if values.get("STAGE2_D0_ARTIFACT_ROOT")
+                else None
+            ),
         )
 
 
@@ -364,6 +372,34 @@ class Stage2System:
         # persisted on the evidence PVC must therefore be replaced at every
         # service start rather than reused across Deployment revisions.
         write_incluster_kubeconfig(config.kubeconfig)
+        self.d0_gate = D0QualificationGate(config.d0_artifact_root)
+
+    def preflight(self) -> dict[str, Any]:
+        codex = os.environ.get("RESBENCH_CODEX_EVAL_BIN", "")
+        blade_python = os.environ.get(
+            "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
+        )
+        harnesses = {
+            "codex": bool(codex and Path(codex).is_file()),
+            "claude-code": shutil.which("claude") is not None,
+            "deepseek-harness": shutil.which("dsh") is not None,
+            "bladeai": Path(blade_python).is_file(),
+        }
+        return {
+            "schema_version": "stage2-preflight.v2",
+            "status": "READY" if any(harnesses.values()) else "ERROR",
+            "harnesses": harnesses,
+            "models": {
+                "codex": "gpt-5.6-sol",
+                "claude-code": "claude-opus-5",
+                "deepseek-harness": "deepseek-v4-pro",
+                "bladeai": "gpt-5.6-sol",
+            },
+            "cases": [item.model_dump(mode="json") for item in default_case_specs()],
+            "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
+            "d0": self.d0_gate.inventory(),
+            "reset_mode": "redeploy",
+        }
 
     def run(
         self, request: CampaignRequest, event_observer=None, stop_requested=None
@@ -460,6 +496,7 @@ class Stage2System:
             mcp_tokens=token_registry,
             rbac_permissions=permission_backend,
             target_rebinder=issuer,
+            mcp_supervisor=supervisor,
         )
         chaos_service = ChaosControlService(RuntimeConfig.from_env(mcp_environment))
         finalizer = Stage2Finalizer(
@@ -476,7 +513,7 @@ class Stage2System:
             traffic_evidence=traffic,
             timeout_seconds=120,
             recovery_timeout_seconds=25,
-            verify_only=True,
+            verify_only=False,
         )
         engine = CampaignEngine(
             episode=episode,
@@ -490,6 +527,7 @@ class Stage2System:
             evaluator=Stage2Evaluator(),
             resetter=resetter,
             artifacts=ArtifactStore(self.config.artifact_root),
+            qualification_gate=self.d0_gate,
         )
         return engine.run(
             request,

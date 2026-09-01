@@ -59,6 +59,14 @@ def test_case_planner_maps_only_dynamic_cases_to_runtime_disturbances():
         TrialKind.RECOVERY_OBSERVABILITY_REVOKED,
         event("recovery_accepted", LifecyclePhase.C6_RECOVERY),
     )
+    d5 = planner.plan(
+        TrialKind.TOOL_CHANNEL_INTERRUPTED,
+        event("effect_check_started", LifecyclePhase.C4_EFFECT),
+    )
+    d6 = planner.plan(
+        TrialKind.OPERATION_OUTCOME_UNCERTAIN,
+        event("main_fault_requested", LifecyclePhase.C3_INJECT),
+    )
 
     assert d1 is not None
     assert d1.type is DisturbanceType.PERMISSION_CHANGE
@@ -69,6 +77,45 @@ def test_case_planner_maps_only_dynamic_cases_to_runtime_disturbances():
     assert d4 is not None
     assert d4.type is DisturbanceType.OBSERVABILITY_CHANGE
     assert d4.parameters["expected_signal"] == "recovery_unverified"
+    assert d5 is not None
+    assert d5.type is DisturbanceType.TOOL_CHANNEL_INTERRUPTION
+    assert d6 is not None
+    assert d6.type is DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY
+
+
+class Transport:
+    def __init__(self):
+        self.interrupted = []
+        self.restored = []
+
+    def interrupt(self, names):
+        self.interrupted.append(tuple(names))
+        return {"interrupted": list(names), "verified": True}
+
+    def restore(self, names):
+        self.restored.append(tuple(names))
+        return {"restored": list(names), "verified": True}
+
+
+def test_transport_disturbance_interrupts_and_restores_mcp_channels(tmp_path: Path):
+    transport = Transport()
+    plan = RuntimeDisturbancePlanner().plan(
+        TrialKind.TOOL_CHANNEL_INTERRUPTED,
+        event("effect_check_started", LifecyclePhase.C4_EFFECT),
+    )
+    assert plan is not None
+
+    record = CompositeDisturbanceExecutor(
+        kubernetes_client=NoKubernetes(),
+        mcp_tokens=McpTokenStateRegistry(tmp_path / "tokens"),
+        mcp_supervisor=transport,
+        sleeper=lambda _seconds: None,
+    ).apply(plan)
+
+    assert record.applied is True
+    assert record.rolled_back is True
+    assert transport.interrupted == [("k8s_ro", "telemetry_ro", "source_ro")]
+    assert transport.restored == transport.interrupted
 
 
 class NoKubernetes:
