@@ -122,6 +122,42 @@ def test_application_traffic_evidence_uses_locust_requests_not_pod_readiness():
     assert no_requests["traffic_observed"] is False
 
 
+def test_cart_recovery_is_not_blocked_by_unrelated_cold_start_endpoints():
+    evidence = KubernetesTrafficEvidence(
+        Gate(),
+        Episode(),
+        stats_loader=lambda _url: {
+            "state": "running",
+            "user_count": 5,
+            "stats": [
+                {
+                    "name": "Aggregated",
+                    "num_requests": 100,
+                    "num_failures": 60,
+                    "total_rps": 1.5,
+                    "current_rps": 1.5,
+                    "current_fail_per_sec": 0.2,
+                    "response_time_percentile_0.95": 5000,
+                },
+                {
+                    "name": "/api/cart",
+                    "method": "GET",
+                    "num_requests": 10,
+                    "num_failures": 0,
+                    "current_rps": 0.3,
+                    "current_fail_per_sec": 0.0,
+                    "avg_response_time": 20,
+                },
+            ],
+        },
+    ).current()
+
+    assert evidence["business_scope"] == "cart"
+    assert evidence["business_healthy"] is True
+    assert evidence["success_rate"] == 0.4
+    assert evidence["target_success_rate"] == 1.0
+
+
 def test_cart_fault_effect_is_computed_from_post_baseline_request_delta():
     snapshots = iter(
         [

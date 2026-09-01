@@ -166,6 +166,10 @@ class KubernetesTrafficEvidence:
         ]
         cart_requests = sum(int(item.get("num_requests") or 0) for item in cart_rows)
         cart_failures = sum(int(item.get("num_failures") or 0) for item in cart_rows)
+        cart_current_rps = sum(float(item.get("current_rps") or 0.0) for item in cart_rows)
+        cart_current_fail_per_sec = sum(
+            float(item.get("current_fail_per_sec") or 0.0) for item in cart_rows
+        )
         cart_response_sum_ms = sum(
             float(item.get("avg_response_time") or 0.0)
             * int(item.get("num_requests") or 0)
@@ -175,6 +179,19 @@ class KubernetesTrafficEvidence:
             cart_response_sum_ms / cart_requests if cart_requests else 0.0
         )
         success_rate = (requests - failures) / requests if requests else 0.0
+        cart_success_rate = (
+            (cart_requests - cart_failures) / cart_requests
+            if cart_requests
+            else 0.0
+        )
+        target_scope = "cart" if cart_rows else "aggregate_fallback"
+        target_requests = cart_requests if cart_rows else requests
+        target_success_rate = cart_success_rate if cart_rows else success_rate
+        target_latency_ms = cart_avg_ms if cart_rows else p95_ms
+        target_current_rps = cart_current_rps if cart_rows else current_rps
+        target_current_fail = (
+            cart_current_fail_per_sec if cart_rows else current_fail_per_sec
+        )
         traffic = (
             ready
             and locust.get("state") == "running"
@@ -185,8 +202,9 @@ class KubernetesTrafficEvidence:
         business = (
             value.get("qualified") is True
             and traffic
-            and success_rate >= 0.95
-            and p95_ms <= 1_000
+            and target_requests > 0
+            and target_success_rate >= 0.95
+            and target_latency_ms <= 1_000
         )
         return {
             "application_owned": True,
@@ -203,6 +221,12 @@ class KubernetesTrafficEvidence:
             "current_fail_per_sec": current_fail_per_sec,
             "success_rate": success_rate,
             "p95_ms": p95_ms,
+            "business_scope": target_scope,
+            "target_requests": target_requests,
+            "target_success_rate": target_success_rate,
+            "target_latency_ms": target_latency_ms,
+            "target_current_rps": target_current_rps,
+            "target_current_fail_per_sec": target_current_fail,
             "cart_requests": cart_requests,
             "cart_failures": cart_failures,
             "cart_response_sum_ms": cart_response_sum_ms,
@@ -277,8 +301,8 @@ class KubernetesTrafficEvidence:
                     "stage": "warmup",
                     "error_type": type(exc).__name__,
                 }
-            current_rps = float(last.get("current_rps") or 0.0)
-            current_fail = float(last.get("current_fail_per_sec") or 0.0)
+            current_rps = float(last.get("target_current_rps") or 0.0)
+            current_fail = float(last.get("target_current_fail_per_sec") or 0.0)
             stable = (
                 stable + 1
                 if last.get("load_generator_ready") is True
@@ -316,14 +340,14 @@ class KubernetesTrafficEvidence:
             except Exception as exc:  # noqa: BLE001
                 last = {"business_healthy": False, "error_type": type(exc).__name__}
             if (
-                int(last.get("num_requests") or 0) >= minimum_requests
+                int(last.get("target_requests") or 0) >= minimum_requests
                 and last.get("business_healthy") is True
             ):
                 last["stats_reset_count"] = reset_count
                 return last
-            if int(last.get("num_requests") or 0) >= minimum_requests:
-                current_rps = float(last.get("current_rps") or 0.0)
-                current_fail = float(last.get("current_fail_per_sec") or 0.0)
+            if int(last.get("target_requests") or 0) >= minimum_requests:
+                current_rps = float(last.get("target_current_rps") or 0.0)
+                current_fail = float(last.get("target_current_fail_per_sec") or 0.0)
                 if current_rps > 0 and current_fail / current_rps <= 0.05:
                     try:
                         self.stats_resetter(reset_url)
