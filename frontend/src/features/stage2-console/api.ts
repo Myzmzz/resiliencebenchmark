@@ -35,6 +35,14 @@ interface CampaignAccepted {
   status: string;
 }
 
+export interface CampaignListItem {
+  request_id: string;
+  campaign_id?: string | null;
+  status: string;
+  stop_requested: boolean;
+  event_count: number;
+}
+
 interface CampaignStatus {
   request_id: string;
   status: string;
@@ -242,6 +250,11 @@ export async function startRun(bundle: CaseBundle, selectedCases: CaseId[], conf
 export async function getRun(runId: string, signal?: AbortSignal): Promise<ConsoleRunSnapshot> {
   const status = await request<CampaignStatus>(`/campaigns/${encodeURIComponent(runId)}`, { signal });
   return toConsoleRun(status);
+}
+
+export async function listRuns(signal?: AbortSignal): Promise<CampaignListItem[]> {
+  const value = await request<{ campaigns: CampaignListItem[] }>("/campaigns", { signal });
+  return value.campaigns;
 }
 
 export async function getEvents(runId: string, after = 0, signal?: AbortSignal): Promise<{ events: ConsoleEvent[] }> {

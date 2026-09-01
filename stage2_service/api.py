@@ -99,6 +99,28 @@ class CampaignSupervisor:
             "events": events[-200:],
         }
 
+    def list_runs(self) -> list[dict]:
+        with self.lock:
+            rows = []
+            for request_id, future in self.futures.items():
+                if future.done():
+                    result = future.result()
+                    status = result.platform_status.value
+                    campaign_id = result.campaign_id
+                else:
+                    status = "RUNNING"
+                    campaign_id = None
+                rows.append(
+                    {
+                        "request_id": request_id,
+                        "campaign_id": campaign_id,
+                        "status": status,
+                        "stop_requested": request_id in self.stop_requests,
+                        "event_count": len(self.events.get(request_id, ())),
+                    }
+                )
+        return rows
+
     def request_stop(self, request_id: str) -> dict:
         with self.condition:
             if request_id not in self.futures:
@@ -242,6 +264,10 @@ def create_app(
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"request_id": request_id, "status": "ACCEPTED"}
+
+    @app.get("/api/v1/campaigns")
+    def list_campaigns() -> dict:
+        return {"campaigns": supervisor.list_runs()}
 
     @app.get("/api/v1/campaigns/{request_id}")
     def get_campaign(request_id: str) -> dict:

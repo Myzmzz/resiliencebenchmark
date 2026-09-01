@@ -9,11 +9,13 @@ import {
   getEvents,
   getPreflight,
   getRun,
+  listRuns,
   listEvidenceItems,
   sendInteraction,
   startRun,
   stopRun,
 } from "../api";
+import type { CampaignListItem } from "../api";
 import type { CaseBundle, CaseId, ConsoleEvent, ConsoleRunSnapshot, EvidenceItem, HarnessId, PreflightStatus, RuntimeState } from "../types";
 import "../stage2-console.css";
 
@@ -39,6 +41,7 @@ export default function Stage2ConsolePage() {
   const [run, setRun] = useState<ConsoleRunSnapshot | null>(null);
   const [events, setEvents] = useState<ConsoleEvent[]>([]);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+  const [runHistory, setRunHistory] = useState<CampaignListItem[]>([]);
   const [eventSources, setEventSources] = useState<string[]>(["agent", "tool", "controller", "oracle"]);
   const [operatorReply, setOperatorReply] = useState("");
   const [jsonError, setJsonError] = useState("");
@@ -47,6 +50,7 @@ export default function Stage2ConsolePage() {
 
   useEffect(() => {
     void refreshPreflight();
+    void refreshRuns();
   }, []);
 
   useEffect(() => {
@@ -78,6 +82,15 @@ export default function Stage2ConsolePage() {
     const next = await getPreflight();
     setPreflight(next);
     setModelByHarness((current) => ({ ...current, ...next.models }));
+  }
+
+  async function refreshRuns() {
+    const rows = await listRuns();
+    setRunHistory(rows);
+    const active = [...rows].reverse().find((item) => item.status === "RUNNING");
+    if (!run && active) {
+      setRun(await getRun(active.request_id));
+    }
   }
 
   async function handleGenerate() {
@@ -136,6 +149,7 @@ export default function Stage2ConsolePage() {
       setRun(snapshot);
       setEvents([]);
       setEvidenceItems([]);
+      await refreshRuns();
     } finally {
       setBusy(false);
     }
@@ -194,6 +208,18 @@ export default function Stage2ConsolePage() {
           </div>
         </div>
         <Space wrap>
+          <Select
+            placeholder="最近运行"
+            style={{ width: 260 }}
+            value={run?.run_id}
+            options={[...runHistory].reverse().map((item) => ({ value: item.request_id, label: `${item.status} · ${item.request_id}` }))}
+            onChange={async (requestId) => {
+              const selected = await getRun(requestId);
+              setRun(selected);
+              setEvents([]);
+              setEvidenceItems((await listEvidenceItems(requestId)).items);
+            }}
+          />
           <Button icon={<RefreshCw size={15} />} onClick={refreshPreflight}>刷新预检</Button>
           <Tooltip title={preflight && !preflight.qualified ? "预检未通过，先处理 error 项" : missingFormalQualification ? "正式模式缺少 D0 PASS 证据" : ""}>
             <Button icon={<Play size={15} />} type="primary" loading={busy} disabled={(!!preflight && !preflight.qualified) || !selectedHarnesses.length || missingFormalQualification} onClick={handleStart}>启动实验</Button>

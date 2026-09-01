@@ -115,7 +115,9 @@ with sync_playwright() as playwright:
     )
     page.route(
         "**/api/v1/campaigns",
-        lambda route: fulfill(route, accepted, 202),
+        lambda route: fulfill(route, accepted, 202)
+        if route.request.method == "POST"
+        else fulfill(route, {"campaigns": []}),
     )
     page.route(
         "**/api/v1/campaigns/stage2-browser-smoke",

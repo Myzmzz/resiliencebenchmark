@@ -72,6 +72,9 @@ def test_single_service_accepts_and_returns_campaign_result():
             break
     assert result.status_code == 200
     assert result.json()["status"] == "COMPLETED"
+    listed = client.get("/api/v1/campaigns").json()["campaigns"]
+    assert listed[0]["request_id"] == request_id
+    assert listed[0]["status"] == "COMPLETED"
 
 
 def test_generates_codex_case_bundle_and_preflight_contract():

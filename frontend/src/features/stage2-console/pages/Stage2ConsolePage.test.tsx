@@ -89,6 +89,7 @@ describe("Stage2ConsolePage", () => {
       if (url.endsWith("/preflight")) return response(preflight);
       if (url.endsWith("/case-bundles") && init?.method === "POST") return response(bundle);
       if (url.endsWith("/campaigns") && init?.method === "POST") return response(accepted, 202);
+      if (url.endsWith("/campaigns")) return response({ campaigns: [] });
       if (url.endsWith("/campaigns/stage2-ui-test")) return response(campaign);
       throw new Error(`unexpected request ${url}`);
     });
