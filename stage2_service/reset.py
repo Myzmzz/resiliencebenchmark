@@ -69,11 +69,11 @@ class OtelDemoResetter:
     def reset(self, trial_id: str, episode) -> Mapping[str, Any]:
         if self.verify_only:
             qualification = dict(self.environment_gate.qualify(episode))
-            traffic = dict(
-                self.traffic_evidence.reset_and_wait_healthy(
-                    timeout_seconds=self.recovery_timeout_seconds
-                )
-            )
+            # Stage2Finalizer already performs the bounded traffic recovery loop.
+            # Repeating it here both resets the Oracle evidence a second time and
+            # consumes the remaining Trial budget.  This final gate is deliberately
+            # a fresh one-shot qualification after permission restoration.
+            traffic = dict(self.traffic_evidence.current())
             return {
                 "trial_id": trial_id,
                 "uninstalled": False,
