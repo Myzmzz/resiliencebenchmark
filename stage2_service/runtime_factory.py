@@ -379,27 +379,56 @@ class Stage2System:
         blade_python = os.environ.get(
             "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
         )
-        harnesses = {
+        models = {
+            "codex": "gpt-5.6-sol",
+            "claude-code": "claude-opus-5",
+            "deepseek-harness": "deepseek-v4-pro",
+            "bladeai": "gpt-5.6-sol",
+        }
+        available_models, model_error = self._gateway_models()
+        runtimes = {
             "codex": bool(codex and Path(codex).is_file()),
             "claude-code": shutil.which("claude") is not None,
             "deepseek-harness": shutil.which("dsh") is not None,
             "bladeai": Path(blade_python).is_file(),
         }
+        harnesses = {
+            name: ready and models[name] in available_models
+            for name, ready in runtimes.items()
+        }
         return {
             "schema_version": "stage2-preflight.v2",
             "status": "READY" if any(harnesses.values()) else "ERROR",
             "harnesses": harnesses,
-            "models": {
-                "codex": "gpt-5.6-sol",
-                "claude-code": "claude-opus-5",
-                "deepseek-harness": "deepseek-v4-pro",
-                "bladeai": "gpt-5.6-sol",
-            },
+            "models": models,
+            "available_models": sorted(available_models),
+            "model_catalog_error": model_error,
             "cases": [item.model_dump(mode="json") for item in default_case_specs()],
             "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
             "d0": self.d0_gate.inventory(),
             "reset_mode": "redeploy",
         }
+
+    def _gateway_models(self) -> tuple[set[str], str | None]:
+        endpoint = self.config.llm_base_url.rstrip("/") + "/models"
+        request = urllib.request.Request(
+            endpoint,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.config.llm_api_key}",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+                payload = json.load(response)
+        except Exception as exc:  # noqa: BLE001 - preflight reports bounded error.
+            return set(), type(exc).__name__
+        rows = payload.get("data") or payload.get("models") or []
+        return {
+            str(item.get("id"))
+            for item in rows
+            if isinstance(item, Mapping) and item.get("id")
+        }, None
 
     def run(
         self, request: CampaignRequest, event_observer=None, stop_requested=None
@@ -480,13 +509,13 @@ class Stage2System:
         harness_runner = NativeHarnessRunner(
             repo_root=self.config.repo_root,
             private_root=private / "harness",
-            artifact_root=self.config.artifact_root / "harness",
+            artifact_root=self.config.artifact_root,
             permissions=permissions,
             mcp_supervisor=supervisor,
             base_environment=harness_environment,
             # Keep the complete Trial within five minutes: Agent 265s,
             # controller cleanup/recovery 25s, then a one-shot reset gate.
-            timeout_seconds=265,
+            timeout_seconds=240,
         )
         runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
             self.config.kubeconfig
@@ -502,7 +531,7 @@ class Stage2System:
         finalizer = Stage2Finalizer(
             DirectChaosCleanup(chaos_service, self.config.kubeconfig),
             traffic,
-            recovery_timeout_seconds=25,
+            recovery_timeout_seconds=180,
         )
         resetter = OtelDemoResetter(
             repo_root=self.config.repo_root,
@@ -512,7 +541,7 @@ class Stage2System:
             environment_gate=gate,
             traffic_evidence=traffic,
             timeout_seconds=120,
-            recovery_timeout_seconds=25,
+            recovery_timeout_seconds=300,
             verify_only=False,
         )
         engine = CampaignEngine(

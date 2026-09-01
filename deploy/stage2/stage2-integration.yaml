@@ -58,12 +58,12 @@ spec:
             - name: RESBENCH_LLM_BASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: resbench-stage2-runtime
+                  name: resbench-stage2-runtime-e2e
                   key: llm-base-url
             - name: RESBENCH_LLM_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: resbench-stage2-runtime
+                  name: resbench-stage2-runtime-e2e
                   key: llm-api-key
           volumeMounts:
             - name: data
