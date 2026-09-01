@@ -501,6 +501,38 @@ class D0Campaign:
             deadline["agent_thread_stopped"] = not adapter_thread.is_alive()
             adapter_result = adapter_box[0] if adapter_box else None
             convergence = observer.wait_recovery_convergence(timeout_seconds=120)
+            # A cancelled model stream may already have dispatched one final
+            # chaos_create call.  Require a quiet window after apparent
+            # convergence so a late CR cannot leak into the next Agent Trial.
+            if self.observer_factory is KubectlD0Observer:
+                time.sleep(10)
+            late_sample = observer.snapshot()
+            late_owned = {
+                str(item.get("name") or "")
+                for item in late_sample.get("chaosblades", [])
+                if str(item.get("name") or "") in observer.state.new_cr_names
+            }
+            if late_owned:
+                sink(
+                    {
+                        "ts": utc_now(),
+                        "actor": "controller",
+                        "kind": "late_owned_chaos_detected",
+                        "payload": {"names": sorted(late_owned)},
+                    }
+                )
+                fallback = observer.fallback_cleanup()
+                sink(
+                    {
+                        "ts": utc_now(),
+                        "actor": "controller",
+                        "kind": "late_owned_chaos_cleanup_finished",
+                        "payload": fallback,
+                    }
+                )
+                convergence = observer.wait_recovery_convergence(
+                    timeout_seconds=120
+                )
             sink(
                 {
                     "ts": utc_now(),

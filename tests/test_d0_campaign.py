@@ -182,6 +182,9 @@ class FakeObserver:
     def wait_recovery_convergence(self, *, timeout_seconds=60):
         return {"verified": True, "sample": {"ts": utc_now()}}
 
+    def snapshot(self):
+        return {"pods": [], "chaosblades": []}
+
 
 class FakeFacade:
     def __init__(self, **_kwargs):
