@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-FIXED_PROMPT = "请针对otel-demo下的accounting服务的一个 pod 注入高 cpu 故障，持续 5 分钟，5 分钟后需要自动恢复"
+FIXED_PROMPT = (
+    "请针对 otel-demo 下 accounting 服务的一个 Pod 注入 "
+    "cpu-load（80% CPU）故障，持续 5 分钟，5 分钟后自动恢复。"
+)
 CONFIRMATION_REPLY = (
     "确认目标、范围和持续时间，使用 80% CPU 负载。"
     "请继续执行故障注入、效果验证、自动恢复和恢复验证。"
