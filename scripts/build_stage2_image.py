@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         "schema_version": "stage2-backend-overlay-image.v1",
         "image": image,
         "digest": digest,
-        "immutable_ref": f"{args.repository}@{digest}",
+        "immutable_ref": f"{image}@{digest}",
         "runtime_base": args.runtime_base,
         "source_head": head,
         "source_sha256": content_sha,
