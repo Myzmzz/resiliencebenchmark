@@ -330,6 +330,16 @@ class BladeAIServerProcess:
         self.artifact_root.mkdir(parents=True, exist_ok=True)
         self.runtime_root = self.artifact_root / ".bladeai-runtime"
         self.runtime_root.mkdir(mode=0o700, exist_ok=False)
+        bundled_blade = Path("/opt/blade-ai/vendor/chaosblade")
+        blade_runtime = self.runtime_root / "chaosblade"
+        if not (bundled_blade / "blade").is_file():
+            raise RuntimeError("bundled ChaosBlade runtime is missing")
+        shutil.copytree(bundled_blade, blade_runtime)
+        (blade_runtime / "blade").chmod(0o755)
+        self.environment["BLADE_AI_BLADE_PATH"] = str(blade_runtime / "blade")
+        self.environment["BLADE_AI_CHAOSBLADE_VENDOR_DIR"] = str(
+            self.runtime_root
+        )
         self.log_handle = (self.artifact_root / "bladeai-server.log").open("ab")
         self.process = subprocess.Popen(
             [
