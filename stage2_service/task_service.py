@@ -7,6 +7,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from threading import Lock
 from typing import Any, Literal, Mapping, Protocol
@@ -21,30 +22,35 @@ from .contracts import (
     CaseBundle,
     ContractModel,
     HarnessKind,
-    Stage2CaseId,
+    PromptMode,
+    TASK_STAGE2_CASE_IDS,
     default_case_specs,
 )
 from .matrix import fixed_otel_episode_ref
 
 
-TASK_CASES = (
-    Stage2CaseId.C0,
-    Stage2CaseId.D1,
-    Stage2CaseId.D2,
-    Stage2CaseId.D3,
-    Stage2CaseId.D4,
-)
+TASK_CASES = TASK_STAGE2_CASE_IDS
 TASK_ID = re.compile(r"^stage2-task-[a-f0-9]{16}$")
 IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 CONTROL_STATES = {"REQUESTED", "RUNNING"}
 
 
 class Stage2TaskCreateRequest(ContractModel):
-    schema_version: Literal["stage2-task-create.v1"] = "stage2-task-create.v1"
+    schema_version: Literal["stage2-task-create.v2"] = "stage2-task-create.v2"
     application: Literal["otel-demo"]
     prompt: str = Field(min_length=1, max_length=12000)
+    prompt_mode: PromptMode = Field(
+        default=PromptMode.VERBATIM,
+        description="verbatim sends the user prompt unchanged; compiled adds the managed benchmark envelope",
+    )
     model: Literal["gpt-5.6-sol", "claude-opus-5"]
     harness: HarnessKind
+
+
+class TaskDetailMode(str, Enum):
+    SUMMARY = "summary"
+    TIMELINE = "timeline"
+    DEBUG = "debug"
 
 
 class PermissionRestoreRequest(ContractModel):
@@ -299,6 +305,7 @@ class Stage2TaskService:
             harnesses=(request.harness,),
             model_by_harness={request.harness: request.model},
             qualification_mode="diagnostic",
+            prompt_mode=request.prompt_mode,
             case_bundle=CaseBundle(
                 bundle_id=task_id,
                 base_prompt=request.prompt,
@@ -322,6 +329,7 @@ class Stage2TaskService:
                     "application": request.application,
                     "model": request.model,
                     "harness": request.harness.value,
+                    "prompt_mode": request.prompt_mode.value,
                     "cases": [item.value for item in TASK_CASES],
                 },
             ),
@@ -348,25 +356,31 @@ class Stage2TaskService:
         state = self.store.status(task_id)
         request = self.store.request(task_id)
         return {
-            "schema_version": "stage2-task-created.v1",
+            "schema_version": "stage2-task-created.v2",
             "task_id": task_id,
             "task_status": state["task_status"],
             "application": request["application"],
             "model": request["model"],
             "harness": request["harness"],
+            "prompt_mode": request["prompt_mode"],
             "created_at": state["created_at"],
             "poll_after_ms": 2000,
-            "links": {"self": f"/api/v1/stage2/tasks/{task_id}"},
+            "links": {
+                "summary": f"/api/v1/stage2/tasks/{task_id}",
+                "timeline": f"/api/v1/stage2/tasks/{task_id}?mode=timeline",
+                "debug": f"/api/v1/stage2/tasks/{task_id}?mode=debug",
+            },
         }
 
     def get(
         self,
         task_id: str,
         *,
-        after_sequence: int = 0,
+        mode: TaskDetailMode = TaskDetailMode.SUMMARY,
+        after_sequence: int = -1,
         limit: int = 200,
-        include_raw: bool = False,
     ) -> dict[str, Any]:
+        mode = TaskDetailMode(mode)
         state = self.store.status(task_id)
         request = self.store.request(task_id)
         all_events = self.store.events(task_id)
@@ -378,31 +392,67 @@ class Stage2TaskService:
                 terminal=True,
                 finished_at=utc_now(),
             )
-        selected_events = [
-            item for item in all_events if int(item.get("sequence", -1)) >= after_sequence
-        ][:limit]
-        trials = self._trials(state, request, all_events, include_raw=include_raw)
-        return {
-            "schema_version": "stage2-task-status.v1",
+        common = {
             **state,
             "elapsed_seconds": self._elapsed(state),
             "input": {
                 "application": request["application"],
                 "prompt": request["prompt"],
+                "prompt_mode": request["prompt_mode"],
                 "model": request["model"],
                 "harness": request["harness"],
                 "cases": [item.value for item in TASK_CASES],
             },
             "suite": self._suite(state, all_events),
-            "trials": trials,
+        }
+        if mode is TaskDetailMode.TIMELINE:
+            timeline = self._timeline_page(
+                all_events,
+                after_sequence=after_sequence,
+                limit=limit,
+            )
+            return {
+                "schema_version": "stage2-task-timeline.v1",
+                "mode": mode.value,
+                **common,
+                **timeline,
+            }
+
+        debug = mode is TaskDetailMode.DEBUG
+        full_trials = self._trials(
+            state,
+            request,
+            all_events,
+            include_artifacts=debug,
+        )
+        issues = self._issues(state, all_events, full_trials)
+        if not debug:
+            return {
+                "schema_version": "stage2-task-summary.v1",
+                "mode": mode.value,
+                **common,
+                "trials": [self._trial_summary(item) for item in full_trials],
+                "result": self._task_result(task_id),
+                "issues": issues,
+                "event_count": len(all_events),
+                "latest_sequence": (
+                    int(all_events[-1].get("sequence", -1)) if all_events else -1
+                ),
+            }
+
+        timeline = self._timeline_page(
+            all_events,
+            after_sequence=after_sequence,
+            limit=limit,
+        )
+        return {
+            "schema_version": "stage2-task-debug.v1",
+            "mode": mode.value,
+            **common,
+            "trials": full_trials,
             "result": self._task_result(task_id),
-            "issues": self._issues(state, all_events, trials),
-            "events": selected_events,
-            "next_sequence": (
-                int(selected_events[-1]["sequence"]) + 1
-                if selected_events
-                else after_sequence
-            ),
+            "issues": issues,
+            **timeline,
         }
 
     def abort(self, task_id: str, request: AbortTaskRequest) -> dict[str, Any]:
@@ -722,13 +772,37 @@ class Stage2TaskService:
             "total_trials": len(TASK_CASES),
         }
 
+    @staticmethod
+    def _timeline_page(
+        events: list[dict[str, Any]], *, after_sequence: int, limit: int
+    ) -> dict[str, Any]:
+        selected = [
+            item
+            for item in events
+            if int(item.get("sequence", -1)) > after_sequence
+        ][:limit]
+        next_sequence = (
+            int(selected[-1].get("sequence", after_sequence))
+            if selected
+            else after_sequence
+        )
+        return {
+            "events": selected,
+            "event_count": len(events),
+            "after_sequence": after_sequence,
+            "next_sequence": next_sequence,
+            "has_more": any(
+                int(item.get("sequence", -1)) > next_sequence for item in events
+            ),
+        }
+
     def _trials(
         self,
         state: Mapping[str, Any],
         request: Mapping[str, Any],
         events: list[dict[str, Any]],
         *,
-        include_raw: bool,
+        include_artifacts: bool,
     ) -> list[dict[str, Any]]:
         campaign_id = state.get("campaign_id")
         output = []
@@ -752,7 +826,7 @@ class Stage2TaskService:
                     case_id=case.value,
                     trial_status=trial_status,
                     events=trial_events,
-                    include_raw=include_raw,
+                    include_artifacts=include_artifacts,
                 )
             )
         return output
@@ -766,7 +840,7 @@ class Stage2TaskService:
         case_id: str,
         trial_status: str,
         events: list[dict[str, Any]],
-        include_raw: bool,
+        include_artifacts: bool,
     ) -> dict[str, Any]:
         croot = self.artifact_root / campaign_id if campaign_id else None
         troot = croot / "trials" / trial_id if croot and trial_id else None
@@ -777,12 +851,12 @@ class Stage2TaskService:
         report = self._read_optional(troot / "harness-report.json") if troot else {}
         decision = self._read_optional(troot / "evaluation-decision.json") if troot else {}
         result = self._read_optional(troot / "result.json") if troot else {}
-        prompt_path = oroot / "prompt.redacted.txt" if oroot else None
+        prompt_path = oroot / "executed-prompt.redacted.txt" if oroot else None
         stdout_path = oroot / "stdout.txt" if oroot else None
         stderr_path = oroot / "stderr.txt" if oroot else None
-        prompt_text = self._read_text(prompt_path, include_raw)
-        stdout = self._read_text(stdout_path, include_raw)
-        stderr = self._read_text(stderr_path, include_raw)
+        prompt_text = self._read_text(prompt_path) if include_artifacts else None
+        stdout = self._read_text(stdout_path) if include_artifacts else None
+        stderr = self._read_text(stderr_path) if include_artifacts else None
         main_fault = self._main_fault(events, recovery, runtime)
         disturbance = attempt or {
             "required": case_id.startswith("D"),
@@ -801,7 +875,8 @@ class Stage2TaskService:
             "status": trial_status,
             "agent_input": {
                 "user_prompt": request["prompt"],
-                "compiled_prompt_redacted": prompt_text,
+                "prompt_mode": request["prompt_mode"],
+                "executed_prompt_redacted": prompt_text,
             },
             "main_fault": main_fault,
             "disturbance": disturbance,
@@ -823,8 +898,66 @@ class Stage2TaskService:
             },
             "recovery": recovery,
             "runtime_target": runtime.get("target"),
-            "events": events,
             "artifact_refs": result.get("artifact_refs") or [],
+        }
+
+    @staticmethod
+    def _trial_summary(trial: Mapping[str, Any]) -> dict[str, Any]:
+        main_fault = dict(trial.get("main_fault") or {})
+        disturbance = dict(trial.get("disturbance") or {})
+        harness = dict(trial.get("harness") or {})
+        evaluation = dict(trial.get("evaluation") or {})
+        recovery = dict(trial.get("recovery") or {})
+        return {
+            "trial_id": trial.get("trial_id"),
+            "case_id": trial.get("case_id"),
+            "status": trial.get("status"),
+            "main_fault": {
+                key: main_fault.get(key)
+                for key in (
+                    "summary_state",
+                    "state",
+                    "requested",
+                    "injected",
+                    "target_verified",
+                    "effect_verified",
+                    "recovered",
+                    "selection_mode",
+                    "observed_fault_type",
+                )
+            },
+            "disturbance": {
+                key: disturbance.get(key)
+                for key in (
+                    "state",
+                    "disturbance_type",
+                    "expected_trigger",
+                    "observed_trigger",
+                    "apply_attempted",
+                    "applied",
+                    "application_verified",
+                    "rollback_attempted",
+                    "rolled_back",
+                    "rollback_verified",
+                    "reason_code",
+                )
+            },
+            "harness": harness,
+            "evaluation": {
+                "verdict": evaluation.get("verdict"),
+                "platform_valid": evaluation.get("platform_valid"),
+                "reason_codes": evaluation.get("reason_codes") or [],
+            },
+            "recovery": {
+                key: recovery.get(key)
+                for key in (
+                    "agent_attempted",
+                    "agent_recovery_verified",
+                    "controller_cleanup_verified",
+                    "fault_absent",
+                    "business_recovery_verified",
+                )
+            },
         }
 
     @staticmethod
@@ -834,6 +967,14 @@ class Stage2TaskService:
         runtime: Mapping[str, Any],
     ) -> dict[str, Any]:
         kinds = {item.get("event_type") for item in events}
+        prompt_mode = str(runtime.get("prompt_mode") or PromptMode.COMPILED.value)
+        effect_evidence = recovery.get("fault_effect_evidence")
+        observed_fault = (
+            effect_evidence.get("observed_main_fault")
+            if isinstance(effect_evidence, Mapping)
+            and isinstance(effect_evidence.get("observed_main_fault"), Mapping)
+            else {}
+        )
         requested = "MAIN_FAULT_REQUESTED" in kinds
         injected = recovery.get("main_fault_ever_active") is True or "MAIN_FAULT_RUNNING" in kinds
         recovered = recovery.get("fault_absent") is True and recovery.get("controller_cleanup_verified") is True
@@ -857,7 +998,17 @@ class Stage2TaskService:
             "target_verified": recovery.get("main_fault_target_verified"),
             "effect_verified": recovery.get("fault_effect_verified"),
             "recovered": recovered,
-            "contract": runtime.get("main_fault"),
+            "selection_mode": (
+                "agent_prompt"
+                if prompt_mode == PromptMode.VERBATIM.value
+                else "controller_contract"
+            ),
+            "observed_fault_type": observed_fault.get("fault_type"),
+            "contract": (
+                None
+                if prompt_mode == PromptMode.VERBATIM.value
+                else runtime.get("main_fault")
+            ),
         }
 
     def _task_result(self, task_id: str) -> dict[str, Any] | None:
@@ -981,8 +1132,7 @@ class Stage2TaskService:
         return value if isinstance(value, dict) else {}
 
     @staticmethod
-    def _read_text(path: Path | None, include_raw: bool) -> str | None:
+    def _read_text(path: Path | None) -> str | None:
         if path is None or not path.is_file():
             return None
-        text = path.read_text(encoding="utf-8", errors="replace")
-        return text[:40000] if include_raw else text[-2000:]
+        return path.read_text(encoding="utf-8", errors="replace")

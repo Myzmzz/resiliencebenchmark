@@ -46,6 +46,7 @@ class McpSupervisor:
         harness: HarnessKind,
         token: str,
         token_state_files: Mapping[str, str],
+        runtime_environment: Mapping[str, str] | None = None,
     ) -> dict[str, str]:
         self.stop()
         transport = "sse" if harness is HarnessKind.BLADEAI else "streamable-http"
@@ -61,6 +62,11 @@ class McpSupervisor:
             env = {
                 **os.environ,
                 **self.base_environment,
+                **(
+                    dict(runtime_environment or {})
+                    if name == "chaos_control"
+                    else {}
+                ),
                 "RESBENCH_MCP_TOKEN": token,
                 "RESBENCH_MCP_TOKEN_STATE_FILE": str(token_state_files[name]),
                 "RESBENCH_MCP_TRANSPORT": transport,

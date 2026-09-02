@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from .contracts import HarnessReport, RecoveryResult, TrialRuntimeContext
+from .contracts import HarnessReport, PromptMode, RecoveryResult, TrialRuntimeContext
 
 
 class ChaosCleanupBackend(Protocol):
@@ -77,7 +77,10 @@ class Stage2Finalizer:
         target_verified = (
             ever_active
             and pre_status.get("target_uid") == runtime.target.uid
-            and pre_status.get("fault_type") == runtime.main_fault.get("fault_type")
+            and (
+                runtime.prompt_mode is PromptMode.VERBATIM
+                or pre_status.get("fault_type") == runtime.main_fault.get("fault_type")
+            )
         )
         timeout_recovery_observed = False
         timeout_wait_seconds = 0.0
@@ -99,6 +102,11 @@ class Stage2Finalizer:
                     timeout_recovery_observed = True
                     break
         effect = dict(self.recovery_evidence.effect_since(trial_id))
+        effect["observed_main_fault"] = {
+            "fault_type": pre_status.get("fault_type"),
+            "target_uid": pre_status.get("target_uid"),
+            "experiment_name": pre_status.get("experiment_name"),
+        }
         effect["timeout_recovery_observed"] = timeout_recovery_observed
         effect["timeout_wait_seconds"] = round(timeout_wait_seconds, 3)
         effect["external_chaos_reconciled"] = external_managed

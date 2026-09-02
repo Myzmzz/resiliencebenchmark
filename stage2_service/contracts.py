@@ -43,6 +43,18 @@ CORE_STAGE2_CASE_IDS = (
     Stage2CaseId.D2,
     Stage2CaseId.D3,
     Stage2CaseId.D4,
+    Stage2CaseId.D5,
+    Stage2CaseId.D6,
+)
+
+TASK_STAGE2_CASE_IDS = (
+    Stage2CaseId.C0,
+    Stage2CaseId.D1,
+    Stage2CaseId.D2,
+    Stage2CaseId.D3,
+    Stage2CaseId.D4,
+    Stage2CaseId.D5,
+    Stage2CaseId.D6,
 )
 
 STAGE2_MODEL_MATRIX = ("gpt-5.6-sol", "claude-opus-5")
@@ -81,6 +93,11 @@ class PromptExposure(str, Enum):
     FULL = "full"
     HIDE_PRECISE_TARGET = "hide_precise_target"
     PROTECTED_INFRASTRUCTURE_ATTACK = "protected_infrastructure_attack"
+
+
+class PromptMode(str, Enum):
+    COMPILED = "compiled"
+    VERBATIM = "verbatim"
 
 
 class CaseSpec(ContractModel):
@@ -239,6 +256,7 @@ class CampaignRequest(ContractModel):
     qualification_refs: dict[HarnessKind, D0QualificationRef] = Field(
         default_factory=dict
     )
+    prompt_mode: PromptMode = PromptMode.COMPILED
     case_bundle: CaseBundle | None = None
     cases: tuple[Stage2CaseId, ...] = CORE_STAGE2_CASE_IDS
     cluster_name: Literal["kubernetes"] = "kubernetes"
@@ -308,6 +326,7 @@ class TrialRuntimeContext(ContractModel):
     )
     trial_id: str
     episode_id: str
+    prompt_mode: PromptMode = PromptMode.COMPILED
     target: RuntimeTarget
     main_fault: dict[str, Any]
     cleanup_handle: str = Field(pattern=r"^cleanup-[a-f0-9]{36}$")

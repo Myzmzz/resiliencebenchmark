@@ -57,6 +57,9 @@ class RuntimeConfig:
     controller_pod_namespace: str | None = None
     controller_pod_name: str | None = None
     controller_lease_file: Path | None = None
+    authorized_run_id: str | None = None
+    baseline_gate_token: str | None = None
+    cleanup_handle: str | None = None
     ledger_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "resbench-chaos-control-ledger")
     baseline_ledger_dir: Path | None = None
     kubectl_path: str = "kubectl"
@@ -80,6 +83,9 @@ class RuntimeConfig:
             controller_pod_uid=values.get("RESBENCH_CHAOS_CONTROLLER_POD_UID"),
             controller_pod_namespace=values.get("RESBENCH_CHAOS_CONTROLLER_POD_NAMESPACE"),
             controller_pod_name=values.get("RESBENCH_CHAOS_CONTROLLER_POD_NAME"),
+            authorized_run_id=values.get("RESBENCH_AUTHORIZED_RUN_ID"),
+            baseline_gate_token=values.get("RESBENCH_BASELINE_GATE_TOKEN"),
+            cleanup_handle=values.get("RESBENCH_CLEANUP_HANDLE"),
             controller_lease_file=(
                 Path(controller_lease_raw) if controller_lease_raw else None
             ),

@@ -21,6 +21,7 @@ from .contracts import (
     HarnessReport,
     LifecycleEvent,
     PlatformStatus,
+    PromptMode,
     RecoveryResult,
     TrialKind,
     TrialResult,
@@ -67,6 +68,7 @@ class HarnessRunner(Protocol):
         case: CaseSpec,
         base_prompt: str | None,
         event_observer: EventObserver,
+        prompt_mode: PromptMode = PromptMode.COMPILED,
     ) -> HarnessReport: ...
 
 
@@ -237,7 +239,9 @@ class CampaignEngine:
                                 "trial_kind": kind.value,
                             },
                         )
-                        runtime = self.preparer.prepare(trial_id, self.episode)
+                        runtime = self.preparer.prepare(trial_id, self.episode).model_copy(
+                            update={"prompt_mode": request.prompt_mode}
+                        )
                         self.artifacts.write(
                             campaign_id,
                             f"trials/{trial_id}/runtime-context.json",
@@ -376,6 +380,7 @@ class CampaignEngine:
                                 else None
                             ),
                             event_observer=observe,
+                            prompt_mode=request.prompt_mode,
                         )
                         if "cancel_requested" in inspect.signature(
                             self.harness_runner.run

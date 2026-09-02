@@ -29,6 +29,7 @@ from .task_service import (
     PermissionRestoreRequest,
     Stage2TaskCreateRequest,
     Stage2TaskService,
+    TaskDetailMode,
     TaskConflict,
     TaskNotFound,
     TaskValidationError,
@@ -342,18 +343,30 @@ def create_app(
     @app.get("/api/v1/stage2/tasks/{task_id}")
     def get_stage2_task(
         task_id: str,
-        after_sequence: int = Query(default=0, ge=0),
-        limit: int = Query(default=200, ge=1, le=1000),
-        include_raw: bool = Query(default=False),
+        mode: TaskDetailMode = Query(
+            default=TaskDetailMode.SUMMARY,
+            description="summary, timeline, or debug",
+        ),
+        after_sequence: int = Query(
+            default=-1,
+            ge=-1,
+            description="exclusive event cursor for timeline and debug modes",
+        ),
+        limit: int = Query(
+            default=200,
+            ge=1,
+            le=1000,
+            description="maximum event count for timeline and debug modes",
+        ),
     ) -> dict:
         if task_service is None:
             raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
         try:
             return task_service.get(
                 task_id,
+                mode=mode,
                 after_sequence=after_sequence,
                 limit=limit,
-                include_raw=include_raw,
             )
         except TaskNotFound as exc:
             raise HTTPException(status_code=404, detail="Stage2 task not found") from exc

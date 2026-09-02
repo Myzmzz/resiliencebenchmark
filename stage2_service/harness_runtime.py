@@ -46,6 +46,7 @@ from .contracts import (
     LifecycleEvent,
     LifecyclePhase,
     PromptExposure,
+    PromptMode,
 )
 from .permissions import Stage2PermissionManager
 from .mcp_supervisor import McpSupervisor
@@ -90,6 +91,7 @@ class NativeHarnessRunner:
         case: CaseSpec,
         base_prompt: str | None,
         event_observer,
+        prompt_mode: PromptMode = PromptMode.COMPILED,
         cancel_requested=None,
     ) -> HarnessReport:
         if harness is HarnessKind.BLADEAI:
@@ -100,6 +102,9 @@ class NativeHarnessRunner:
                 episode=episode,
                 runtime_context=runtime_context,
                 capability=capability,
+                case=case,
+                base_prompt=base_prompt,
+                prompt_mode=prompt_mode,
                 event_observer=event_observer,
                 cancel_requested=cancel_requested,
             )
@@ -109,6 +114,11 @@ class NativeHarnessRunner:
             harness=harness,
             token=str(permission_runtime["mcp_token"]),
             token_state_files=permission_runtime["mcp_token_state_files"],
+            runtime_environment={
+                "RESBENCH_AUTHORIZED_RUN_ID": trial_id,
+                "RESBENCH_BASELINE_GATE_TOKEN": runtime_context.baseline_capability,
+                "RESBENCH_CLEANUP_HANDLE": runtime_context.cleanup_handle,
+            },
         )
         trial_root = Path(
             tempfile.mkdtemp(prefix=f"{trial_id}-", dir=self.private_root)
@@ -118,10 +128,7 @@ class NativeHarnessRunner:
         codex_home = trial_root / "codex-home"
         claude_home = trial_root / "claude-home"
         dsh_home = trial_root / "dsh-home"
-        public_data = episode.public.model_dump(mode="json")
         harnesses = load_yaml(self.repo_root / DEFAULT_HARNESSES_CONFIG)
-        common = resolve_prompt_file(harnesses, "common_task", self.repo_root)
-        selected = resolve_prompt_file(harnesses, "full_lifecycle", self.repo_root)
         env = {
             **self.base_environment,
             **mcp_environment,
@@ -140,10 +147,22 @@ class NativeHarnessRunner:
             ),
             "RESBENCH_AUTHORIZED_RUN_ID": trial_id,
         }
-        prompt = _compose_agent_prompt(common, selected, public_data, base_prompt)
-        prompt = _append_case_runtime_prompt(prompt, env, case)
+        if prompt_mode is PromptMode.VERBATIM:
+            if base_prompt is None or not base_prompt.strip():
+                raise HarnessRuntimeError("verbatim prompt mode requires a user prompt")
+            prompt = base_prompt
+        else:
+            common = resolve_prompt_file(harnesses, "common_task", self.repo_root)
+            selected = resolve_prompt_file(harnesses, "full_lifecycle", self.repo_root)
+            prompt = _compose_agent_prompt(
+                common,
+                selected,
+                episode.public.model_dump(mode="json"),
+                base_prompt,
+            )
+            prompt = _append_case_runtime_prompt(prompt, env, case)
         validate_prompt_text(prompt)
-        (artifact_dir / "prompt.redacted.txt").write_text(
+        (artifact_dir / "executed-prompt.redacted.txt").write_text(
             redact_text(prompt, env), encoding="utf-8"
         )
         render_codex_config(self.repo_root, codex_home, env)
@@ -329,10 +348,13 @@ class NativeHarnessRunner:
         episode,
         runtime_context,
         capability,
+        case,
+        base_prompt,
+        prompt_mode,
         event_observer,
         cancel_requested=None,
     ) -> HarnessReport:
-        del model_alias, capability
+        del model_alias, capability, case
         permission_runtime = self.permissions.runtime_context(trial_id)
         kubeconfig = permission_runtime.get("bladeai_kubeconfig")
         if not kubeconfig:
@@ -375,27 +397,40 @@ class NativeHarnessRunner:
         artifact_dir = self.artifact_root / campaign_id / trial_id
         artifact_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         request_path = root / "request.json"
-        fault = runtime_context.main_fault
-        fault_type = str(fault.get("fault_type") or "")
-        scope, target, action = _bladeai_fault_parts(fault_type)
+        if prompt_mode is PromptMode.VERBATIM:
+            if base_prompt is None or not base_prompt.strip():
+                raise HarnessRuntimeError("verbatim prompt mode requires a user prompt")
+            intent = base_prompt
+            managed_fault = None
+        else:
+            intent = str(episode.public.objective)
+            fault = runtime_context.main_fault
+            fault_type = str(fault.get("fault_type") or "")
+            scope, target, action = _bladeai_fault_parts(fault_type)
+            managed_fault = {
+                "fault_scope": scope,
+                "fault_target": target,
+                "fault_action": action,
+                "params": dict(fault.get("intensity") or fault.get("parameters") or {}),
+                "duration": int(fault.get("duration_seconds") or 600),
+            }
         request = {
             "trial_id": trial_id,
-            "intent": episode.public.objective,
+            "intent": intent,
+            "prompt_mode": prompt_mode.value,
             "target": runtime_context.target.model_dump(mode="json"),
-            "fault_scope": scope,
-            "fault_target": target,
-            "fault_action": action,
-            "params": dict(fault.get("parameters") or {}),
-            "duration": int(fault.get("duration_seconds") or 600),
+            "managed_fault": managed_fault,
             "kubeconfig": str(kubeconfig),
         }
         redacted_request = {
             key: value for key, value in request.items() if key != "kubeconfig"
         }
-        (artifact_dir / "prompt.redacted.txt").write_text(
-            episode.public.objective
-            + "\n\n"
-            + json.dumps(redacted_request, ensure_ascii=False, indent=2, sort_keys=True)
+        (artifact_dir / "executed-prompt.redacted.txt").write_text(
+            intent,
+            encoding="utf-8",
+        )
+        (artifact_dir / "runtime-request.redacted.json").write_text(
+            json.dumps(redacted_request, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n",
             encoding="utf-8",
         )

@@ -69,23 +69,22 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError as exc:
         emit("fatal", {"error": f"BladeAI import failed: {type(exc).__name__}"})
         return 2
+    payload = {
+        "namespace": request["target"]["namespace"],
+        "target_names": [request["target"]["name"]],
+        "kubeconfig": request["kubeconfig"],
+        "direct": False,
+        "auto_recover": True,
+    }
+    managed_fault = request.get("managed_fault")
+    if isinstance(managed_fault, dict):
+        payload.update(managed_fault)
     task = L4TestTask(
         task_id=request["trial_id"],
         intent=request["intent"],
         target=request["target"]["name"],
         test_type="resilience-fault-injection",
-        payload={
-            "fault_scope": request["fault_scope"],
-            "fault_target": request["fault_target"],
-            "fault_action": request["fault_action"],
-            "namespace": request["target"]["namespace"],
-            "target_names": [request["target"]["name"]],
-            "params": request["params"],
-            "duration": request["duration"],
-            "kubeconfig": request["kubeconfig"],
-            "direct": False,
-            "auto_recover": True,
-        },
+        payload=payload,
     )
     runtime = Runtime()
     agent = L4ResilienceAgent()

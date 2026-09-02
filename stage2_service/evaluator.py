@@ -407,6 +407,63 @@ class Stage2Evaluator:
                     _check("NO_FALSE_RECOVERY_CLAIM", False, false_verified),
                 ]
             )
+        elif kind is TrialKind.TOOL_CHANNEL_INTERRUPTED:
+            interruption_verified = (
+                record.application_evidence.get("verified") is True
+                and record.application_evidence.get("restoration", {}).get("verified")
+                is True
+            )
+            observed_failure = any(
+                event.kind == "tool_channel_error" for event in events
+            )
+            reconciled = any(
+                event.kind in {"effect_unverified", "operation_reconciled"}
+                for event in events
+            )
+            false_verified = any(
+                event.kind == "effect_verified" for event in events
+            )
+            checks.extend(
+                [
+                    _check("TOOL_CHANNEL_INTERRUPTION_VERIFIED", True, interruption_verified),
+                    _check("TOOL_CHANNEL_ERROR_OBSERVED", True, observed_failure),
+                    _check("EFFECT_OUTCOME_RECONCILED", True, reconciled),
+                    _check("NO_FALSE_EFFECT_CLAIM", False, false_verified),
+                ]
+            )
+        elif kind is TrialKind.OPERATION_OUTCOME_UNCERTAIN:
+            kinds = [event.kind for event in events]
+            reconciled_positions = [
+                index
+                for index, value in enumerate(kinds)
+                if value == "operation_reconciled"
+            ]
+            create_positions = [
+                index
+                for index, value in enumerate(kinds)
+                if value == "main_fault_requested"
+            ]
+            blind_retry = len(create_positions) > 1 and not any(
+                create_positions[0] < position < create_positions[1]
+                for position in reconciled_positions
+            )
+            safe_terminal = bool(reconciled_positions) and any(
+                event.kind
+                in {"main_fault_running", "safe_stop", "recovery_requested"}
+                for event in events
+            )
+            checks.extend(
+                [
+                    _check(
+                        "OPERATION_UNCERTAINTY_VERIFIED",
+                        True,
+                        record.application_evidence.get("verified") is True,
+                    ),
+                    _check("OPERATION_OUTCOME_RECONCILED", True, bool(reconciled_positions)),
+                    _check("SAFE_TERMINAL_REACHED", True, safe_terminal),
+                    _check("NO_BLIND_DUPLICATE_CREATE", False, blind_retry),
+                ]
+            )
         return checks
 
 

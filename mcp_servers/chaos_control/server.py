@@ -68,6 +68,23 @@ def _server_kubeconfig(service: ChaosControlService) -> str | None:
     return service.config.kubeconfig
 
 
+def _runtime_value(name: str, supplied: str | None, bound: str | None) -> str:
+    if supplied and bound and supplied != bound:
+        raise ChaosControlError(
+            "BOUND_RUNTIME_MISMATCH",
+            f"{name} does not match the Controller-bound Trial value.",
+            next_step=f"Omit {name}; the Trial-scoped server supplies it automatically.",
+        )
+    value = bound or supplied
+    if not value:
+        raise ChaosControlError(
+            "BOUND_RUNTIME_MISSING",
+            f"{name} is not available for this Trial.",
+            next_step="Stop and request a newly prepared Trial runtime.",
+        )
+    return value
+
+
 def create_server(
     *,
     service: ChaosControlService | None = None,
@@ -105,20 +122,27 @@ def create_server(
         annotations=_read_annotations("Validate ChaosBlade Plan"),
     )
     async def chaos_validate_plan(
-        run_id: str,
         namespace: str,
         target_name: str,
         target_uid: str,
         fault_type: str,
         duration_seconds: int,
         intensity: dict[str, Any],
+        run_id: str | None = None,
         selector: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Read-only validation of a proposed single-Pod ChaosBlade plan."""
 
+        try:
+            bound_run_id = _runtime_value(
+                "run_id", run_id, chaos.config.authorized_run_id
+            )
+        except ChaosControlError as exc:
+            return exc.as_response()
+
         return await _call(
             chaos.validate_plan(
-                run_id=run_id,
+                run_id=bound_run_id,
                 namespace=namespace,
                 target_name=target_name,
                 target_uid=target_uid,
@@ -145,24 +169,49 @@ def create_server(
         annotations=_write_annotations("Create Gated ChaosBlade Experiment"),
     )
     async def chaos_create_experiment(
-        run_id: str,
         namespace: str,
         target_name: str,
         target_uid: str,
         fault_type: str,
         duration_seconds: int,
         intensity: dict[str, Any],
-        controller_token_ref: str,
-        expected_controller_pod_uid: str,
-        baseline_gate_token: str,
-        cleanup_handle: str,
+        run_id: str | None = None,
+        controller_token_ref: str | None = None,
+        expected_controller_pod_uid: str | None = None,
+        baseline_gate_token: str | None = None,
+        cleanup_handle: str | None = None,
         selector: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Create a ChaosBlade CR only after all controller safety gates pass."""
+        """Create one gated experiment; Trial identity and gates are server-bound."""
+
+        try:
+            bound_run_id = _runtime_value(
+                "run_id", run_id, chaos.config.authorized_run_id
+            )
+            bound_controller_ref = _runtime_value(
+                "controller_token_ref",
+                controller_token_ref,
+                chaos.config.controller_token_ref,
+            )
+            bound_controller_uid = _runtime_value(
+                "expected_controller_pod_uid",
+                expected_controller_pod_uid,
+                chaos.config.controller_pod_uid,
+            )
+            bound_baseline_token = _runtime_value(
+                "baseline_gate_token",
+                baseline_gate_token,
+                chaos.config.baseline_gate_token,
+            )
+            bound_cleanup_handle = _runtime_value(
+                "cleanup_handle", cleanup_handle, chaos.config.cleanup_handle
+            )
+        except ChaosControlError as exc:
+            return exc.as_response()
 
         return await _call(
             chaos.create_experiment(
-                run_id=run_id,
+                run_id=bound_run_id,
                 namespace=namespace,
                 target_name=target_name,
                 target_uid=target_uid,
@@ -170,10 +219,10 @@ def create_server(
                 duration_seconds=duration_seconds,
                 intensity=intensity,
                 kubeconfig=_server_kubeconfig(chaos),
-                controller_token_ref=controller_token_ref,
-                expected_controller_pod_uid=expected_controller_pod_uid,
-                baseline_gate_token=baseline_gate_token,
-                cleanup_handle=cleanup_handle,
+                controller_token_ref=bound_controller_ref,
+                expected_controller_pod_uid=bound_controller_uid,
+                baseline_gate_token=bound_baseline_token,
+                cleanup_handle=bound_cleanup_handle,
                 selector=selector,
             )
         )
@@ -193,20 +242,38 @@ def create_server(
         title="Destroy Ledger-Owned ChaosBlade Experiment",
         annotations=_destroy_annotations("Destroy Ledger-Owned ChaosBlade Experiment"),
     )
-    async def chaos_destroy_experiment(cleanup_handle: str) -> dict[str, Any]:
-        """Destroy one ChaosBlade CR only through this server's private ledger handle."""
+    async def chaos_destroy_experiment(
+        cleanup_handle: str | None = None,
+    ) -> dict[str, Any]:
+        """Destroy the experiment owned by this Trial-scoped server."""
 
-        return await _call(chaos.destroy_experiment(cleanup_handle=cleanup_handle, kubeconfig=_server_kubeconfig(chaos)))
+        try:
+            bound_cleanup_handle = _runtime_value(
+                "cleanup_handle", cleanup_handle, chaos.config.cleanup_handle
+            )
+        except ChaosControlError as exc:
+            return exc.as_response()
+
+        return await _call(chaos.destroy_experiment(cleanup_handle=bound_cleanup_handle, kubeconfig=_server_kubeconfig(chaos)))
 
     @server.tool(
         name="chaos_recovery_status",
         title="Read ChaosBlade Recovery Status",
         annotations=_read_annotations("Read ChaosBlade Recovery Status"),
     )
-    async def chaos_recovery_status(cleanup_handle: str) -> dict[str, Any]:
-        """Read-only recovery status for a ledger-owned ChaosBlade experiment."""
+    async def chaos_recovery_status(
+        cleanup_handle: str | None = None,
+    ) -> dict[str, Any]:
+        """Read recovery status for the experiment owned by this Trial."""
 
-        return await _call(chaos.recovery_status(cleanup_handle=cleanup_handle, kubeconfig=_server_kubeconfig(chaos)))
+        try:
+            bound_cleanup_handle = _runtime_value(
+                "cleanup_handle", cleanup_handle, chaos.config.cleanup_handle
+            )
+        except ChaosControlError as exc:
+            return exc.as_response()
+
+        return await _call(chaos.recovery_status(cleanup_handle=bound_cleanup_handle, kubeconfig=_server_kubeconfig(chaos)))
 
     return server
 
