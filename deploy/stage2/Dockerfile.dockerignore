@@ -6,7 +6,6 @@ artifacts
 runs
 tmp
 frontend/node_modules
-frontend/dist
 benchmark-wheels
 *.pyc
 *.log

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -85,6 +86,17 @@ def main(argv: list[str] | None = None) -> int:
     head = git_head()
     content_sha = source_digest()
     image = f"{args.repository}:stage2-d0-{head}"
+    pnpm = shutil.which("pnpm")
+    if not pnpm:
+        raise RuntimeError("pnpm is required to build the Stage-2 frontend")
+    frontend = subprocess.run(
+        [pnpm, "build"],
+        cwd=REPO_ROOT / "frontend",
+        check=False,
+        timeout=600,
+    )
+    if frontend.returncode:
+        raise RuntimeError("Stage-2 frontend build failed")
     with tempfile.TemporaryDirectory(prefix="resbench-stage2-overlay-") as raw:
         metadata_file = Path(raw) / "build-metadata.json"
         build_argv = [
@@ -97,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         build_argv.extend(
             [
             "--progress=plain",
+            "--pull=false",
             "--platform",
             "linux/amd64",
             "--build-arg",
