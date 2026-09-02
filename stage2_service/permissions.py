@@ -143,7 +143,17 @@ class Stage2PermissionManager:
     def restore(self, trial_id: str) -> dict[str, Any]:
         runtime = self._runtime.get(trial_id)
         if runtime is None:
-            return {"verified": False, "reason": "permission runtime is missing"}
+            cleanup = self.permission_backend.cleanup_trial(trial_id)
+            token_root = self.token_registry.root / trial_id
+            if token_root.is_dir():
+                for path in token_root.iterdir():
+                    if path.is_file():
+                        path.unlink(missing_ok=True)
+            return {
+                "verified": cleanup.get("verified") is True,
+                "already_released": True,
+                "backend": cleanup,
+            }
         cleanup = self.permission_backend.cleanup_trial(trial_id)
         verified = cleanup.get("verified") is True
         for path in runtime.get("mcp_token_state_files", {}).values():
@@ -153,3 +163,27 @@ class Stage2PermissionManager:
             Path(kubeconfig).unlink(missing_ok=True)
         self._runtime.pop(trial_id, None)
         return {"verified": verified, "backend": cleanup}
+
+    def restore_baseline(self, trial_id: str) -> dict[str, Any]:
+        runtime = self._runtime.get(trial_id)
+        if runtime is None:
+            return {
+                "verified": False,
+                "reason": "active Trial permission runtime is missing",
+            }
+        capabilities = (
+            "mcp.k8s.read",
+            "mcp.telemetry.read",
+            "mcp.source.read",
+            "mcp.chaos.create",
+        )
+        restored = []
+        for capability in capabilities:
+            restored.append(self.token_registry.restore(trial_id, capability))
+        if runtime.get("bladeai_service_account"):
+            restored.append(self.permission_backend.restore_metrics(trial_id))
+        return {
+            "verified": all(item.get("verified") is True for item in restored),
+            "target_state": "BASELINE",
+            "permissions": restored,
+        }

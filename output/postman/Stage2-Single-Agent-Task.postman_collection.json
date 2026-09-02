@@ -1,0 +1,242 @@
+{
+  "info": {
+    "name": "Stage2 Single-Agent Task API",
+    "description": "Create and inspect one complete C0/D1-D4 single-Agent experiment, then exercise abort, environment reset, and permission recovery controls.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:18088"
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "afterSequence",
+      "value": "0"
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "postman-stage2-001"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create single-Agent task",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotencyKey}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请在 otel-demo 命名空间中，选择 cart 服务的一个 Ready Pod，注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障生效和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('task accepted', function () { pm.response.to.have.status(202); });",
+              "const body = pm.response.json();",
+              "pm.expect(body.task_id).to.be.a('string');",
+              "pm.collectionVariables.set('taskId', body.task_id);",
+              "pm.collectionVariables.set('afterSequence', '0');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Query task status and interactions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}?after_sequence={{afterSequence}}&limit=1000&include_raw=true",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}"],
+          "query": [
+            {
+              "key": "after_sequence",
+              "value": "{{afterSequence}}"
+            },
+            {
+              "key": "limit",
+              "value": "1000"
+            },
+            {
+              "key": "include_raw",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('task query succeeded', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.expect(body.task_id).to.eql(pm.collectionVariables.get('taskId'));",
+              "pm.expect(body.trials).to.be.an('array').with.length(5);",
+              "pm.expect(body.suite.cases).to.eql(['C0', 'D1', 'D2', 'D3', 'D4']);",
+              "pm.collectionVariables.set('afterSequence', String(body.next_sequence));",
+              "console.log('task_status', body.task_status);",
+              "console.log('current_case', body.suite.current_case);",
+              "console.log('issues', body.issues);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Restore Agent permissions to Trial baseline",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"target_state\": \"BASELINE\",\n  \"reason\": \"Postman operator requested permission recovery\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}/permissions/restore",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}", "permissions", "restore"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('permission recovery accepted', function () { pm.response.to.have.status(202); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Abort task and perform full recovery",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Postman operator requested abort\",\n  \"recovery_mode\": \"FULL_RESET\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}/abort",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}", "abort"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('abort accepted', function () { pm.response.to.have.status(202); });",
+              "pm.collectionVariables.set('afterSequence', '0');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Force environment reset",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Postman operator requested environment reset\",\n  \"restart_sut\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}/environment/reset",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}", "environment", "reset"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('environment reset accepted', function () { pm.response.to.have.status(202); });",
+              "pm.collectionVariables.set('afterSequence', '0');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Revoke all Trial-scoped Agent access",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"target_state\": \"REVOKED\",\n  \"reason\": \"Postman operator requested final permission cleanup\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}/permissions/restore",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}", "permissions", "restore"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('permission cleanup accepted', function () { pm.response.to.have.status(202); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

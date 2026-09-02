@@ -28,6 +28,7 @@ from scripts.run_harness_trial import (
     render_codex_config,
     render_dsh_contract,
     render_prompt,
+    redact_json,
     redact_text,
     resolve_prompt_file,
     subprocess_streaming_runner,
@@ -142,6 +143,9 @@ class NativeHarnessRunner:
         prompt = _compose_agent_prompt(common, selected, public_data, base_prompt)
         prompt = _append_case_runtime_prompt(prompt, env, case)
         validate_prompt_text(prompt)
+        (artifact_dir / "prompt.redacted.txt").write_text(
+            redact_text(prompt, env), encoding="utf-8"
+        )
         render_codex_config(self.repo_root, codex_home, env)
         mcp_config = render_claude_config(self.repo_root, claude_home)
         render_dsh_contract(self.repo_root, dsh_home, env, model_alias)
@@ -190,6 +194,7 @@ class NativeHarnessRunner:
         def observe_line(line: bytes) -> None:
             nonlocal target_binding_seen
             for item in extract_json_objects(line.decode("utf-8", errors="replace")):
+                event_observer(_interaction_event(item, env))
                 for event in self._normalize_tool_event(
                     campaign_id, trial_id, harness, item
                 ):
@@ -384,6 +389,16 @@ class NativeHarnessRunner:
             "duration": int(fault.get("duration_seconds") or 600),
             "kubeconfig": str(kubeconfig),
         }
+        redacted_request = {
+            key: value for key, value in request.items() if key != "kubeconfig"
+        }
+        (artifact_dir / "prompt.redacted.txt").write_text(
+            episode.public.objective
+            + "\n\n"
+            + json.dumps(redacted_request, ensure_ascii=False, indent=2, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
         request_path.chmod(0o600)
         env = {
@@ -411,6 +426,7 @@ class NativeHarnessRunner:
         def observe(line: bytes) -> None:
             for item in extract_json_objects(line.decode("utf-8", errors="replace")):
                 raw_events.append(item)
+                event_observer(_interaction_event(item, env))
                 for event in _normalize_bladeai_event(
                     campaign_id, trial_id, item, runtime_context
                 ):
@@ -663,6 +679,56 @@ def _tool_arguments(item: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(nested, Mapping):
         return _tool_arguments(nested)
     return {}
+
+
+def _interaction_event(item: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, Any]:
+    safe = _remove_private_reasoning(redact_json(dict(item), env))
+    native_type = str(safe.get("type") or safe.get("kind") or "native_event")
+    tool = event_tool_name(safe)
+    status = str(safe.get("status") or "")
+    if tool:
+        event_type = "TOOL_INTERACTION"
+        actor = "AGENT"
+    elif any(marker in native_type.lower() for marker in ("message", "assistant", "output")):
+        event_type = "AGENT_MESSAGE"
+        actor = "AGENT"
+    else:
+        event_type = "HARNESS_NATIVE_EVENT"
+        actor = "HARNESS"
+    encoded = json.dumps(safe, ensure_ascii=False, sort_keys=True)
+    payload: dict[str, Any]
+    if len(encoded) > 20000:
+        payload = {
+            "native_type": native_type,
+            "tool": tool,
+            "status": status,
+            "truncated": True,
+            "preview": encoded[:20000],
+        }
+    else:
+        payload = safe
+    return {
+        "actor": actor,
+        "peer": "HARNESS" if actor == "AGENT" else "AGENT",
+        "event_type": event_type,
+        "native_type": native_type,
+        "tool": tool,
+        "status": status,
+        "payload": payload,
+    }
+
+
+def _remove_private_reasoning(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            key: _remove_private_reasoning(item)
+            for key, item in value.items()
+            if str(key).lower()
+            not in {"reasoning", "thinking", "chain_of_thought", "analysis"}
+        }
+    if isinstance(value, list):
+        return [_remove_private_reasoning(item) for item in value]
+    return value
 
 
 def _append_case_runtime_prompt(

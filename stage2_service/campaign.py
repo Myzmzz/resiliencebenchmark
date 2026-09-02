@@ -223,6 +223,10 @@ class CampaignEngine:
                     recovery: RecoveryResult | None = None
                     permission_started = False
                     disturbance_records: list[DisturbanceRecord] = []
+                    evaluation_decision: dict[str, Any] | None = None
+                    disturbance_attempt = _initial_disturbance_attempt(
+                        trial_id, case.case_id.value, case.trigger_event
+                    )
                     try:
                         emit(
                             "trial_started",
@@ -252,6 +256,19 @@ class CampaignEngine:
                             f"trials/{trial_id}/capability.json",
                             capability.model_dump(mode="json"),
                         )
+                        self.artifacts.write(
+                            campaign_id,
+                            f"trials/{trial_id}/disturbance-attempt.json",
+                            disturbance_attempt,
+                        )
+                        emit(
+                            "disturbance_status",
+                            {
+                                "trial_id": trial_id,
+                                "case_id": case.case_id.value,
+                                **disturbance_attempt,
+                            },
+                        )
 
                         def observe(event: Any) -> None:
                             if isinstance(event, LifecycleEvent):
@@ -266,11 +283,71 @@ class CampaignEngine:
                                         "payload": event.payload,
                                     },
                                 )
+                            elif isinstance(event, Mapping):
+                                emit(
+                                    "interaction_event",
+                                    {
+                                        "trial_id": trial_id,
+                                        "harness": harness.value,
+                                        "case_id": case.case_id.value,
+                                        **dict(event),
+                                    },
+                                )
+                                return
+                            else:
+                                return
                             plan = self.disturbance_planner.plan(kind, event)
                             if plan is None or disturbance_records:
                                 return
-                            record = self.disturbance_executor.apply(plan)
+                            _update_disturbance_attempt(
+                                disturbance_attempt,
+                                state="TRIGGERED",
+                                observed_trigger=event.kind,
+                                disturbance_type=plan.type.value,
+                                disturbance_id=plan.disturbance_id,
+                                backend=plan.backend,
+                                trigger_event_id=plan.trigger_event_id,
+                            )
+                            self._write_disturbance_attempt(
+                                campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
+                            )
+                            _update_disturbance_attempt(
+                                disturbance_attempt,
+                                state="APPLYING",
+                                apply_attempted=True,
+                            )
+                            self._write_disturbance_attempt(
+                                campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
+                            )
+                            try:
+                                record = self.disturbance_executor.apply(plan)
+                            except Exception as exc:
+                                _update_disturbance_attempt(
+                                    disturbance_attempt,
+                                    state="APPLICATION_FAILED",
+                                    applied=False,
+                                    application_verified=False,
+                                    reason_code=type(exc).__name__,
+                                )
+                                self._write_disturbance_attempt(
+                                    campaign_id,
+                                    trial_id,
+                                    case.case_id.value,
+                                    disturbance_attempt,
+                                    emit,
+                                )
+                                raise
                             disturbance_records.append(record)
+                            _update_disturbance_attempt(
+                                disturbance_attempt,
+                                state="APPLIED",
+                                applied=record.applied,
+                                application_verified=record.applied,
+                                application_evidence=record.application_evidence,
+                            )
+                            self._write_disturbance_attempt(
+                                campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
+                            )
                             emit(
                                 "disturbance_applied",
                                 {
@@ -305,21 +382,108 @@ class CampaignEngine:
                         ).parameters:
                             runner_kwargs["cancel_requested"] = should_stop
                         report = self.harness_runner.run(**runner_kwargs)
+                        emit(
+                            "agent_response_captured",
+                            {
+                                "trial_id": trial_id,
+                                "harness": harness.value,
+                                "case_id": case.case_id.value,
+                                "harness_status": report.status,
+                                "agent_verdict": report.agent_verdict.value,
+                                "validation_error": report.final_output.get(
+                                    "validation_error"
+                                ),
+                                "artifact_refs": list(report.artifact_refs),
+                            },
+                        )
                         recovery = self.finalizer.finalize(
                             trial_id, self.episode, runtime, report
                         )
-                        disturbance_records = [
-                            self.disturbance_executor.rollback(record)
-                            for record in disturbance_records
-                        ]
+                        if disturbance_records:
+                            rolled_back = []
+                            for record in disturbance_records:
+                                if not record.rolled_back:
+                                    _update_disturbance_attempt(
+                                        disturbance_attempt,
+                                        state="ROLLING_BACK",
+                                        rollback_attempted=True,
+                                    )
+                                    self._write_disturbance_attempt(
+                                        campaign_id,
+                                        trial_id,
+                                        case.case_id.value,
+                                        disturbance_attempt,
+                                        emit,
+                                    )
+                                try:
+                                    restored = self.disturbance_executor.rollback(record)
+                                except Exception as exc:
+                                    _update_disturbance_attempt(
+                                        disturbance_attempt,
+                                        state="ROLLBACK_FAILED",
+                                        rolled_back=False,
+                                        rollback_verified=False,
+                                        reason_code=type(exc).__name__,
+                                    )
+                                    self._write_disturbance_attempt(
+                                        campaign_id,
+                                        trial_id,
+                                        case.case_id.value,
+                                        disturbance_attempt,
+                                        emit,
+                                    )
+                                    raise
+                                rolled_back.append(restored)
+                            disturbance_records = rolled_back
+                            rollback_verified = all(item.rolled_back for item in disturbance_records)
+                            _update_disturbance_attempt(
+                                disturbance_attempt,
+                                state="ROLLED_BACK" if rollback_verified else "ROLLBACK_FAILED",
+                                rolled_back=rollback_verified,
+                                rollback_verified=rollback_verified,
+                                rollback_evidence=[
+                                    item.rollback_evidence for item in disturbance_records
+                                ],
+                            )
+                            self._write_disturbance_attempt(
+                                campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
+                            )
+                        elif disturbance_attempt["required"]:
+                            _update_disturbance_attempt(
+                                disturbance_attempt,
+                                state="NOT_TRIGGERED",
+                                reason_code="EXPECTED_TRIGGER_NOT_OBSERVED",
+                            )
+                            self._write_disturbance_attempt(
+                                campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
+                            )
                         diagnostic_only = d0_qualification.get("scored") is not True
-                        verdict = self.evaluator.evaluate(
-                            kind=kind,
-                            report=report,
-                            disturbances=tuple(disturbance_records),
-                            recovery=recovery,
-                            diagnostic_only=diagnostic_only,
-                        )
+                        if hasattr(self.evaluator, "decision"):
+                            evaluation_decision = dict(
+                                self.evaluator.decision(
+                                    kind=kind,
+                                    report=report,
+                                    disturbances=tuple(disturbance_records),
+                                    recovery=recovery,
+                                    diagnostic_only=diagnostic_only,
+                                )
+                            )
+                            verdict = AgentVerdict(evaluation_decision["verdict"])
+                        else:
+                            verdict = self.evaluator.evaluate(
+                                kind=kind,
+                                report=report,
+                                disturbances=tuple(disturbance_records),
+                                recovery=recovery,
+                                diagnostic_only=diagnostic_only,
+                            )
+                            evaluation_decision = {
+                                "schema_version": "stage2-evaluation-decision.v1",
+                                "verdict": verdict.value,
+                                "diagnostic_only": diagnostic_only,
+                                "checks": [],
+                                "reason_codes": [],
+                            }
                         disturbance_expected = kind in {
                             TrialKind.CHAOS_PERMISSION_REVOKED,
                             TrialKind.TARGET_CHANGE,
@@ -353,6 +517,23 @@ class CampaignEngine:
                                 recovery.model_dump(mode="json"),
                             ),
                         ]
+                        evaluation_decision.update(
+                            {
+                                "platform_valid": platform_valid,
+                                "verdict": (
+                                    verdict.value
+                                    if platform_valid
+                                    else AgentVerdict.CASE_INVALID.value
+                                ),
+                            }
+                        )
+                        refs.append(
+                            self.artifacts.write(
+                                campaign_id,
+                                f"trials/{trial_id}/evaluation-decision.json",
+                                evaluation_decision,
+                            )
+                        )
                         if disturbance_records:
                             refs.append(
                                 self.artifacts.write(
@@ -381,6 +562,19 @@ class CampaignEngine:
                             artifact_refs=tuple(refs),
                         )
                     except Exception as exc:  # noqa: BLE001 - cleanup is mandatory.
+                        if disturbance_attempt.get("state") == "WAITING_TRIGGER":
+                            _update_disturbance_attempt(
+                                disturbance_attempt,
+                                state="NOT_TRIGGERED",
+                                reason_code="TRIAL_ENDED_BEFORE_TRIGGER",
+                            )
+                            self._write_disturbance_attempt(
+                                campaign_id,
+                                trial_id,
+                                case.case_id.value,
+                                disturbance_attempt,
+                                emit,
+                            )
                         emergency = self._emergency_cleanup(
                             campaign_id=campaign_id,
                             trial_id=trial_id,
@@ -409,6 +603,28 @@ class CampaignEngine:
                     )
                     restore = cleanup["permission_restore"]
                     reset = cleanup["environment_reset"]
+                    if (
+                        disturbance_attempt.get("state") == "ROLLBACK_FAILED"
+                        and reset.get("verified") is True
+                    ):
+                        _update_disturbance_attempt(
+                            disturbance_attempt,
+                            state="ROLLED_BACK",
+                            rolled_back=True,
+                            rollback_verified=True,
+                            rollback_evidence={
+                                "completed_by_environment_reset": True,
+                                "environment_reset_verified": True,
+                            },
+                            reason_code=None,
+                        )
+                        self._write_disturbance_attempt(
+                            campaign_id,
+                            trial_id,
+                            case.case_id.value,
+                            disturbance_attempt,
+                            emit,
+                        )
                     cleanup_verified = (
                         restore.get("verified") is True
                         and reset.get("verified") is True
@@ -428,6 +644,37 @@ class CampaignEngine:
                             ),
                         }
                     )
+                    if evaluation_decision is not None:
+                        evaluation_decision.update(
+                            {
+                                "platform_valid": result.platform_valid,
+                                "verdict": result.agent_verdict.value,
+                            }
+                        )
+                        checks = list(evaluation_decision.get("checks") or [])
+                        checks.append(
+                            {
+                                "rule_id": "PLATFORM_VALID",
+                                "expected": True,
+                                "observed": result.platform_valid,
+                                "passed": result.platform_valid,
+                                "evidence_refs": [
+                                    f"{campaign_id}/trials/{trial_id}/permission-restore.json",
+                                    f"{campaign_id}/trials/{trial_id}/environment-reset.json",
+                                ],
+                            }
+                        )
+                        evaluation_decision["checks"] = checks
+                        evaluation_decision["reason_codes"] = [
+                            item["rule_id"]
+                            for item in checks
+                            if item.get("passed") is not True
+                        ]
+                        self.artifacts.write(
+                            campaign_id,
+                            f"trials/{trial_id}/evaluation-decision.json",
+                            evaluation_decision,
+                        )
                     results.append(result)
                     emit(
                         "trial_finished",
@@ -578,6 +825,28 @@ class CampaignEngine:
         )
         return {"permission_restore": restore, "environment_reset": reset}
 
+    def _write_disturbance_attempt(
+        self,
+        campaign_id: str,
+        trial_id: str,
+        case_id: str,
+        attempt: Mapping[str, Any],
+        emit,
+    ) -> None:
+        self.artifacts.write(
+            campaign_id,
+            f"trials/{trial_id}/disturbance-attempt.json",
+            dict(attempt),
+        )
+        emit(
+            "disturbance_status",
+            {
+                "trial_id": trial_id,
+                "case_id": case_id,
+                **dict(attempt),
+            },
+        )
+
     def _finish(
         self,
         campaign_id: str,
@@ -611,6 +880,41 @@ class CampaignEngine:
         )
         self.artifacts.seal(campaign_id)
         return result
+
+
+def _initial_disturbance_attempt(
+    trial_id: str, case_id: str, expected_trigger: str | None
+) -> dict[str, Any]:
+    required = expected_trigger is not None
+    return {
+        "schema_version": "stage2-disturbance-attempt.v1",
+        "trial_id": trial_id,
+        "case_id": case_id,
+        "required": required,
+        "expected_trigger": expected_trigger,
+        "observed_trigger": None,
+        "state": "WAITING_TRIGGER" if required else "NOT_APPLICABLE",
+        "disturbance_type": None,
+        "disturbance_id": None,
+        "backend": None,
+        "trigger_event_id": None,
+        "apply_attempted": False,
+        "applied": False,
+        "application_verified": False,
+        "application_evidence": {},
+        "rollback_attempted": False,
+        "rolled_back": False,
+        "rollback_verified": False,
+        "rollback_evidence": {},
+        "reason_code": None,
+    }
+
+
+def _update_disturbance_attempt(
+    attempt: dict[str, Any], *, state: str, **updates: Any
+) -> None:
+    attempt.update(updates)
+    attempt["state"] = state
 
 
 def _selected_cases(request: CampaignRequest) -> tuple[CaseSpec, ...]:

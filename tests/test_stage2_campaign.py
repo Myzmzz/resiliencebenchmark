@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -483,6 +484,28 @@ def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
     assert len(permissions.provisioned) == len(permissions.restored) == 7
     assert len(resetter.calls) == 7
     assert all(item.platform_valid for item in result.trials)
+    attempts = {
+        path.parent.name: json.loads(path.read_text(encoding="utf-8"))
+        for path in (tmp_path / result.campaign_id / "trials").glob(
+            "*/disturbance-attempt.json"
+        )
+    }
+    assert len(attempts) == 7
+    assert next(
+        value for key, value in attempts.items() if "-c0-" in key
+    )["state"] == "NOT_APPLICABLE"
+    assert all(
+        next(value for key, value in attempts.items() if f"-{case}-" in key)["state"]
+        == "ROLLED_BACK"
+        for case in ("d1", "d2", "d3", "d4")
+    )
+    assert len(
+        list(
+            (tmp_path / result.campaign_id / "trials").glob(
+                "*/evaluation-decision.json"
+            )
+        )
+    ) == 7
     assert (tmp_path / result.campaign_id / "campaign/evaluation.json").is_file()
     assert (tmp_path / result.campaign_id / "manifest.sha256").is_file()
 

@@ -11,6 +11,7 @@ import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable, Mapping
 
 import yaml
@@ -34,6 +35,7 @@ from .finalization import Stage2Finalizer
 from .harness_runtime import NativeHarnessRunner
 from .kubernetes_permissions import KubernetesPermissionBackend
 from .mcp_supervisor import McpSupervisor
+from .matrix import fixed_otel_episode_ref
 from .permissions import Stage2PermissionManager
 from .preparation import ApplicationTrafficCapabilityIssuer, KubernetesTrialPreparer
 from .qualification import D0QualificationGate
@@ -483,6 +485,8 @@ class Stage2System:
         # service start rather than reused across Deployment revisions.
         write_incluster_kubeconfig(config.kubeconfig)
         self.d0_gate = D0QualificationGate(config.d0_artifact_root)
+        self._active_lock = Lock()
+        self._active_controls: dict[str, dict[str, Any]] = {}
 
     def preflight(self) -> dict[str, Any]:
         codex = os.environ.get("RESBENCH_CODEX_EVAL_BIN", "")
@@ -669,6 +673,12 @@ class Stage2System:
             artifacts=ArtifactStore(self.config.artifact_root),
             qualification_gate=self.d0_gate,
         )
+        with self._active_lock:
+            self._active_controls[request.request_id] = {
+                "permissions": permissions,
+                "resetter": resetter,
+                "episode": episode,
+            }
         try:
             return engine.run(
                 request,
@@ -676,7 +686,68 @@ class Stage2System:
                 stop_requested=stop_requested,
             )
         finally:
+            with self._active_lock:
+                self._active_controls.pop(request.request_id, None)
             supervisor.stop()
+
+    def restore_permissions(
+        self, task_id: str, trial_id: str | None, target_state: str
+    ) -> Mapping[str, Any]:
+        if not trial_id:
+            return {
+                "verified": True,
+                "target_state": target_state,
+                "not_provisioned": True,
+            }
+        with self._active_lock:
+            active = self._active_controls.get(task_id)
+        if active is not None:
+            manager = active["permissions"]
+            if target_state == "BASELINE":
+                return manager.restore_baseline(trial_id)
+            return manager.restore(trial_id)
+        if target_state == "BASELINE":
+            return {
+                "verified": False,
+                "target_state": target_state,
+                "reason": "the active Agent runtime is no longer available",
+            }
+        backend = KubernetesPermissionBackend.from_incluster()
+        cleanup = dict(backend.cleanup_trial(trial_id))
+        token_root = self.config.private_root / "mcp-tokens" / trial_id
+        if token_root.is_dir():
+            for path in token_root.iterdir():
+                if path.is_file():
+                    path.unlink(missing_ok=True)
+        return {
+            "verified": cleanup.get("verified") is True,
+            "target_state": target_state,
+            "backend": cleanup,
+        }
+
+    def reset_environment(self, operation_id: str, application: str) -> Mapping[str, Any]:
+        if application != "otel-demo":
+            return {
+                "verified": False,
+                "reason": f"unsupported application: {application}",
+            }
+        episode = load_fixed_episode(
+            fixed_otel_episode_ref(self.config.repo_root), root=self.config.repo_root
+        )
+        gate = KubernetesEnvironmentGate(self.config.kubeconfig)
+        traffic = KubernetesTrafficEvidence(gate, episode)
+        resetter = OtelDemoResetter(
+            repo_root=self.config.repo_root,
+            kubeconfig=self.config.kubeconfig,
+            runtime_env_file=self.config.runtime_env_file,
+            chart_file=self.config.otel_chart_file,
+            environment_gate=gate,
+            traffic_evidence=traffic,
+            timeout_seconds=120,
+            recovery_timeout_seconds=180,
+            verify_only=False,
+        )
+        return resetter.reset(operation_id, episode)
 
 
 def write_incluster_kubeconfig(path: Path) -> None:

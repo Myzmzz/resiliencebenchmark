@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Condition, Event, Lock
 from typing import Protocol
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from .contracts import (
@@ -23,6 +23,16 @@ from .contracts import (
     default_case_specs,
 )
 from .matrix_evidence import MatrixEvidenceNotFound, MatrixEvidenceStore
+from .task_service import (
+    AbortTaskRequest,
+    EnvironmentResetRequest,
+    PermissionRestoreRequest,
+    Stage2TaskCreateRequest,
+    Stage2TaskService,
+    TaskConflict,
+    TaskNotFound,
+    TaskValidationError,
+)
 
 
 class CampaignRunner(Protocol):
@@ -40,8 +50,10 @@ class CampaignSupervisor:
         self.interactions: dict[str, list[dict]] = {}
         self.stop_requests: set[str] = set()
         self.stop_events: dict[str, Event] = {}
+        self.event_sinks: dict[str, object] = {}
+        self.result_sinks: dict[str, object] = {}
 
-    def submit(self, request: CampaignRequest) -> str:
+    def submit(self, request: CampaignRequest, *, event_sink=None, result_sink=None) -> str:
         with self.lock:
             existing = self.futures.get(request.request_id)
             if existing is not None:
@@ -51,6 +63,10 @@ class CampaignSupervisor:
             self.events[request.request_id] = []
             self.interactions[request.request_id] = []
             self.stop_events[request.request_id] = Event()
+            if event_sink is not None:
+                self.event_sinks[request.request_id] = event_sink
+            if result_sink is not None:
+                self.result_sinks[request.request_id] = result_sink
             self.futures[request.request_id] = self.pool.submit(
                 self._run_request, request
             )
@@ -69,16 +85,35 @@ class CampaignSupervisor:
             if "stop_requested" in parameters:
                 kwargs["stop_requested"] = self.stop_events[request.request_id].is_set
             if kwargs:
-                return self.runner.run(request, **kwargs)
-            return self.runner.run(request)
+                result = self.runner.run(request, **kwargs)
+            else:
+                result = self.runner.run(request)
         except TypeError:
-            return self.runner.run(request)
+            result = self.runner.run(request)
+        sink = self.result_sinks.get(request.request_id)
+        if sink is not None:
+            sink(result)
+        return result
 
     def append_event(self, request_id: str, event: dict) -> None:
         with self.condition:
             event = {"sequence": len(self.events.setdefault(request_id, [])), **event}
             self.events[request_id].append(event)
+            sink = self.event_sinks.get(request_id)
             self.condition.notify_all()
+        if sink is not None:
+            sink(dict(event))
+
+    def has(self, request_id: str) -> bool:
+        with self.lock:
+            return request_id in self.futures
+
+    def wait_result(self, request_id: str, timeout: float | None = None) -> CampaignResult:
+        with self.lock:
+            future = self.futures.get(request_id)
+        if future is None:
+            raise KeyError(request_id)
+        return future.result(timeout=timeout)
 
     def get(self, request_id: str) -> dict:
         with self.lock:
@@ -208,6 +243,7 @@ def create_app(
     preflight_provider=None,
     qualification_inventory=None,
     frontend_root: Path | None = None,
+    task_service: Stage2TaskService | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Resilience Benchmark Stage-2 Service", docs_url="/api/docs")
     matrix_evidence = MatrixEvidenceStore(artifact_root) if artifact_root is not None else None
@@ -281,6 +317,92 @@ def create_app(
         if qualification_inventory is None:
             return {"artifact_root_configured": False, "campaigns": []}
         return dict(qualification_inventory())
+
+    @app.post("/api/v1/stage2/tasks", status_code=status.HTTP_202_ACCEPTED)
+    def create_stage2_task(
+        request: Stage2TaskCreateRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        try:
+            return task_service.create(request, idempotency_key=idempotency_key)
+        except TaskConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "TASK_ALREADY_RUNNING",
+                    "message": str(exc),
+                    "active_task_id": exc.active_task_id,
+                },
+            ) from exc
+        except TaskValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/v1/stage2/tasks/{task_id}")
+    def get_stage2_task(
+        task_id: str,
+        after_sequence: int = Query(default=0, ge=0),
+        limit: int = Query(default=200, ge=1, le=1000),
+        include_raw: bool = Query(default=False),
+    ) -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        try:
+            return task_service.get(
+                task_id,
+                after_sequence=after_sequence,
+                limit=limit,
+                include_raw=include_raw,
+            )
+        except TaskNotFound as exc:
+            raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
+
+    @app.post(
+        "/api/v1/stage2/tasks/{task_id}/abort",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def abort_stage2_task(task_id: str, request: AbortTaskRequest) -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        try:
+            return task_service.abort(task_id, request)
+        except TaskNotFound as exc:
+            raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/stage2/tasks/{task_id}/environment/reset",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def reset_stage2_environment(
+        task_id: str, request: EnvironmentResetRequest
+    ) -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        try:
+            return task_service.reset_environment(task_id, request)
+        except TaskNotFound as exc:
+            raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/v1/stage2/tasks/{task_id}/permissions/restore",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def restore_stage2_permissions(
+        task_id: str, request: PermissionRestoreRequest
+    ) -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        try:
+            return task_service.restore_permissions(task_id, request)
+        except TaskNotFound as exc:
+            raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/v1/matrices")
     def list_matrices() -> dict:

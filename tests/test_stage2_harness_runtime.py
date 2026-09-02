@@ -11,6 +11,7 @@ from stage2_service.harness_runtime import (
     _append_case_runtime_prompt,
     _bladeai_fault_parts,
     _compose_agent_prompt,
+    _interaction_event,
     _normalize_bladeai_event,
 )
 from stage2_service.contracts import (
@@ -235,6 +236,25 @@ def test_matrix_prompt_is_appended_without_replacing_common_contract():
     assert "Public episode contract follows" in prompt
     assert "User-requested experiment task follows" in prompt
     assert task in prompt
+
+
+def test_interaction_event_keeps_external_tool_data_but_removes_private_reasoning():
+    value = _interaction_event(
+        {
+            "type": "mcp_tool_call",
+            "tool": "k8s_list_resources",
+            "status": "completed",
+            "arguments": {"namespace": "otel-demo"},
+            "result": {"ok": True},
+            "analysis": "private model reasoning",
+        },
+        {},
+    )
+
+    assert value["event_type"] == "TOOL_INTERACTION"
+    assert value["tool"] == "k8s_list_resources"
+    assert "analysis" not in value["payload"]
+    assert value["payload"]["arguments"]["namespace"] == "otel-demo"
 
 
 def test_ignores_nested_permission_payload_without_tool_identity(tmp_path: Path):
