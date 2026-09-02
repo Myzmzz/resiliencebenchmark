@@ -487,6 +487,39 @@ def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
     assert (tmp_path / result.campaign_id / "manifest.sha256").is_file()
 
 
+class ScoredQualification:
+    def qualify(self, _request):
+        return {
+            "execution_allowed": True,
+            "formal_eligible": True,
+            "scored": True,
+        }
+
+
+class ControlFailureEvaluator:
+    def __init__(self):
+        self.diagnostic_flags: list[bool] = []
+
+    def evaluate(self, *, kind, report, disturbances, recovery, diagnostic_only):
+        del report, disturbances, recovery
+        self.diagnostic_flags.append(diagnostic_only)
+        return AgentVerdict.FAIL if kind is TrialKind.CONTROL else AgentVerdict.PASS
+
+
+def test_control_failure_does_not_downgrade_later_disturbance_cases(tmp_path: Path):
+    engine, request, _permissions, _disturbances, _resetter = _engine(tmp_path)
+    evaluator = ControlFailureEvaluator()
+    engine.qualification_gate = ScoredQualification()
+    engine.evaluator = evaluator
+
+    result = engine.run(request)
+
+    assert result.trials[0].agent_verdict is AgentVerdict.FAIL
+    assert all(item.agent_verdict is AgentVerdict.PASS for item in result.trials[1:])
+    assert all(item.diagnostic_only is False for item in result.trials)
+    assert evaluator.diagnostic_flags == [False] * 7
+
+
 def test_campaign_blocks_before_harness_when_application_traffic_is_absent(tmp_path: Path):
     engine, request, permissions, disturbances, resetter = _engine(tmp_path, gate=False)
     result = engine.run(request)
@@ -556,6 +589,15 @@ class InvalidAgentOutputRunner:
         )
 
 
+class TimeoutRunner:
+    def run(self, **_kwargs):
+        return HarnessReport(
+            status="timeout",
+            agent_verdict=AgentVerdict.FAIL,
+            lifecycle_events=(),
+        )
+
+
 def test_campaign_restores_permissions_and_resets_after_harness_exception(tmp_path: Path):
     engine, request, permissions, _disturbances, resetter = _engine(tmp_path)
     engine.harness_runner = RaisingRunner()
@@ -580,6 +622,18 @@ def test_failed_harness_process_is_case_invalid_not_agent_failure(tmp_path: Path
     assert len(result.trials) == 7
     assert all(item.platform_valid is False for item in result.trials)
     assert all(item.agent_verdict is AgentVerdict.CASE_INVALID for item in result.trials)
+
+
+def test_timeout_is_a_platform_valid_agent_outcome_when_cleanup_succeeds(tmp_path: Path):
+    engine, request, _permissions, _disturbances, _resetter = _engine(tmp_path)
+    engine.harness_runner = TimeoutRunner()
+    request = request.model_copy(update={"cases": (Stage2CaseId.C0,)})
+
+    result = engine.run(request)
+
+    assert len(result.trials) == 1
+    assert result.trials[0].platform_valid is True
+    assert result.trials[0].agent_verdict is AgentVerdict.FAIL
 
 
 def test_invalid_agent_output_after_successful_process_is_a_valid_agent_failure(tmp_path: Path):

@@ -10,6 +10,7 @@ from stage2_service.harness_runtime import (
     NativeHarnessRunner,
     _append_case_runtime_prompt,
     _bladeai_fault_parts,
+    _compose_agent_prompt,
     _normalize_bladeai_event,
 )
 from stage2_service.contracts import (
@@ -216,6 +217,24 @@ def test_runtime_prompt_keeps_expected_evaluator_signal_private():
     assert case.prompt_exposure is PromptExposure.FULL
     assert case.trial_kind is TrialKind.RECOVERY_OBSERVABILITY_REVOKED
     assert case.expected_agent_signal not in prompt
+
+
+def test_matrix_prompt_is_appended_without_replacing_common_contract():
+    repo = Path(__file__).resolve().parents[1]
+    task = "Inject the bounded cart network delay and verify its effect."
+
+    prompt = _compose_agent_prompt(
+        repo / "harness/prompts/common-task.md",
+        repo / "harness/prompts/full-lifecycle.md",
+        {"objective": "bounded cart experiment"},
+        task,
+    )
+
+    assert "Return your final answer as structured JSON" in prompt
+    assert "Follow the full benchmark lifecycle explicitly" in prompt
+    assert "Public episode contract follows" in prompt
+    assert "User-requested experiment task follows" in prompt
+    assert task in prompt
 
 
 def test_ignores_nested_permission_payload_without_tool_identity(tmp_path: Path):

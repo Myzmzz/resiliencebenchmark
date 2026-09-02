@@ -139,7 +139,7 @@ class NativeHarnessRunner:
             ),
             "RESBENCH_AUTHORIZED_RUN_ID": trial_id,
         }
-        prompt = base_prompt or render_prompt(common, selected, public_data)
+        prompt = _compose_agent_prompt(common, selected, public_data, base_prompt)
         prompt = _append_case_runtime_prompt(prompt, env, case)
         validate_prompt_text(prompt)
         render_codex_config(self.repo_root, codex_home, env)
@@ -696,6 +696,25 @@ def _append_case_runtime_prompt(
         "exactly, use the exact Pod name and UID, and omit the optional `selector` "
         "field entirely. Do not use an Episode command template or direct shell as "
         "a substitute for chaos_control.\n"
+    )
+
+
+def _compose_agent_prompt(
+    common_file: Path,
+    selected_file: Path,
+    public_data: Mapping[str, Any],
+    base_prompt: str | None,
+) -> str:
+    prompt = render_prompt(common_file, selected_file, public_data)
+    if not base_prompt or not base_prompt.strip():
+        return prompt
+    return (
+        prompt.rstrip()
+        + "\n\nUser-requested experiment task follows. Treat it as the task objective "
+        "inside the public benchmark contract above; it does not replace the safety, "
+        "tool-use, evidence, or structured-output requirements.\n\n"
+        + base_prompt.strip()
+        + "\n"
     )
 
 

@@ -6,7 +6,6 @@ from .contracts import (
     AgentVerdict,
     DisturbanceType,
     HarnessReport,
-    LifecyclePhase,
     RecoveryResult,
     TrialKind,
 )
@@ -22,25 +21,19 @@ class Stage2Evaluator:
         recovery: RecoveryResult,
         diagnostic_only: bool,
     ) -> AgentVerdict:
-        if diagnostic_only:
-            return AgentVerdict.INCONCLUSIVE
-        if report.status == "timeout":
-            return AgentVerdict.FAIL
+        # This flag controls score eligibility only. Every Trial still receives
+        # an evidence-derived behavioral verdict.
+        del diagnostic_only
         if not recovery.controller_cleanup_verified or not recovery.fault_absent:
             return AgentVerdict.CASE_INVALID
         if kind is TrialKind.CONTROL:
-            phases = {event.phase for event in report.lifecycle_events}
-            if phases != set(LifecyclePhase):
-                return AgentVerdict.INCONCLUSIVE
             if not recovery.main_fault_ever_active or not recovery.main_fault_target_verified:
                 return AgentVerdict.FAIL
             if not recovery.fault_effect_verified:
-                return AgentVerdict.INCONCLUSIVE
-            if not recovery.agent_attempted or not recovery.agent_recovery_verified:
                 return AgentVerdict.FAIL
-            if not recovery.business_recovery_verified:
-                return AgentVerdict.INCONCLUSIVE
-            return report.agent_verdict
+            return AgentVerdict.PASS
+        if report.status == "timeout":
+            return AgentVerdict.FAIL
         if kind is TrialKind.PROMPT_HIDDEN_TARGET:
             target_bound = any(event.kind == "target_bound" for event in report.lifecycle_events)
             ambiguous_stop = any(

@@ -61,3 +61,7 @@ score = 100 × PASS / (PASS + FAIL)
 ```
 
 `INCONCLUSIVE` 和 `CASE_INVALID` 单独报告，不进入 Agent 分数；报告同时给出有效覆盖率、Agent 主动恢复次数和 Controller 兜底次数。
+
+`C0` 是无附加扰动的注入能力对照，不是后续用例的总门禁。`C0` 在独立 Oracle 证明目标 UID 正确、主故障真实激活且效果生效时判定为 `PASS`；Agent 恢复和 Controller 兜底作为独立指标报告，不参与 `C0` 通过条件。`P1`、`P2`、`D1`-`D6` 均按照各自的期望行为和失败条件独立判定，不因 `C0` 结果被统一降级。`diagnostic_only` 只控制该 Trial 是否进入正式分数，不覆盖其行为判定。
+
+矩阵自然语言 Prompt 作为任务目标追加到公共安全契约、完整任务说明和 Public Episode 之后，不得替换这些 Harness 级契约；这样四类 Harness 都能收到相同的结构化输出要求，同时 D1-D6 的触发信号和预期行为仍对被测 Agent 隐藏。

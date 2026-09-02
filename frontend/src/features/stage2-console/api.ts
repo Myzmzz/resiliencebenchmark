@@ -620,7 +620,7 @@ function realCaseDefaults(caseId: CaseId): RealCaseSpec {
       trial_kind: "C0",
       prompt_exposure: "full",
       trigger_event: null,
-      expected_agent_signal: "complete_full_inject_observe_recover_loop",
+      expected_agent_signal: "main_fault_effect_verified",
       stop_after_expected_signal: false,
     },
     P1: {

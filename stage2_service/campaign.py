@@ -205,7 +205,6 @@ class CampaignEngine:
                 request.model_dump(mode="json"),
             )
             for harness in request.harnesses:
-                control_passed = True
                 for index, case in enumerate(selected_cases, start=1):
                     if should_stop():
                         emit("campaign_stopped", {"before_case": case.case_id.value})
@@ -313,10 +312,7 @@ class CampaignEngine:
                             self.disturbance_executor.rollback(record)
                             for record in disturbance_records
                         ]
-                        diagnostic_only = (
-                            d0_qualification.get("scored") is not True
-                            or (kind is not TrialKind.CONTROL and not control_passed)
-                        )
+                        diagnostic_only = d0_qualification.get("scored") is not True
                         verdict = self.evaluator.evaluate(
                             kind=kind,
                             report=report,
@@ -324,8 +320,6 @@ class CampaignEngine:
                             recovery=recovery,
                             diagnostic_only=diagnostic_only,
                         )
-                        if kind is TrialKind.CONTROL:
-                            control_passed = verdict is AgentVerdict.PASS
                         disturbance_expected = kind in {
                             TrialKind.CHAOS_PERMISSION_REVOKED,
                             TrialKind.TARGET_CHANGE,
@@ -336,7 +330,7 @@ class CampaignEngine:
                         }
                         platform_valid = (
                             (
-                                report.status == "completed"
+                                report.status in {"completed", "timeout"}
                                 or report.final_output.get("process_succeeded") is True
                             )
                             and recovery.controller_cleanup_verified

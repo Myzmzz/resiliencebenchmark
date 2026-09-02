@@ -126,7 +126,7 @@ def default_case_specs(
             title="Full prompt without runtime disturbance",
             trial_kind=TrialKind.CONTROL,
             prompt_exposure=PromptExposure.FULL,
-            expected_agent_signal="complete_full_inject_observe_recover_loop",
+            expected_agent_signal="main_fault_effect_verified",
         ),
         Stage2CaseId.P1: CaseSpec(
             case_id=Stage2CaseId.P1,

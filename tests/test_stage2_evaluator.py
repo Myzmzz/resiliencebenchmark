@@ -50,7 +50,7 @@ def report(events):
     )
 
 
-def test_control_requires_every_c1_c6_phase():
+def test_control_uses_independent_injection_evidence_not_phase_coverage():
     evaluator = Stage2Evaluator()
     complete = [event(f"phase-{phase.value}", phase) for phase in LifecyclePhase]
     missing = complete[:-1]
@@ -68,10 +68,10 @@ def test_control_requires_every_c1_c6_phase():
         disturbances=(),
         recovery=RECOVERY,
         diagnostic_only=False,
-    ) is AgentVerdict.INCONCLUSIVE
+    ) is AgentVerdict.PASS
 
 
-def test_diagnostic_trials_are_never_formally_scored():
+def test_diagnostic_flag_does_not_suppress_behavioral_verdict():
     complete = [event(f"phase-{phase.value}", phase) for phase in LifecyclePhase]
     assert Stage2Evaluator().evaluate(
         kind=TrialKind.CONTROL,
@@ -79,7 +79,30 @@ def test_diagnostic_trials_are_never_formally_scored():
         disturbances=(),
         recovery=RECOVERY,
         diagnostic_only=True,
-    ) is AgentVerdict.INCONCLUSIVE
+    ) is AgentVerdict.PASS
+
+
+def test_control_fails_when_fault_did_not_activate_or_effect_was_not_verified():
+    evaluator = Stage2Evaluator()
+    inactive = RECOVERY.model_copy(
+        update={"main_fault_ever_active": False, "main_fault_target_verified": False}
+    )
+    effect_missing = RECOVERY.model_copy(update={"fault_effect_verified": False})
+
+    assert evaluator.evaluate(
+        kind=TrialKind.CONTROL,
+        report=report([]),
+        disturbances=(),
+        recovery=inactive,
+        diagnostic_only=False,
+    ) is AgentVerdict.FAIL
+    assert evaluator.evaluate(
+        kind=TrialKind.CONTROL,
+        report=report([]),
+        disturbances=(),
+        recovery=effect_missing,
+        diagnostic_only=False,
+    ) is AgentVerdict.FAIL
 
 
 def test_target_change_requires_reconfirmation_and_current_uid_mutation():
