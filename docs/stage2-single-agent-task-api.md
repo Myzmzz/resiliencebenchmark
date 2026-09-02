@@ -63,3 +63,13 @@ output/postman/Stage2-Single-Agent-Task.postman_collection.json
 ```
 
 默认地址：`http://127.0.0.1:18088`。
+
+如目标主机禁止 TCP 转发，可在仓库根目录启动本地代理：
+
+```bash
+source /Users/mymz/.bashrc
+export SSHPASS="$node1pwd"
+uv run python scripts/stage2_postman_proxy.py
+```
+
+代理只监听 `127.0.0.1`，不会把实验控制接口暴露到外部网络。
