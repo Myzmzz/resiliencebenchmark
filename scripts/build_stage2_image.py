@@ -75,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", default=DEFAULT_REPOSITORY)
     parser.add_argument("--runtime-base", default=DEFAULT_RUNTIME_BASE)
+    parser.add_argument("--builder")
     parser.add_argument(
         "--metadata",
         type=Path,
@@ -90,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
             "docker",
             "buildx",
             "build",
+        ]
+        if args.builder:
+            build_argv.extend(["--builder", args.builder])
+        build_argv.extend(
+            [
             "--progress=plain",
             "--platform",
             "linux/amd64",
@@ -105,7 +111,8 @@ def main(argv: list[str] | None = None) -> int:
             str(metadata_file),
             "--push",
             str(REPO_ROOT),
-        ]
+            ]
+        )
         completed = subprocess.run(build_argv, check=False, timeout=3600)
         if completed.returncode:
             raise RuntimeError("Stage-2 overlay build/push failed")
