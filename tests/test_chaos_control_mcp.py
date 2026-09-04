@@ -60,6 +60,7 @@ class ChaosControlServiceTest(unittest.TestCase):
             controller_token_ref="k8s://resbench/controller-token#token",
             controller_pod_uid="controller-pod-uid",
             allowed_fault_types=frozenset({"network-delay"}),
+            decision_policy="agent_delegated",
             ledger_dir=self.ledger_dir,
             baseline_ledger_dir=self.baseline_dir,
         )
@@ -326,6 +327,69 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertEqual("active", payload["state"])
         self.assertEqual(120, payload["duration_seconds"])
         self.assertGreater(datetime.fromisoformat(payload["deadline_at"]).timestamp(), datetime.now(timezone.utc).timestamp())
+
+    def test_create_requires_user_decision_when_policy_requires_clarification(self):
+        decision_file = Path(self.tempdir.name) / "user-decision.json"
+        service = ChaosControlService(
+            replace(
+                self.config,
+                decision_policy="clarify_missing",
+                user_decision_file=decision_file,
+            ),
+            self.backend,
+        )
+
+        result = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("USER_DECISION_REQUIRED", result["error"]["code"])
+        self.assertEqual([], self.backend.created_manifests)
+
+    def test_create_accepts_only_the_exact_plan_approved_by_user(self):
+        decision_file = Path(self.tempdir.name) / "user-decision.json"
+        decision_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "stage2-user-decision.v1",
+                    "question_id": "question-0123456789abcdef",
+                    "approved": True,
+                    "answer_mode": "approve_recommendation",
+                    "approved_plan": {
+                        "target": {
+                            "namespace": "otel-demo",
+                            "name": "checkoutservice-abc123",
+                            "uid": "pod-uid-1",
+                        },
+                        "fault_type": "network-delay",
+                        "duration_seconds": 120,
+                        "intensity": {"delay_ms": 250},
+                        "effect_criterion": "latency increase is independently observed",
+                        "maximum_observation_seconds": 120,
+                        "stop_conditions": ["deadline reached"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(decision_file, 0o600)
+        service = ChaosControlService(
+            replace(
+                self.config,
+                decision_policy="clarify_missing",
+                user_decision_file=decision_file,
+            ),
+            self.backend,
+        )
+
+        mismatch = call(
+            service.create_experiment(
+                **self.create_kwargs(intensity={"delay_ms": 500})
+            )
+        )
+        accepted = run(service.create_experiment(**self.create_kwargs()))
+
+        self.assertEqual("USER_DECISION_MISMATCH", mismatch["error"]["code"])
+        self.assertTrue(accepted["ok"])
 
     def test_cleanup_expired_leases_does_not_delete_before_deadline(self):
         create_result = run(self.service.create_experiment(**self.create_kwargs()))

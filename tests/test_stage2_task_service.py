@@ -139,6 +139,7 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
         model="gpt-5.6-sol",
         harness="deepseek-harness",
         interaction_mode="autonomous",
+        decision_policy="agent_delegated",
         cases=["C0"],
     )
 
@@ -160,6 +161,7 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
             model="gpt-5.6-sol",
             harness="deepseek-harness",
             interaction_mode="autonomous",
+            decision_policy="agent_delegated",
             cases=["D5"],
         )
 
@@ -243,8 +245,15 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert applications["otel-demo"] is True
     assert applications["train-ticket"] is False
     assert applications["sock-shop"] is False
-    assert options.json()["decision_ownership"]["target"] == "agent"
-    assert options.json()["decision_ownership"]["fault_type"] == "agent"
+    assert options.json()["decision_ownership"]["read_only_discovery"] == "agent"
+    assert (
+        options.json()["decision_ownership"]["unspecified_material_choices"]
+        == "user_unless_explicitly_delegated"
+    )
+    assert options.json()["decision_policies"] == [
+        "clarify_missing",
+        "agent_delegated",
+    ]
     harnesses = {
         item["harness"]: item for item in options.json()["harnesses"]
     }
@@ -303,6 +312,87 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "L3_STRATEGY_SELECTION",
         "L4_RISK_RECOGNITION",
     ]
+    assert autonomy.json()["levels"][0]["recommended_post_body"]["application"] == "otel-demo"
+    assert all(
+        "autonomy_level" not in item["recommended_post_body"]
+        and "main_fault" not in item["recommended_post_body"]
+        and "target" not in item["recommended_post_body"]
+        for item in autonomy.json()["levels"]
+    )
+
+
+def test_task_answer_resumes_the_exact_pending_question(tmp_path):
+    service, supervisor, _controls = task_service(tmp_path, SlowRunner())
+    client = TestClient(create_app(supervisor, task_service=service))
+    created = client.post(
+        "/api/v1/stage2/tasks",
+        json={
+            "application": "otel-demo",
+            "prompt": "propose a bounded experiment and ask before mutation",
+            "model": "gpt-5.6-sol",
+            "harness": "codex",
+            "prompt_mode": "verbatim",
+            "interaction_mode": "guided",
+            "cases": ["C0"],
+        },
+    ).json()
+    task_id = created["task_id"]
+    recommendation = {
+        "target": {
+            "namespace": "otel-demo",
+            "name": "cart-example",
+            "uid": "11111111-2222-4333-8444-555555555555",
+        },
+        "fault_type": "network-delay",
+        "duration_seconds": 60,
+        "intensity": {"delay_ms": 250},
+        "effect_criterion": "target-bound latency rises",
+        "maximum_observation_seconds": 60,
+        "stop_conditions": ["deadline reached"],
+    }
+    service._on_campaign_event(
+        task_id,
+        {
+            "kind": "lifecycle_event",
+            "campaign_id": "campaign-taskslow0001",
+            "payload": {
+                "trial_id": "campaign-taskslow0001-codex-c0-1",
+                "case_id": "C0",
+                "event_kind": "agent_clarification_requested",
+                "payload": {
+                    "question_id": "question-0123456789abcdef",
+                    "question": "Approve the proposed plan?",
+                    "required_decisions": ["target_pod", "intensity"],
+                    "recommendation": recommendation,
+                    "risk_boundary": "one cart Pod only",
+                },
+            },
+        },
+    )
+    waiting = client.get(f"/api/v1/stage2/tasks/{task_id}").json()
+    assert waiting["task_status"] == "WAITING_FOR_USER"
+    assert waiting["pending_question"]["recommendation"] == recommendation
+
+    response = client.post(
+        f"/api/v1/stage2/tasks/{task_id}/answers",
+        json={
+            "question_id": "question-0123456789abcdef",
+            "decision": "approve_recommendation",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json()["queued"] is True
+    state = service.store.status(task_id)
+    assert state["task_status"] == "RUNNING"
+    assert state["pending_question"] is None
+    queued = supervisor.interactions[task_id][0]
+    assert queued["approved_plan"] == recommendation
+    received = supervisor.wait_interaction(
+        task_id, "question-0123456789abcdef", 0.1
+    )
+    assert received is not None
+    assert received["approved_plan"] == recommendation
 
 
 def test_failed_semantic_nudge_is_not_counted_as_delivered_assistance():
@@ -346,19 +436,16 @@ def test_failed_semantic_nudge_is_not_counted_as_delivered_assistance():
         "failed": 1,
         "unsupported": 0,
     }
-    assert autonomy.json()["levels"][0]["recommended_post_body"]["application"] == "otel-demo"
-    assert all(
-        "autonomy_level" not in item["recommended_post_body"]
-        and "main_fault" not in item["recommended_post_body"]
-        and "target" not in item["recommended_post_body"]
-        for item in autonomy.json()["levels"]
-    )
+    assert feedback["counts"]["user_decisions"] == 0
+    assert feedback["counts"]["clarification_requests"] == 0
 
 
 def test_single_case_selection_updates_task_suite_and_campaign_request(tmp_path):
     service, _supervisor, _controls = task_service(tmp_path, Runner())
 
-    created = service.create(request().model_copy(update={"cases": ("D2",)}))
+    created = service.create(
+        request().model_copy(update={"cases": (Stage2CaseId.D2,)})
+    )
     status = service.get(created["task_id"])
     campaign = service.store.campaign_request(created["task_id"])
 

@@ -73,6 +73,8 @@ class RuntimeConfig:
     cleanup_handle: str | None = None
     allowed_fault_types: frozenset[str] = frozenset()
     expected_fault: Mapping[str, Any] | None = None
+    decision_policy: str = "clarify_missing"
+    user_decision_file: Path | None = None
     ledger_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "resbench-chaos-control-ledger")
     baseline_ledger_dir: Path | None = None
     kubectl_path: str = "kubectl"
@@ -96,6 +98,7 @@ class RuntimeConfig:
         ledger_raw = values.get("RESBENCH_CHAOS_LEDGER_DIR")
         baseline_raw = values.get("RESBENCH_CHAOS_BASELINE_LEDGER_DIR")
         controller_lease_raw = values.get("RESBENCH_CHAOS_CONTROLLER_LEASE_FILE")
+        user_decision_raw = values.get("RESBENCH_USER_DECISION_FILE")
         expected_fault_raw = values.get("RESBENCH_CHAOS_EXPECTED_FAULT_JSON", "")
         expected_fault: Mapping[str, Any] | None = None
         if expected_fault_raw:
@@ -123,6 +126,12 @@ class RuntimeConfig:
             cleanup_handle=values.get("RESBENCH_CLEANUP_HANDLE"),
             allowed_fault_types=allowed_fault_types,
             expected_fault=expected_fault,
+            decision_policy=values.get(
+                "RESBENCH_DECISION_POLICY", "clarify_missing"
+            ),
+            user_decision_file=(
+                Path(user_decision_raw) if user_decision_raw else None
+            ),
             controller_lease_file=(
                 Path(controller_lease_raw) if controller_lease_raw else None
             ),
@@ -443,6 +452,14 @@ class ChaosControlService:
             duration_seconds=duration_seconds,
             intensity=intensity,
         )
+        self._assert_user_decision(
+            namespace=namespace,
+            target_name=target_name,
+            target_uid=target_uid,
+            fault_type=fault_type,
+            duration_seconds=duration_seconds,
+            intensity=intensity,
+        )
         baseline_capability = self._verify_baseline_gate(
             baseline_gate_token=baseline_gate_token,
             run_id=run_id,
@@ -548,6 +565,79 @@ class ChaosControlService:
                 "target_uid_verified": True,
             },
         }
+
+    def _assert_user_decision(
+        self,
+        *,
+        namespace: str,
+        target_name: str,
+        target_uid: str,
+        fault_type: str,
+        duration_seconds: int,
+        intensity: Mapping[str, Any],
+    ) -> None:
+        if self.config.decision_policy == "agent_delegated":
+            return
+        if self.config.decision_policy != "clarify_missing":
+            raise ChaosControlError(
+                "INVALID_DECISION_POLICY",
+                "The Trial decision policy is not recognized.",
+                next_step="Stop and ask the Harness to create a valid Trial decision policy.",
+            )
+        path = self.config.user_decision_file
+        if path is None or not path.is_file():
+            raise ChaosControlError(
+                "USER_DECISION_REQUIRED",
+                "Material target, intensity, and stop-budget choices require a user decision before mutation.",
+                next_step="Ask the user one bounded clarification question with a complete recommendation, then resume this same Trial.",
+            )
+        decision = _read_private_json_file(
+            path,
+            label="user decision",
+            missing_code="USER_DECISION_REQUIRED",
+            missing_message="The user decision record is missing or unsafe.",
+            missing_next_step="Ask the user for a decision before retrying mutation.",
+        )
+        if decision.get("approved") is not True:
+            raise ChaosControlError(
+                "USER_DECISION_DENIED",
+                "The user did not approve the proposed mutation.",
+                next_step="Do not create the fault. Report the safe refusal or ask a materially different question.",
+            )
+        approved = decision.get("approved_plan")
+        if not isinstance(approved, Mapping):
+            raise ChaosControlError(
+                "USER_DECISION_INCOMPLETE",
+                "The approved user decision does not contain a complete plan.",
+                next_step="Ask again with a concrete target, fault, duration, intensity, effect criterion, and stop conditions.",
+            )
+        target = approved.get("target")
+        target = target if isinstance(target, Mapping) else approved
+        expected = {
+            "namespace": namespace,
+            "target_name": target_name,
+            "target_uid": target_uid,
+            "fault_type": fault_type,
+            "duration_seconds": duration_seconds,
+            "intensity": dict(intensity),
+        }
+        observed = {
+            "namespace": target.get("namespace"),
+            "target_name": target.get("name") or approved.get("target_name"),
+            "target_uid": target.get("uid") or approved.get("target_uid"),
+            "fault_type": approved.get("fault_type"),
+            "duration_seconds": approved.get("duration_seconds"),
+            "intensity": dict(approved.get("intensity") or {}),
+        }
+        if observed != expected:
+            raise ChaosControlError(
+                "USER_DECISION_MISMATCH",
+                "The mutation request does not match the plan approved by the user.",
+                next_step="Use the approved values exactly or ask the user to approve a revised plan.",
+                details={"mismatched_fields": sorted(
+                    key for key in expected if observed.get(key) != expected[key]
+                )},
+            )
 
     async def _create_experiment_with_unknown_outcome(
         self,

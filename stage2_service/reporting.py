@@ -20,12 +20,14 @@ def build_evaluation_summary(result: CampaignResult) -> dict:
     assisted_trials = 0
     semantic_nudge_violations = 0
     blocked_next_trials = 0
-    autonomy_eligible = 0
+    node_scores: list[float] = []
+    experiment_gates: Counter = Counter()
     agent_outcomes: Counter = Counter()
     for item in result.trials:
         by_harness[item.harness.value][item.agent_verdict.value] += 1
         by_case[item.kind.value][item.agent_verdict.value] += 1
-        autonomy_eligible += int(item.autonomy_eligible)
+        node_scores.append(float(item.score_summary.get("percentage") or 0))
+        experiment_gates[str(item.experiment_gate.get("status") or "NOT_EVALUATED")] += 1
         agent_outcomes[item.agent_outcome.value] += 1
         cleanup_fallbacks += int(
             item.recovery.controller_cleanup_verified
@@ -63,7 +65,10 @@ def build_evaluation_summary(result: CampaignResult) -> dict:
         "reset_next_trial_blocked_count": blocked_next_trials,
         "assisted_trial_count": assisted_trials,
         "semantic_nudge_violation_count": semantic_nudge_violations,
-        "autonomy_eligible_trial_count": autonomy_eligible,
+        "experiment_gate_counts": dict(experiment_gates),
+        "average_node_score": (
+            round(sum(node_scores) / len(node_scores), 2) if node_scores else None
+        ),
         "agent_outcome_counts": dict(agent_outcomes),
         "formally_scored": result.qualification.get("scored") is True,
         "error": result.error,

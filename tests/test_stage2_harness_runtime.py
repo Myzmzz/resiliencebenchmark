@@ -10,9 +10,11 @@ from stage2_service.contracts import HarnessKind, LifecyclePhase
 from stage2_service.harness_runtime import (
     HarnessRuntimeError,
     NativeHarnessRunner,
+    _agent_checkpoint_from_item,
     _append_case_runtime_prompt,
     _bladeai_fault_parts,
     _compose_agent_prompt,
+    _clarification_request_from_item,
     _extract_recorded_feedback,
     _interaction_event,
     _normalize_bladeai_event,
@@ -84,6 +86,58 @@ def test_codex_runtime_requires_isolated_codex_eval(tmp_path: Path):
 def test_stage2_native_harness_timeout_covers_fault_and_lifecycle(tmp_path: Path):
     assert DEFAULT_TIMEOUT_SECONDS == 1800
     assert runner(tmp_path).timeout_seconds == 1800
+
+
+def test_extracts_structured_agent_question_and_checkpoint():
+    result = {
+        "status": "blocked",
+        "decision": "clarification_required",
+        "effect_assessment": "not_attempted",
+        "recovery_assessment": "not_applicable",
+        "missing_conditions": ["user decision"],
+        "recovery_trigger": {
+            "condition": "after effect or deadline",
+            "observed": False,
+            "triggered_by_agent": False,
+        },
+        "clarification_request": {
+            "question": "是否批准建议方案？",
+            "required_decisions": ["target_pod", "intensity"],
+            "recommendation": {
+                "target": {
+                    "namespace": "otel-demo",
+                    "name": "cart-a",
+                    "uid": "uid-a",
+                },
+                "fault_type": "network-delay",
+                "duration_seconds": 60,
+                "intensity": {"delay_ms": 250},
+                "effect_criterion": "target latency rises",
+                "maximum_observation_seconds": 60,
+                "stop_conditions": ["deadline reached"],
+            },
+            "risk_boundary": "one cart Pod only",
+        },
+    }
+    item = {
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": json.dumps(result)},
+    }
+
+    question = _clarification_request_from_item(item, "trial-123")
+    checkpoint = _agent_checkpoint_from_item(item)
+
+    assert question is not None
+    assert question["question_id"].startswith("question-")
+    assert question["recommendation"]["target"]["name"] == "cart-a"
+    assert checkpoint == {
+        "status": "blocked",
+        "decision": "clarification_required",
+        "effect_assessment": "not_attempted",
+        "recovery_assessment": "not_applicable",
+        "missing_conditions": ["user decision"],
+        "recovery_trigger": result["recovery_trigger"],
+    }
 
 
 def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):

@@ -8,6 +8,7 @@ import json
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from threading import Condition, Event, Lock
+from time import monotonic
 from typing import Protocol
 
 from fastapi import FastAPI, Header, HTTPException, Query, status
@@ -27,6 +28,7 @@ from .task_service import (
     AbortTaskRequest,
     EnvironmentResetRequest,
     PermissionRestoreRequest,
+    Stage2TaskAnswerRequest,
     Stage2TaskCreateRequest,
     Stage2TaskService,
     TaskDetailMode,
@@ -85,6 +87,14 @@ class CampaignSupervisor:
                 kwargs["event_observer"] = observe
             if "stop_requested" in parameters:
                 kwargs["stop_requested"] = self.stop_events[request.request_id].is_set
+            if "interaction_provider" in parameters:
+                kwargs["interaction_provider"] = (
+                    lambda question, timeout_seconds: self.wait_interaction(
+                        request.request_id,
+                        str(question.get("question_id") or ""),
+                        timeout_seconds,
+                    )
+                )
             if kwargs:
                 result = self.runner.run(request, **kwargs)
             else:
@@ -177,25 +187,66 @@ class CampaignSupervisor:
             self.condition.notify_all()
         return {"request_id": request_id, "stop_requested": True, "cancelled": cancelled}
 
-    def add_interaction(self, request_id: str, message: str) -> dict:
+    def add_interaction(
+        self, request_id: str, interaction: dict | str
+    ) -> dict:
         with self.condition:
             if request_id not in self.futures:
                 raise KeyError(request_id)
+            value = (
+                {"message": interaction}
+                if isinstance(interaction, str)
+                else dict(interaction)
+            )
             item = {
                 "kind": "operator_interaction",
                 "request_id": request_id,
-                "message": message,
+                **value,
+                "consumed": False,
             }
             self.interactions.setdefault(request_id, []).append(item)
             event = {
                 "sequence": len(self.events.setdefault(request_id, [])),
                 "kind": "operator_interaction_queued",
                 "request_id": request_id,
-                "payload": {"message": message},
+                "payload": {
+                    key: item_value
+                    for key, item_value in value.items()
+                    if key not in {"approved_plan"}
+                },
             }
             self.events[request_id].append(event)
             self.condition.notify_all()
         return {"request_id": request_id, "queued": True}
+
+    def wait_interaction(
+        self,
+        request_id: str,
+        question_id: str,
+        timeout_seconds: float,
+    ) -> dict | None:
+        deadline = monotonic() + max(1.0, float(timeout_seconds))
+        with self.condition:
+            while True:
+                if request_id not in self.futures:
+                    raise KeyError(request_id)
+                for item in self.interactions.get(request_id, []):
+                    if item.get("consumed") is True:
+                        continue
+                    if str(item.get("question_id") or "") != question_id:
+                        continue
+                    item["consumed"] = True
+                    return {
+                        key: value
+                        for key, value in item.items()
+                        if key not in {"kind", "request_id", "consumed"}
+                    }
+                if self.stop_events[request_id].is_set():
+                    return None
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    return None
+                self.condition.wait(timeout=min(1.0, remaining))
 
     def request_cleanup(self, request_id: str) -> dict:
         with self.condition:
@@ -394,6 +445,24 @@ def create_app(
             )
         except TaskNotFound as exc:
             raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
+
+    @app.post(
+        "/api/v1/stage2/tasks/{task_id}/answers",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def answer_stage2_task(
+        task_id: str, request: Stage2TaskAnswerRequest
+    ) -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        try:
+            return task_service.answer(task_id, request)
+        except TaskNotFound as exc:
+            raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
+        except TaskValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post(
         "/api/v1/stage2/tasks/{task_id}/abort",

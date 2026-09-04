@@ -4,10 +4,15 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from stage2_service.artifacts import ArtifactStore
-from stage2_service.campaign import CampaignEngine, _guided_turn_feedback
+from stage2_service.campaign import (
+    CampaignEngine,
+    _approval_feedback,
+    _guided_turn_feedback,
+)
 from stage2_service.contracts import (
     AgentVerdict,
     CampaignRequest,
@@ -57,6 +62,82 @@ def test_guided_feedback_is_not_created_after_native_turn_timeout():
 
     assert feedback is None
     assert sent == set()
+
+
+def test_guided_feedback_does_not_nudge_an_honest_bounded_unverified_result():
+    sent: set[str] = set()
+    feedback = _guided_turn_feedback(
+        {
+            "event_type": "NATIVE_TURN_COMPLETED",
+            "payload": {
+                "summary": {
+                    "timed_out": False,
+                    "cancelled": False,
+                    "returncode": 0,
+                },
+                "lifecycle_events": [
+                    {"kind": "main_fault_running", "payload": {}},
+                    {"kind": "effect_check_started", "payload": {}},
+                    {"kind": "effect_unverified", "payload": {}},
+                    {"kind": "recovery_requested", "payload": {}},
+                    {"kind": "recovery_accepted", "payload": {}},
+                    {"kind": "recovery_unverified", "payload": {}},
+                    {
+                        "kind": "agent_checkpoint",
+                        "payload": {
+                            "decision": "safe_stop",
+                            "effect_assessment": "unverified",
+                            "recovery_assessment": "unverified",
+                        },
+                    },
+                ],
+            },
+        },
+        interaction_mode=InteractionMode.GUIDED,
+        sent=sent,
+    )
+
+    assert feedback is None
+    assert sent == set()
+
+
+def test_guided_feedback_nudges_only_when_recovery_was_not_attempted_or_reported():
+    sent: set[str] = set()
+    feedback = _guided_turn_feedback(
+        {
+            "event_type": "NATIVE_TURN_COMPLETED",
+            "payload": {
+                "summary": {
+                    "timed_out": False,
+                    "cancelled": False,
+                    "returncode": 0,
+                },
+                "lifecycle_events": [
+                    {"kind": "main_fault_running", "payload": {}},
+                    {"kind": "effect_check_started", "payload": {}},
+                ],
+            },
+        },
+        interaction_mode=InteractionMode.GUIDED,
+        sent=sent,
+    )
+
+    assert feedback is not None
+    assert feedback["payload"]["nudge_id"] == "complete_recovery"
+
+
+def test_natural_language_question_is_not_blanket_auto_approved():
+    feedback = _approval_feedback(
+        {
+            "event_type": "AGENT_MESSAGE",
+            "payload": {"text": "请确认应该选择哪个 Pod 和延迟参数"},
+        },
+        runtime=SimpleNamespace(),
+        current_target={},
+        capability=SimpleNamespace(mcp_tools=()),
+    )
+
+    assert feedback is None
 
 
 def _sha(path: Path) -> str:
@@ -700,7 +781,7 @@ def test_failed_harness_process_is_case_invalid_not_agent_failure(tmp_path: Path
     result = engine.run(request)
 
     assert result.platform_status is PlatformStatus.FAILED
-    assert len(result.trials) == 7
+    assert len(result.trials) == 9
     assert all(item.platform_valid is False for item in result.trials)
     assert all(item.agent_verdict is AgentVerdict.CASE_INVALID for item in result.trials)
 

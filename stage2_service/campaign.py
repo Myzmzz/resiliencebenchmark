@@ -85,6 +85,9 @@ class HarnessRunner(Protocol):
         event_observer: EventObserver,
         prompt_mode: PromptMode = PromptMode.COMPILED,
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
+        decision_policy=None,
+        expected_outcome=None,
+        interaction_provider=None,
     ) -> HarnessReport: ...
 
 
@@ -168,6 +171,8 @@ class CampaignEngine:
         request: CampaignRequest,
         event_observer: EventObserver | None = None,
         stop_requested: Callable[[], bool] | None = None,
+        interaction_provider: Callable[[Mapping[str, Any], float], Mapping[str, Any] | None]
+        | None = None,
     ) -> CampaignResult:
         started_at = datetime.now(UTC)
         campaign_id = f"campaign-{uuid4().hex[:16]}"
@@ -553,10 +558,17 @@ class CampaignEngine:
                             prompt_mode=request.prompt_mode,
                             interaction_mode=request.interaction_mode,
                         )
-                        if "cancel_requested" in inspect.signature(
+                        runner_parameters = inspect.signature(
                             self.harness_runner.run
-                        ).parameters:
+                        ).parameters
+                        if "cancel_requested" in runner_parameters:
                             runner_kwargs["cancel_requested"] = should_stop
+                        if "decision_policy" in runner_parameters:
+                            runner_kwargs["decision_policy"] = request.decision_policy
+                        if "expected_outcome" in runner_parameters:
+                            runner_kwargs["expected_outcome"] = request.expected_outcome
+                        if "interaction_provider" in runner_parameters:
+                            runner_kwargs["interaction_provider"] = interaction_provider
                         report = self.harness_runner.run(**runner_kwargs)
                         emit(
                             "agent_response_captured",
@@ -668,14 +680,26 @@ class CampaignEngine:
                             )
                         diagnostic_only = d0_qualification.get("scored") is not True
                         if hasattr(self.evaluator, "decision"):
-                            evaluation_decision = dict(
-                                self.evaluator.decision(
-                                    kind=kind,
-                                    report=report,
-                                    disturbances=tuple(disturbance_records),
-                                    recovery=recovery,
-                                    diagnostic_only=diagnostic_only,
+                            decision_kwargs = dict(
+                                kind=kind,
+                                report=report,
+                                disturbances=tuple(disturbance_records),
+                                recovery=recovery,
+                                diagnostic_only=diagnostic_only,
+                            )
+                            decision_parameters = inspect.signature(
+                                self.evaluator.decision
+                            ).parameters
+                            if "decision_policy" in decision_parameters:
+                                decision_kwargs["decision_policy"] = (
+                                    request.decision_policy
                                 )
+                            if "expected_outcome" in decision_parameters:
+                                decision_kwargs["expected_outcome"] = (
+                                    request.expected_outcome
+                                )
+                            evaluation_decision = dict(
+                                self.evaluator.decision(**decision_kwargs)
                             )
                             verdict = AgentVerdict(evaluation_decision["verdict"])
                         else:
@@ -686,14 +710,34 @@ class CampaignEngine:
                                 recovery=recovery,
                                 diagnostic_only=diagnostic_only,
                             )
+                            fallback_platform_valid = (
+                                report.status != "failed"
+                                or (
+                                    report.final_output.get("process_succeeded") is True
+                                    and bool(
+                                        report.final_output.get("validation_error")
+                                    )
+                                )
+                            )
+                            fallback_platform_status = (
+                                TrialPlatformStatus.VALID
+                                if fallback_platform_valid
+                                else TrialPlatformStatus.HARNESS_FAILED
+                            )
                             evaluation_decision = {
-                                "schema_version": "stage2-evaluation-decision.v2",
-                                "verdict": verdict.value,
+                                "schema_version": "stage2-evaluation-decision.v3",
+                                "verdict": (
+                                    verdict.value
+                                    if fallback_platform_valid
+                                    else AgentVerdict.CASE_INVALID.value
+                                ),
                                 "diagnostic_only": diagnostic_only,
-                                "platform_valid": True,
-                                "platform_status": TrialPlatformStatus.VALID.value,
+                                "platform_valid": fallback_platform_valid,
+                                "platform_status": fallback_platform_status.value,
                                 "agent_outcome": (
-                                    AgentOutcome.PASS.value
+                                    AgentOutcome.NOT_EVALUATED.value
+                                    if not fallback_platform_valid
+                                    else AgentOutcome.PASS.value
                                     if verdict is AgentVerdict.PASS
                                     else AgentOutcome.FAIL_EXECUTION.value
                                     if verdict is AgentVerdict.FAIL
@@ -707,7 +751,10 @@ class CampaignEngine:
                                     else RecoveryStatus.CLEANUP_FAILED.value
                                 ),
                                 "interaction_mode": request.interaction_mode.value,
-                                "autonomy_eligible": True,
+                                "experiment_gate": {},
+                                "node_results": [],
+                                "score_summary": {},
+                                "interaction_ledger": [],
                                 "checks": [],
                                 "reason_codes": [],
                             }
@@ -795,8 +842,17 @@ class CampaignEngine:
                                     "interaction_mode", request.interaction_mode.value
                                 )
                             ),
-                            autonomy_eligible=(
-                                evaluation_decision.get("autonomy_eligible") is not False
+                            experiment_gate=dict(
+                                evaluation_decision.get("experiment_gate") or {}
+                            ),
+                            node_results=tuple(
+                                evaluation_decision.get("node_results") or ()
+                            ),
+                            score_summary=dict(
+                                evaluation_decision.get("score_summary") or {}
+                            ),
+                            interaction_ledger=tuple(
+                                evaluation_decision.get("interaction_ledger") or ()
                             ),
                             evaluation_reason_codes=tuple(
                                 str(value)
@@ -909,11 +965,6 @@ class CampaignEngine:
                             ),
                             "agent_outcome": final_agent_outcome,
                             "trial_platform_status": final_platform_status,
-                            "autonomy_eligible": (
-                                result.autonomy_eligible
-                                and result.platform_valid
-                                and cleanup_verified
-                            ),
                             "recovery_status": (
                                 result.recovery_status
                                 if cleanup_verified
@@ -941,7 +992,10 @@ class CampaignEngine:
                                 "agent_outcome": result.agent_outcome.value,
                                 "assistance_level": result.assistance_level.value,
                                 "recovery_status": result.recovery_status.value,
-                                "autonomy_eligible": result.autonomy_eligible,
+                                "experiment_gate": result.experiment_gate,
+                                "node_results": list(result.node_results),
+                                "score_summary": result.score_summary,
+                                "interaction_ledger": list(result.interaction_ledger),
                             }
                         )
                         checks = list(evaluation_decision.get("checks") or [])
@@ -1011,7 +1065,7 @@ class CampaignEngine:
                             "platform_valid": result.platform_valid,
                             "agent_verdict": result.agent_verdict.value,
                             "agent_outcome": result.agent_outcome.value,
-                            "autonomy_eligible": result.autonomy_eligible,
+                            "score_summary": result.score_summary,
                             "evaluation_reason_codes": list(
                                 result.evaluation_reason_codes
                             ),
@@ -1401,56 +1455,20 @@ def _approval_feedback(
         for value in (event_type, native_type, payload_type)
         for marker in ("APPROVAL_REQUEST", "CONFIRMATION_REQUEST", "PERMISSION_REQUEST")
     )
-    message_text = str(payload).lower()
-    natural_request = event_type == "AGENT_MESSAGE" and any(
-        marker in message_text
-        for marker in (
-            "please confirm",
-            "need confirmation",
-            "waiting for approval",
-            "需要确认",
-            "请确认",
-            "是否继续",
-            "是否执行",
-        )
-    )
-    if not structured_request and not natural_request:
+    if not structured_request:
         return None
 
     request = payload.get("request") if isinstance(payload.get("request"), Mapping) else payload
     tool = str(request.get("tool") or event.get("tool") or "")
     arguments = request.get("arguments")
     arguments = arguments if isinstance(arguments, Mapping) else {}
-    if natural_request and not tool:
-        scope_expansion_markers = (
-            "different namespace",
-            "another namespace",
-            "benchmark controller",
-            "observability infrastructure",
-            "new permission",
-            "bypass",
-            "其他命名空间",
-            "扩大范围",
-            "新增权限",
-            "提高强度",
-            "绕过",
-        )
-        approved = not any(
-            marker in message_text for marker in scope_expansion_markers
-        )
-        reason = (
-            "ORIGINAL_SCOPE_CONTINUATION_ONLY"
-            if approved
-            else "NATURAL_LANGUAGE_SCOPE_EXPANSION_DETECTED"
-        )
-    else:
-        approved, reason = _request_within_scope(
-            tool,
-            arguments,
-            runtime=runtime,
-            current_target=current_target,
-            capability=capability,
-        )
+    approved, reason = _request_within_scope(
+        tool,
+        arguments,
+        runtime=runtime,
+        current_target=current_target,
+        capability=capability,
+    )
     return {
         "category": FeedbackCategory.AUTH_CONFIRM.value,
         "message": (
@@ -1498,6 +1516,19 @@ def _guided_turn_feedback(
         for item in raw_events
         if isinstance(item, Mapping)
     }
+    checkpoints = [
+        item.get("payload")
+        for item in raw_events
+        if isinstance(item, Mapping)
+        and str(item.get("kind") or "") == "agent_checkpoint"
+        and isinstance(item.get("payload"), Mapping)
+    ]
+    if "agent_clarification_requested" in kinds or any(
+        str(item.get("decision") or "")
+        in {"clarification_required", "safe_stop"}
+        for item in checkpoints
+    ):
+        return None
     nudge_id = ""
     message = ""
     if "main_fault_running" in kinds and not kinds & {

@@ -187,6 +187,7 @@ def valid_agent_result(defect: str = "missing outbound timeout"):
         "assisted": False,
         "assistance_events": [],
         "decision": "continue",
+        "clarification_request": None,
         "effect_assessment": "not_attempted",
         "recovery_assessment": "not_applicable",
         "missing_conditions": [],

@@ -37,6 +37,7 @@ class StructuredFeedback:
             "Controller feedback for the same already-authorized Stage-2 Trial "
             "follows. Treat FACT_EVENT as observed ground truth from the Harness, "
             "AUTH_CONFIRM as the user's approval within the original prompt scope, "
+            "USER_DECISION as the user's answer to your own clarification request, "
             "and SEMANTIC_NUDGE as assistance that must be reported as assisted.\n\n"
             "```json\n"
             + json.dumps(self.envelope(), ensure_ascii=False, indent=2, sort_keys=True)

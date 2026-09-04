@@ -112,6 +112,40 @@ class InteractionMode(str, Enum):
     AUTONOMOUS = "autonomous"
 
 
+class DecisionPolicy(str, Enum):
+    """Who owns material choices that the natural-language prompt leaves open."""
+
+    CLARIFY_MISSING = "clarify_missing"
+    AGENT_DELEGATED = "agent_delegated"
+
+
+class ExpectedOutcome(str, Enum):
+    EXECUTE_AND_RECOVER = "execute_and_recover"
+    SAFE_REFUSAL = "safe_refusal"
+
+
+class NodeStatus(str, Enum):
+    VERIFIED = "VERIFIED"
+    PARTIAL = "PARTIAL"
+    ATTEMPTED_UNVERIFIED = "ATTEMPTED_UNVERIFIED"
+    NOT_ATTEMPTED = "NOT_ATTEMPTED"
+    CONTRADICTED = "CONTRADICTED"
+    BLOCKED_BY_PLATFORM = "BLOCKED_BY_PLATFORM"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class CompletionSource(str, Enum):
+    AGENT = "AGENT"
+    AGENT_WITH_REQUIRED_CONFIRMATION = "AGENT_WITH_REQUIRED_CONFIRMATION"
+    AGENT_WITH_LATE_CONFIRMATION = "AGENT_WITH_LATE_CONFIRMATION"
+    HARNESS_FACT_AGENT_DECISION = "HARNESS_FACT_AGENT_DECISION"
+    AGENT_WITH_UNNECESSARY_CONFIRMATION = "AGENT_WITH_UNNECESSARY_CONFIRMATION"
+    SEMANTIC_NUDGE = "SEMANTIC_NUDGE"
+    USER_DIRECTED = "USER_DIRECTED"
+    CONTROLLER_FALLBACK = "CONTROLLER_FALLBACK"
+    MISSING = "MISSING"
+
+
 class AutonomyLevel(str, Enum):
     L0_COMPLETE_TASK = "L0_COMPLETE_TASK"
     L1_COMPLETE_EXPERIMENT = "L1_COMPLETE_EXPERIMENT"
@@ -189,6 +223,7 @@ class MainFaultSpec(ContractModel):
 class FeedbackCategory(str, Enum):
     FACT_EVENT = "FACT_EVENT"
     AUTH_CONFIRM = "AUTH_CONFIRM"
+    USER_DECISION = "USER_DECISION"
     SEMANTIC_NUDGE = "SEMANTIC_NUDGE"
 
 
@@ -196,12 +231,15 @@ class AssistanceLevel(str, Enum):
     NONE = "NONE"
     FACT_ONLY = "FACT_ONLY"
     AUTO_CONFIRMATION = "AUTO_CONFIRMATION"
+    USER_DECISION = "USER_DECISION"
     SEMANTIC_NUDGE = "SEMANTIC_NUDGE"
     HUMAN_DECISION_REQUIRED = "HUMAN_DECISION_REQUIRED"
 
 
 class AgentOutcome(str, Enum):
     PASS = "PASS"
+    PARTIAL = "PARTIAL"
+    SAFE_REFUSAL = "SAFE_REFUSAL"
     FAIL_EXECUTION = "FAIL_EXECUTION"
     FAIL_SAFETY = "FAIL_SAFETY"
     INCONCLUSIVE = "INCONCLUSIVE"
@@ -424,6 +462,8 @@ class CampaignRequest(ContractModel):
     )
     prompt_mode: PromptMode = PromptMode.COMPILED
     interaction_mode: InteractionMode = InteractionMode.GUIDED
+    decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING
+    expected_outcome: ExpectedOutcome = ExpectedOutcome.EXECUTE_AND_RECOVER
     target: TargetSpec | None = None
     main_fault: MainFaultSpec | None = None
     d6_variant: OperationUncertaintyVariant = OperationUncertaintyVariant.NOT_APPLIED
@@ -616,7 +656,10 @@ class TrialResult(ContractModel):
     recovery_status: RecoveryStatus = RecoveryStatus.UNVERIFIED
     trial_platform_status: TrialPlatformStatus = TrialPlatformStatus.CASE_INVALID
     interaction_mode: InteractionMode = InteractionMode.GUIDED
-    autonomy_eligible: bool = True
+    experiment_gate: dict[str, Any] = Field(default_factory=dict)
+    node_results: tuple[dict[str, Any], ...] = ()
+    score_summary: dict[str, Any] = Field(default_factory=dict)
+    interaction_ledger: tuple[dict[str, Any], ...] = ()
     evaluation_reason_codes: tuple[str, ...] = ()
     disturbances: tuple[DisturbanceRecord, ...]
     recovery: RecoveryResult
@@ -624,8 +667,8 @@ class TrialResult(ContractModel):
 
 
 class EvaluationDecision(ContractModel):
-    schema_version: Literal["stage2-evaluation-decision.v2"] = (
-        "stage2-evaluation-decision.v2"
+    schema_version: Literal["stage2-evaluation-decision.v3"] = (
+        "stage2-evaluation-decision.v3"
     )
     verdict: AgentVerdict
     diagnostic_only: bool
@@ -635,7 +678,10 @@ class EvaluationDecision(ContractModel):
     assistance_level: AssistanceLevel
     recovery_status: RecoveryStatus
     interaction_mode: InteractionMode = InteractionMode.GUIDED
-    autonomy_eligible: bool = True
+    experiment_gate: dict[str, Any] = Field(default_factory=dict)
+    node_results: tuple[dict[str, Any], ...] = ()
+    score_summary: dict[str, Any] = Field(default_factory=dict)
+    interaction_ledger: tuple[dict[str, Any], ...] = ()
     expected_behaviors: tuple[str, ...] = ()
     failure_conditions: tuple[str, ...] = ()
     checks: tuple[dict[str, Any], ...] = ()

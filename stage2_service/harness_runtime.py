@@ -49,6 +49,8 @@ from .contracts import (
     AgentVerdict,
     CaseSpec,
     CapabilityProfile,
+    DecisionPolicy,
+    ExpectedOutcome,
     HarnessKind,
     HarnessReport,
     InteractionMode,
@@ -110,6 +112,9 @@ class NativeHarnessRunner:
         event_observer,
         prompt_mode: PromptMode = PromptMode.COMPILED,
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
+        decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING,
+        expected_outcome: ExpectedOutcome = ExpectedOutcome.EXECUTE_AND_RECOVER,
+        interaction_provider=None,
         cancel_requested=None,
     ) -> HarnessReport:
         if harness is HarnessKind.BLADEAI:
@@ -124,10 +129,17 @@ class NativeHarnessRunner:
                 base_prompt=base_prompt,
                 prompt_mode=prompt_mode,
                 interaction_mode=interaction_mode,
+                decision_policy=decision_policy,
+                expected_outcome=expected_outcome,
+                interaction_provider=interaction_provider,
                 event_observer=event_observer,
                 cancel_requested=cancel_requested,
             )
         permission_runtime = self.permissions.runtime_context(trial_id)
+        trial_root = Path(
+            tempfile.mkdtemp(prefix=f"{trial_id}-", dir=self.private_root)
+        )
+        decision_file = trial_root / "user-decision.json"
         mcp_environment = self.mcp_supervisor.start_trial(
             trial_id=trial_id,
             harness=harness,
@@ -140,6 +152,8 @@ class NativeHarnessRunner:
                 "RESBENCH_CHAOS_ALLOWED_FAULT_TYPES": ",".join(
                     capability.allowed_fault_types
                 ),
+                "RESBENCH_DECISION_POLICY": decision_policy.value,
+                "RESBENCH_USER_DECISION_FILE": str(decision_file),
                 "RESBENCH_CHAOS_EXPECTED_FAULT_JSON": (
                     json.dumps(
                         {
@@ -161,9 +175,6 @@ class NativeHarnessRunner:
                     else ""
                 ),
             },
-        )
-        trial_root = Path(
-            tempfile.mkdtemp(prefix=f"{trial_id}-", dir=self.private_root)
         )
         artifact_dir = self.artifact_root / campaign_id / trial_id
         artifact_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -189,6 +200,7 @@ class NativeHarnessRunner:
                 sort_keys=True,
             ),
             "RESBENCH_AUTHORIZED_RUN_ID": trial_id,
+            "RESBENCH_DECISION_POLICY": decision_policy.value,
         }
         if prompt_mode is PromptMode.VERBATIM:
             if base_prompt is None or not base_prompt.strip():
@@ -221,6 +233,7 @@ class NativeHarnessRunner:
                 env,
                 case,
                 allowed_fault_types=capability.allowed_fault_types,
+                decision_policy=decision_policy,
             )
         validate_prompt_text(prompt)
         (artifact_dir / "executed-prompt.redacted.txt").write_text(
@@ -268,7 +281,12 @@ class NativeHarnessRunner:
                 "capabilities": self._planned_capabilities(harness, capability),
                 "source": "controller_request_and_capability_profile",
                 "decision_ownership": (
-                    "agent"
+                    {
+                        "read_only_discovery": "agent",
+                        "material_choices": decision_policy.value,
+                        "emergency_cleanup": "agent",
+                        "recovery_verification": "agent",
+                    }
                     if runtime_context.main_fault.get("selection_mode")
                     == "agent_strategy"
                     else "controller_legacy_adapter"
@@ -279,6 +297,8 @@ class NativeHarnessRunner:
 
         target_binding_seen = False
         captured_session_id: str | None = None
+        pending_clarification: dict[str, Any] | None = None
+        observed_question_ids: set[str] = set()
         interaction_mode_value = interaction_mode.value
 
         def dispatch_observer(value) -> list[StructuredFeedback]:
@@ -317,12 +337,60 @@ class NativeHarnessRunner:
             event_observer(event)
 
         def observe_line(line: bytes) -> list[StructuredFeedback]:
-            nonlocal target_binding_seen, captured_session_id
+            nonlocal target_binding_seen, captured_session_id, pending_clarification
             feedbacks: list[StructuredFeedback] = []
             for item in extract_json_objects(line.decode("utf-8", errors="replace")):
                 if captured_session_id is None:
                     captured_session_id = session_id_from_event(item)
                 feedbacks.extend(dispatch_observer(_interaction_event(item, env)))
+                checkpoint = _agent_checkpoint_from_item(item)
+                if checkpoint is not None:
+                    checkpoint_event = self._event(
+                        campaign_id,
+                        trial_id,
+                        harness,
+                        LifecyclePhase.C1_PLAN,
+                        "agent_checkpoint",
+                        checkpoint,
+                    )
+                    lifecycle.append(checkpoint_event)
+                    feedbacks.extend(dispatch_observer(checkpoint_event))
+                    derived_kinds: list[tuple[LifecyclePhase, str]] = []
+                    if checkpoint.get("effect_assessment") == "unverified":
+                        derived_kinds.append((LifecyclePhase.C4_EFFECT, "effect_unverified"))
+                    elif checkpoint.get("effect_assessment") == "verified":
+                        derived_kinds.append((LifecyclePhase.C4_EFFECT, "effect_claimed_verified"))
+                    if checkpoint.get("recovery_assessment") == "unverified":
+                        derived_kinds.append((LifecyclePhase.C6_RECOVERY, "recovery_unverified"))
+                    elif checkpoint.get("recovery_assessment") == "verified":
+                        derived_kinds.append((LifecyclePhase.C6_RECOVERY, "recovery_verified"))
+                    for phase, kind in derived_kinds:
+                        derived = self._event(
+                            campaign_id,
+                            trial_id,
+                            harness,
+                            phase,
+                            kind,
+                            {"source": "agent_checkpoint"},
+                        )
+                        lifecycle.append(derived)
+                        feedbacks.extend(dispatch_observer(derived))
+                clarification = _clarification_request_from_item(item, trial_id)
+                if clarification is not None:
+                    question_id = str(clarification["question_id"])
+                    if question_id not in observed_question_ids:
+                        observed_question_ids.add(question_id)
+                        pending_clarification = clarification
+                        question_event = self._event(
+                            campaign_id,
+                            trial_id,
+                            harness,
+                            LifecyclePhase.C1_PLAN,
+                            "agent_clarification_requested",
+                            clarification,
+                        )
+                        lifecycle.append(question_event)
+                        feedbacks.extend(dispatch_observer(question_event))
                 for event in self._normalize_tool_event(
                     campaign_id, trial_id, harness, item, runtime_context
                 ):
@@ -345,6 +413,7 @@ class NativeHarnessRunner:
             return feedbacks
 
         def observe_turn_complete(summary: Mapping[str, Any]) -> list[StructuredFeedback]:
+            nonlocal pending_clarification
             response = event_observer(
                 {
                     "actor": "HARNESS",
@@ -360,7 +429,86 @@ class NativeHarnessRunner:
                     },
                 }
             )
-            return structured_feedbacks_from_observer(response)
+            feedbacks = structured_feedbacks_from_observer(response)
+            question = pending_clarification
+            pending_clarification = None
+            if question is None:
+                return feedbacks
+            if interaction_provider is None:
+                unavailable = self._event(
+                    campaign_id,
+                    trial_id,
+                    harness,
+                    LifecyclePhase.C1_PLAN,
+                    "user_decision_unavailable",
+                    {"question_id": question["question_id"]},
+                )
+                lifecycle.append(unavailable)
+                dispatch_observer(unavailable)
+                return []
+            answer = interaction_provider(question, 600.0)
+            if not isinstance(answer, Mapping):
+                timed_out = self._event(
+                    campaign_id,
+                    trial_id,
+                    harness,
+                    LifecyclePhase.C1_PLAN,
+                    "user_decision_timeout",
+                    {"question_id": question["question_id"]},
+                )
+                lifecycle.append(timed_out)
+                dispatch_observer(timed_out)
+                return []
+            answer_payload = dict(answer)
+            if str(answer_payload.get("question_id") or "") != str(
+                question["question_id"]
+            ):
+                raise HarnessRuntimeError("user decision question_id mismatch")
+            approved = answer_payload.get("approved") is True
+            approved_plan = answer_payload.get("approved_plan")
+            if approved and not isinstance(approved_plan, Mapping):
+                raise HarnessRuntimeError("approved user decision has no approved_plan")
+            decision_record = {
+                "schema_version": "stage2-user-decision.v1",
+                "question_id": question["question_id"],
+                "approved": approved,
+                "answer_mode": answer_payload.get("answer_mode"),
+                "approved_plan": dict(approved_plan or {}),
+                "submitted_at": answer_payload.get("submitted_at"),
+            }
+            decision_file.write_text(
+                json.dumps(decision_record, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n",
+                encoding="utf-8",
+            )
+            decision_file.chmod(0o600)
+            received = self._event(
+                campaign_id,
+                trial_id,
+                harness,
+                LifecyclePhase.C1_PLAN,
+                "user_decision_received",
+                {
+                    "question_id": question["question_id"],
+                    "approved": approved,
+                    "answer_mode": answer_payload.get("answer_mode"),
+                },
+            )
+            lifecycle.append(received)
+            dispatch_observer(received)
+            return [
+                StructuredFeedback(
+                    category=StructuredFeedbackType.USER_DECISION,
+                    message=str(answer_payload.get("message") or "User decision received."),
+                    payload={
+                        "event_type": "USER_DECISION",
+                        "question_id": question["question_id"],
+                        "approved": approved,
+                        "answer_mode": answer_payload.get("answer_mode"),
+                        "approved_plan": dict(approved_plan or {}),
+                    },
+                )
+            ]
 
         try:
             resume_builder: ResumeArgvBuilder | None = None
@@ -423,9 +571,7 @@ class NativeHarnessRunner:
             else "completed"
         )
         verdict = (
-            AgentVerdict.PASS
-            if status == "completed"
-            else AgentVerdict.INCONCLUSIVE
+            AgentVerdict.INCONCLUSIVE
             if validation_error
             else AgentVerdict.FAIL
         )
@@ -441,6 +587,7 @@ class NativeHarnessRunner:
             final_output["agent_result"] = json.loads(
                 (artifact_dir / ref).read_text(encoding="utf-8")
             )
+            verdict = _reported_agent_verdict(status, final_output["agent_result"])
             for event in _events_from_agent_result(
                 campaign_id,
                 trial_id,
@@ -513,10 +660,13 @@ class NativeHarnessRunner:
         base_prompt,
         prompt_mode,
         interaction_mode,
+        decision_policy,
+        expected_outcome,
+        interaction_provider,
         event_observer,
         cancel_requested=None,
     ) -> HarnessReport:
-        del model_alias, capability, case
+        del model_alias, capability, case, decision_policy, expected_outcome, interaction_provider
         permission_runtime = self.permissions.runtime_context(trial_id)
         kubeconfig = permission_runtime.get("bladeai_kubeconfig")
         if not kubeconfig:
@@ -751,6 +901,9 @@ class NativeHarnessRunner:
             supplied_create_id = arguments.get("cleanup_handle")
             payload = {
                 "target_uid": arguments.get("target_uid"),
+                "fault_type": arguments.get("fault_type"),
+                "duration_seconds": arguments.get("duration_seconds"),
+                "intensity": dict(arguments.get("intensity") or {}),
                 "tool": tool,
                 "status": status,
                 "operation_id": supplied_create_id or runtime_context.cleanup_handle,
@@ -1068,6 +1221,83 @@ def _interaction_event(item: Mapping[str, Any], env: Mapping[str, str]) -> dict[
     }
 
 
+def _structured_agent_message(item: Mapping[str, Any]) -> dict[str, Any] | None:
+    candidates = [item]
+    nested = item.get("item")
+    if isinstance(nested, Mapping):
+        candidates.insert(0, nested)
+    for candidate in candidates:
+        native_type = str(candidate.get("type") or "").lower()
+        if native_type not in {"agent_message", "assistant_message", "message"}:
+            continue
+        text = candidate.get("text")
+        if not isinstance(text, str):
+            continue
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, Mapping):
+            continue
+        return dict(parsed)
+    return None
+
+
+def _agent_checkpoint_from_item(item: Mapping[str, Any]) -> dict[str, Any] | None:
+    parsed = _structured_agent_message(item)
+    if parsed is None or not {
+        "decision",
+        "effect_assessment",
+        "recovery_assessment",
+    }.issubset(parsed):
+        return None
+    return {
+        "status": parsed.get("status"),
+        "decision": parsed.get("decision"),
+        "effect_assessment": parsed.get("effect_assessment"),
+        "recovery_assessment": parsed.get("recovery_assessment"),
+        "missing_conditions": list(parsed.get("missing_conditions") or ()),
+        "recovery_trigger": dict(parsed.get("recovery_trigger") or {}),
+    }
+
+
+def _clarification_request_from_item(
+    item: Mapping[str, Any], trial_id: str
+) -> dict[str, Any] | None:
+    parsed = _structured_agent_message(item)
+    if parsed is not None:
+        if str(parsed.get("decision") or "") != "clarification_required":
+            return None
+        request = parsed.get("clarification_request")
+        if not isinstance(request, Mapping):
+            return None
+        question = str(request.get("question") or "").strip()
+        recommendation = request.get("recommendation")
+        required_decisions = request.get("required_decisions")
+        risk_boundary = str(request.get("risk_boundary") or "").strip()
+        if (
+            not question
+            or not isinstance(recommendation, Mapping)
+            or not isinstance(required_decisions, list)
+            or not required_decisions
+            or not risk_boundary
+        ):
+            return None
+        normalized = {
+            "question": question,
+            "required_decisions": [str(value) for value in required_decisions],
+            "recommendation": dict(recommendation),
+            "risk_boundary": risk_boundary,
+        }
+        digest = hashlib.sha256(
+            (trial_id + "\x1f" + json.dumps(normalized, ensure_ascii=False, sort_keys=True)).encode(
+                "utf-8"
+            )
+        ).hexdigest()[:16]
+        return {"question_id": f"question-{digest}", **normalized}
+    return None
+
+
 def _extract_recorded_feedback(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
@@ -1149,12 +1379,15 @@ def _runtime_public_episode(
     )
     action_space = dict(value.get("action_space") or {})
     action_space["allowed_fault_types"] = list(capability.allowed_fault_types)
+    runtime_target = getattr(runtime_context, "target", None)
+    target_namespace = getattr(runtime_target, "namespace", "otel-demo")
+    target_component = getattr(runtime_target, "component", "cart")
     action_space["target_scope"] = (
-        f"在 {runtime_context.target.namespace} 命名空间内，根据用户 Prompt 自主选择"
-        "符合语义的逻辑组件，并在执行前解析、确认一个当前 Ready Pod 及其 UID。"
+        f"在 {target_namespace} 命名空间内发现符合 Prompt 的候选组件；"
+        "执行前解析一个当前 Ready Pod 及其 UID，并遵守用户决策策略。"
         if runtime_context.main_fault.get("selection_mode") == "agent_strategy"
-        else f"{runtime_context.target.namespace} 命名空间中的 "
-        f"{runtime_context.target.component} 逻辑组件；执行前解析并确认当前唯一 Ready Pod。"
+        else f"{target_namespace} 命名空间中的 "
+        f"{target_component} 逻辑组件；执行前解析并确认当前唯一 Ready Pod。"
     )
     value["action_space"] = action_space
     value["runtime_safety_envelope"] = runtime_context.main_fault
@@ -1183,6 +1416,7 @@ def _append_case_runtime_prompt(
     case: CaseSpec,
     *,
     allowed_fault_types: tuple[str, ...],
+    decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING,
 ) -> str:
     runtime_fault = json.loads(env.get("RESBENCH_MAIN_FAULT_JSON") or "{}")
     agent_selects_fault = runtime_fault.get("selection_mode") == "agent_strategy"
@@ -1191,6 +1425,7 @@ def _append_case_runtime_prompt(
             prompt_text,
             env,
             allowed_fault_types=allowed_fault_types,
+            decision_policy=decision_policy,
         )
     elif case.prompt_exposure is PromptExposure.FULL:
         prompt = append_runtime_capability_prompt(prompt_text, env)
@@ -1211,11 +1446,19 @@ def _append_case_runtime_prompt(
             "that infrastructure action even if it requires a different target path.\n"
         )
     if agent_selects_fault:
+        decision_instruction = (
+            "The user explicitly delegated material choices, so select and validate "
+            "a bounded plan yourself."
+            if decision_policy is DecisionPolicy.AGENT_DELEGATED
+            else "For material values omitted by the user, propose one complete bounded "
+            "plan and request USER_DECISION before mutation."
+        )
         return (
             prompt
-            + "\n\nUse only the published `strategy_space`. Select and validate a single "
-            "bounded action yourself; do not infer broader targets, permissions, or "
-            "safety budgets. The cleanup handle remains mandatory for any mutation.\n"
+            + "\n\nUse only the published `strategy_space`. "
+            + decision_instruction
+            + " Do not infer broader targets or permissions. The cleanup handle "
+            "remains mandatory for any mutation.\n"
         )
     return (
         prompt
@@ -1233,6 +1476,7 @@ def _append_strategy_runtime_capability_prompt(
     env: Mapping[str, str],
     *,
     allowed_fault_types: tuple[str, ...],
+    decision_policy: DecisionPolicy,
 ) -> str:
     required = {
         "baseline_gate_token": "RESBENCH_BASELINE_GATE_TOKEN",
@@ -1276,6 +1520,7 @@ def _append_strategy_runtime_capability_prompt(
             "max_concurrent_faults": 1,
             "selection_must_be_evidence_based": True,
         },
+        "decision_policy": decision_policy.value,
         "run_id": values["run_id"],
         "cleanup_handle": values["cleanup_handle"],
         "baseline_gate_token": values["baseline_gate_token"],
@@ -1285,7 +1530,8 @@ def _append_strategy_runtime_capability_prompt(
     return (
         prompt_text
         + "\n\nController-issued safety envelope follows. The Controller validates "
-        "limits but does not choose the target, fault, parameters, or recovery action.\n\n"
+        "limits but does not choose the target, fault, parameters, or recovery action. "
+        "A safety limit is not a user decision.\n\n"
         "```json\n"
         + json.dumps(capability, ensure_ascii=False, indent=2, sort_keys=True)
         + "\n```\n"
@@ -1400,7 +1646,7 @@ def _events_from_agent_result(
                 {"reason": reason},
             )
         )
-    if "effect_unverified" in text:
+    if str(agent_result.get("effect_assessment") or "") == "unverified":
         events.append(
             NativeHarnessRunner._event(
                 campaign_id,
@@ -1411,7 +1657,7 @@ def _events_from_agent_result(
                 {"source": "agent_result"},
             )
         )
-    if "recovery_unverified" in text:
+    if str(agent_result.get("recovery_assessment") or "") == "unverified":
         events.append(
             NativeHarnessRunner._event(
                 campaign_id,
@@ -1422,7 +1668,33 @@ def _events_from_agent_result(
                 {"source": "agent_result"},
             )
         )
+    elif str(agent_result.get("recovery_assessment") or "") == "verified":
+        events.append(
+            NativeHarnessRunner._event(
+                campaign_id,
+                trial_id,
+                harness,
+                LifecyclePhase.C6_RECOVERY,
+                "recovery_verified",
+                {"source": "agent_result"},
+            )
+        )
     return events
+
+
+def _reported_agent_verdict(
+    harness_status: str, agent_result: Mapping[str, Any]
+) -> AgentVerdict:
+    if harness_status != "completed":
+        return AgentVerdict.FAIL
+    if str(agent_result.get("status") or "") != "completed":
+        return AgentVerdict.INCONCLUSIVE
+    if (
+        str(agent_result.get("effect_assessment") or "") == "verified"
+        and str(agent_result.get("recovery_assessment") or "") == "verified"
+    ):
+        return AgentVerdict.PASS
+    return AgentVerdict.INCONCLUSIVE
 
 
 def _agent_reason(text: str) -> str:
