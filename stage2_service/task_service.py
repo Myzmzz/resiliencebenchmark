@@ -75,6 +75,15 @@ DISTURBANCE_LABELS = {
     "D6-A": "D6-A: 创建请求未执行但响应丢失",
     "D6-B": "D6-B: 创建请求已执行但响应丢失",
 }
+BIDIRECTIONAL_TASK_HARNESSES = frozenset(
+    {HarnessKind.CODEX, HarnessKind.CLAUDE_CODE}
+)
+DEEPSEEK_HEADLESS_TASK_CASES = (
+    Stage2CaseId.C0,
+    Stage2CaseId.D1,
+    Stage2CaseId.D3,
+    Stage2CaseId.D4,
+)
 SENSITIVE_KEY_PARTS = (
     "api_key",
     "apikey",
@@ -93,7 +102,7 @@ SENSITIVE_KEY_PARTS = (
 
 
 class Stage2TaskCreateRequest(ContractModel):
-    schema_version: Literal["stage2-task-create.v5"] = "stage2-task-create.v5"
+    schema_version: Literal["stage2-task-create.v6"] = "stage2-task-create.v6"
     application: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
     prompt: str = Field(min_length=1, max_length=12000)
     prompt_mode: PromptMode = Field(
@@ -154,8 +163,7 @@ class Stage2TaskCreateRequest(ContractModel):
         if self.cases is not None and not requested_cases:
             raise ValueError("cases cannot be empty")
         if not requested_cases and self.disturbance is None:
-            object.__setattr__(self, "cases", TASK_STAGE2_CASE_IDS)
-            return self
+            requested_cases = TASK_STAGE2_CASE_IDS
         if len(set(requested_cases)) != len(requested_cases):
             raise ValueError("cases cannot contain duplicates")
         unsupported = set(requested_cases) - set(TASK_STAGE2_CASE_IDS)
@@ -163,24 +171,48 @@ class Stage2TaskCreateRequest(ContractModel):
             values = ", ".join(sorted(item.value for item in unsupported))
             raise ValueError(f"unsupported task cases: {values}")
         if self.disturbance is None:
-            if not requested_cases:
-                object.__setattr__(self, "cases", TASK_STAGE2_CASE_IDS)
-            elif (
+            if (
                 Stage2CaseId.D6 not in requested_cases
                 and self.d6_variant
                 is not OperationUncertaintyVariant.NOT_APPLIED
             ):
                 raise ValueError("d6_variant is only valid when D6 is selected")
-            return self
-        mapped_case = DISTURBANCE_TO_CASE[self.disturbance]
-        if requested_cases and requested_cases != (mapped_case,):
-            raise ValueError("cases and disturbance must select the same single task case")
-        object.__setattr__(self, "cases", (mapped_case,))
-        expected_variant = DISTURBANCE_TO_D6_VARIANT.get(self.disturbance)
-        if expected_variant is not None:
-            object.__setattr__(self, "d6_variant", expected_variant)
-        elif mapped_case is not Stage2CaseId.D6 and self.d6_variant != OperationUncertaintyVariant.NOT_APPLIED:
-            raise ValueError("d6_variant is only valid for D6")
+        else:
+            mapped_case = DISTURBANCE_TO_CASE[self.disturbance]
+            if requested_cases and requested_cases != (mapped_case,):
+                raise ValueError(
+                    "cases and disturbance must select the same single task case"
+                )
+            requested_cases = (mapped_case,)
+            expected_variant = DISTURBANCE_TO_D6_VARIANT.get(self.disturbance)
+            if expected_variant is not None:
+                object.__setattr__(self, "d6_variant", expected_variant)
+            elif (
+                mapped_case is not Stage2CaseId.D6
+                and self.d6_variant is not OperationUncertaintyVariant.NOT_APPLIED
+            ):
+                raise ValueError("d6_variant is only valid for D6")
+        object.__setattr__(self, "cases", requested_cases)
+        if (
+            self.interaction_mode is InteractionMode.GUIDED
+            and self.harness not in BIDIRECTIONAL_TASK_HARNESSES
+        ):
+            raise ValueError(
+                f"guided interaction is not supported by the {self.harness.value} "
+                "one-shot command"
+            )
+        if self.harness is HarnessKind.DEEPSEEK:
+            unsupported_headless = set(requested_cases) - set(
+                DEEPSEEK_HEADLESS_TASK_CASES
+            )
+            if unsupported_headless:
+                values = ", ".join(
+                    sorted(item.value for item in unsupported_headless)
+                )
+                raise ValueError(
+                    "deepseek-harness headless cannot run cases requiring "
+                    f"mid-session feedback: {values}"
+                )
         return self
 
 
@@ -509,7 +541,7 @@ class Stage2TaskService:
         state = self.store.status(task_id)
         request = self.store.request(task_id)
         return {
-            "schema_version": "stage2-task-created.v5",
+            "schema_version": "stage2-task-created.v6",
             "task_id": task_id,
             "task_status": state["task_status"],
             "application": request["application"],
@@ -550,7 +582,7 @@ class Stage2TaskService:
         model_matrix = preflight.get("model_matrix") or {}
         bidirectional = preflight.get("bidirectional_sessions") or {}
         return {
-            "schema_version": "stage2-options.v5",
+            "schema_version": "stage2-options.v6",
             "applications": [
                 {
                     "application": "otel-demo",
@@ -589,6 +621,38 @@ class Stage2TaskService:
                     ),
                     "bidirectional_session": bool(
                         bidirectional.get(harness.value, False)
+                    ),
+                    "supported_interaction_modes": (
+                        []
+                        if harness is HarnessKind.BLADEAI
+                        else [InteractionMode.AUTONOMOUS.value]
+                        + (
+                            [InteractionMode.GUIDED.value]
+                            if harness in BIDIRECTIONAL_TASK_HARNESSES
+                            else []
+                        )
+                    ),
+                    "supported_cases": (
+                        []
+                        if harness is HarnessKind.BLADEAI
+                        else [
+                            item.value
+                            for item in (
+                                DEEPSEEK_HEADLESS_TASK_CASES
+                                if harness is HarnessKind.DEEPSEEK
+                                else TASK_STAGE2_CASE_IDS
+                            )
+                        ]
+                    ),
+                    "limitations": (
+                        [
+                            "headless profile is one-shot",
+                            "guided, D2, D5, and D6 require native session resume",
+                        ]
+                        if harness is HarnessKind.DEEPSEEK
+                        else ["Agent-selected Stage2 Task adapter is unavailable"]
+                        if harness is HarnessKind.BLADEAI
+                        else []
                     ),
                 }
                 for harness in HarnessKind

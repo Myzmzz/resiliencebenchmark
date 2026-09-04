@@ -34,6 +34,16 @@
 
 接口中的智能体选择字段沿用现有名称 `harness`：`codex`、`claude-code`、`deepseek-harness` 或 `bladeai`。可选模型及每个 Harness/模型组合当前是否可运行，以 `/api/v1/stage2/options` 返回的 `model_matrix` 为准，不能只凭模型名称判断。
 
+命令能力以部署中的实际版本为准：Codex CLI 0.139.0 使用
+`codex exec --sandbox read-only resume ...`；Claude Code 2.1.233 使用
+`claude --print ... --resume <session-id>`。两者均完成了隔离的真实首回合与续接回合验证。
+DeepSeek Harness 的 `headless` profile 只支持 one-shot，因此只允许
+`autonomous` 且只允许 `C0,D1,D3,D4`；`D2,D5,D6` 需要中途事实反馈，不得通过
+headless 伪装执行。BladeAI Stage2 worker 同样为 one-shot，且当前仍缺少 Agent-selected
+Task adapter，所以 Task API 明确拒绝。具体能力可直接查看
+`/api/v1/stage2/options` 中每个 Harness 的 `bidirectional_session`、
+`supported_interaction_modes`、`supported_cases` 和 `limitations`。
+
 `prompt_mode`、`interaction_mode`、`d6_variant`、`cases` 和 `disturbance` 是可选字段。默认执行全套 `C0,D1,D2,D3,D4,D5,D6`，Prompt 原样交给 Agent，并采用 `autonomous` 交互；D6 默认使用 D6-A。
 
 Task API 不接受 `target`、`main_fault` 或 `autonomy_level`。目标 Pod、故障类型、持续时间、强度和恢复动作全部由被测 Agent 根据自然语言 Prompt 和实时环境自行决定。Controller 只做以下工作：

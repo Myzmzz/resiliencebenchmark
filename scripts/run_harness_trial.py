@@ -1041,11 +1041,11 @@ def build_codex_resume_argv_builder(
         return [
             command,
             "exec",
+            "--sandbox",
+            "read-only",
             "resume",
             "--model",
             model_alias,
-            "--sandbox",
-            "read-only",
             "--skip-git-repo-check",
             "--json",
             "--output-schema",

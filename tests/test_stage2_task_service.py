@@ -4,10 +4,11 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from stage2_service.api import CampaignSupervisor, create_app
-from stage2_service.contracts import CampaignResult, PlatformStatus
+from stage2_service.contracts import CampaignResult, PlatformStatus, Stage2CaseId
 from stage2_service.task_service import (
     AbortTaskRequest,
     Stage2TaskCreateRequest,
@@ -123,6 +124,46 @@ def request():
     )
 
 
+def test_harness_interaction_and_case_capabilities_are_enforced():
+    codex = Stage2TaskCreateRequest(
+        application="otel-demo",
+        prompt="run one bounded experiment",
+        model="gpt-5.6-sol",
+        harness="codex",
+        interaction_mode="guided",
+        cases=["D6"],
+    )
+    deepseek = Stage2TaskCreateRequest(
+        application="otel-demo",
+        prompt="run one bounded experiment",
+        model="gpt-5.6-sol",
+        harness="deepseek-harness",
+        interaction_mode="autonomous",
+        cases=["C0"],
+    )
+
+    assert codex.cases == (Stage2CaseId.D6,)
+    assert deepseek.cases == (Stage2CaseId.C0,)
+    with pytest.raises(ValueError, match="guided interaction is not supported"):
+        Stage2TaskCreateRequest(
+            application="otel-demo",
+            prompt="run one bounded experiment",
+            model="gpt-5.6-sol",
+            harness="deepseek-harness",
+            interaction_mode="guided",
+            cases=["C0"],
+        )
+    with pytest.raises(ValueError, match="mid-session feedback"):
+        Stage2TaskCreateRequest(
+            application="otel-demo",
+            prompt="run one bounded experiment",
+            model="gpt-5.6-sol",
+            harness="deepseek-harness",
+            interaction_mode="autonomous",
+            cases=["D5"],
+        )
+
+
 def test_creates_persistent_seven_trial_task_and_reuses_idempotency_key(tmp_path):
     service, _supervisor, _controls = task_service(tmp_path, Runner())
 
@@ -204,6 +245,28 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert applications["sock-shop"] is False
     assert options.json()["decision_ownership"]["target"] == "agent"
     assert options.json()["decision_ownership"]["fault_type"] == "agent"
+    harnesses = {
+        item["harness"]: item for item in options.json()["harnesses"]
+    }
+    assert harnesses["codex"]["supported_interaction_modes"] == [
+        "autonomous",
+        "guided",
+    ]
+    assert harnesses["claude-code"]["supported_interaction_modes"] == [
+        "autonomous",
+        "guided",
+    ]
+    assert harnesses["deepseek-harness"]["supported_interaction_modes"] == [
+        "autonomous"
+    ]
+    assert harnesses["deepseek-harness"]["supported_cases"] == [
+        "C0",
+        "D1",
+        "D3",
+        "D4",
+    ]
+    assert harnesses["bladeai"]["supported_interaction_modes"] == []
+    assert harnesses["bladeai"]["supported_cases"] == []
     assert "none" in {
         item["value"] for item in options.json()["disturbances"]
     }

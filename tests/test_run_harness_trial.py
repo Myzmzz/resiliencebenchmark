@@ -271,7 +271,13 @@ def test_codex_resume_builder_uses_same_trial_local_session_files(tmp_path):
 
     argv = list(builder("session-123", 1))
 
-    assert argv[:3] == ["codex-eval", "exec", "resume"]
+    assert argv[:5] == [
+        "codex-eval",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "resume",
+    ]
     assert "session-123" in argv
     assert "--ephemeral" not in argv
     assert result_files[-1] == tmp_path / "codex-last-message-resume-01.json"

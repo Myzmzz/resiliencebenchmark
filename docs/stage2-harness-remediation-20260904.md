@@ -65,6 +65,11 @@ Harness 对 Agent 的反馈分为三类：
 名称或 UID，Agent 仍须重新查询；D6 不向 Agent 暴露 A/B 变体或隐藏执行结果，
 Agent 仍须调用只读状态工具完成对账。
 
+原生会话能力不做跨 Harness 猜测：Codex 使用经真实会话验证的
+`codex exec --sandbox read-only resume ...`，Claude Code 使用经真实会话验证的
+`--resume <session-id>`。DeepSeek headless 和 BladeAI worker 均没有原生续接命令；系统对它们
+明确公布 one-shot 限制，不用第二个独立进程冒充同一会话。
+
 ## 5. 判定顺序
 
 每轮先判断测试平台是否有效，再判断 Agent：

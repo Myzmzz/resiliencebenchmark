@@ -80,7 +80,7 @@ harnesses:
       deny_unscoped_shell: true
     session:
       logical_resume: false
-      reason: current Stage2 adapter uses the direct one-shot worker
+      reason: current Stage2 adapter uses the verified direct one-shot worker; no native session resume command exists
 
   claude-code:
     kind: claude_code
@@ -122,10 +122,11 @@ harnesses:
     session:
       logical_resume: true
       resume_flag: --resume
+      verification: real isolated initial-and-resume smoke passed with Claude Code 2.1.233
 
   codex:
     kind: codex
-    status: live_connectivity_smoke_qualified_full_lifecycle-timeout
+    status: live_full_lifecycle_completed_resume_argv_fix_pending_stage2_retest
     entrypoint:
       mode: headless_cli
       command: codex
@@ -162,7 +163,8 @@ harnesses:
       deny_unscoped_shell: true
     session:
       logical_resume: true
-      resume_command: codex exec resume
+      resume_command: codex exec --sandbox read-only resume
+      verification: real isolated initial-and-resume smoke passed with Codex CLI 0.139.0
 
   deepseek-harness:
     kind: official_deepseek_harness
@@ -191,7 +193,7 @@ harnesses:
       scored_trial_eligibility: blocked-until-complete-tool-trace-pass
     session:
       logical_resume: false
-      reason: shipped headless profile is one-shot
+      reason: shipped headless profile is one-shot and exposes no resume option; no TUI profile is installed
     models:
       source: models.yaml
       default_alias: gpt-5.6-sol
