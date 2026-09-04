@@ -153,7 +153,7 @@ class Stage2PermissionManager:
         )
         if not all(
             fault_type
-            in default_policy({runtime.target.namespace}).fault_type_budgets
+            in default_policy({runtime.target.namespace}).fault_type_contracts
             for fault_type in allowed_fault_types
         ):
             raise RuntimeError("runtime fault capability is outside Controller policy")

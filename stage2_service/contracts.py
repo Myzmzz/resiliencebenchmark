@@ -122,7 +122,7 @@ class AutonomyLevel(str, Enum):
 
 SUPPORTED_STAGE2_FAULT_TYPES = tuple(
     fault_type
-    for fault_type in sorted(default_policy({"otel-demo"}).fault_type_budgets)
+    for fault_type in sorted(default_policy({"otel-demo"}).fault_type_contracts)
     if fault_type != "pod-kill"
 )
 SUPPORTED_STAGE2_TARGET_BINDINGS = frozenset({("otel-demo", "cart")})
@@ -144,7 +144,7 @@ class TargetSpec(ContractModel):
 
 
 class MainFaultSpec(ContractModel):
-    schema_version: Literal["stage2-main-fault.v1"] = "stage2-main-fault.v1"
+    schema_version: Literal["stage2-main-fault.v2"] = "stage2-main-fault.v2"
     fault_type: str = Field(
         min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9-]{0,79}$"
     )
@@ -152,35 +152,36 @@ class MainFaultSpec(ContractModel):
     intensity: dict[str, Any]
 
     @model_validator(mode="after")
-    def validate_controller_budget(self) -> MainFaultSpec:
+    def validate_execution_contract(self) -> MainFaultSpec:
         if self.fault_type not in SUPPORTED_STAGE2_FAULT_TYPES:
             raise ValueError(
                 "unsupported main fault type; choose one returned by "
                 "GET /api/v1/stage2/options"
             )
-        budget = default_policy({"otel-demo"}).fault_type_budgets[self.fault_type]
-        if self.duration_seconds > budget.max_duration_seconds:
+        policy = default_policy({"otel-demo"})
+        contract = policy.fault_type_contracts[self.fault_type]
+        if self.duration_seconds > policy.max_fault_duration_seconds:
             raise ValueError(
-                f"duration_seconds exceeds the {self.fault_type} Controller budget "
-                f"of {budget.max_duration_seconds} seconds"
+                "duration_seconds exceeds the global Controller fault timeout "
+                f"of {policy.max_fault_duration_seconds} seconds"
             )
-        expected = set(budget.intensities)
+        expected = set(contract.intensity_fields)
         observed = set(self.intensity)
         if observed != expected:
             raise ValueError(
                 "intensity fields must exactly match the selected fault type: "
                 + ", ".join(sorted(expected))
             )
-        for name, bounds in budget.intensities.items():
+        for name, field_contract in contract.intensity_fields.items():
             value = self.intensity[name]
             if (
                 isinstance(value, bool)
                 or not isinstance(value, (int, float))
-                or not bounds.contains(value)
+                or not field_contract.accepts(value)
             ):
                 raise ValueError(
-                    f"intensity.{name} must be between "
-                    f"{bounds.min_value:g} and {bounds.max_value:g} {bounds.unit}"
+                    f"intensity.{name} must be a finite numeric value in "
+                    f"{field_contract.unit}"
                 )
         return self
 

@@ -38,7 +38,7 @@ class SafetyValidationTest(unittest.TestCase):
         values.update(overrides)
         return ChaosBladeAction(**values)
 
-    def test_accepts_single_target_action_with_uid_budget_and_run_label(self):
+    def test_accepts_single_target_action_with_uid_and_run_label(self):
         result = validate_action(self.action(), self.policy)
 
         self.assertTrue(result.ok, result.findings)
@@ -84,14 +84,22 @@ class SafetyValidationTest(unittest.TestCase):
         self.assertIn("MISSING_TARGET_UID", result.codes())
         self.assertIn("MISSING_RUN_ID_LABEL", result.codes())
 
-    def test_rejects_intensity_and_duration_over_budget(self):
+    def test_accepts_unbounded_intensity_and_rejects_duration_over_global_timeout(self):
         result = validate_action(
-            self.action(duration_seconds=181, intensity={"delay_ms": 1500}),
+            self.action(duration_seconds=1201, intensity={"delay_ms": 200000}),
             self.policy,
         )
 
-        self.assertIn("DURATION_BUDGET_EXCEEDED", result.codes())
-        self.assertIn("INTENSITY_BUDGET_EXCEEDED", result.codes())
+        self.assertEqual(result.codes(), ("FAULT_TIMEOUT_EXCEEDED",))
+
+    def test_accepts_twenty_minute_fault_with_unbounded_intensity(self):
+        result = validate_action(
+            self.action(duration_seconds=1200, intensity={"delay_ms": 2000}),
+            self.policy,
+        )
+
+        self.assertTrue(result.ok, result.findings)
+        self.assertEqual(self.policy.abort_gate.heartbeat_timeout_seconds, 1200)
 
     def test_rejects_concurrent_fault(self):
         result = validate_action(self.action(), self.policy, active_action_count=1)
@@ -101,7 +109,7 @@ class SafetyValidationTest(unittest.TestCase):
     def test_policy_must_keep_abort_and_cleanup_enabled(self):
         unsafe = ControllerPolicy(
             namespace_allowlist=frozenset({"otel-demo"}),
-            fault_type_budgets=self.policy.fault_type_budgets,
+            fault_type_contracts=self.policy.fault_type_contracts,
             max_concurrent_actions=2,
             require_single_target=False,
         )

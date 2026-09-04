@@ -1214,28 +1214,29 @@ def _append_strategy_runtime_capability_prompt(
         )
     target = json.loads(values["target"])
     policy = default_policy({str(target.get("namespace") or "otel-demo")})
-    budgets = {
+    fault_contracts = {
         fault_type: {
-            "max_duration_seconds": policy.fault_type_budgets[fault_type].max_duration_seconds,
-            "intensities": {
+            "intensity_fields": {
                 name: {
-                    "minimum": bound.min_value,
-                    "maximum": bound.max_value,
-                    "unit": bound.unit,
+                    "type": "number",
+                    "unit": field_contract.unit,
+                    "bounded": False,
                 }
-                for name, bound in policy.fault_type_budgets[
+                for name, field_contract in policy.fault_type_contracts[
                     fault_type
-                ].intensities.items()
+                ].intensity_fields.items()
             },
         }
         for fault_type in allowed_fault_types
-        if fault_type in policy.fault_type_budgets
+        if fault_type in policy.fault_type_contracts
     }
     capability = {
         "target": target,
         "strategy_space": {
-            "allowed_fault_types": list(budgets),
-            "budgets": budgets,
+            "allowed_fault_types": list(fault_contracts),
+            "max_fault_duration_seconds": policy.max_fault_duration_seconds,
+            "intensity_limits": "none",
+            "fault_contracts": fault_contracts,
             "max_concurrent_faults": 1,
             "selection_must_be_evidence_based": True,
         },

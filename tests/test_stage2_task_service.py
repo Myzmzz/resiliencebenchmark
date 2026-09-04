@@ -212,8 +212,13 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         for item in options.json()["safety_envelope"]["faults"]
         if item["fault_type"] == "cpu-load"
     )
-    assert cpu["max_duration_seconds"] == 300
-    assert cpu["intensity_fields"]["cpu_percent"]["maximum"] == 80
+    assert options.json()["safety_envelope"]["max_fault_duration_seconds"] == 1200
+    assert options.json()["safety_envelope"]["intensity_limits"] == "none"
+    assert cpu["intensity_fields"]["cpu_percent"] == {
+        "type": "number",
+        "unit": "percent",
+        "bounded": False,
+    }
     assert {
         item["value"] for item in options.json()["d6_variants"]
     } == {"D6-A", "D6-B"}

@@ -550,7 +550,7 @@ class Stage2TaskService:
         model_matrix = preflight.get("model_matrix") or {}
         bidirectional = preflight.get("bidirectional_sessions") or {}
         return {
-            "schema_version": "stage2-options.v4",
+            "schema_version": "stage2-options.v5",
             "applications": [
                 {
                     "application": "otel-demo",
@@ -609,6 +609,10 @@ class Stage2TaskService:
                 "namespace_allowlist": ["otel-demo"],
                 "single_pod_only": True,
                 "max_concurrent_faults": 1,
+                "max_fault_duration_seconds": default_policy(
+                    {"otel-demo"}
+                ).max_fault_duration_seconds,
+                "intensity_limits": "none",
                 "faults": self._main_fault_options(),
             },
             "d6_variants": [
@@ -793,18 +797,15 @@ class Stage2TaskService:
             {
                 "fault_type": fault_type,
                 "label": labels[fault_type],
-                "max_duration_seconds": policy.fault_type_budgets[
-                    fault_type
-                ].max_duration_seconds,
                 "intensity_fields": {
                     name: {
-                        "minimum": bounds.min_value,
-                        "maximum": bounds.max_value,
-                        "unit": bounds.unit,
+                        "type": "number",
+                        "unit": field_contract.unit,
+                        "bounded": False,
                     }
-                    for name, bounds in policy.fault_type_budgets[
+                    for name, field_contract in policy.fault_type_contracts[
                         fault_type
-                    ].intensities.items()
+                    ].intensity_fields.items()
                 },
             }
             for fault_type in SUPPORTED_STAGE2_FAULT_TYPES

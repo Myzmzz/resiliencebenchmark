@@ -1370,7 +1370,9 @@ def _policy_payload(policy: Any) -> dict[str, Any]:
     return {
         "namespace_allowlist": sorted(policy.namespace_allowlist),
         "max_concurrent_actions": policy.max_concurrent_actions,
-        "allowed_fault_types": sorted(policy.fault_type_budgets),
+        "max_fault_duration_seconds": policy.max_fault_duration_seconds,
+        "intensity_limits": "none",
+        "allowed_fault_types": sorted(policy.fault_type_contracts),
     }
 
 

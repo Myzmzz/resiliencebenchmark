@@ -20,8 +20,8 @@
     "require_run_id_label": true,
     "abort_gate": {
       "enabled": true,
-      "max_runtime_seconds": 900,
-      "heartbeat_timeout_seconds": 120
+      "max_runtime_seconds": 1800,
+      "heartbeat_timeout_seconds": 1200
     },
     "cleanup_gate": {
       "enabled": true,
@@ -42,9 +42,9 @@
         "uid": "00000000-0000-0000-0000-000000000000"
       },
       "fault_type": "network-delay",
-      "duration_seconds": 120,
+      "duration_seconds": 1200,
       "intensity": {
-        "delay_ms": 250
+        "delay_ms": 2000
       },
       "labels": {
         "benchmark.run_id": "episode-e2e-001-r001",

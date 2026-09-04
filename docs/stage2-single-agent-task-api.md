@@ -40,11 +40,12 @@ Task API 不接受 `target`、`main_fault` 或 `autonomy_level`。目标 Pod、�
 
 - 将执行范围限制在所选 application 的命名空间；
 - 要求单个当前 Pod 和精确 UID；
-- 校验故障类型、最大持续时间、强度和并发预算；
+- 校验故障类型是否由当前执行器支持、故障窗口是否超过统一的 20 分钟超时，并校验强度字段格式；
 - 记录实际动作、监控期限并负责兜底清理；
-- 不把安全预算当作 Agent 已经作出的选择。
+- 不限制 CPU、内存、网络延迟、网络丢包等故障强度，也不为不同故障设置不同的时长上限；
+- 不把执行能力边界当作 Agent 已经作出的选择。
 
-`GET /api/v1/stage2/options` 的 `decision_ownership` 明确记录决策归属，`safety_envelope` 只公布 Controller 上限。`disturbance` 仍只表示 D1-D6 的 Harness 扰动，不表示主故障。
+`GET /api/v1/stage2/options` 的 `decision_ownership` 明确记录决策归属；`safety_envelope.max_fault_duration_seconds=1200` 是所有已支持故障共用的超时，`intensity_limits=none` 表示 Controller 不设置故障强度上下限。`disturbance` 仍只表示 D1-D6 的 Harness 扰动，不表示主故障。
 
 单项测试有两种写法：
 

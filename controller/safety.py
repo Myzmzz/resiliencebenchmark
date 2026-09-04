@@ -9,11 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import math
 import re
 from typing import Any, Mapping, Optional, Tuple
 
 
 RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,62}$")
+MAX_FAULT_DURATION_SECONDS = 20 * 60
 
 
 class LifecyclePhase(str, Enum):
@@ -60,27 +62,24 @@ class ValidationResult:
 
 
 @dataclass(frozen=True)
-class IntensityRange:
-    min_value: float
-    max_value: float
+class IntensityField:
     unit: str
 
-    def contains(self, raw_value: Any) -> bool:
+    def accepts(self, raw_value: Any) -> bool:
         value = _coerce_number(raw_value, self.unit)
-        return value is not None and self.min_value <= value <= self.max_value
+        return value is not None and math.isfinite(value)
 
 
 @dataclass(frozen=True)
-class FaultTypeBudget:
-    max_duration_seconds: int
-    intensities: Mapping[str, IntensityRange] = field(default_factory=dict)
+class FaultTypeContract:
+    intensity_fields: Mapping[str, IntensityField] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class AbortGate:
     enabled: bool = True
-    max_runtime_seconds: int = 900
-    heartbeat_timeout_seconds: int = 120
+    max_runtime_seconds: int = 1800
+    heartbeat_timeout_seconds: int = MAX_FAULT_DURATION_SECONDS
 
 
 @dataclass(frozen=True)
@@ -95,7 +94,8 @@ class CleanupGate:
 @dataclass(frozen=True)
 class ControllerPolicy:
     namespace_allowlist: frozenset[str]
-    fault_type_budgets: Mapping[str, FaultTypeBudget]
+    fault_type_contracts: Mapping[str, FaultTypeContract]
+    max_fault_duration_seconds: int = MAX_FAULT_DURATION_SECONDS
     max_concurrent_actions: int = 1
     require_single_target: bool = True
     require_target_uid: bool = True
@@ -134,30 +134,25 @@ class RunLease:
 
 
 def default_policy(namespace_allowlist: set[str] | frozenset[str]) -> ControllerPolicy:
-    """Return conservative defaults suitable for benchmark preparation."""
+    """Return the structural safety policy for Stage-2 fault execution."""
 
     return ControllerPolicy(
         namespace_allowlist=frozenset(namespace_allowlist),
-        fault_type_budgets={
-            "cpu-load": FaultTypeBudget(
-                max_duration_seconds=300,
-                intensities={"cpu_percent": IntensityRange(1, 80, "percent")},
+        fault_type_contracts={
+            "cpu-load": FaultTypeContract(
+                intensity_fields={"cpu_percent": IntensityField("percent")},
             ),
-            "memory-stress": FaultTypeBudget(
-                max_duration_seconds=300,
-                intensities={"mem_percent": IntensityRange(1, 80, "percent")},
+            "memory-stress": FaultTypeContract(
+                intensity_fields={"mem_percent": IntensityField("percent")},
             ),
-            "network-delay": FaultTypeBudget(
-                max_duration_seconds=180,
-                intensities={"delay_ms": IntensityRange(1, 1000, "milliseconds")},
+            "network-delay": FaultTypeContract(
+                intensity_fields={"delay_ms": IntensityField("milliseconds")},
             ),
-            "network-loss": FaultTypeBudget(
-                max_duration_seconds=180,
-                intensities={"loss_percent": IntensityRange(1, 20, "percent")},
+            "network-loss": FaultTypeContract(
+                intensity_fields={"loss_percent": IntensityField("percent")},
             ),
-            "pod-kill": FaultTypeBudget(
-                max_duration_seconds=60,
-                intensities={"pod_count": IntensityRange(1, 1, "count")},
+            "pod-kill": FaultTypeContract(
+                intensity_fields={"pod_count": IntensityField("count")},
             ),
         },
     )
@@ -167,6 +162,15 @@ def validate_policy(policy: ControllerPolicy) -> ValidationResult:
     findings: list[SafetyFinding] = []
     if not policy.namespace_allowlist:
         findings.append(_finding("NO_NAMESPACE_ALLOWLIST", "namespace allowlist must not be empty"))
+    if not policy.fault_type_contracts:
+        findings.append(_finding("NO_SUPPORTED_FAULT_TYPES", "at least one executable fault type is required"))
+    if policy.max_fault_duration_seconds <= 0:
+        findings.append(
+            _finding(
+                "INVALID_FAULT_TIMEOUT",
+                "fault timeout must be positive",
+            )
+        )
     if policy.max_concurrent_actions != 1:
         findings.append(_finding("UNSAFE_CONCURRENCY", "controller only supports one active action per run"))
     if not policy.require_single_target:
@@ -226,24 +230,34 @@ def validate_action(
     if active_action_count >= policy.max_concurrent_actions:
         findings.append(_finding("CONCURRENCY_BUDGET_EXCEEDED", "another action is already active"))
 
-    budget = policy.fault_type_budgets.get(action.fault_type)
-    if budget is None:
+    contract = policy.fault_type_contracts.get(action.fault_type)
+    if contract is None:
         findings.append(_finding("FAULT_TYPE_NOT_ALLOWED", "fault type is outside the allowed action space"))
         return ValidationResult(tuple(findings))
 
     if action.duration_seconds <= 0:
         findings.append(_finding("INVALID_DURATION", "duration must be positive"))
-    elif action.duration_seconds > budget.max_duration_seconds:
-        findings.append(_finding("DURATION_BUDGET_EXCEEDED", "duration exceeds the fault budget"))
+    elif action.duration_seconds > policy.max_fault_duration_seconds:
+        findings.append(
+            _finding(
+                "FAULT_TIMEOUT_EXCEEDED",
+                f"duration exceeds the global {policy.max_fault_duration_seconds}-second fault timeout",
+            )
+        )
 
-    unexpected = set(action.intensity) - set(budget.intensities)
+    unexpected = set(action.intensity) - set(contract.intensity_fields)
     if unexpected:
         findings.append(_finding("UNKNOWN_INTENSITY_FIELD", "intensity includes fields not allowed for this fault"))
-    for key, allowed_range in budget.intensities.items():
+    for key, field_contract in contract.intensity_fields.items():
         if key not in action.intensity:
             findings.append(_finding("MISSING_INTENSITY_FIELD", f"missing intensity field {key}"))
-        elif not allowed_range.contains(action.intensity[key]):
-            findings.append(_finding("INTENSITY_BUDGET_EXCEEDED", f"intensity field {key} is outside budget"))
+        elif not field_contract.accepts(action.intensity[key]):
+            findings.append(
+                _finding(
+                    "INVALID_INTENSITY_VALUE",
+                    f"intensity field {key} must be a finite numeric value",
+                )
+            )
 
     if not policy.cleanup_gate.verify_absence:
         findings.append(_finding("CLEANUP_NOT_VERIFIABLE", "cleanup must verify absence of this run's fault"))

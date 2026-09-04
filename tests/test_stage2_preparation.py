@@ -83,8 +83,8 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
         target=TargetSpec(namespace="otel-demo", component="cart"),
         main_fault=MainFaultSpec(
             fault_type="network-delay",
-            duration_seconds=180,
-            intensity={"delay_ms": 1000},
+            duration_seconds=1200,
+            intensity={"delay_ms": 2000},
         ),
     )
 
@@ -92,8 +92,8 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
     assert context.target.uid == "uid-current"
     assert core.selectors[0] == "app.kubernetes.io/component=cart"
     assert context.main_fault["target"]["pod_uid"] == "uid-current"
-    assert context.main_fault["duration_seconds"] == 180
-    assert context.main_fault["intensity"] == {"delay_ms": 1000}
+    assert context.main_fault["duration_seconds"] == 1200
+    assert context.main_fault["intensity"] == {"delay_ms": 2000}
     assert context.main_fault["request_contract"]["omit_selector"] is True
     assert context.main_fault["selection_mode"] == "explicit_api_contract"
     assert "interface" not in context.main_fault["intensity"]

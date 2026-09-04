@@ -251,8 +251,8 @@ def _stage2_fault_contract(
 
     fault_type = str(source_fault.get("fault_type") or "")
     policy = default_policy({target.namespace})
-    budget = policy.fault_type_budgets.get(fault_type)
-    if budget is None:
+    contract = policy.fault_type_contracts.get(fault_type)
+    if contract is None:
         raise PreparationError(
             f"main fault {fault_type or '<missing>'} is outside the Controller policy"
         )
@@ -260,7 +260,7 @@ def _stage2_fault_contract(
         source_fault.get("intensity") or source_fault.get("parameters") or {}
     )
     intensity: dict[str, Any] = {}
-    for name, allowed in budget.intensities.items():
+    for name in contract.intensity_fields:
         raw_value = source_parameters.get(name)
         if not isinstance(raw_value, (int, float)) or isinstance(raw_value, bool):
             raise PreparationError(
@@ -334,20 +334,19 @@ def _strategy_selection_contract(target: RuntimeTarget) -> dict[str, Any]:
         "duration_seconds": None,
         "intensity": {},
         "allowed_fault_types": list(SUPPORTED_STAGE2_FAULT_TYPES),
-        "budgets": {
+        "max_fault_duration_seconds": policy.max_fault_duration_seconds,
+        "intensity_limits": "none",
+        "fault_contracts": {
             fault_type: {
-                "max_duration_seconds": policy.fault_type_budgets[
-                    fault_type
-                ].max_duration_seconds,
-                "intensities": {
+                "intensity_fields": {
                     name: {
-                        "minimum": bounds.min_value,
-                        "maximum": bounds.max_value,
-                        "unit": bounds.unit,
+                        "type": "number",
+                        "unit": field_contract.unit,
+                        "bounded": False,
                     }
-                    for name, bounds in policy.fault_type_budgets[
+                    for name, field_contract in policy.fault_type_contracts[
                         fault_type
-                    ].intensities.items()
+                    ].intensity_fields.items()
                 },
             }
             for fault_type in SUPPORTED_STAGE2_FAULT_TYPES

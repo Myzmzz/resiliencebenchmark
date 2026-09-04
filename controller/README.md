@@ -10,7 +10,7 @@
 
 - `schemas/controller-plan.schema.json` 定义 Controller Plan 的公开配置形态；
 - `examples/controller-plan.example.json` 给出无凭证、无隐藏答案的最小样例；
-- `safety.py` 提供生命周期、ChaosBlade 动作预算和 Agent 失联清理判定；
+- `safety.py` 提供生命周期、ChaosBlade 结构性执行边界和 Agent 失联清理判定；
 - `tests/test_safety.py` 覆盖关键拒绝条件。
 
 ## 生命周期
@@ -31,7 +31,7 @@ prepare -> qualify -> baseline -> plan -> execute -> observe -> recover -> evalu
 - namespace 在 Episode 白名单内；
 - 目标是单个 Pod，且必须带有 Kubernetes UID；
 - 不允许 selector 直接作为注入目标，避免漂移到多个副本；
-- 故障类型、强度和持续时间必须在预算内；
+- 故障类型必须由当前执行器支持，单次故障窗口最长 20 分钟；Controller 不对故障强度设置上下限；
 - 每轮默认只允许一个活跃扰动；
 - abort gate 与 cleanup gate 必须开启，清理必须按 `run_id` 和目标 UID 收敛，并验证本轮扰动不存在。
 

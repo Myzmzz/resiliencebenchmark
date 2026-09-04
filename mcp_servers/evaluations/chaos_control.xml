@@ -12,8 +12,12 @@
     <answer>NAMESPACE_NOT_ALLOWED</answer>
   </qa_pair>
   <qa_pair>
-    <question>Use only read-only tools. Validate a network-loss plan with loss_percent 50. Which validation code shows the intensity is outside budget?</question>
-    <answer>INTENSITY_BUDGET_EXCEEDED</answer>
+    <question>Use only read-only tools. Validate a single-Pod network-delay plan with duration 1200 seconds and delay_ms 2000. What is the boolean ok value? Answer true or false.</question>
+    <answer>true</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use only read-only tools. Validate a single-Pod network-delay plan with duration 1201 seconds. Which validation code shows that the global fault timeout was exceeded?</question>
+    <answer>FAULT_TIMEOUT_EXCEEDED</answer>
   </qa_pair>
   <qa_pair>
     <question>Use only read-only tools. Validate a database-stop fault type for an otherwise valid Pod plan. Which validation code says the fault type is outside the allowed action space?</question>
