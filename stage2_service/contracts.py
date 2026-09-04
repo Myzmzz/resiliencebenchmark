@@ -138,6 +138,22 @@ SUPPORTED_STAGE2_FAULT_TYPES = tuple(
     for fault_type in sorted(default_policy({"otel-demo"}).fault_type_budgets)
     if fault_type != "pod-kill"
 )
+SUPPORTED_STAGE2_TARGET_BINDINGS = frozenset({("otel-demo", "cart")})
+
+
+class TargetSpec(ContractModel):
+    schema_version: Literal["stage2-target.v1"] = "stage2-target.v1"
+    namespace: str = Field(
+        min_length=1,
+        max_length=63,
+        pattern=r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+    )
+    component: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z0-9]([a-z0-9-]{0,78}[a-z0-9])?$",
+    )
+    resolution: Literal["single-ready-pod"] = "single-ready-pod"
 
 
 class MainFaultSpec(ContractModel):
@@ -405,8 +421,8 @@ class D0QualificationRef(ContractModel):
 
 
 class CampaignRequest(ContractModel):
-    schema_version: Literal["stage2-campaign-request.v2"] = (
-        "stage2-campaign-request.v2"
+    schema_version: Literal["stage2-campaign-request.v3"] = (
+        "stage2-campaign-request.v3"
     )
     request_id: str = Field(pattern=IDENTIFIER)
     episode: FixedEpisodeRef
@@ -421,6 +437,7 @@ class CampaignRequest(ContractModel):
     prompt_mode: PromptMode = PromptMode.COMPILED
     interaction_mode: InteractionMode = InteractionMode.GUIDED
     autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
+    target: TargetSpec
     main_fault: MainFaultSpec | None = None
     d6_variant: OperationUncertaintyVariant = OperationUncertaintyVariant.NOT_APPLIED
     case_bundle: CaseBundle | None = None
@@ -440,6 +457,17 @@ class CampaignRequest(ContractModel):
             raise ValueError("every harness requires one frozen model alias")
         if any(not model.strip() for model in self.model_by_harness.values()):
             raise ValueError("every Harness model alias must be non-empty")
+        if self.target.namespace != self.application_namespace:
+            raise ValueError(
+                "target namespace must match the selected Stage2 application namespace"
+            )
+        if (
+            self.target.namespace,
+            self.target.component,
+        ) not in SUPPORTED_STAGE2_TARGET_BINDINGS:
+            raise ValueError(
+                "target has no qualified Stage2 runtime and independent Oracle adapter"
+            )
         if (
             self.autonomy_level in EXPLICIT_FAULT_AUTONOMY_LEVELS
             and self.main_fault is None

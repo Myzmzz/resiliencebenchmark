@@ -24,6 +24,7 @@ from stage2_service.contracts import (
     RecoveryResult,
     RuntimeTarget,
     Stage2CaseId,
+    TargetSpec,
     TrialKind,
     TrialRuntimeContext,
 )
@@ -54,6 +55,7 @@ def _request():
         model_by_harness={
             HarnessKind.CODEX: "gpt-5.6-sol",
         },
+        target=TargetSpec(namespace="otel-demo", component="cart"),
         main_fault=MainFaultSpec(
             fault_type="network-delay",
             duration_seconds=180,
@@ -71,8 +73,8 @@ class Gate:
 
 
 class Preparer:
-    def prepare(self, trial_id, episode, *, main_fault, autonomy_level):
-        del autonomy_level
+    def prepare(self, trial_id, episode, *, target, main_fault, autonomy_level):
+        del target, autonomy_level
         return TrialRuntimeContext(
             trial_id=trial_id,
             episode_id=episode.internal.identity.episode_id,

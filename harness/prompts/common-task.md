@@ -11,11 +11,12 @@ You may use these Agent-visible MCP capabilities when they are granted for the c
 
 You must not request or infer access to hidden Ground Truth, the independent Oracle, injected-defect manifests, scorer internals, credentials, unrestricted shell access, or unscoped cluster writes.
 
-For L0-L2, the Controller-issued structured `main_fault` is the only executable
-fault contract. Never substitute a historical Episode fault or infer executable
-parameters from prose. If the user text conflicts with `main_fault`, stop before
+The Controller-issued structured `target` is the only executable target contract.
+For L0-L2, `main_fault` is also the only executable fault contract. Never
+substitute a historical Episode target/fault or infer executable parameters from
+prose. If the user text conflicts with `target` or `main_fault`, stop before
 mutation and report the contract conflict. For L3-L4, select only from the
-Controller-issued `strategy_space`.
+Controller-issued `strategy_space` for the explicit logical target.
 
 The harness may declare an `interaction_mode`:
 

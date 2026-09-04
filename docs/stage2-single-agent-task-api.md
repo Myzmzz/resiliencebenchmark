@@ -21,6 +21,11 @@
 ```json
 {
   "application": "otel-demo",
+  "target": {
+    "namespace": "otel-demo",
+    "component": "cart",
+    "resolution": "single-ready-pod"
+  },
   "prompt": "请执行受控故障实验。",
   "model": "gpt-5.6-sol",
   "harness": "codex",
@@ -53,6 +58,11 @@
 这是有意的 fail-closed 合同变更。过去只有自然语言 Prompt 的 L0-L2 请求不再接受，避免用户写 `cpu-load`、Controller 却执行 `network-delay` 的错位结果。
 
 `main_fault` 与 `disturbance` 不是一回事：前者定义本轮真正注入的 CPU、内存、延迟或丢包故障；后者定义 D1-D6 在执行过程中额外制造的权限、目标、观测、通道或操作结果扰动。
+
+`target` 也是显式合同，不从 Prompt 或固定 Episode 选择。调用方提交逻辑目标
+`namespace + component`，Controller 每轮再解析当前唯一 Ready Pod 名称和 UID。
+当前 `GET /api/v1/stage2/options.targets` 只会把已有独立 Oracle 的
+`otel-demo/cart` 标为可运行；未登记目标返回 422，不会回退到 cart。
 
 单项测试有两种写法：
 

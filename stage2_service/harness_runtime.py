@@ -1116,6 +1116,10 @@ def _runtime_public_episode(
     )
     action_space = dict(value.get("action_space") or {})
     action_space["allowed_fault_types"] = list(capability.allowed_fault_types)
+    action_space["target_scope"] = (
+        f"{runtime_context.target.namespace} 命名空间中的 "
+        f"{runtime_context.target.component} 逻辑组件；执行前解析并确认当前唯一 Ready Pod。"
+    )
     value["action_space"] = action_space
     value["runtime_fault_contract"] = runtime_context.main_fault
     return value

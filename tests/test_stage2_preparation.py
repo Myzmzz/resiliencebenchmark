@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from stage2_service.contracts import AutonomyLevel, MainFaultSpec
+from stage2_service.contracts import AutonomyLevel, MainFaultSpec, TargetSpec
 
 from stage2_service.preparation import (
     ApplicationTrafficCapabilityIssuer,
@@ -41,15 +41,19 @@ def pod(name="cart-abc", uid="uid-current"):
 
 
 class Core:
+    def __init__(self):
+        self.selectors = []
+
     def list_namespaced_pod(self, namespace, label_selector):
         del namespace
+        self.selectors.append(label_selector)
         return SimpleNamespace(
             items=[pod()] if label_selector.startswith("app.kubernetes.io") else []
         )
 
 
 class Binding:
-    component = "cart"
+    component = "historical-fixed-component"
 
 
 class Identity:
@@ -71,9 +75,11 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
         controller_pod_uid="controller-uid",
         traffic_evidence=Traffic(),
     )
-    context = KubernetesTrialPreparer(Core(), issuer).prepare(
+    core = Core()
+    context = KubernetesTrialPreparer(core, issuer).prepare(
         "campaign-1234567890abcdef-codex-t1",
         Episode(),
+        target=TargetSpec(namespace="otel-demo", component="cart"),
         main_fault=MainFaultSpec(
             fault_type="network-delay",
             duration_seconds=180,
@@ -84,6 +90,7 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
 
     assert context.target.name == "cart-abc"
     assert context.target.uid == "uid-current"
+    assert core.selectors[0] == "app.kubernetes.io/component=cart"
     assert context.main_fault["target"]["pod_uid"] == "uid-current"
     assert context.main_fault["duration_seconds"] == 180
     assert context.main_fault["intensity"] == {"delay_ms": 1000}
@@ -115,6 +122,7 @@ def test_application_traffic_capability_fails_when_builtin_traffic_is_not_observ
         KubernetesTrialPreparer(Core(), issuer).prepare(
             "campaign-1234567890abcdef-codex-t1",
             Episode(),
+            target=TargetSpec(namespace="otel-demo", component="cart"),
             main_fault=MainFaultSpec(
                 fault_type="cpu-load",
                 duration_seconds=300,

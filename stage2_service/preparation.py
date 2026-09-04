@@ -26,6 +26,7 @@ from .contracts import (
     RuntimeTarget,
     SUPPORTED_STAGE2_FAULT_TYPES,
     TrialRuntimeContext,
+    TargetSpec,
 )
 
 
@@ -166,25 +167,28 @@ class KubernetesTrialPreparer:
         trial_id: str,
         episode,
         *,
+        target: TargetSpec,
         main_fault: MainFaultSpec | None,
         autonomy_level: AutonomyLevel,
     ) -> TrialRuntimeContext:
-        component = episode.internal.runtime_binding.component
-        target = self._resolve_target("otel-demo", component)
+        runtime_target = self._resolve_target(
+            target.namespace,
+            target.component,
+        )
         runtime_fault = (
-            _strategy_selection_contract(target)
+            _strategy_selection_contract(runtime_target)
             if autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
             else _stage2_fault_contract(
                 trial_id,
                 _requested_fault(main_fault),
-                target,
+                runtime_target,
             )
         )
         capability = self.capability_issuer.issue(trial_id, target)
         return TrialRuntimeContext(
             trial_id=trial_id,
             episode_id=episode.internal.identity.episode_id,
-            target=target,
+            target=runtime_target,
             main_fault=runtime_fault,
             cleanup_handle=new_cleanup_handle(),
             baseline_capability=capability,
@@ -357,20 +361,20 @@ def _effect_verification_contract(fault_type: str) -> list[dict[str, str]]:
             "Prometheus 容器内存时间序列",
         ),
         "network-delay": (
-            "cart_latency_delta",
-            "cart 路径延迟相对基线发生可测升高。",
+            "target_latency_delta",
+            "目标业务路径延迟相对基线发生可测升高。",
             "持续工作负载与请求延迟",
         ),
         "network-loss": (
-            "cart_error_or_latency_delta",
-            "cart 路径错误率或延迟相对基线发生可测变化。",
+            "target_error_or_latency_delta",
+            "目标业务路径错误率或延迟相对基线发生可测变化。",
             "持续工作负载与请求结果",
         ),
     }[fault_type]
     return [
         {
             "criterion_id": "chaosblade_running",
-            "description": "所选主故障以当前 cart Pod 为目标并进入 Running 状态。",
+            "description": "所选主故障以当前解析出的目标 Pod 为对象并进入 Running 状态。",
             "evidence_source": "ChaosBlade 状态与 Controller 记录",
         },
         {

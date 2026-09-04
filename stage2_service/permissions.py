@@ -111,13 +111,13 @@ class Stage2PermissionManager:
                 api_group="",
                 resource="pods",
                 verbs=("get", "list"),
-                namespace="otel-demo",
+                namespace=runtime.target.namespace,
             ),
             KubernetesRule(
                 api_group="",
                 resource="pods/log",
                 verbs=("get",),
-                namespace="otel-demo",
+                namespace=runtime.target.namespace,
             ),
         )
         if direct_kubeconfig:
@@ -142,7 +142,7 @@ class Stage2PermissionManager:
                     api_group="metrics.k8s.io",
                     resource="pods",
                     verbs=("get", "list"),
-                    namespace="otel-demo",
+                    namespace=runtime.target.namespace,
                 ),
             )
         del episode
@@ -153,7 +153,8 @@ class Stage2PermissionManager:
             else (selected_fault_type,)
         )
         if not all(
-            fault_type in default_policy({"otel-demo"}).fault_type_budgets
+            fault_type
+            in default_policy({runtime.target.namespace}).fault_type_budgets
             for fault_type in allowed_fault_types
         ):
             raise RuntimeError("runtime fault capability is outside Controller policy")

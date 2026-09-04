@@ -128,6 +128,7 @@ class TrialPreparer(Protocol):
         trial_id: str,
         episode: LoadedEpisode,
         *,
+        target,
         main_fault,
         autonomy_level: AutonomyLevel,
     ) -> TrialRuntimeContext: ...
@@ -288,6 +289,7 @@ class CampaignEngine:
                         runtime = self.preparer.prepare(
                             trial_id,
                             self.episode,
+                            target=request.target,
                             main_fault=request.main_fault,
                             autonomy_level=request.autonomy_level,
                         ).model_copy(

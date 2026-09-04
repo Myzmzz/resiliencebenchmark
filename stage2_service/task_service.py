@@ -33,7 +33,9 @@ from .contracts import (
     PromptMode,
     STAGE2_MODEL_MATRIX,
     SUPPORTED_STAGE2_FAULT_TYPES,
+    SUPPORTED_STAGE2_TARGET_BINDINGS,
     Stage2CaseId,
+    TargetSpec,
     TASK_STAGE2_CASE_IDS,
     default_case_specs,
 )
@@ -96,8 +98,9 @@ SENSITIVE_KEY_PARTS = (
 
 
 class Stage2TaskCreateRequest(ContractModel):
-    schema_version: Literal["stage2-task-create.v3"] = "stage2-task-create.v3"
+    schema_version: Literal["stage2-task-create.v4"] = "stage2-task-create.v4"
     application: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
+    target: TargetSpec
     prompt: str = Field(min_length=1, max_length=12000)
     prompt_mode: PromptMode = Field(
         default=PromptMode.COMPILED,
@@ -158,6 +161,17 @@ class Stage2TaskCreateRequest(ContractModel):
             raise ValueError(
                 f"application is not runnable in Stage2: {self.application}; "
                 "missing Stage2 Episode/runtime adapter"
+            )
+        if self.target.namespace != "otel-demo":
+            raise ValueError(
+                "target.namespace must match application otel-demo"
+            )
+        if (
+            self.target.namespace,
+            self.target.component,
+        ) not in SUPPORTED_STAGE2_TARGET_BINDINGS:
+            raise ValueError(
+                "target has no qualified Stage2 runtime and independent Oracle adapter"
             )
         if (
             self.autonomy_level in EXPLICIT_FAULT_AUTONOMY_LEVELS
@@ -487,6 +501,7 @@ class Stage2TaskService:
             prompt_mode=request.prompt_mode,
             interaction_mode=request.interaction_mode,
             autonomy_level=request.autonomy_level,
+            target=request.target,
             main_fault=request.main_fault,
             d6_variant=request.d6_variant,
             case_bundle=CaseBundle(
@@ -510,6 +525,7 @@ class Stage2TaskService:
                 summary="single-Agent Stage2 task accepted",
                 payload={
                     "application": request.application,
+                    "target": request.target.model_dump(mode="json"),
                     "model": request.model,
                     "harness": request.harness.value,
                     "prompt_mode": request.prompt_mode.value,
@@ -548,10 +564,11 @@ class Stage2TaskService:
         state = self.store.status(task_id)
         request = self.store.request(task_id)
         return {
-            "schema_version": "stage2-task-created.v3",
+            "schema_version": "stage2-task-created.v4",
             "task_id": task_id,
             "task_status": state["task_status"],
             "application": request["application"],
+            "target": request["target"],
             "model": request["model"],
             "harness": request["harness"],
             "prompt_mode": request.get("prompt_mode", PromptMode.COMPILED.value),
@@ -593,7 +610,7 @@ class Stage2TaskService:
         model_matrix = preflight.get("model_matrix") or {}
         bidirectional = preflight.get("bidirectional_sessions") or {}
         return {
-            "schema_version": "stage2-options.v2",
+            "schema_version": "stage2-options.v3",
             "applications": [
                 {
                     "application": "otel-demo",
@@ -611,6 +628,25 @@ class Stage2TaskService:
                     "reason": "缺少 Stage2 Episode 和 runtime adapter，当前不能端到端执行",
                 },
             ],
+            "targets": [
+                {
+                    "application": "otel-demo",
+                    "namespace": namespace,
+                    "component": component,
+                    "resolution": "single-ready-pod",
+                    "runnable": True,
+                    "oracle_profile": "otel-demo-cart-traffic-and-resource",
+                }
+                for namespace, component in sorted(
+                    SUPPORTED_STAGE2_TARGET_BINDINGS
+                )
+            ],
+            "target_policy": {
+                "required": True,
+                "prompt_inference": False,
+                "pod_identity_selected_by_request": False,
+                "pod_identity_resolved_each_trial": True,
+            },
             "harnesses": [
                 {
                     "harness": harness.value,
@@ -667,7 +703,6 @@ class Stage2TaskService:
             ],
             "disturbances": self._disturbance_options(),
             "defaults": {
-                "application": "otel-demo",
                 "cases": [item.value for item in TASK_CASES],
                 "prompt_mode": PromptMode.COMPILED.value,
                 "interaction_mode": InteractionMode.GUIDED.value,
@@ -706,6 +741,7 @@ class Stage2TaskService:
             "elapsed_seconds": self._elapsed(state),
             "input": {
                 "application": request["application"],
+                "target": request.get("target"),
                 "prompt": request["prompt"],
                 "prompt_mode": request.get(
                     "prompt_mode", PromptMode.COMPILED.value
@@ -912,6 +948,7 @@ class Stage2TaskService:
             "terminal": state.get("terminal"),
             "runtime_attached": state.get("runtime_attached"),
             "application": request.get("application"),
+            "target": request.get("target"),
             "model": request.get("model"),
             "harness": request.get("harness"),
             "prompt_mode": request.get("prompt_mode", PromptMode.COMPILED.value),
@@ -1403,7 +1440,7 @@ class Stage2TaskService:
                 "interaction_mode": InteractionMode.AUTONOMOUS.value,
                 "prompt": "请设计并执行一个安全的 otel-demo cart 服务韧性实验，用证据说明系统对该扰动的表现。",
                 "main_fault": None,
-                "decisions": ("选择故障类型", "选择目标和参数", "解释策略与风险边界"),
+                "decisions": ("选择故障类型", "选择参数和恢复条件", "解释策略与风险边界"),
             },
             AutonomyLevel.L4_RISK_RECOGNITION: {
                 "goal": "Prompt 不完整或存在风险时，Agent 要识别风险，能补齐则补齐，不能补齐则拒绝。",
@@ -1434,6 +1471,11 @@ class Stage2TaskService:
             ],
             "recommended_post_body": {
                 "application": "otel-demo",
+                "target": {
+                    "namespace": "otel-demo",
+                    "component": "cart",
+                    "resolution": "single-ready-pod",
+                },
                 "prompt": body["prompt"],
                 "model": "gpt-5.6-sol",
                 "harness": "codex",

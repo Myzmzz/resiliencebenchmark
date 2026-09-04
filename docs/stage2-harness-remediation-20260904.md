@@ -46,8 +46,9 @@
 新增 `GET /api/v1/stage2/tasks` 仅用于列出已有任务。创建请求可以通过 `cases`
 选择一个或多个用例，也可以用 `disturbance` 选择 `none` 或一个 D1-D6 扰动。
 新建任务增加的交互模式、自主性等级和 D6 variant 参数均有默认值。URL 与查询
-流程保持不变，但 L0-L2 创建请求必须提供结构化 `main_fault`；Prompt 不再被当作
-Controller 可执行参数，也不再从固定 Episode 静默继承故障类型。
+流程保持不变，但创建请求必须提供结构化 `target`，且 L0-L2 还必须提供
+`main_fault`；Prompt 不再被当作 Controller 可执行参数，也不再从固定 Episode
+静默继承目标或故障类型。
 
 ## 4. Harness 反馈边界
 
@@ -89,12 +90,13 @@ Agent 仍须调用只读状态工具完成对账。
 
 ## 7. 动态主故障合同
 
-- `prompt` 只表达用户意图，`main_fault` 才定义可执行故障；
+- `prompt` 只表达用户意图，`target` 与 `main_fault` 才定义可执行目标和故障；
+- `target` 显式指定逻辑 namespace/component，Controller 仅动态解析当前 Pod 名称与 UID；
 - L0-L2 显式提交故障类型、持续时间和强度，越界请求在创建阶段返回 422；
 - L3-L4 不提交固定故障，由 Agent 在 Controller 下发的多故障安全空间中选择；
 - Runtime、MCP 服务端能力、Agent Prompt、最终摘要和 Oracle 均使用同一份合同；
 - CPU 与内存使用目标 Pod 的 Prometheus 历史资源曲线验证物理效果，网络故障使用持续业务流量验证影响；
-- 固定 Episode 仅保留环境、目标组件和源码快照，不再决定本轮主故障。
+- 固定 Episode 仅保留环境和源码/证据适配背景，不再决定本轮目标组件或主故障。
 
 ## 8. 交付和人工验证边界
 

@@ -117,6 +117,7 @@ def task_service(tmp_path, runner):
 def request():
     return Stage2TaskCreateRequest(
         application="otel-demo",
+        target={"namespace": "otel-demo", "component": "cart"},
         prompt="Inject the bounded cart fault and verify its effect.",
         model="gpt-5.6-sol",
         harness="codex",
@@ -207,6 +208,16 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert applications["otel-demo"] is True
     assert applications["train-ticket"] is False
     assert applications["sock-shop"] is False
+    assert options.json()["targets"] == [
+        {
+            "application": "otel-demo",
+            "namespace": "otel-demo",
+            "component": "cart",
+            "resolution": "single-ready-pod",
+            "runnable": True,
+            "oracle_profile": "otel-demo-cart-traffic-and-resource",
+        }
+    ]
     assert "none" in {
         item["value"] for item in options.json()["disturbances"]
     }
@@ -319,6 +330,21 @@ def test_l0_rejects_missing_main_fault_and_l3_rejects_fixed_fault(tmp_path):
 
     assert missing_response.status_code == 422
     assert fixed_l3_response.status_code == 422
+
+
+def test_request_requires_explicit_qualified_logical_target(tmp_path):
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    client = TestClient(create_app(supervisor, task_service=service))
+    missing = request().model_dump(mode="json")
+    missing.pop("target")
+    unsupported = request().model_dump(mode="json")
+    unsupported["target"] = {
+        "namespace": "otel-demo",
+        "component": "checkout",
+    }
+
+    assert client.post("/api/v1/stage2/tasks", json=missing).status_code == 422
+    assert client.post("/api/v1/stage2/tasks", json=unsupported).status_code == 422
 
 
 def test_detached_historical_task_read_does_not_mutate_status_file(tmp_path):

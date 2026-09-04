@@ -23,6 +23,7 @@ from .contracts import (
     HarnessKind,
     MainFaultSpec,
     PlatformStatus,
+    TargetSpec,
     default_case_specs,
 )
 
@@ -41,6 +42,7 @@ DEFAULT_MATRIX_MAIN_FAULT = MainFaultSpec(
     duration_seconds=180,
     intensity={"delay_ms": 1000},
 )
+DEFAULT_MATRIX_TARGET = TargetSpec(namespace="otel-demo", component="cart")
 SAFE_MATRIX_ID = re.compile(r"^matrix-[a-z0-9][a-z0-9-]{7,100}$")
 
 
@@ -123,6 +125,7 @@ def build_matrix_requests(
                         "required" if evaluation_ready else "diagnostic"
                     ),
                     qualification_refs={harness: ref},
+                    target=DEFAULT_MATRIX_TARGET,
                     main_fault=DEFAULT_MATRIX_MAIN_FAULT,
                     case_bundle=CaseBundle(
                         bundle_id=f"{matrix_id}-{pair_slug}",
