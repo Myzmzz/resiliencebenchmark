@@ -1806,14 +1806,19 @@ class Stage2TaskService:
             event_type = str(event.get("event_type") or "").upper()
             if event_type == "AGENT_CLARIFICATION_REQUESTED":
                 payload = event.get("payload") if isinstance(event.get("payload"), Mapping) else {}
+                question_payload = (
+                    payload.get("payload")
+                    if isinstance(payload.get("payload"), Mapping)
+                    else payload
+                )
                 groups["clarification_requests"].append(
                     {
                         "sequence": event.get("sequence"),
                         "occurred_at": event.get("occurred_at"),
                         "trial_id": event.get("trial_id"),
                         "case_id": event.get("case_id"),
-                        "question_id": payload.get("question_id"),
-                        "summary": payload.get("question") or event.get("summary"),
+                        "question_id": question_payload.get("question_id"),
+                        "summary": question_payload.get("question") or event.get("summary"),
                     }
                 )
             for status in tuple(delivery):

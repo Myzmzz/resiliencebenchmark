@@ -682,7 +682,11 @@ class Stage2System:
         }, None
 
     def run(
-        self, request: CampaignRequest, event_observer=None, stop_requested=None
+        self,
+        request: CampaignRequest,
+        event_observer=None,
+        stop_requested=None,
+        interaction_provider=None,
     ) -> CampaignResult:
         episode = load_fixed_episode(request.episode, root=self.config.repo_root)
         gate = KubernetesEnvironmentGate(self.config.kubeconfig)
@@ -817,6 +821,7 @@ class Stage2System:
                 request,
                 event_observer=event_observer,
                 stop_requested=stop_requested,
+                interaction_provider=interaction_provider,
             )
         finally:
             with self._active_lock:
