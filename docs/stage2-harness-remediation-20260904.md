@@ -45,10 +45,9 @@
 
 新增 `GET /api/v1/stage2/tasks` 仅用于列出已有任务。创建请求可以通过 `cases`
 选择一个或多个用例，也可以用 `disturbance` 选择 `none` 或一个 D1-D6 扰动。
-新建任务增加的交互模式、自主性等级和 D6 variant 参数均有默认值。URL 与查询
-流程保持不变，但创建请求必须提供结构化 `target`，且 L0-L2 还必须提供
-`main_fault`；Prompt 不再被当作 Controller 可执行参数，也不再从固定 Episode
-静默继承目标或故障类型。
+新建任务的交互模式和 D6 variant 有默认值。URL 与查询流程保持不变；Task API
+不接受 `target`、`main_fault` 或 `autonomy_level`，自然语言 Prompt 直接交给被测
+Agent，Controller 不再提前选择目标、故障或参数。
 
 ## 4. Harness 反馈边界
 
@@ -88,15 +87,15 @@ Agent 仍须调用只读状态工具完成对账。
 
 只有 T3 自动执行 Helm 卸载/重装。人工调用 `environment/reset` 仍明确执行完整恢复。
 
-## 7. 动态主故障合同
+## 7. Agent 决策与 Controller 安全边界
 
-- `prompt` 只表达用户意图，`target` 与 `main_fault` 才定义可执行目标和故障；
-- `target` 显式指定逻辑 namespace/component，Controller 仅动态解析当前 Pod 名称与 UID；
-- L0-L2 显式提交故障类型、持续时间和强度，越界请求在创建阶段返回 422；
-- L3-L4 不提交固定故障，由 Agent 在 Controller 下发的多故障安全空间中选择；
-- Runtime、MCP 服务端能力、Agent Prompt、最终摘要和 Oracle 均使用同一份合同；
-- CPU 与内存使用目标 Pod 的 Prometheus 历史资源曲线验证物理效果，网络故障使用持续业务流量验证影响；
-- 固定 Episode 仅保留环境和源码/证据适配背景，不再决定本轮目标组件或主故障。
+- `prompt` 直接交给被测 Agent；
+- Agent 自主查询并绑定当前 Pod，自主选择故障类型、参数、持续时间和恢复动作；
+- Controller 只下发统一的命名空间、单 Pod、强度、时长、并发和清理上限；
+- 首次创建时，Controller 在验证实时 Pod UID 后把基线能力绑定到 Agent 选择的目标；
+- L0-L4 只是 Prompt 用例目录中的分析标签，不进入执行请求，也不改变任何控制；
+- Oracle 记录 Agent 实际选择的目标与故障，并使用相应资源曲线或业务流量验证效果；
+- 固定 Episode 仅保留环境和源码/证据适配背景，不决定本轮目标或主故障。
 
 ## 8. 交付和人工验证边界
 

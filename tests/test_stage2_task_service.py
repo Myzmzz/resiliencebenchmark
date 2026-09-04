@@ -117,15 +117,9 @@ def task_service(tmp_path, runner):
 def request():
     return Stage2TaskCreateRequest(
         application="otel-demo",
-        target={"namespace": "otel-demo", "component": "cart"},
         prompt="Inject the bounded cart fault and verify its effect.",
         model="gpt-5.6-sol",
         harness="codex",
-        main_fault={
-            "fault_type": "cpu-load",
-            "duration_seconds": 300,
-            "intensity": {"cpu_percent": 80},
-        },
     )
 
 
@@ -143,8 +137,8 @@ def test_creates_persistent_seven_trial_task_and_reuses_idempotency_key(tmp_path
         time.sleep(0.01)
     assert status["task_status"] == "COMPLETED"
     assert status["input"]["cases"] == ["C0", "D1", "D2", "D3", "D4", "D5", "D6"]
-    assert status["input"]["interaction_mode"] == "guided"
-    assert status["input"]["autonomy_level"] == "L0_COMPLETE_TASK"
+    assert status["input"]["interaction_mode"] == "autonomous"
+    assert status["input"]["prompt_mode"] == "verbatim"
     assert len(status["trials"]) == 7
     timeline = service.get(created["task_id"], mode=TaskDetailMode.TIMELINE)
     assert timeline["events"][0]["actor"] == "HARNESS"
@@ -208,27 +202,18 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert applications["otel-demo"] is True
     assert applications["train-ticket"] is False
     assert applications["sock-shop"] is False
-    assert options.json()["targets"] == [
-        {
-            "application": "otel-demo",
-            "namespace": "otel-demo",
-            "component": "cart",
-            "resolution": "single-ready-pod",
-            "runnable": True,
-            "oracle_profile": "otel-demo-cart-traffic-and-resource",
-        }
-    ]
+    assert options.json()["decision_ownership"]["target"] == "agent"
+    assert options.json()["decision_ownership"]["fault_type"] == "agent"
     assert "none" in {
         item["value"] for item in options.json()["disturbances"]
     }
     cpu = next(
         item
-        for item in options.json()["main_faults"]
+        for item in options.json()["safety_envelope"]["faults"]
         if item["fault_type"] == "cpu-load"
     )
     assert cpu["max_duration_seconds"] == 300
     assert cpu["intensity_fields"]["cpu_percent"]["maximum"] == 80
-    assert options.json()["main_fault_policy"]["prompt_inference"] is False
     assert {
         item["value"] for item in options.json()["d6_variants"]
     } == {"D6-A", "D6-B"}
@@ -251,12 +236,12 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "L4_RISK_RECOGNITION",
     ]
     assert autonomy.json()["levels"][0]["recommended_post_body"]["application"] == "otel-demo"
-    assert autonomy.json()["levels"][0]["recommended_post_body"]["main_fault"][
-        "fault_type"
-    ] == "cpu-load"
-    assert "main_fault" not in autonomy.json()["levels"][3][
-        "recommended_post_body"
-    ]
+    assert all(
+        "autonomy_level" not in item["recommended_post_body"]
+        and "main_fault" not in item["recommended_post_body"]
+        and "target" not in item["recommended_post_body"]
+        for item in autonomy.json()["levels"]
+    )
 
 
 def test_single_case_selection_updates_task_suite_and_campaign_request(tmp_path):
@@ -316,35 +301,21 @@ def test_rejects_mismatched_cases_and_disturbance_or_unrunnable_app(tmp_path):
     assert unrunnable.status_code == 422
 
 
-def test_l0_rejects_missing_main_fault_and_l3_rejects_fixed_fault(tmp_path):
+def test_deprecated_controller_decision_fields_are_rejected(tmp_path):
     service, supervisor, _controls = task_service(tmp_path, Runner())
     client = TestClient(create_app(supervisor, task_service=service))
-    missing = request().model_dump(mode="json")
-    missing.pop("main_fault")
-    fixed_l3 = request().model_dump(mode="json")
-    fixed_l3["interaction_mode"] = "autonomous"
-    fixed_l3["autonomy_level"] = "L3_STRATEGY_SELECTION"
-
-    missing_response = client.post("/api/v1/stage2/tasks", json=missing)
-    fixed_l3_response = client.post("/api/v1/stage2/tasks", json=fixed_l3)
-
-    assert missing_response.status_code == 422
-    assert fixed_l3_response.status_code == 422
-
-
-def test_request_requires_explicit_qualified_logical_target(tmp_path):
-    service, supervisor, _controls = task_service(tmp_path, Runner())
-    client = TestClient(create_app(supervisor, task_service=service))
-    missing = request().model_dump(mode="json")
-    missing.pop("target")
-    unsupported = request().model_dump(mode="json")
-    unsupported["target"] = {
-        "namespace": "otel-demo",
-        "component": "checkout",
-    }
-
-    assert client.post("/api/v1/stage2/tasks", json=missing).status_code == 422
-    assert client.post("/api/v1/stage2/tasks", json=unsupported).status_code == 422
+    for field, value in {
+        "autonomy_level": "L3_STRATEGY_SELECTION",
+        "target": {"namespace": "otel-demo", "component": "cart"},
+        "main_fault": {
+            "fault_type": "cpu-load",
+            "duration_seconds": 300,
+            "intensity": {"cpu_percent": 80},
+        },
+    }.items():
+        payload = request().model_dump(mode="json")
+        payload[field] = value
+        assert client.post("/api/v1/stage2/tasks", json=payload).status_code == 422
 
 
 def test_detached_historical_task_read_does_not_mutate_status_file(tmp_path):

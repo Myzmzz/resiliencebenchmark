@@ -234,6 +234,22 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual("BASELINE_LEDGER_MISMATCH", result["error"]["code"])
 
+    def test_agent_selected_baseline_binds_to_first_live_target(self):
+        path = self.write_baseline(
+            target_name=None,
+            target_uid=None,
+            target_binding_mode="agent_selected",
+            binding_version=0,
+        )
+
+        result = run(self.service.create_experiment(**self.create_kwargs()))
+        rebound = json.loads(path.read_text())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual("checkoutservice-abc123", rebound["target_name"])
+        self.assertEqual("pod-uid-1", rebound["target_uid"])
+        self.assertEqual(1, rebound["binding_version"])
+
     def test_create_rejects_baseline_symlink(self):
         token_hash = hashlib.sha256(self.baseline_token.encode()).hexdigest()
         path = self.baseline_dir / f"{token_hash}.json"

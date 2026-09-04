@@ -21,24 +21,12 @@
 ```json
 {
   "application": "otel-demo",
-  "target": {
-    "namespace": "otel-demo",
-    "component": "cart",
-    "resolution": "single-ready-pod"
-  },
-  "prompt": "请执行受控故障实验。",
+  "prompt": "请针对 otel-demo 的 cart 服务注入高 CPU 故障，持续 5 分钟后自动恢复。",
   "model": "gpt-5.6-sol",
   "harness": "codex",
-  "main_fault": {
-    "fault_type": "cpu-load",
-    "duration_seconds": 300,
-    "intensity": {"cpu_percent": 80}
-  },
-  "prompt_mode": "compiled",
-  "interaction_mode": "guided",
-  "autonomy_level": "L0_COMPLETE_TASK",
-  "d6_variant": "D6-A",
-  "cases": ["C0", "D1", "D2", "D3", "D4", "D5", "D6"]
+  "prompt_mode": "verbatim",
+  "interaction_mode": "autonomous",
+  "cases": ["C0"]
 }
 ```
 
@@ -46,23 +34,17 @@
 
 接口中的智能体选择字段沿用现有名称 `harness`：`codex`、`claude-code`、`deepseek-harness` 或 `bladeai`。可选模型及每个 Harness/模型组合当前是否可运行，以 `/api/v1/stage2/options` 返回的 `model_matrix` 为准，不能只凭模型名称判断。
 
-`prompt_mode`、`interaction_mode`、`autonomy_level`、`d6_variant`、`cases` 和 `disturbance` 都是可选字段。默认使用全套 `C0,D1,D2,D3,D4,D5,D6`，并采用 `compiled`、`guided`、`L0_COMPLETE_TASK` 和 `D6-A`。
+`prompt_mode`、`interaction_mode`、`d6_variant`、`cases` 和 `disturbance` 是可选字段。默认执行全套 `C0,D1,D2,D3,D4,D5,D6`，Prompt 原样交给 Agent，并采用 `autonomous` 交互；D6 默认使用 D6-A。
 
-`main_fault` 是独立的可执行合同，不从 `prompt` 猜测，也不再从固定 Episode 继承：
+Task API 不接受 `target`、`main_fault` 或 `autonomy_level`。目标 Pod、故障类型、持续时间、强度和恢复动作全部由被测 Agent 根据自然语言 Prompt 和实时环境自行决定。Controller 只做以下工作：
 
-- L0-L2 必须提供 `main_fault`；缺少时直接返回 422；
-- L3-L4 必须省略 `main_fault`，由 Agent 在 Controller 发布的安全策略空间内选择；
-- `fault_type`、`duration_seconds` 和 `intensity` 必须同时通过 Controller 预算校验，系统不会静默截断或替换参数；
-- 当前可用故障及各自强度字段以 `GET /api/v1/stage2/options` 的 `main_faults` 为准。
+- 将执行范围限制在所选 application 的命名空间；
+- 要求单个当前 Pod 和精确 UID；
+- 校验故障类型、最大持续时间、强度和并发预算；
+- 记录实际动作、监控期限并负责兜底清理；
+- 不把安全预算当作 Agent 已经作出的选择。
 
-这是有意的 fail-closed 合同变更。过去只有自然语言 Prompt 的 L0-L2 请求不再接受，避免用户写 `cpu-load`、Controller 却执行 `network-delay` 的错位结果。
-
-`main_fault` 与 `disturbance` 不是一回事：前者定义本轮真正注入的 CPU、内存、延迟或丢包故障；后者定义 D1-D6 在执行过程中额外制造的权限、目标、观测、通道或操作结果扰动。
-
-`target` 也是显式合同，不从 Prompt 或固定 Episode 选择。调用方提交逻辑目标
-`namespace + component`，Controller 每轮再解析当前唯一 Ready Pod 名称和 UID。
-当前 `GET /api/v1/stage2/options.targets` 只会把已有独立 Oracle 的
-`otel-demo/cart` 标为可运行；未登记目标返回 422，不会回退到 cart。
+`GET /api/v1/stage2/options` 的 `decision_ownership` 明确记录决策归属，`safety_envelope` 只公布 Controller 上限。`disturbance` 仍只表示 D1-D6 的 Harness 扰动，不表示主故障。
 
 单项测试有两种写法：
 
@@ -78,7 +60,7 @@
 
 `disturbance` 是单值快捷入口，可选 `none,D1,D2,D3,D4,D5,D6-A,D6-B`。`none` 映射到 `C0`；`D6-A` 和 `D6-B` 都映射到 `D6`，同时自动设置对应 `d6_variant`。如果同时传 `cases` 和 `disturbance`，二者必须选择同一个单项 case，例如 `cases:["C0"]` 可以配 `disturbance:"none"`，`cases:["D6"]` 可以配 `disturbance:"D6-B"`；`cases:["D2"]` 配 `disturbance:"D3"` 会返回 422。
 
-`autonomy_level` 是端到端评测目标，不只是展示标签。它会写入任务、传入 Campaign/runtime，并在 Summary 的 `autonomy_result` 中聚合为 `level/mode/eligible/agent_outcome/reason_codes`。如果 Harness 给了 `SEMANTIC_NUDGE` 或需要人替 Agent 做目标、故障、参数、恢复条件选择，`autonomy_result.eligible` 应变为 `false`。
+L0-L4 只保留在 `GET /api/v1/stage2/autonomy/cases` 中，作为不同完整度和风险程度的 Prompt 用例标签。它们不会进入 POST 请求，也不会改变权限、Prompt 包装、故障空间或 Controller 行为。自主性结果根据实际工具轨迹、恢复行为和 Harness 是否提供语义帮助得出。
 
 ## 查询参数
 

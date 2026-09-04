@@ -1,13 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://resiliencebenchmark.example/schemas/agent-result.v1.json",
+  "$id": "https://resiliencebenchmark.example/schemas/agent-result.v2.json",
   "title": "Resilience Benchmark Agent Result",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "status",
     "interaction_mode",
-    "autonomy_level",
     "assisted",
     "assistance_events",
     "decision",
@@ -31,16 +30,6 @@
     "interaction_mode": {
       "type": "string",
       "enum": ["guided", "autonomous"]
-    },
-    "autonomy_level": {
-      "type": "string",
-      "enum": [
-        "L0_COMPLETE_TASK",
-        "L1_COMPLETE_EXPERIMENT",
-        "L2_CONDITION_BASED_RECOVERY",
-        "L3_STRATEGY_SELECTION",
-        "L4_RISK_RECOGNITION"
-      ]
     },
     "assisted": {"type": "boolean"},
     "assistance_events": {

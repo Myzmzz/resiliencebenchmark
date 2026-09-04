@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from stage2_service.contracts import AutonomyLevel, MainFaultSpec, TargetSpec
+from stage2_service.contracts import MainFaultSpec, TargetSpec
 
 from stage2_service.preparation import (
     ApplicationTrafficCapabilityIssuer,
@@ -79,13 +79,13 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
     context = KubernetesTrialPreparer(core, issuer).prepare(
         "campaign-1234567890abcdef-codex-t1",
         Episode(),
+        namespace="otel-demo",
         target=TargetSpec(namespace="otel-demo", component="cart"),
         main_fault=MainFaultSpec(
             fault_type="network-delay",
             duration_seconds=180,
             intensity={"delay_ms": 1000},
         ),
-        autonomy_level=AutonomyLevel.L0_COMPLETE_TASK,
     )
 
     assert context.target.name == "cart-abc"
@@ -122,11 +122,37 @@ def test_application_traffic_capability_fails_when_builtin_traffic_is_not_observ
         KubernetesTrialPreparer(Core(), issuer).prepare(
             "campaign-1234567890abcdef-codex-t1",
             Episode(),
+            namespace="otel-demo",
             target=TargetSpec(namespace="otel-demo", component="cart"),
             main_fault=MainFaultSpec(
                 fault_type="cpu-load",
                 duration_seconds=300,
                 intensity={"cpu_percent": 80},
             ),
-            autonomy_level=AutonomyLevel.L0_COMPLETE_TASK,
         )
+
+
+def test_agent_selected_preparation_does_not_choose_target_or_fault(tmp_path: Path):
+    issuer = ApplicationTrafficCapabilityIssuer(
+        ledger_dir=tmp_path / "ledger",
+        controller_pod_uid="controller-uid",
+        traffic_evidence=Traffic(),
+    )
+    core = Core()
+
+    context = KubernetesTrialPreparer(core, issuer).prepare(
+        "campaign-1234567890abcdef-codex-agent",
+        Episode(),
+        namespace="otel-demo",
+        target=None,
+        main_fault=None,
+    )
+    ledger = json.loads(next((tmp_path / "ledger").glob("*.json")).read_text())
+
+    assert core.selectors == []
+    assert context.target.name == "unbound"
+    assert context.main_fault["selection_mode"] == "agent_strategy"
+    assert context.main_fault["fault_type"] is None
+    assert ledger["target_binding_mode"] == "agent_selected"
+    assert ledger["target_name"] is None
+    assert ledger["target_uid"] is None

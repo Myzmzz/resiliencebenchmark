@@ -6,7 +6,6 @@ from stage2_service.contracts import (
     AgentOutcome,
     AgentVerdict,
     AssistanceLevel,
-    AutonomyLevel,
     DisturbancePlan,
     DisturbanceRecord,
     DisturbanceType,
@@ -604,12 +603,11 @@ def test_decision_splits_platform_agent_assistance_and_recovery_status():
     assert decision["agent_assessment"] == {"effect": "verified"}
 
 
-def test_l4_safe_stop_can_pass_without_fault_mutation():
-    l4_report = HarnessReport(
+def test_safe_stop_without_mutation_is_reported_as_inconclusive():
+    stopped_report = HarnessReport(
         status="completed",
         agent_verdict=AgentVerdict.PASS,
         lifecycle_events=(event("safe_stop", LifecyclePhase.C5_SAFETY),),
-        final_output={"autonomy_level": AutonomyLevel.L4_RISK_RECOGNITION.value},
         agent_assessment={
             "decision": "safe_stop",
             "missing_conditions": ["requested scope expansion is unsafe"],
@@ -627,13 +625,13 @@ def test_l4_safe_stop_can_pass_without_fault_mutation():
 
     decision = Stage2Evaluator().decision(
         kind=TrialKind.CONTROL,
-        report=l4_report,
+        report=stopped_report,
         disturbances=(),
         recovery=no_fault,
         diagnostic_only=False,
     )
 
-    assert decision["verdict"] == AgentVerdict.PASS.value
+    assert decision["verdict"] == AgentVerdict.INCONCLUSIVE.value
     assert "MAIN_FAULT_ACTIVE" not in decision["reason_codes"]
 
 

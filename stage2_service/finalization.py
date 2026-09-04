@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from .contracts import (
-    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
     HarnessReport,
     PromptMode,
     RecoveryResult,
@@ -82,15 +81,22 @@ class Stage2Finalizer:
                 external_managed = True
         pre_absent = pre_status.get("resource_absent") is True
         ever_active = pre_status.get("ever_active") is True
-        target_verified = (
-            ever_active
-            and pre_status.get("target_uid") == runtime.target.uid
-            and (
-                runtime.prompt_mode is PromptMode.VERBATIM
-                or runtime.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
-                or pre_status.get("fault_type") == runtime.main_fault.get("fault_type")
-            )
+        agent_selected = (
+            runtime.main_fault.get("selection_mode") == "agent_strategy"
         )
+        target_verified = ever_active and bool(
+            pre_status.get("target_name") and pre_status.get("target_uid")
+        )
+        if not agent_selected:
+            target_verified = (
+                target_verified
+                and pre_status.get("target_uid") == runtime.target.uid
+                and (
+                    runtime.prompt_mode is PromptMode.VERBATIM
+                    or pre_status.get("fault_type")
+                    == runtime.main_fault.get("fault_type")
+                )
+            )
         timeout_recovery_observed = False
         timeout_wait_seconds = 0.0
         if ever_active and not pre_absent and not agent_attempted:
@@ -114,20 +120,35 @@ class Stage2Finalizer:
                     break
         evidence_runtime = runtime
         observed_fault_type = str(pre_status.get("fault_type") or "")
+        observed_target_name = str(pre_status.get("target_name") or "")
+        observed_target_uid = str(pre_status.get("target_uid") or "")
+        runtime_update: dict[str, Any] = {}
+        if observed_target_name and observed_target_uid:
+            runtime_update["target"] = runtime.target.model_copy(
+                update={
+                    "component": "agent-selected",
+                    "name": observed_target_name,
+                    "uid": observed_target_uid,
+                }
+            )
         if not runtime.main_fault.get("fault_type") and observed_fault_type:
             observed_contract = dict(runtime.main_fault)
             observed_contract["fault_type"] = observed_fault_type
             observed_contract["duration_seconds"] = pre_status.get(
                 "duration_seconds"
             )
-            evidence_runtime = runtime.model_copy(
-                update={"main_fault": observed_contract}
+            observed_contract["intensity"] = dict(
+                pre_status.get("intensity") or {}
             )
+            runtime_update["main_fault"] = observed_contract
+        if runtime_update:
+            evidence_runtime = runtime.model_copy(update=runtime_update)
         effect = dict(
             self.recovery_evidence.effect_since(trial_id, evidence_runtime)
         )
         effect["observed_main_fault"] = {
             "fault_type": pre_status.get("fault_type"),
+            "target_name": pre_status.get("target_name"),
             "target_uid": pre_status.get("target_uid"),
             "experiment_name": pre_status.get("experiment_name"),
         }
@@ -285,15 +306,6 @@ class Stage2Finalizer:
             .lower()
             or None
         )
-        autonomy_level = (
-            str(
-                agent_result.get("autonomy_level")
-                or final_output.get("autonomy_level")
-                or ""
-            )
-            .strip()
-            or None
-        )
         assistance_events = []
         for event in report.lifecycle_events:
             kind = str(event.kind or "").strip().lower()
@@ -353,7 +365,6 @@ class Stage2Finalizer:
         return {
             "schema_version": "stage2-assistance-summary.v1",
             "interaction_mode": interaction_mode,
-            "autonomy_level": autonomy_level,
             "assisted": assisted,
             "reported_assisted": reported_assisted,
             "semantic_nudge_used": semantic_nudge_used,

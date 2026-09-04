@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from stage2_service.contracts import AutonomyLevel, HarnessKind, LifecyclePhase
+from stage2_service.contracts import HarnessKind, LifecyclePhase
 from stage2_service.harness_runtime import (
     HarnessRuntimeError,
     NativeHarnessRunner,
@@ -252,7 +252,6 @@ def test_runtime_prompt_keeps_expected_evaluator_signal_private():
         "base task",
         env,
         case,
-        autonomy_level=AutonomyLevel.L0_COMPLETE_TASK,
         allowed_fault_types=("network-delay",),
     )
 
@@ -298,7 +297,7 @@ def test_runtime_public_episode_replaces_historical_fixed_fault_contract():
     )
 
     assert public["action_space"]["allowed_fault_types"] == ["cpu-load"]
-    assert public["runtime_fault_contract"]["fault_type"] == "cpu-load"
+    assert public["runtime_safety_envelope"]["fault_type"] == "cpu-load"
     assert "network-delay" not in public["objective"]
 
 

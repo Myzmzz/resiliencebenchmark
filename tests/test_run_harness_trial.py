@@ -184,9 +184,28 @@ def valid_agent_result(defect: str = "missing outbound timeout"):
     return {
         "status": "completed",
         "interaction_mode": "guided",
-        "autonomy_level": "L1_COMPLETE_EXPERIMENT",
         "assisted": False,
         "assistance_events": [],
+        "decision": "continue",
+        "effect_assessment": "not_attempted",
+        "recovery_assessment": "not_applicable",
+        "missing_conditions": [],
+        "retry_summary": {
+            "operation_id": None,
+            "attempts": 0,
+            "bounded": True,
+            "outcome_reconciled": False,
+        },
+        "recovery_trigger": {
+            "condition": "not_applicable",
+            "observed": False,
+            "triggered_by_agent": False,
+        },
+        "strategy_selection": {
+            "fault_type": "not_applicable",
+            "rationale": "no mutation was requested",
+            "evidence_summary": "read-only smoke task",
+        },
         "suspected_defect": defect,
         "evidence": [
             {

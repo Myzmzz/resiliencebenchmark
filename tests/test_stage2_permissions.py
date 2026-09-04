@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stage2_service.contracts import AutonomyLevel, HarnessKind
+from stage2_service.contracts import HarnessKind
 from stage2_service.permissions import NullPermissionBackend, Stage2PermissionManager
 from stage2_service.kubernetes_permissions import KubernetesPermissionBackend
 from stage2_service.runtime_adapters import McpTokenStateRegistry
@@ -21,8 +21,8 @@ class Episode:
 
 
 class Runtime:
-    autonomy_level = AutonomyLevel.L0_COMPLETE_TASK
     main_fault = {"fault_type": "network-delay"}
+    target = type("Target", (), {"namespace": "otel-demo"})()
 
 
 def test_permission_manager_gives_only_bladeai_a_direct_read_kubeconfig_profile(tmp_path: Path):

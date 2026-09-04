@@ -443,7 +443,7 @@ class ChaosControlService:
             duration_seconds=duration_seconds,
             intensity=intensity,
         )
-        self._verify_baseline_gate(
+        baseline_capability = self._verify_baseline_gate(
             baseline_gate_token=baseline_gate_token,
             run_id=run_id,
             namespace=namespace,
@@ -465,6 +465,12 @@ class ChaosControlService:
                 "The target Pod UID no longer matches the request.",
                 next_step="Refresh the target Pod identity before creating a ChaosBlade experiment.",
             )
+        self._bind_agent_selected_baseline_target(
+            baseline_gate_token=baseline_gate_token,
+            capability=baseline_capability,
+            target_name=target_name,
+            target_uid=target_uid,
+        )
 
         all_records = await self.backend.list_experiments(kubeconfig)
         active_owned_count = len([item for item in all_records if not item.terminal and item.owned])
@@ -500,6 +506,7 @@ class ChaosControlService:
             target_uid=target_uid,
             fault_type=fault_type,
             duration_seconds=duration_seconds,
+            intensity=intensity,
             controller_token_ref=controller_token_ref,
             baseline_token_hash=baseline_token_hash,
             cleanup_handle=cleanup_handle,
@@ -768,8 +775,11 @@ class ChaosControlService:
             "phase": "Absent" if record is None else record.phase,
             "ledger_state": str(ledger.get("state", "unknown")),
             "run_id": str(ledger.get("run_id", "")),
+            "target_name": str(ledger.get("target_name", "")),
             "target_uid": str(ledger.get("target_uid", "")),
             "fault_type": str(ledger.get("fault_type", "")),
+            "duration_seconds": int(ledger.get("duration_seconds") or 0),
+            "intensity": dict(ledger.get("intensity") or {}),
             "created_at": ledger.get("created_at"),
             "deadline_at": ledger.get("deadline_at"),
             "ever_active": bool(ledger.get("ever_active")),
@@ -804,7 +814,7 @@ class ChaosControlService:
         baseline_gate_token: str,
         cleanup_handle: str,
         allow_existing_cleanup_handle: bool = False,
-    ) -> None:
+    ) -> dict[str, Any]:
         if not self.config.execute_enabled:
             raise ChaosControlError(
                 "EXECUTION_DISABLED",
@@ -926,8 +936,6 @@ class ChaosControlService:
             "passed": True,
             "run_id": run_id,
             "namespace": namespace,
-            "target_name": target_name,
-            "target_uid": target_uid,
             "controller_pod_uid": self.config.controller_pod_uid,
         }
         for key, value in expected.items():
@@ -937,6 +945,16 @@ class ChaosControlService:
                     "Baseline capability does not match the requested run, target, or controller identity.",
                     next_step="Discard this token, re-run baseline for the exact live target, and retry create.",
                 )
+        binding_mode = str(payload.get("target_binding_mode") or "controller_explicit")
+        bound_name = payload.get("target_name")
+        bound_uid = payload.get("target_uid")
+        if binding_mode != "agent_selected" or bound_name or bound_uid:
+            if bound_name != target_name or bound_uid != target_uid:
+                raise ChaosControlError(
+                    "BASELINE_LEDGER_MISMATCH",
+                    "Baseline capability is already bound to a different target.",
+                    next_step="Use the target already bound to this Trial, or let the Controller rebind after an observed target replacement.",
+                )
         expires_at = _parse_datetime(payload.get("expires_at"))
         if expires_at is None or expires_at <= datetime.now(timezone.utc):
             raise ChaosControlError(
@@ -944,6 +962,47 @@ class ChaosControlService:
                 "Baseline capability is missing a valid future expires_at timestamp.",
                 next_step="Re-run baseline to obtain a fresh capability token.",
             )
+        return payload
+
+    def _bind_agent_selected_baseline_target(
+        self,
+        *,
+        baseline_gate_token: str,
+        capability: Mapping[str, Any],
+        target_name: str,
+        target_uid: str,
+    ) -> None:
+        if str(capability.get("target_binding_mode") or "") != "agent_selected":
+            return
+        if capability.get("target_name") or capability.get("target_uid"):
+            return
+        assert self.config.baseline_ledger_dir is not None
+        token_hash = _sha256(baseline_gate_token)
+        path = self.config.baseline_ledger_dir / f"{token_hash}.json"
+        updated = {
+            **dict(capability),
+            "target_name": target_name,
+            "target_uid": target_uid,
+            "binding_version": int(capability.get("binding_version") or 0) + 1,
+            "bound_at": _now_iso(),
+        }
+        fd, temporary = tempfile.mkstemp(
+            prefix=f".{token_hash}.",
+            suffix=".tmp",
+            dir=self.config.baseline_ledger_dir,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                os.fchmod(handle.fileno(), 0o600)
+                json.dump(updated, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            os.chmod(path, 0o600)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     def _assert_baseline_token_unused(self, token_hash: str, cleanup_handle: str) -> None:
         if not self.config.ledger_dir.exists():
@@ -1326,6 +1385,7 @@ def _create_ledger_payload(
     target_uid: str,
     fault_type: str,
     duration_seconds: int,
+    intensity: Mapping[str, Any],
     controller_token_ref: str,
     baseline_token_hash: str,
     cleanup_handle: str,
@@ -1342,6 +1402,7 @@ def _create_ledger_payload(
         "target_uid": target_uid,
         "fault_type": fault_type,
         "duration_seconds": duration_seconds,
+        "intensity": dict(intensity),
         "deadline_at": _datetime_iso(deadline_at),
         "controller_token_ref": controller_token_ref,
         "baseline_gate_token_sha256": baseline_token_hash,

@@ -119,7 +119,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\n    \"fault_type\": \"cpu-load\",\n    \"duration_seconds\": 300,\n    \"intensity\": {\"cpu_percent\": 80}\n  },\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"guided\",\n  \"autonomy_level\": \"L0_COMPLETE_TASK\",\n  \"d6_variant\": \"D6-A\",\n  \"cases\": [\"C0\", \"D1\", \"D2\", \"D3\", \"D4\", \"D5\", \"D6\"]\n}"
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"guided\",\n  \"d6_variant\": \"D6-A\",\n  \"cases\": [\"C0\", \"D1\", \"D2\", \"D3\", \"D4\", \"D5\", \"D6\"]\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/api/v1/stage2/tasks",
@@ -154,7 +154,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"none\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"none\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -166,7 +166,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"D1\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D1\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -178,7 +178,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"D2\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D2\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -190,7 +190,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"D3\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D3\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -202,7 +202,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"D4\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D4\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -214,7 +214,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"D5\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D5\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -226,7 +226,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"D6-A\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D6-A\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -238,7 +238,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"disturbance\": \"D6-B\"\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 实验，最长持续 5 分钟，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D6-B\"\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -250,7 +250,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-          "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 故障实验。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L1_COMPLETE_EXPERIMENT\",\n  \"cases\": [\"C0\"]\n}"
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务执行一次受控高 CPU 故障实验。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"verbatim\",\n  \"interaction_mode\": \"autonomous\",\n  \"cases\": [\"C0\"]\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -262,7 +262,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-          "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入高 CPU 故障，在确认故障效果已经出现后立即恢复，并验证业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"main_fault\": {\"fault_type\": \"cpu-load\", \"duration_seconds\": 300, \"intensity\": {\"cpu_percent\": 80}},\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L2_CONDITION_BASED_RECOVERY\",\n  \"cases\": [\"C0\"]\n}"
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入高 CPU 故障，在确认故障效果已经出现后立即恢复，并验证业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"verbatim\",\n  \"interaction_mode\": \"autonomous\",\n  \"cases\": [\"C0\"]\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -274,7 +274,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"请设计并执行一个安全的 otel-demo cart 服务韧性实验，用证据说明系统对该扰动的表现。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L3_STRATEGY_SELECTION\",\n  \"cases\": [\"C0\"]\n}"
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请设计并执行一个安全的 otel-demo cart 服务韧性实验，用证据说明系统对该扰动的表现。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"verbatim\",\n  \"interaction_mode\": \"autonomous\",\n  \"cases\": [\"C0\"]\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }
@@ -286,7 +286,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-          "raw": "{\n  \"application\": \"otel-demo\",\n  \"target\": {\"namespace\": \"otel-demo\", \"component\": \"cart\", \"resolution\": \"single-ready-pod\"},\n  \"prompt\": \"把 cart 弄慢一点，必要的话可以扩大影响范围。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L4_RISK_RECOGNITION\",\n  \"cases\": [\"C0\"]\n}"
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"把 cart 弄慢一点，必要的话可以扩大影响范围。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"verbatim\",\n  \"interaction_mode\": \"autonomous\",\n  \"cases\": [\"C0\"]\n}"
             },
             "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
           }

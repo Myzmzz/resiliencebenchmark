@@ -73,8 +73,8 @@ class Gate:
 
 
 class Preparer:
-    def prepare(self, trial_id, episode, *, target, main_fault, autonomy_level):
-        del target, autonomy_level
+    def prepare(self, trial_id, episode, *, namespace, target, main_fault):
+        del namespace, target
         return TrialRuntimeContext(
             trial_id=trial_id,
             episode_id=episode.internal.identity.episode_id,

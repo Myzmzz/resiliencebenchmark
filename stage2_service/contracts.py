@@ -120,19 +120,6 @@ class AutonomyLevel(str, Enum):
     L4_RISK_RECOGNITION = "L4_RISK_RECOGNITION"
 
 
-EXPLICIT_FAULT_AUTONOMY_LEVELS = frozenset(
-    {
-        AutonomyLevel.L0_COMPLETE_TASK,
-        AutonomyLevel.L1_COMPLETE_EXPERIMENT,
-        AutonomyLevel.L2_CONDITION_BASED_RECOVERY,
-    }
-)
-AGENT_SELECTED_FAULT_AUTONOMY_LEVELS = frozenset(
-    {
-        AutonomyLevel.L3_STRATEGY_SELECTION,
-        AutonomyLevel.L4_RISK_RECOGNITION,
-    }
-)
 SUPPORTED_STAGE2_FAULT_TYPES = tuple(
     fault_type
     for fault_type in sorted(default_policy({"otel-demo"}).fault_type_budgets)
@@ -421,8 +408,8 @@ class D0QualificationRef(ContractModel):
 
 
 class CampaignRequest(ContractModel):
-    schema_version: Literal["stage2-campaign-request.v3"] = (
-        "stage2-campaign-request.v3"
+    schema_version: Literal["stage2-campaign-request.v4"] = (
+        "stage2-campaign-request.v4"
     )
     request_id: str = Field(pattern=IDENTIFIER)
     episode: FixedEpisodeRef
@@ -436,8 +423,7 @@ class CampaignRequest(ContractModel):
     )
     prompt_mode: PromptMode = PromptMode.COMPILED
     interaction_mode: InteractionMode = InteractionMode.GUIDED
-    autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
-    target: TargetSpec
+    target: TargetSpec | None = None
     main_fault: MainFaultSpec | None = None
     d6_variant: OperationUncertaintyVariant = OperationUncertaintyVariant.NOT_APPLIED
     case_bundle: CaseBundle | None = None
@@ -457,40 +443,31 @@ class CampaignRequest(ContractModel):
             raise ValueError("every harness requires one frozen model alias")
         if any(not model.strip() for model in self.model_by_harness.values()):
             raise ValueError("every Harness model alias must be non-empty")
-        if self.target.namespace != self.application_namespace:
+        if self.target is not None:
+            if self.target.namespace != self.application_namespace:
+                raise ValueError(
+                    "target namespace must match the selected Stage2 application namespace"
+                )
+            if (
+                self.target.namespace,
+                self.target.component,
+            ) not in SUPPORTED_STAGE2_TARGET_BINDINGS:
+                raise ValueError(
+                    "target has no qualified Stage2 runtime and independent Oracle adapter"
+                )
+        if (self.target is None) != (self.main_fault is None):
             raise ValueError(
-                "target namespace must match the selected Stage2 application namespace"
-            )
-        if (
-            self.target.namespace,
-            self.target.component,
-        ) not in SUPPORTED_STAGE2_TARGET_BINDINGS:
-            raise ValueError(
-                "target has no qualified Stage2 runtime and independent Oracle adapter"
-            )
-        if (
-            self.autonomy_level in EXPLICIT_FAULT_AUTONOMY_LEVELS
-            and self.main_fault is None
-        ):
-            raise ValueError(
-                "main_fault is required for L0-L2; the Controller will not infer "
-                "an executable fault from natural-language prompt text"
-            )
-        if (
-            self.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
-            and self.main_fault is not None
-        ):
-            raise ValueError(
-                "main_fault must be omitted for L3-L4 because fault selection is "
-                "owned by the Agent"
+                "target and main_fault must either both be omitted for Agent-owned "
+                "selection or both be present for a controller-explicit Campaign"
             )
         if (
             HarnessKind.BLADEAI in self.harnesses
-            and self.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
+            and self.target is None
+            and self.main_fault is None
         ):
             raise ValueError(
-                "BladeAI does not support Agent-owned L3-L4 fault selection in the "
-                "current Stage2 adapter"
+                "BladeAI does not support Agent-owned target and fault selection in "
+                "the current Stage2 adapter"
             )
         if self.qualification_mode == "required":
             missing_qualification = set(self.harnesses) - set(
@@ -539,14 +516,13 @@ class RuntimeTarget(ContractModel):
 
 
 class TrialRuntimeContext(ContractModel):
-    schema_version: Literal["stage2-trial-runtime-context.v1"] = (
-        "stage2-trial-runtime-context.v1"
+    schema_version: Literal["stage2-trial-runtime-context.v2"] = (
+        "stage2-trial-runtime-context.v2"
     )
     trial_id: str
     episode_id: str
     prompt_mode: PromptMode = PromptMode.COMPILED
     interaction_mode: InteractionMode = InteractionMode.GUIDED
-    autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
     target: RuntimeTarget
     main_fault: dict[str, Any]
     cleanup_handle: str = Field(pattern=r"^cleanup-[a-f0-9]{36}$")
@@ -639,7 +615,6 @@ class TrialResult(ContractModel):
     recovery_status: RecoveryStatus = RecoveryStatus.UNVERIFIED
     trial_platform_status: TrialPlatformStatus = TrialPlatformStatus.CASE_INVALID
     interaction_mode: InteractionMode = InteractionMode.GUIDED
-    autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
     autonomy_eligible: bool = True
     evaluation_reason_codes: tuple[str, ...] = ()
     disturbances: tuple[DisturbanceRecord, ...]
@@ -648,8 +623,8 @@ class TrialResult(ContractModel):
 
 
 class EvaluationDecision(ContractModel):
-    schema_version: Literal["stage2-evaluation-decision.v1"] = (
-        "stage2-evaluation-decision.v1"
+    schema_version: Literal["stage2-evaluation-decision.v2"] = (
+        "stage2-evaluation-decision.v2"
     )
     verdict: AgentVerdict
     diagnostic_only: bool
@@ -659,7 +634,6 @@ class EvaluationDecision(ContractModel):
     assistance_level: AssistanceLevel
     recovery_status: RecoveryStatus
     interaction_mode: InteractionMode = InteractionMode.GUIDED
-    autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
     autonomy_eligible: bool = True
     expected_behaviors: tuple[str, ...] = ()
     failure_conditions: tuple[str, ...] = ()

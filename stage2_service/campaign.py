@@ -18,11 +18,9 @@ from controller.safety import (
 
 from .artifacts import ArtifactStore
 from .contracts import (
-    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
     AgentOutcome,
     AgentVerdict,
     AssistanceLevel,
-    AutonomyLevel,
     CampaignRequest,
     CampaignResult,
     CaseSpec,
@@ -87,7 +85,6 @@ class HarnessRunner(Protocol):
         event_observer: EventObserver,
         prompt_mode: PromptMode = PromptMode.COMPILED,
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
-        autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK,
     ) -> HarnessReport: ...
 
 
@@ -128,9 +125,9 @@ class TrialPreparer(Protocol):
         trial_id: str,
         episode: LoadedEpisode,
         *,
+        namespace: str,
         target,
         main_fault,
-        autonomy_level: AutonomyLevel,
     ) -> TrialRuntimeContext: ...
 
 
@@ -289,14 +286,13 @@ class CampaignEngine:
                         runtime = self.preparer.prepare(
                             trial_id,
                             self.episode,
+                            namespace=request.application_namespace,
                             target=request.target,
                             main_fault=request.main_fault,
-                            autonomy_level=request.autonomy_level,
                         ).model_copy(
                             update={
                                 "prompt_mode": request.prompt_mode,
                                 "interaction_mode": request.interaction_mode,
-                                "autonomy_level": request.autonomy_level,
                             }
                         )
                         self.artifacts.write(
@@ -337,6 +333,48 @@ class CampaignEngine:
                         def observe(event: Any) -> Mapping[str, Any] | None:
                             nonlocal runtime
                             if isinstance(event, LifecycleEvent):
+                                if event.kind in {
+                                    "target_bound",
+                                    "target_reconfirmed",
+                                }:
+                                    observed_target = event.payload.get("target")
+                                    if (
+                                        isinstance(observed_target, Mapping)
+                                        and observed_target.get("namespace")
+                                        and observed_target.get("name")
+                                        and observed_target.get("uid")
+                                    ):
+                                        current_target.update(observed_target)
+                                        runtime = runtime.model_copy(
+                                            update={
+                                                "target": runtime.target.model_copy(
+                                                    update={
+                                                        "namespace": str(
+                                                            observed_target[
+                                                                "namespace"
+                                                            ]
+                                                        ),
+                                                        "component": str(
+                                                            observed_target.get(
+                                                                "component"
+                                                            )
+                                                            or "agent-selected"
+                                                        ),
+                                                        "name": str(
+                                                            observed_target["name"]
+                                                        ),
+                                                        "uid": str(
+                                                            observed_target["uid"]
+                                                        ),
+                                                    }
+                                                )
+                                            }
+                                        )
+                                        self.artifacts.write(
+                                            campaign_id,
+                                            f"trials/{trial_id}/runtime-context.json",
+                                            runtime.model_dump(mode="json"),
+                                        )
                                 emit(
                                     "lifecycle_event",
                                     {
@@ -514,7 +552,6 @@ class CampaignEngine:
                             event_observer=observe,
                             prompt_mode=request.prompt_mode,
                             interaction_mode=request.interaction_mode,
-                            autonomy_level=request.autonomy_level,
                         )
                         if "cancel_requested" in inspect.signature(
                             self.harness_runner.run
@@ -538,6 +575,39 @@ class CampaignEngine:
                         recovery = self.finalizer.finalize(
                             trial_id, self.episode, runtime, report
                         )
+                        observed_action = recovery.fault_effect_evidence.get(
+                            "observed_main_fault"
+                        )
+                        if isinstance(observed_action, Mapping):
+                            runtime_updates: dict[str, Any] = {}
+                            observed_name = str(
+                                observed_action.get("target_name") or ""
+                            )
+                            observed_uid = str(
+                                observed_action.get("target_uid") or ""
+                            )
+                            if observed_name and observed_uid:
+                                runtime_updates["target"] = runtime.target.model_copy(
+                                    update={
+                                        "component": "agent-selected",
+                                        "name": observed_name,
+                                        "uid": observed_uid,
+                                    }
+                                )
+                            observed_fault_type = str(
+                                observed_action.get("fault_type") or ""
+                            )
+                            if observed_fault_type:
+                                observed_fault = dict(runtime.main_fault)
+                                observed_fault["fault_type"] = observed_fault_type
+                                runtime_updates["main_fault"] = observed_fault
+                            if runtime_updates:
+                                runtime = runtime.model_copy(update=runtime_updates)
+                                self.artifacts.write(
+                                    campaign_id,
+                                    f"trials/{trial_id}/runtime-context.json",
+                                    runtime.model_dump(mode="json"),
+                                )
                         if disturbance_records:
                             rolled_back = []
                             for record in disturbance_records:
@@ -617,7 +687,7 @@ class CampaignEngine:
                                 diagnostic_only=diagnostic_only,
                             )
                             evaluation_decision = {
-                                "schema_version": "stage2-evaluation-decision.v1",
+                                "schema_version": "stage2-evaluation-decision.v2",
                                 "verdict": verdict.value,
                                 "diagnostic_only": diagnostic_only,
                                 "platform_valid": True,
@@ -637,7 +707,6 @@ class CampaignEngine:
                                     else RecoveryStatus.CLEANUP_FAILED.value
                                 ),
                                 "interaction_mode": request.interaction_mode.value,
-                                "autonomy_level": request.autonomy_level.value,
                                 "autonomy_eligible": True,
                                 "checks": [],
                                 "reason_codes": [],
@@ -724,11 +793,6 @@ class CampaignEngine:
                             interaction_mode=InteractionMode(
                                 evaluation_decision.get(
                                     "interaction_mode", request.interaction_mode.value
-                                )
-                            ),
-                            autonomy_level=AutonomyLevel(
-                                evaluation_decision.get(
-                                    "autonomy_level", request.autonomy_level.value
                                 )
                             ),
                             autonomy_eligible=(
@@ -1461,11 +1525,21 @@ def _request_within_scope(
     if namespace is not None and str(namespace) != runtime.target.namespace:
         return False, "NAMESPACE_SCOPE_CHANGED"
     target_uid = arguments.get("target_uid")
-    if target_uid is not None and str(target_uid) != str(current_target.get("uid") or ""):
+    binding_is_unbound = str(current_target.get("uid") or "") in {
+        "",
+        "unbound",
+    }
+    if (
+        not binding_is_unbound
+        and target_uid is not None
+        and str(target_uid) != str(current_target.get("uid") or "")
+    ):
         return False, "TARGET_BINDING_CHANGED"
     target_name = arguments.get("target_name")
-    if target_name is not None and str(target_name) != str(
-        current_target.get("name") or ""
+    if (
+        not binding_is_unbound
+        and target_name is not None
+        and str(target_name) != str(current_target.get("name") or "")
     ):
         return False, "TARGET_BINDING_CHANGED"
     fault_type = arguments.get("fault_type")
@@ -1474,7 +1548,7 @@ def _request_within_scope(
     ):
         return False, "FAULT_TYPE_NOT_ALLOWED"
     if normalized_tool == "chaos_create_experiment":
-        if runtime.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS:
+        if runtime.main_fault.get("selection_mode") == "agent_strategy":
             try:
                 action = ChaosBladeAction(
                     run_id=runtime.trial_id,

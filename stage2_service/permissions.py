@@ -11,7 +11,6 @@ from controller.scoped_kubeconfig import create_scoped_kubeconfig
 from controller.safety import default_policy
 
 from .contracts import (
-    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
     CapabilityProfile,
     HarnessKind,
     KubernetesRule,
@@ -149,7 +148,7 @@ class Stage2PermissionManager:
         selected_fault_type = str(runtime.main_fault.get("fault_type") or "")
         allowed_fault_types = (
             SUPPORTED_STAGE2_FAULT_TYPES
-            if runtime.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
+            if runtime.main_fault.get("selection_mode") == "agent_strategy"
             else (selected_fault_type,)
         )
         if not all(

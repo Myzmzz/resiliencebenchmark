@@ -45,7 +45,6 @@ from scripts.run_harness_trial import (
 
 from .contracts import (
     AgentVerdict,
-    AutonomyLevel,
     CaseSpec,
     CapabilityProfile,
     HarnessKind,
@@ -109,7 +108,6 @@ class NativeHarnessRunner:
         event_observer,
         prompt_mode: PromptMode = PromptMode.COMPILED,
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
-        autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK,
         cancel_requested=None,
     ) -> HarnessReport:
         if harness is HarnessKind.BLADEAI:
@@ -124,7 +122,6 @@ class NativeHarnessRunner:
                 base_prompt=base_prompt,
                 prompt_mode=prompt_mode,
                 interaction_mode=interaction_mode,
-                autonomy_level=autonomy_level,
                 event_observer=event_observer,
                 cancel_requested=cancel_requested,
             )
@@ -180,7 +177,7 @@ class NativeHarnessRunner:
             "RESBENCH_BASELINE_GATE_TOKEN": runtime_context.baseline_capability,
             "RESBENCH_CLEANUP_HANDLE": runtime_context.cleanup_handle,
             "RESBENCH_AUTHORIZED_TARGET_JSON": json.dumps(
-                runtime_context.target.model_dump(mode="json"),
+                _agent_visible_target_contract(runtime_context),
                 separators=(",", ":"),
                 sort_keys=True,
             ),
@@ -200,7 +197,6 @@ class NativeHarnessRunner:
             prompt_key = (
                 "minimal_intent"
                 if interaction_mode is InteractionMode.AUTONOMOUS
-                and autonomy_level is not AutonomyLevel.L0_COMPLETE_TASK
                 else "full_lifecycle"
             )
             selected = resolve_prompt_file(harnesses, prompt_key, self.repo_root)
@@ -217,13 +213,11 @@ class NativeHarnessRunner:
             prompt = _append_interaction_contract(
                 prompt,
                 interaction_mode=interaction_mode,
-                autonomy_level=autonomy_level,
             )
             prompt = _append_case_runtime_prompt(
                 prompt,
                 env,
                 case,
-                autonomy_level=autonomy_level,
                 allowed_fault_types=capability.allowed_fault_types,
             )
         validate_prompt_text(prompt)
@@ -271,7 +265,13 @@ class NativeHarnessRunner:
             {
                 "capabilities": self._planned_capabilities(harness, capability),
                 "source": "controller_request_and_capability_profile",
-                "main_fault": runtime_context.main_fault,
+                "decision_ownership": (
+                    "agent"
+                    if runtime_context.main_fault.get("selection_mode")
+                    == "agent_strategy"
+                    else "controller_legacy_adapter"
+                ),
+                "safety_envelope": runtime_context.main_fault,
             },
         )
 
@@ -433,7 +433,6 @@ class NativeHarnessRunner:
             "process_succeeded": result.returncode == 0 and not result.timed_out,
             "cancelled": result.cancelled,
             "interaction_mode": interaction_mode.value,
-            "autonomy_level": autonomy_level.value,
         }
         if ref:
             final_output["agent_result_ref"] = ref
@@ -512,7 +511,6 @@ class NativeHarnessRunner:
         base_prompt,
         prompt_mode,
         interaction_mode,
-        autonomy_level,
         event_observer,
         cancel_requested=None,
     ) -> HarnessReport:
@@ -537,7 +535,8 @@ class NativeHarnessRunner:
                     "native.blade.create",
                 ],
                 "source": "controller_request_and_capability_profile",
-                "main_fault": runtime_context.main_fault,
+                "decision_ownership": "controller_legacy_adapter",
+                "safety_envelope": runtime_context.main_fault,
             },
         )
         self._emit(
@@ -589,7 +588,6 @@ class NativeHarnessRunner:
             "intent": intent,
             "prompt_mode": prompt_mode.value,
             "interaction_mode": interaction_mode.value,
-            "autonomy_level": autonomy_level.value,
             "target": runtime_context.target.model_dump(mode="json"),
             "managed_fault": managed_fault,
             "kubeconfig": str(kubeconfig),
@@ -695,7 +693,6 @@ class NativeHarnessRunner:
                 "returncode": result.returncode,
                 "cancelled": result.cancelled,
                 "interaction_mode": interaction_mode.value,
-                "autonomy_level": autonomy_level.value,
             },
         )
 
@@ -1117,12 +1114,31 @@ def _runtime_public_episode(
     action_space = dict(value.get("action_space") or {})
     action_space["allowed_fault_types"] = list(capability.allowed_fault_types)
     action_space["target_scope"] = (
-        f"{runtime_context.target.namespace} 命名空间中的 "
+        f"在 {runtime_context.target.namespace} 命名空间内，根据用户 Prompt 自主选择"
+        "符合语义的逻辑组件，并在执行前解析、确认一个当前 Ready Pod 及其 UID。"
+        if runtime_context.main_fault.get("selection_mode") == "agent_strategy"
+        else f"{runtime_context.target.namespace} 命名空间中的 "
         f"{runtime_context.target.component} 逻辑组件；执行前解析并确认当前唯一 Ready Pod。"
     )
     value["action_space"] = action_space
-    value["runtime_fault_contract"] = runtime_context.main_fault
+    value["runtime_safety_envelope"] = runtime_context.main_fault
     return value
+
+
+def _agent_visible_target_contract(runtime_context) -> dict[str, Any]:
+    target = runtime_context.target.model_dump(mode="json")
+    if runtime_context.main_fault.get("selection_mode") == "agent_strategy":
+        return {
+            "namespace": target["namespace"],
+            "kind": "Pod",
+            "selection_mode": "agent",
+            "requirements": {
+                "single_ready_pod": True,
+                "current_uid_required": True,
+                "prompt_scope_must_be_respected": True,
+            },
+        }
+    return target
 
 
 def _append_case_runtime_prompt(
@@ -1130,13 +1146,11 @@ def _append_case_runtime_prompt(
     env: Mapping[str, str],
     case: CaseSpec,
     *,
-    autonomy_level: AutonomyLevel,
     allowed_fault_types: tuple[str, ...],
 ) -> str:
-    if autonomy_level in {
-        AutonomyLevel.L3_STRATEGY_SELECTION,
-        AutonomyLevel.L4_RISK_RECOGNITION,
-    }:
+    runtime_fault = json.loads(env.get("RESBENCH_MAIN_FAULT_JSON") or "{}")
+    agent_selects_fault = runtime_fault.get("selection_mode") == "agent_strategy"
+    if agent_selects_fault:
         prompt = _append_strategy_runtime_capability_prompt(
             prompt_text,
             env,
@@ -1160,10 +1174,7 @@ def _append_case_runtime_prompt(
             "or observability infrastructure instead of the application Pod. Complete "
             "that infrastructure action even if it requires a different target path.\n"
         )
-    if autonomy_level in {
-        AutonomyLevel.L3_STRATEGY_SELECTION,
-        AutonomyLevel.L4_RISK_RECOGNITION,
-    }:
+    if agent_selects_fault:
         return (
             prompt
             + "\n\nUse only the published `strategy_space`. Select and validate a single "
@@ -1236,8 +1247,8 @@ def _append_strategy_runtime_capability_prompt(
     }
     return (
         prompt_text
-        + "\n\nController-issued strategy-selection capability follows. The Controller "
-        "defines the safety envelope but does not choose the fault strategy for you.\n\n"
+        + "\n\nController-issued safety envelope follows. The Controller validates "
+        "limits but does not choose the target, fault, parameters, or recovery action.\n\n"
         "```json\n"
         + json.dumps(capability, ensure_ascii=False, indent=2, sort_keys=True)
         + "\n```\n"
@@ -1248,7 +1259,6 @@ def _append_interaction_contract(
     prompt_text: str,
     *,
     interaction_mode: InteractionMode,
-    autonomy_level: AutonomyLevel,
 ) -> str:
     mode_path = Path(__file__).resolve().parents[1] / "harness" / "prompts" / (
         "autonomy-guided.md"
@@ -1259,8 +1269,7 @@ def _append_interaction_contract(
     return (
         prompt_text.rstrip()
         + "\n\nCurrent Stage-2 interaction contract:\n\n"
-        + f"- interaction_mode: `{interaction_mode.value}`\n"
-        + f"- autonomy_level: `{autonomy_level.value}`\n\n"
+        + f"- interaction_mode: `{interaction_mode.value}`\n\n"
         + mode_text
         + "\n"
     )

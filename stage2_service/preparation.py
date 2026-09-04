@@ -20,8 +20,6 @@ from controller.safety import (
 from mcp_servers.chaos_control.service import new_cleanup_handle
 
 from .contracts import (
-    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
-    AutonomyLevel,
     MainFaultSpec,
     RuntimeTarget,
     SUPPORTED_STAGE2_FAULT_TYPES,
@@ -62,7 +60,13 @@ class ApplicationTrafficCapabilityIssuer:
         self._token_hashes: dict[str, str] = {}
         self._binding_versions: dict[str, int] = {}
 
-    def issue(self, trial_id: str, target: RuntimeTarget) -> str:
+    def issue(
+        self,
+        trial_id: str,
+        *,
+        namespace: str,
+        target: RuntimeTarget | None,
+    ) -> str:
         evidence = dict(self.traffic_evidence.current())
         if (
             evidence.get("application_owned") is not True
@@ -79,18 +83,21 @@ class ApplicationTrafficCapabilityIssuer:
             "passed": True,
             "run_id": trial_id,
             "trial_id": trial_id,
-            "namespace": target.namespace,
-            "target_name": target.name,
-            "target_uid": target.uid,
+            "namespace": namespace,
+            "target_name": target.name if target is not None else None,
+            "target_uid": target.uid if target is not None else None,
+            "target_binding_mode": (
+                "controller_explicit" if target is not None else "agent_selected"
+            ),
             "controller_pod_uid": self.controller_pod_uid,
             "issued_at": now.isoformat(),
             "expires_at": (now + timedelta(seconds=self.ttl_seconds)).isoformat(),
             "traffic_evidence": evidence,
-            "binding_version": 1,
+            "binding_version": 1 if target is not None else 0,
         }
         _atomic_json(self.ledger_dir / f"{token_hash}.json", payload)
         self._token_hashes[trial_id] = token_hash
-        self._binding_versions[trial_id] = 1
+        self._binding_versions[trial_id] = int(payload["binding_version"])
         return token
 
     def rebind(
@@ -167,24 +174,37 @@ class KubernetesTrialPreparer:
         trial_id: str,
         episode,
         *,
-        target: TargetSpec,
+        namespace: str,
+        target: TargetSpec | None,
         main_fault: MainFaultSpec | None,
-        autonomy_level: AutonomyLevel,
     ) -> TrialRuntimeContext:
-        runtime_target = self._resolve_target(
-            target.namespace,
-            target.component,
+        agent_selected = target is None and main_fault is None
+        if not agent_selected and target is None:
+            raise PreparationError("controller-explicit mode requires a target")
+        runtime_target = (
+            RuntimeTarget(
+                namespace=namespace,
+                component="agent-selected",
+                name="unbound",
+                uid="unbound",
+            )
+            if agent_selected
+            else self._resolve_target(target.namespace, target.component)
         )
         runtime_fault = (
             _strategy_selection_contract(runtime_target)
-            if autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
+            if agent_selected
             else _stage2_fault_contract(
                 trial_id,
                 _requested_fault(main_fault),
                 runtime_target,
             )
         )
-        capability = self.capability_issuer.issue(trial_id, target)
+        capability = self.capability_issuer.issue(
+            trial_id,
+            namespace=namespace,
+            target=None if agent_selected else runtime_target,
+        )
         return TrialRuntimeContext(
             trial_id=trial_id,
             episode_id=episode.internal.identity.episode_id,
@@ -275,10 +295,11 @@ def _stage2_fault_contract(
         "intensity": intensity,
         "target": {
             "namespace": target.namespace,
-            "component": target.component,
             "kind": target.kind,
-            "pod_name": target.name,
-            "pod_uid": target.uid,
+            "selection_mode": "agent",
+            "component": None,
+            "pod_name": None,
+            "pod_uid": None,
         },
         "request_contract": {
             "validate_then_create": True,
