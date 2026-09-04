@@ -789,12 +789,6 @@ class Stage2TaskService:
             "network-delay": "网络延迟",
             "network-loss": "网络丢包",
         }
-        examples = {
-            "cpu-load": {"cpu_percent": 80},
-            "memory-stress": {"mem_percent": 60},
-            "network-delay": {"delay_ms": 1000},
-            "network-loss": {"loss_percent": 10},
-        }
         return [
             {
                 "fault_type": fault_type,
@@ -811,16 +805,6 @@ class Stage2TaskService:
                     for name, bounds in policy.fault_type_budgets[
                         fault_type
                     ].intensities.items()
-                },
-                "example": {
-                    "fault_type": fault_type,
-                    "duration_seconds": min(
-                        300,
-                        policy.fault_type_budgets[
-                            fault_type
-                        ].max_duration_seconds,
-                    ),
-                    "intensity": examples[fault_type],
                 },
             }
             for fault_type in SUPPORTED_STAGE2_FAULT_TYPES
