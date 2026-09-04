@@ -9,6 +9,7 @@ import os
 import shutil
 import time
 import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -122,13 +123,18 @@ class KubernetesTrafficEvidence:
         stats_url: str = "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
         stats_loader: Callable[[str], Mapping[str, Any]] | None = None,
         stats_resetter: Callable[[str], None] | None = None,
+        prometheus_url: str = "http://prometheus.observability.svc:9090",
+        prometheus_loader: Callable[..., Mapping[str, Any]] | None = None,
     ):
         self.gate = gate
         self.episode = episode
         self.stats_url = stats_url
         self.stats_loader = stats_loader or self._load_stats
         self.stats_resetter = stats_resetter or self._reset_stats
+        self.prometheus_url = prometheus_url.rstrip("/")
+        self.prometheus_loader = prometheus_loader or self._load_prometheus_range
         self._baselines: dict[str, dict[str, Any]] = {}
+        self._baseline_times: dict[str, float] = {}
 
     def current(self) -> Mapping[str, Any]:
         value = dict(self.gate.qualify(self.episode))
@@ -239,8 +245,9 @@ class KubernetesTrafficEvidence:
         self, trial_id: str, evidence: Mapping[str, Any]
     ) -> None:
         self._baselines[trial_id] = dict(evidence)
+        self._baseline_times[trial_id] = time.time()
 
-    def effect_since(self, trial_id: str) -> Mapping[str, Any]:
+    def effect_since(self, trial_id: str, runtime) -> Mapping[str, Any]:
         baseline = self._baselines.get(trial_id)
         current = dict(self.current())
         if baseline is None:
@@ -264,15 +271,15 @@ class KubernetesTrafficEvidence:
             if request_delta > 0
             else 0.0
         )
-        verified = (
+        business_effect_verified = (
             request_delta >= 3
             and (
                 latency_delta_ms >= 100.0
                 or interval_success_rate < 0.95
             )
         )
-        return {
-            "verified": verified,
+        business_evidence = {
+            "business_effect_verified": business_effect_verified,
             "observer": "otel-demo built-in Locust cart delta",
             "cart_request_delta": request_delta,
             "cart_failure_delta": failure_delta,
@@ -281,6 +288,93 @@ class KubernetesTrafficEvidence:
             "latency_delta_ms": latency_delta_ms,
             "fault_window_success_rate": interval_success_rate,
             "minimum_samples": 3,
+        }
+        physical = self._physical_fault_effect(trial_id, runtime)
+        fault_type = str(runtime.main_fault.get("fault_type") or "")
+        verified = (
+            physical.get("verified") is True
+            if fault_type in {"cpu-load", "memory-stress"}
+            else business_effect_verified
+        )
+        return {
+            "verified": verified,
+            "fault_type": fault_type,
+            "physical_effect": physical,
+            **business_evidence,
+        }
+
+    def _physical_fault_effect(self, trial_id: str, runtime) -> dict[str, Any]:
+        fault_type = str(runtime.main_fault.get("fault_type") or "")
+        if fault_type not in {"cpu-load", "memory-stress"}:
+            return {
+                "applicable": False,
+                "verified": False,
+                "reason": "fault uses business-path effect evidence",
+            }
+        metric = (
+            "container_cpu_usage_seconds_total"
+            if fault_type == "cpu-load"
+            else "container_memory_working_set_bytes"
+        )
+        pod_uid = str(runtime.target.uid).replace("-", "_")
+        cgroup_selector = f'.*pod{pod_uid}.*scope'
+        query = (
+            f'sum(rate({metric}{{id=~"{cgroup_selector}",cpu="total"}}[2m]))'
+            if fault_type == "cpu-load"
+            else f'sum({metric}{{id=~"{cgroup_selector}"}})'
+        )
+        start = self._baseline_times.get(trial_id)
+        if start is None:
+            return {
+                "applicable": True,
+                "verified": False,
+                "metric": metric,
+                "reason": "metric baseline timestamp is missing",
+            }
+        end = time.time()
+        try:
+            response = self.prometheus_loader(
+                query=query,
+                start=start,
+                end=end,
+                step=5,
+            )
+            values = _prometheus_range_values(response)
+        except Exception as exc:  # noqa: BLE001 - evidence failure is reported, never inferred.
+            return {
+                "applicable": True,
+                "verified": False,
+                "metric": metric,
+                "reason": f"Prometheus evidence unavailable: {type(exc).__name__}",
+            }
+        if len(values) < 2:
+            return {
+                "applicable": True,
+                "verified": False,
+                "metric": metric,
+                "sample_count": len(values),
+                "reason": "insufficient metric samples",
+            }
+        baseline_value = values[0]
+        peak_value = max(values)
+        if fault_type == "cpu-load":
+            requested = float(runtime.main_fault.get("intensity", {}).get("cpu_percent") or 0)
+            required_peak = max(baseline_value + 0.15, requested / 100.0 * 0.5)
+            unit = "cores"
+        else:
+            required_peak = baseline_value + max(64 * 1024 * 1024, baseline_value * 0.25)
+            unit = "bytes"
+        return {
+            "applicable": True,
+            "verified": peak_value >= required_peak,
+            "metric": metric,
+            "target_uid": runtime.target.uid,
+            "unit": unit,
+            "sample_count": len(values),
+            "baseline_value": baseline_value,
+            "peak_value": peak_value,
+            "required_peak": required_peak,
+            "query_window_seconds": round(end - start, 3),
         }
 
     def reset_and_wait_healthy(
@@ -377,12 +471,48 @@ class KubernetesTrafficEvidence:
             raise RuntimeConfigurationError("Locust statistics response is not an object")
         return payload
 
+    def _load_prometheus_range(
+        self, *, query: str, start: float, end: float, step: int
+    ) -> Mapping[str, Any]:
+        params = urllib.parse.urlencode(
+            {"query": query, "start": start, "end": end, "step": step}
+        )
+        request = urllib.request.Request(
+            f"{self.prometheus_url}/api/v1/query_range?{params}",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+            payload = json.load(response)
+        if not isinstance(payload, Mapping) or payload.get("status") != "success":
+            raise RuntimeConfigurationError("Prometheus range response is invalid")
+        return payload
+
     @staticmethod
     def _reset_stats(url: str) -> None:
         request = urllib.request.Request(url, headers={"Accept": "text/html"})
         with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
             if not 200 <= int(response.status) < 300:
                 raise RuntimeConfigurationError("Locust statistics reset was rejected")
+
+
+def _prometheus_range_values(response: Mapping[str, Any]) -> list[float]:
+    data = response.get("data")
+    result = data.get("result") if isinstance(data, Mapping) else None
+    if not isinstance(result, list):
+        return []
+    values: list[float] = []
+    for series in result:
+        samples = series.get("values") if isinstance(series, Mapping) else None
+        if not isinstance(samples, list):
+            continue
+        for sample in samples:
+            if not isinstance(sample, list) or len(sample) != 2:
+                continue
+            try:
+                values.append(float(sample[1]))
+            except (TypeError, ValueError):
+                continue
+    return values
 
 
 class DirectChaosCleanup:

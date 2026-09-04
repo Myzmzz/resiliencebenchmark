@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -140,6 +141,26 @@ class NativeHarnessRunner:
                 "RESBENCH_CHAOS_ALLOWED_FAULT_TYPES": ",".join(
                     capability.allowed_fault_types
                 ),
+                "RESBENCH_CHAOS_EXPECTED_FAULT_JSON": (
+                    json.dumps(
+                        {
+                            "fault_type": runtime_context.main_fault.get(
+                                "fault_type"
+                            ),
+                            "duration_seconds": runtime_context.main_fault.get(
+                                "duration_seconds"
+                            ),
+                            "intensity": runtime_context.main_fault.get(
+                                "intensity"
+                            ),
+                        },
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
+                    if runtime_context.main_fault.get("selection_mode")
+                    == "explicit_api_contract"
+                    else ""
+                ),
             },
         )
         trial_root = Path(
@@ -186,7 +207,11 @@ class NativeHarnessRunner:
             prompt = _compose_agent_prompt(
                 common,
                 selected,
-                episode.public.model_dump(mode="json"),
+                _runtime_public_episode(
+                    episode.public.model_dump(mode="json"),
+                    runtime_context=runtime_context,
+                    capability=capability,
+                ),
                 base_prompt,
             )
             prompt = _append_interaction_contract(
@@ -242,10 +267,11 @@ class NativeHarnessRunner:
             trial_id,
             harness,
             LifecyclePhase.C1_PLAN,
-            "plan_committed",
+            "execution_contract_bound",
             {
                 "capabilities": self._planned_capabilities(harness, capability),
-                "source": "fixed_episode_and_capability_profile",
+                "source": "controller_request_and_capability_profile",
+                "main_fault": runtime_context.main_fault,
             },
         )
 
@@ -503,14 +529,15 @@ class NativeHarnessRunner:
             trial_id,
             HarnessKind.BLADEAI,
             LifecyclePhase.C1_PLAN,
-            "plan_committed",
+            "execution_contract_bound",
             {
                 "capabilities": [
                     "metrics.k8s.io",
                     "mcp.telemetry.read",
                     "native.blade.create",
                 ],
-                "source": "BladeAI L4 fixed task",
+                "source": "controller_request_and_capability_profile",
+                "main_fault": runtime_context.main_fault,
             },
         )
         self._emit(
@@ -521,7 +548,10 @@ class NativeHarnessRunner:
             HarnessKind.BLADEAI,
             LifecyclePhase.C2_TARGET,
             "target_bound",
-            {"target": runtime_context.target.model_dump(mode="json")},
+            {
+                "target": runtime_context.target.model_dump(mode="json"),
+                "source": "controller_runtime_binding",
+            },
         )
         root = Path(tempfile.mkdtemp(prefix=f"{trial_id}-bladeai-", dir=self.private_root))
         blade_runtime = root / "chaosblade"
@@ -539,7 +569,11 @@ class NativeHarnessRunner:
             intent = base_prompt
             managed_fault = None
         else:
-            intent = str(episode.public.objective)
+            intent = (
+                base_prompt.strip()
+                if base_prompt is not None and base_prompt.strip()
+                else "Execute the Controller-validated cart resilience experiment."
+            )
             fault = runtime_context.main_fault
             fault_type = str(fault.get("fault_type") or "")
             scope, target, action = _bladeai_fault_parts(fault_type)
@@ -1065,6 +1099,25 @@ def _remove_private_reasoning(value: Any) -> Any:
         }
     if isinstance(value, list):
         return [_remove_private_reasoning(item) for item in value]
+    return value
+
+
+def _runtime_public_episode(
+    public_episode: Mapping[str, Any],
+    *,
+    runtime_context,
+    capability: CapabilityProfile,
+) -> dict[str, Any]:
+    value = copy.deepcopy(dict(public_episode))
+    value["title"] = "OTel Demo cart 动态受控韧性实验"
+    value["objective"] = (
+        "在当前 Trial 的单 Pod、安全预算和受控工具范围内执行用户请求的主故障，"
+        "验证故障机制、业务影响、清理和恢复；不得使用 Episode 历史故障作为本轮默认值。"
+    )
+    action_space = dict(value.get("action_space") or {})
+    action_space["allowed_fault_types"] = list(capability.allowed_fault_types)
+    value["action_space"] = action_space
+    value["runtime_fault_contract"] = runtime_context.main_fault
     return value
 
 

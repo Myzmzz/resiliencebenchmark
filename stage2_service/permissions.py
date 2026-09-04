@@ -10,7 +10,13 @@ from typing import Any, Protocol
 from controller.scoped_kubeconfig import create_scoped_kubeconfig
 from controller.safety import default_policy
 
-from .contracts import AutonomyLevel, CapabilityProfile, HarnessKind, KubernetesRule
+from .contracts import (
+    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
+    CapabilityProfile,
+    HarnessKind,
+    KubernetesRule,
+    SUPPORTED_STAGE2_FAULT_TYPES,
+)
 from .runtime_adapters import McpTokenStateRegistry
 
 
@@ -139,15 +145,18 @@ class Stage2PermissionManager:
                     namespace="otel-demo",
                 ),
             )
-        allowed_fault_types = (episode.internal.main_fault.fault_type,)
-        if runtime.autonomy_level is AutonomyLevel.L3_STRATEGY_SELECTION:
-            allowed_fault_types = tuple(
-                fault_type
-                for fault_type in sorted(
-                    default_policy({"otel-demo"}).fault_type_budgets
-                )
-                if fault_type != "pod-kill"
-            )
+        del episode
+        selected_fault_type = str(runtime.main_fault.get("fault_type") or "")
+        allowed_fault_types = (
+            SUPPORTED_STAGE2_FAULT_TYPES
+            if runtime.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
+            else (selected_fault_type,)
+        )
+        if not all(
+            fault_type in default_policy({"otel-demo"}).fault_type_budgets
+            for fault_type in allowed_fault_types
+        ):
+            raise RuntimeError("runtime fault capability is outside Controller policy")
         return CapabilityProfile(
             harness=harness,
             mcp_servers=self.MCP_SERVERS,

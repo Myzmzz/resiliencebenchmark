@@ -4,7 +4,7 @@
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/stage2/options` | 查询当前可选系统、Harness/Agent、模型矩阵、模式、D6 variant 和扰动选项 |
+| GET | `/api/v1/stage2/options` | 查询当前可选系统、Harness/Agent、模型矩阵、主故障、安全预算、模式和扰动选项 |
 | GET | `/api/v1/stage2/cases` | 查询 C0、D1-D6 的人话说明、触发条件、Agent 目标、Oracle 和 reset 语义 |
 | GET | `/api/v1/stage2/autonomy/cases` | 查询 L0-L4 自主性分级的手测 Prompt、Oracle 和推荐 POST body |
 | POST | `/api/v1/stage2/tasks` | 按选择创建单项或多项 `C0,D1,D2,D3,D4,D5,D6` 单智能体测试任务 |
@@ -24,6 +24,11 @@
   "prompt": "请执行受控故障实验。",
   "model": "gpt-5.6-sol",
   "harness": "codex",
+  "main_fault": {
+    "fault_type": "cpu-load",
+    "duration_seconds": 300,
+    "intensity": {"cpu_percent": 80}
+  },
   "prompt_mode": "compiled",
   "interaction_mode": "guided",
   "autonomy_level": "L0_COMPLETE_TASK",
@@ -36,7 +41,18 @@
 
 接口中的智能体选择字段沿用现有名称 `harness`：`codex`、`claude-code`、`deepseek-harness` 或 `bladeai`。可选模型及每个 Harness/模型组合当前是否可运行，以 `/api/v1/stage2/options` 返回的 `model_matrix` 为准，不能只凭模型名称判断。
 
-`prompt_mode`、`interaction_mode`、`autonomy_level`、`d6_variant`、`cases` 和 `disturbance` 都是可选字段。旧请求仍然可用；默认使用全套 `C0,D1,D2,D3,D4,D5,D6`，并采用 `compiled`、`guided`、`L0_COMPLETE_TASK` 和 `D6-A`。
+`prompt_mode`、`interaction_mode`、`autonomy_level`、`d6_variant`、`cases` 和 `disturbance` 都是可选字段。默认使用全套 `C0,D1,D2,D3,D4,D5,D6`，并采用 `compiled`、`guided`、`L0_COMPLETE_TASK` 和 `D6-A`。
+
+`main_fault` 是独立的可执行合同，不从 `prompt` 猜测，也不再从固定 Episode 继承：
+
+- L0-L2 必须提供 `main_fault`；缺少时直接返回 422；
+- L3-L4 必须省略 `main_fault`，由 Agent 在 Controller 发布的安全策略空间内选择；
+- `fault_type`、`duration_seconds` 和 `intensity` 必须同时通过 Controller 预算校验，系统不会静默截断或替换参数；
+- 当前可用故障及各自强度字段以 `GET /api/v1/stage2/options` 的 `main_faults` 为准。
+
+这是有意的 fail-closed 合同变更。过去只有自然语言 Prompt 的 L0-L2 请求不再接受，避免用户写 `cpu-load`、Controller 却执行 `network-delay` 的错位结果。
+
+`main_fault` 与 `disturbance` 不是一回事：前者定义本轮真正注入的 CPU、内存、延迟或丢包故障；后者定义 D1-D6 在执行过程中额外制造的权限、目标、观测、通道或操作结果扰动。
 
 单项测试有两种写法：
 

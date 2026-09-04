@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from controller.safety import default_policy
+
 
 IDENTIFIER = r"^[a-z0-9][a-z0-9._-]{1,127}$"
 
@@ -116,6 +118,68 @@ class AutonomyLevel(str, Enum):
     L2_CONDITION_BASED_RECOVERY = "L2_CONDITION_BASED_RECOVERY"
     L3_STRATEGY_SELECTION = "L3_STRATEGY_SELECTION"
     L4_RISK_RECOGNITION = "L4_RISK_RECOGNITION"
+
+
+EXPLICIT_FAULT_AUTONOMY_LEVELS = frozenset(
+    {
+        AutonomyLevel.L0_COMPLETE_TASK,
+        AutonomyLevel.L1_COMPLETE_EXPERIMENT,
+        AutonomyLevel.L2_CONDITION_BASED_RECOVERY,
+    }
+)
+AGENT_SELECTED_FAULT_AUTONOMY_LEVELS = frozenset(
+    {
+        AutonomyLevel.L3_STRATEGY_SELECTION,
+        AutonomyLevel.L4_RISK_RECOGNITION,
+    }
+)
+SUPPORTED_STAGE2_FAULT_TYPES = tuple(
+    fault_type
+    for fault_type in sorted(default_policy({"otel-demo"}).fault_type_budgets)
+    if fault_type != "pod-kill"
+)
+
+
+class MainFaultSpec(ContractModel):
+    schema_version: Literal["stage2-main-fault.v1"] = "stage2-main-fault.v1"
+    fault_type: str = Field(
+        min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9-]{0,79}$"
+    )
+    duration_seconds: int = Field(ge=1, strict=True)
+    intensity: dict[str, Any]
+
+    @model_validator(mode="after")
+    def validate_controller_budget(self) -> MainFaultSpec:
+        if self.fault_type not in SUPPORTED_STAGE2_FAULT_TYPES:
+            raise ValueError(
+                "unsupported main fault type; choose one returned by "
+                "GET /api/v1/stage2/options"
+            )
+        budget = default_policy({"otel-demo"}).fault_type_budgets[self.fault_type]
+        if self.duration_seconds > budget.max_duration_seconds:
+            raise ValueError(
+                f"duration_seconds exceeds the {self.fault_type} Controller budget "
+                f"of {budget.max_duration_seconds} seconds"
+            )
+        expected = set(budget.intensities)
+        observed = set(self.intensity)
+        if observed != expected:
+            raise ValueError(
+                "intensity fields must exactly match the selected fault type: "
+                + ", ".join(sorted(expected))
+            )
+        for name, bounds in budget.intensities.items():
+            value = self.intensity[name]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not bounds.contains(value)
+            ):
+                raise ValueError(
+                    f"intensity.{name} must be between "
+                    f"{bounds.min_value:g} and {bounds.max_value:g} {bounds.unit}"
+                )
+        return self
 
 
 class FeedbackCategory(str, Enum):
@@ -341,8 +405,8 @@ class D0QualificationRef(ContractModel):
 
 
 class CampaignRequest(ContractModel):
-    schema_version: Literal["stage2-campaign-request.v1"] = (
-        "stage2-campaign-request.v1"
+    schema_version: Literal["stage2-campaign-request.v2"] = (
+        "stage2-campaign-request.v2"
     )
     request_id: str = Field(pattern=IDENTIFIER)
     episode: FixedEpisodeRef
@@ -357,6 +421,7 @@ class CampaignRequest(ContractModel):
     prompt_mode: PromptMode = PromptMode.COMPILED
     interaction_mode: InteractionMode = InteractionMode.GUIDED
     autonomy_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
+    main_fault: MainFaultSpec | None = None
     d6_variant: OperationUncertaintyVariant = OperationUncertaintyVariant.NOT_APPLIED
     case_bundle: CaseBundle | None = None
     cases: tuple[Stage2CaseId, ...] = CORE_STAGE2_CASE_IDS
@@ -375,6 +440,30 @@ class CampaignRequest(ContractModel):
             raise ValueError("every harness requires one frozen model alias")
         if any(not model.strip() for model in self.model_by_harness.values()):
             raise ValueError("every Harness model alias must be non-empty")
+        if (
+            self.autonomy_level in EXPLICIT_FAULT_AUTONOMY_LEVELS
+            and self.main_fault is None
+        ):
+            raise ValueError(
+                "main_fault is required for L0-L2; the Controller will not infer "
+                "an executable fault from natural-language prompt text"
+            )
+        if (
+            self.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
+            and self.main_fault is not None
+        ):
+            raise ValueError(
+                "main_fault must be omitted for L3-L4 because fault selection is "
+                "owned by the Agent"
+            )
+        if (
+            HarnessKind.BLADEAI in self.harnesses
+            and self.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
+        ):
+            raise ValueError(
+                "BladeAI does not support Agent-owned L3-L4 fault selection in the "
+                "current Stage2 adapter"
+            )
         if self.qualification_mode == "required":
             missing_qualification = set(self.harnesses) - set(
                 self.qualification_refs

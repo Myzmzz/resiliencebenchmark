@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from .contracts import (
-    AutonomyLevel,
+    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
     HarnessReport,
     PromptMode,
     RecoveryResult,
@@ -33,7 +33,9 @@ class ChaosCleanupBackend(Protocol):
 class RecoveryEvidenceProvider(Protocol):
     def current(self) -> Mapping[str, Any]: ...
 
-    def effect_since(self, trial_id: str) -> Mapping[str, Any]: ...
+    def effect_since(
+        self, trial_id: str, runtime: TrialRuntimeContext
+    ) -> Mapping[str, Any]: ...
 
     def reset_and_wait_healthy(
         self,
@@ -85,7 +87,7 @@ class Stage2Finalizer:
             and pre_status.get("target_uid") == runtime.target.uid
             and (
                 runtime.prompt_mode is PromptMode.VERBATIM
-                or runtime.autonomy_level is AutonomyLevel.L3_STRATEGY_SELECTION
+                or runtime.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
                 or pre_status.get("fault_type") == runtime.main_fault.get("fault_type")
             )
         )
@@ -110,7 +112,20 @@ class Stage2Finalizer:
                     pre_absent = True
                     timeout_recovery_observed = True
                     break
-        effect = dict(self.recovery_evidence.effect_since(trial_id))
+        evidence_runtime = runtime
+        observed_fault_type = str(pre_status.get("fault_type") or "")
+        if not runtime.main_fault.get("fault_type") and observed_fault_type:
+            observed_contract = dict(runtime.main_fault)
+            observed_contract["fault_type"] = observed_fault_type
+            observed_contract["duration_seconds"] = pre_status.get(
+                "duration_seconds"
+            )
+            evidence_runtime = runtime.model_copy(
+                update={"main_fault": observed_contract}
+            )
+        effect = dict(
+            self.recovery_evidence.effect_since(trial_id, evidence_runtime)
+        )
         effect["observed_main_fault"] = {
             "fault_type": pre_status.get("fault_type"),
             "target_uid": pre_status.get("target_uid"),
@@ -215,7 +230,11 @@ class Stage2Finalizer:
             business_recovery_verified=business_recovered,
             main_fault_ever_active=ever_active,
             main_fault_target_verified=target_verified,
-            fault_effect_verified=effect.get("verified") is True,
+            fault_effect_verified=(
+                ever_active
+                and target_verified
+                and effect.get("verified") is True
+            ),
             fault_effect_evidence=effect,
             evidence_refs=(
                 "controller://chaos-cleanup",

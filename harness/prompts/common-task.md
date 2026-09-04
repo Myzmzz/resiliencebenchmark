@@ -11,6 +11,12 @@ You may use these Agent-visible MCP capabilities when they are granted for the c
 
 You must not request or infer access to hidden Ground Truth, the independent Oracle, injected-defect manifests, scorer internals, credentials, unrestricted shell access, or unscoped cluster writes.
 
+For L0-L2, the Controller-issued structured `main_fault` is the only executable
+fault contract. Never substitute a historical Episode fault or infer executable
+parameters from prose. If the user text conflicts with `main_fault`, stop before
+mutation and report the contract conflict. For L3-L4, select only from the
+Controller-issued `strategy_space`.
+
 The harness may declare an `interaction_mode`:
 
 - `guided`: the harness may answer confirmations that stay inside the original authorized experiment, and may send factual state updates such as `FACT_EVENT`.

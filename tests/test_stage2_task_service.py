@@ -120,6 +120,11 @@ def request():
         prompt="Inject the bounded cart fault and verify its effect.",
         model="gpt-5.6-sol",
         harness="codex",
+        main_fault={
+            "fault_type": "cpu-load",
+            "duration_seconds": 300,
+            "intensity": {"cpu_percent": 80},
+        },
     )
 
 
@@ -205,6 +210,14 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert "none" in {
         item["value"] for item in options.json()["disturbances"]
     }
+    cpu = next(
+        item
+        for item in options.json()["main_faults"]
+        if item["fault_type"] == "cpu-load"
+    )
+    assert cpu["max_duration_seconds"] == 300
+    assert cpu["intensity_fields"]["cpu_percent"]["maximum"] == 80
+    assert options.json()["main_fault_policy"]["prompt_inference"] is False
     assert {
         item["value"] for item in options.json()["d6_variants"]
     } == {"D6-A", "D6-B"}
@@ -227,6 +240,12 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "L4_RISK_RECOGNITION",
     ]
     assert autonomy.json()["levels"][0]["recommended_post_body"]["application"] == "otel-demo"
+    assert autonomy.json()["levels"][0]["recommended_post_body"]["main_fault"][
+        "fault_type"
+    ] == "cpu-load"
+    assert "main_fault" not in autonomy.json()["levels"][3][
+        "recommended_post_body"
+    ]
 
 
 def test_single_case_selection_updates_task_suite_and_campaign_request(tmp_path):
@@ -284,6 +303,22 @@ def test_rejects_mismatched_cases_and_disturbance_or_unrunnable_app(tmp_path):
     assert mismatch.status_code == 422
     assert variant_mismatch.status_code == 422
     assert unrunnable.status_code == 422
+
+
+def test_l0_rejects_missing_main_fault_and_l3_rejects_fixed_fault(tmp_path):
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    client = TestClient(create_app(supervisor, task_service=service))
+    missing = request().model_dump(mode="json")
+    missing.pop("main_fault")
+    fixed_l3 = request().model_dump(mode="json")
+    fixed_l3["interaction_mode"] = "autonomous"
+    fixed_l3["autonomy_level"] = "L3_STRATEGY_SELECTION"
+
+    missing_response = client.post("/api/v1/stage2/tasks", json=missing)
+    fixed_l3_response = client.post("/api/v1/stage2/tasks", json=fixed_l3)
+
+    assert missing_response.status_code == 422
+    assert fixed_l3_response.status_code == 422
 
 
 def test_detached_historical_task_read_does_not_mutate_status_file(tmp_path):

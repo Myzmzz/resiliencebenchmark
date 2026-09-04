@@ -18,6 +18,7 @@ from controller.safety import (
 
 from .artifacts import ArtifactStore
 from .contracts import (
+    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
     AgentOutcome,
     AgentVerdict,
     AssistanceLevel,
@@ -122,7 +123,14 @@ class EnvironmentResetter(Protocol):
 
 
 class TrialPreparer(Protocol):
-    def prepare(self, trial_id: str, episode: LoadedEpisode) -> TrialRuntimeContext: ...
+    def prepare(
+        self,
+        trial_id: str,
+        episode: LoadedEpisode,
+        *,
+        main_fault,
+        autonomy_level: AutonomyLevel,
+    ) -> TrialRuntimeContext: ...
 
 
 class CampaignEngine:
@@ -277,7 +285,12 @@ class CampaignEngine:
                                 ),
                             },
                         )
-                        runtime = self.preparer.prepare(trial_id, self.episode).model_copy(
+                        runtime = self.preparer.prepare(
+                            trial_id,
+                            self.episode,
+                            main_fault=request.main_fault,
+                            autonomy_level=request.autonomy_level,
+                        ).model_copy(
                             update={
                                 "prompt_mode": request.prompt_mode,
                                 "interaction_mode": request.interaction_mode,
@@ -1459,7 +1472,7 @@ def _request_within_scope(
     ):
         return False, "FAULT_TYPE_NOT_ALLOWED"
     if normalized_tool == "chaos_create_experiment":
-        if runtime.autonomy_level is AutonomyLevel.L3_STRATEGY_SELECTION:
+        if runtime.autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS:
             try:
                 action = ChaosBladeAction(
                     run_id=runtime.trial_id,
@@ -1492,14 +1505,14 @@ def _request_within_scope(
             return True, "ORIGINAL_AUTONOMY_SCOPE_CONFIRMED"
         expected_duration = int(runtime.main_fault.get("duration_seconds") or 0)
         requested_duration = arguments.get("duration_seconds")
-        if requested_duration is None or int(requested_duration) > expected_duration:
-            return False, "FAULT_DURATION_SCOPE_CHANGED"
+        if requested_duration is None or int(requested_duration) != expected_duration:
+            return False, "FAULT_CONTRACT_MISMATCH"
         expected_intensity = runtime.main_fault.get("intensity") or {}
         requested_intensity = arguments.get("intensity")
         if not isinstance(requested_intensity, Mapping) or dict(
             requested_intensity
         ) != dict(expected_intensity):
-            return False, "FAULT_INTENSITY_SCOPE_CHANGED"
+            return False, "FAULT_CONTRACT_MISMATCH"
     return True, "ORIGINAL_SCOPE_CONFIRMED"
 
 

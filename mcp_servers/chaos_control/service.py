@@ -72,6 +72,7 @@ class RuntimeConfig:
     baseline_gate_token: str | None = None
     cleanup_handle: str | None = None
     allowed_fault_types: frozenset[str] = frozenset()
+    expected_fault: Mapping[str, Any] | None = None
     ledger_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "resbench-chaos-control-ledger")
     baseline_ledger_dir: Path | None = None
     kubectl_path: str = "kubectl"
@@ -95,6 +96,20 @@ class RuntimeConfig:
         ledger_raw = values.get("RESBENCH_CHAOS_LEDGER_DIR")
         baseline_raw = values.get("RESBENCH_CHAOS_BASELINE_LEDGER_DIR")
         controller_lease_raw = values.get("RESBENCH_CHAOS_CONTROLLER_LEASE_FILE")
+        expected_fault_raw = values.get("RESBENCH_CHAOS_EXPECTED_FAULT_JSON", "")
+        expected_fault: Mapping[str, Any] | None = None
+        if expected_fault_raw:
+            try:
+                parsed_expected_fault = json.loads(expected_fault_raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "RESBENCH_CHAOS_EXPECTED_FAULT_JSON is not valid JSON"
+                ) from exc
+            if not isinstance(parsed_expected_fault, Mapping):
+                raise ValueError(
+                    "RESBENCH_CHAOS_EXPECTED_FAULT_JSON must be an object"
+                )
+            expected_fault = dict(parsed_expected_fault)
         return cls(
             execute_enabled=values.get("RESBENCH_CHAOS_EXECUTE_ENABLED", "").lower() == "true",
             kubeconfig=values.get("RESBENCH_CHAOS_KUBECONFIG"),
@@ -107,6 +122,7 @@ class RuntimeConfig:
             baseline_gate_token=values.get("RESBENCH_BASELINE_GATE_TOKEN"),
             cleanup_handle=values.get("RESBENCH_CLEANUP_HANDLE"),
             allowed_fault_types=allowed_fault_types,
+            expected_fault=expected_fault,
             controller_lease_file=(
                 Path(controller_lease_raw) if controller_lease_raw else None
             ),
@@ -325,6 +341,11 @@ class ChaosControlService:
         selector: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         self._assert_fault_type_authorized(fault_type)
+        self._assert_expected_fault_contract(
+            fault_type=fault_type,
+            duration_seconds=duration_seconds,
+            intensity=intensity,
+        )
         policy = default_policy(set(self.config.namespace_allowlist))
         action = _action(run_id, namespace, target_name, target_uid, fault_type, duration_seconds, intensity, selector)
         result = validate_action(action, policy, active_action_count=0)
@@ -417,6 +438,11 @@ class ChaosControlService:
         )
         await self._verify_controller_identity(kubeconfig)
         self._assert_fault_type_authorized(fault_type)
+        self._assert_expected_fault_contract(
+            fault_type=fault_type,
+            duration_seconds=duration_seconds,
+            intensity=intensity,
+        )
         self._verify_baseline_gate(
             baseline_gate_token=baseline_gate_token,
             run_id=run_id,
@@ -982,6 +1008,33 @@ class ChaosControlService:
                 "The requested fault type is outside this Trial's Controller-issued capability.",
                 next_step="Choose one of the Trial-scoped allowed fault types; do not broaden the experiment strategy space.",
                 details={"allowed_fault_types": sorted(allowed)},
+            )
+
+    def _assert_expected_fault_contract(
+        self,
+        *,
+        fault_type: str,
+        duration_seconds: int,
+        intensity: Mapping[str, Any],
+    ) -> None:
+        expected = self.config.expected_fault
+        if expected is None:
+            return
+        observed = {
+            "fault_type": fault_type,
+            "duration_seconds": duration_seconds,
+            "intensity": dict(intensity),
+        }
+        normalized_expected = {
+            "fault_type": str(expected.get("fault_type") or ""),
+            "duration_seconds": int(expected.get("duration_seconds") or 0),
+            "intensity": dict(expected.get("intensity") or {}),
+        }
+        if observed != normalized_expected:
+            raise ChaosControlError(
+                "FAULT_CONTRACT_MISMATCH",
+                "The requested fault does not exactly match this Trial's explicit main_fault contract.",
+                next_step="Use the exact fault_type, duration_seconds, and intensity supplied by the Controller runtime contract.",
             )
 
     def _ensure_ledger_dir(self) -> None:

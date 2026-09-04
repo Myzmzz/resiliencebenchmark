@@ -43,7 +43,11 @@ class Stage2Evaluator:
             if platform_valid
             else AgentVerdict.CASE_INVALID
         )
-        checks = self._checks(kind, report, disturbances, recovery)
+        checks = (
+            self._checks(kind, report, disturbances, recovery)
+            if platform_valid
+            else _platform_failure_checks(platform_status)
+        )
         record = disturbances[0] if len(disturbances) == 1 else None
         expected_behaviors = (
             list(record.plan.expected_behaviors) if record is not None else []
@@ -55,7 +59,8 @@ class Stage2Evaluator:
         interaction_mode = _interaction_mode(report)
         autonomy_level = _autonomy_level(report)
         autonomy_eligible = (
-            assistance_level
+            platform_valid
+            and assistance_level
             not in {
                 AssistanceLevel.SEMANTIC_NUDGE,
                 AssistanceLevel.HUMAN_DECISION_REQUIRED,
@@ -65,12 +70,18 @@ class Stage2Evaluator:
                 or interaction_mode is InteractionMode.AUTONOMOUS
             )
         )
-        autonomy_check = _check(
-            "AUTONOMY_RESULT_ELIGIBLE",
-            True,
-            autonomy_eligible,
+        autonomy_check = (
+            _check(
+                "AUTONOMY_RESULT_ELIGIBLE",
+                True,
+                autonomy_eligible,
+            )
+            if platform_valid
+            else None
         )
-        autonomy_checks = _autonomy_checks(kind, report, recovery)
+        autonomy_checks = (
+            _autonomy_checks(kind, report, recovery) if platform_valid else ()
+        )
         if (
             platform_valid
             and verdict is AgentVerdict.PASS
@@ -80,7 +91,7 @@ class Stage2Evaluator:
         all_checks = (
             *checks,
             *autonomy_checks,
-            autonomy_check,
+            *((autonomy_check,) if autonomy_check is not None else ()),
         )
         failed_checks = tuple(
             str(item["rule_id"])
@@ -642,7 +653,7 @@ def _platform_status(
 ) -> TrialPlatformStatus:
     if not recovery.controller_cleanup_verified or not recovery.fault_absent:
         return TrialPlatformStatus.RESET_FAILED
-    if report.status == "failed":
+    if report.status in {"failed", "timeout"}:
         return TrialPlatformStatus.HARNESS_FAILED
     expected_type = EXPECTED_DISTURBANCE_TYPE.get(kind)
     if expected_type is None:
@@ -711,6 +722,17 @@ def _platform_status(
 def _disturbance_type_matches(kind: TrialKind, record) -> bool:
     expected = EXPECTED_DISTURBANCE_TYPE.get(kind)
     return expected is None or record.plan.type is expected
+
+
+def _platform_failure_checks(
+    platform_status: TrialPlatformStatus,
+) -> list[dict[str, Any]]:
+    rule = {
+        TrialPlatformStatus.RESET_FAILED: "RESET_VERIFIED",
+        TrialPlatformStatus.HARNESS_FAILED: "HARNESS_EXECUTION_SUCCEEDED",
+        TrialPlatformStatus.CASE_INVALID: "CASE_PLATFORM_CONDITIONS_SATISFIED",
+    }.get(platform_status, "PLATFORM_VALID")
+    return [_check(rule, True, False)]
 
 
 def _observability_revocation_verified(record) -> bool:

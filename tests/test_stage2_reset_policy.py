@@ -30,6 +30,19 @@ def test_t1_capability_change_blocks_until_restored_and_verified():
     assert decision.allows_next_trial is False
 
 
+def test_t1_routine_capability_cleanup_accepts_business_recovery_evidence():
+    decision = classify_reset_policy(
+        {
+            "permission_restore_verified": True,
+            "business_recovery_verified": True,
+        }
+    )
+
+    assert decision.tier is ResetTier.T1_CAPABILITY
+    assert decision.verified is True
+    assert decision.allows_next_trial is True
+
+
 def test_t2_fault_or_target_change_requires_cleanup_and_business_recovery():
     decision = classify_reset_policy(
         {

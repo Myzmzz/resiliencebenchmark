@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from stage2_service.runtime_adapters import KubernetesEnvironmentGate, McpTokenStateRegistry
 from stage2_service.runtime_factory import KubernetesTrafficEvidence
@@ -211,11 +212,80 @@ def test_cart_fault_effect_is_computed_from_post_baseline_request_delta():
     baseline = evidence.current()
     evidence.record_baseline("campaign-test", baseline)
 
-    effect = evidence.effect_since("campaign-test")
+    effect = evidence.effect_since(
+        "campaign-test",
+        SimpleNamespace(
+            main_fault={"fault_type": "network-delay"},
+            target=SimpleNamespace(name="cart-abc", uid="uid-current"),
+        ),
+    )
 
     assert effect["verified"] is True
     assert effect["cart_request_delta"] == 3
     assert effect["latency_delta_ms"] > 100
+
+
+def test_cpu_effect_uses_fault_specific_prometheus_evidence():
+    snapshots = iter(
+        [
+            {
+                "state": "running",
+                "user_count": 1,
+                "stats": [
+                    {
+                        "name": "Aggregated",
+                        "num_requests": 10,
+                        "num_failures": 0,
+                        "total_rps": 1.0,
+                        "current_rps": 1.0,
+                        "response_time_percentile_0.95": 80,
+                    }
+                ],
+            },
+            {
+                "state": "running",
+                "user_count": 1,
+                "stats": [
+                    {
+                        "name": "Aggregated",
+                        "num_requests": 20,
+                        "num_failures": 0,
+                        "total_rps": 1.0,
+                        "current_rps": 1.0,
+                        "response_time_percentile_0.95": 80,
+                    }
+                ],
+            },
+        ]
+    )
+    evidence = KubernetesTrafficEvidence(
+        Gate(),
+        Episode(),
+        stats_loader=lambda _url: next(snapshots),
+        prometheus_loader=lambda **_kwargs: {
+            "status": "success",
+            "data": {
+                "result": [
+                    {"values": [[1, "0.02"], [2, "0.78"]]},
+                ]
+            },
+        },
+    )
+    evidence.record_baseline("campaign-cpu", evidence.current())
+
+    effect = evidence.effect_since(
+        "campaign-cpu",
+        SimpleNamespace(
+            main_fault={
+                "fault_type": "cpu-load",
+                "intensity": {"cpu_percent": 80},
+            },
+            target=SimpleNamespace(name="cart-abc", uid="uid-current"),
+        ),
+    )
+
+    assert effect["verified"] is True
+    assert effect["physical_effect"]["peak_value"] == 0.78
 
 
 def test_recovery_window_resets_only_locust_statistics_and_waits_for_requests():

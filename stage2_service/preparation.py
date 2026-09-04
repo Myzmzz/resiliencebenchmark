@@ -19,7 +19,14 @@ from controller.safety import (
 )
 from mcp_servers.chaos_control.service import new_cleanup_handle
 
-from .contracts import RuntimeTarget, TrialRuntimeContext
+from .contracts import (
+    AGENT_SELECTED_FAULT_AUTONOMY_LEVELS,
+    AutonomyLevel,
+    MainFaultSpec,
+    RuntimeTarget,
+    SUPPORTED_STAGE2_FAULT_TYPES,
+    TrialRuntimeContext,
+)
 
 
 class PreparationError(RuntimeError):
@@ -154,20 +161,31 @@ class KubernetesTrialPreparer:
         config.load_incluster_config()
         return cls(client.CoreV1Api(), capability_issuer)
 
-    def prepare(self, trial_id: str, episode) -> TrialRuntimeContext:
+    def prepare(
+        self,
+        trial_id: str,
+        episode,
+        *,
+        main_fault: MainFaultSpec | None,
+        autonomy_level: AutonomyLevel,
+    ) -> TrialRuntimeContext:
         component = episode.internal.runtime_binding.component
         target = self._resolve_target("otel-demo", component)
-        main_fault = _stage2_fault_contract(
-            trial_id,
-            episode.internal.main_fault.model_dump(mode="json"),
-            target,
+        runtime_fault = (
+            _strategy_selection_contract(target)
+            if autonomy_level in AGENT_SELECTED_FAULT_AUTONOMY_LEVELS
+            else _stage2_fault_contract(
+                trial_id,
+                _requested_fault(main_fault),
+                target,
+            )
         )
         capability = self.capability_issuer.issue(trial_id, target)
         return TrialRuntimeContext(
             trial_id=trial_id,
             episode_id=episode.internal.identity.episode_id,
             target=target,
-            main_fault=main_fault,
+            main_fault=runtime_fault,
             cleanup_handle=new_cleanup_handle(),
             baseline_capability=capability,
         )
@@ -205,12 +223,7 @@ def _stage2_fault_contract(
     source_fault: Mapping[str, Any],
     target: RuntimeTarget,
 ) -> dict[str, Any]:
-    """Compile an Episode fault into the bounded chaos_control request contract.
-
-    Episode generation uses a longer evidence window than a five-minute Stage-2
-    Trial can execute.  The runtime contract therefore keeps the fault mechanism
-    while bounding duration and intensity to the Controller's live safety policy.
-    """
+    """Validate an explicit API fault as the bounded runtime contract."""
 
     fault_type = str(source_fault.get("fault_type") or "")
     policy = default_policy({target.namespace})
@@ -219,7 +232,9 @@ def _stage2_fault_contract(
         raise PreparationError(
             f"main fault {fault_type or '<missing>'} is outside the Controller policy"
         )
-    source_parameters = dict(source_fault.get("parameters") or {})
+    source_parameters = dict(
+        source_fault.get("intensity") or source_fault.get("parameters") or {}
+    )
     intensity: dict[str, Any] = {}
     for name, allowed in budget.intensities.items():
         raw_value = source_parameters.get(name)
@@ -227,11 +242,8 @@ def _stage2_fault_contract(
             raise PreparationError(
                 f"main fault is missing numeric Controller intensity {name}"
             )
-        intensity[name] = min(max(float(raw_value), allowed.min_value), allowed.max_value)
-        if isinstance(raw_value, int):
-            intensity[name] = int(intensity[name])
-    source_duration = int(source_fault.get("duration_seconds") or 0)
-    duration_seconds = min(source_duration, budget.max_duration_seconds)
+        intensity[name] = raw_value
+    duration_seconds = int(source_fault.get("duration_seconds") or 0)
     action = ChaosBladeAction(
         run_id=trial_id,
         namespace=target.namespace,
@@ -271,7 +283,102 @@ def _stage2_fault_contract(
             "direct_shell_forbidden": True,
         },
         "effect_verification": list(source_fault.get("effect_verification") or ()),
+        "selection_mode": "explicit_api_contract",
     }
+
+
+def _requested_fault(main_fault: MainFaultSpec | None) -> dict[str, Any]:
+    if main_fault is None:
+        raise PreparationError(
+            "explicit main_fault is missing; prompt text is never converted into an "
+            "executable fault"
+        )
+    value = main_fault.model_dump(mode="json")
+    value["effect_verification"] = _effect_verification_contract(
+        main_fault.fault_type
+    )
+    return value
+
+
+def _strategy_selection_contract(target: RuntimeTarget) -> dict[str, Any]:
+    policy = default_policy({target.namespace})
+    return {
+        "tool": "chaos_control",
+        "selection_mode": "agent_strategy",
+        "fault_type": None,
+        "duration_seconds": None,
+        "intensity": {},
+        "allowed_fault_types": list(SUPPORTED_STAGE2_FAULT_TYPES),
+        "budgets": {
+            fault_type: {
+                "max_duration_seconds": policy.fault_type_budgets[
+                    fault_type
+                ].max_duration_seconds,
+                "intensities": {
+                    name: {
+                        "minimum": bounds.min_value,
+                        "maximum": bounds.max_value,
+                        "unit": bounds.unit,
+                    }
+                    for name, bounds in policy.fault_type_budgets[
+                        fault_type
+                    ].intensities.items()
+                },
+            }
+            for fault_type in SUPPORTED_STAGE2_FAULT_TYPES
+        },
+        "target": {
+            "namespace": target.namespace,
+            "component": target.component,
+            "kind": target.kind,
+            "pod_name": target.name,
+            "pod_uid": target.uid,
+        },
+        "request_contract": {
+            "validate_then_create": True,
+            "omit_selector": True,
+            "direct_shell_forbidden": True,
+            "single_fault_only": True,
+        },
+        "effect_verification": [],
+    }
+
+
+def _effect_verification_contract(fault_type: str) -> list[dict[str, str]]:
+    physical = {
+        "cpu-load": (
+            "pod_cpu_increase",
+            "目标 Pod 的 CPU 使用相对基线明显升高。",
+            "Prometheus 容器 CPU 时间序列",
+        ),
+        "memory-stress": (
+            "pod_memory_increase",
+            "目标 Pod 的工作集内存相对基线明显升高。",
+            "Prometheus 容器内存时间序列",
+        ),
+        "network-delay": (
+            "cart_latency_delta",
+            "cart 路径延迟相对基线发生可测升高。",
+            "持续工作负载与请求延迟",
+        ),
+        "network-loss": (
+            "cart_error_or_latency_delta",
+            "cart 路径错误率或延迟相对基线发生可测变化。",
+            "持续工作负载与请求结果",
+        ),
+    }[fault_type]
+    return [
+        {
+            "criterion_id": "chaosblade_running",
+            "description": "所选主故障以当前 cart Pod 为目标并进入 Running 状态。",
+            "evidence_source": "ChaosBlade 状态与 Controller 记录",
+        },
+        {
+            "criterion_id": physical[0],
+            "description": physical[1],
+            "evidence_source": physical[2],
+        },
+    ]
 
 
 def _ready(pod: Any) -> bool:

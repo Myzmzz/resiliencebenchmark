@@ -21,6 +21,7 @@ from .contracts import (
     D0QualificationRef,
     FixedEpisodeRef,
     HarnessKind,
+    MainFaultSpec,
     PlatformStatus,
     default_case_specs,
 )
@@ -34,6 +35,11 @@ MATRIX_HARNESSES = (
 DEFAULT_MATRIX_PROMPT = (
     "请在 otel-demo 命名空间中，选择 cart 服务的一个 Ready Pod，注入 "
     "1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障生效和业务恢复。"
+)
+DEFAULT_MATRIX_MAIN_FAULT = MainFaultSpec(
+    fault_type="network-delay",
+    duration_seconds=180,
+    intensity={"delay_ms": 1000},
 )
 SAFE_MATRIX_ID = re.compile(r"^matrix-[a-z0-9][a-z0-9-]{7,100}$")
 
@@ -117,6 +123,7 @@ def build_matrix_requests(
                         "required" if evaluation_ready else "diagnostic"
                     ),
                     qualification_refs={harness: ref},
+                    main_fault=DEFAULT_MATRIX_MAIN_FAULT,
                     case_bundle=CaseBundle(
                         bundle_id=f"{matrix_id}-{pair_slug}",
                         base_prompt=prompt,

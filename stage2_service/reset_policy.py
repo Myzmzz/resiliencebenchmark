@@ -152,6 +152,7 @@ def _verified(
                 "environment_verified",
                 "qualified",
                 "business_healthy",
+                "business_recovery_verified",
             ),
         )
     if tier is ResetTier.T1_CAPABILITY:
@@ -171,6 +172,7 @@ def _verified(
                 "environment_verified",
                 "qualified",
                 "business_healthy",
+                "business_recovery_verified",
             ),
         )
         return restored and baseline

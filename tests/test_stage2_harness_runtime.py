@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,6 +16,7 @@ from stage2_service.harness_runtime import (
     _extract_recorded_feedback,
     _interaction_event,
     _normalize_bladeai_event,
+    _runtime_public_episode,
 )
 from stage2_service.contracts import (
     PromptExposure,
@@ -275,6 +277,29 @@ def test_matrix_prompt_is_appended_without_replacing_common_contract():
     assert "Public episode contract follows" in prompt
     assert "User-requested experiment task follows" in prompt
     assert task in prompt
+
+
+def test_runtime_public_episode_replaces_historical_fixed_fault_contract():
+    runtime = SimpleNamespace(
+        main_fault={
+            "fault_type": "cpu-load",
+            "duration_seconds": 300,
+            "intensity": {"cpu_percent": 80},
+        }
+    )
+    public = _runtime_public_episode(
+        {
+            "title": "fixed network delay",
+            "objective": "inject network-delay",
+            "action_space": {"allowed_fault_types": ["network-delay"]},
+        },
+        runtime_context=runtime,
+        capability=SimpleNamespace(allowed_fault_types=("cpu-load",)),
+    )
+
+    assert public["action_space"]["allowed_fault_types"] == ["cpu-load"]
+    assert public["runtime_fault_contract"]["fault_type"] == "cpu-load"
+    assert "network-delay" not in public["objective"]
 
 
 def test_interaction_event_keeps_external_tool_data_but_removes_private_reasoning():

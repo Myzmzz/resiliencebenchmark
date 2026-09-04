@@ -43,7 +43,7 @@ class Traffic:
             "business_healthy": True,
         }
 
-    def effect_since(self, _trial_id):
+    def effect_since(self, _trial_id, _runtime):
         return {"verified": True, "latency_delta_ms": 1200}
 
     def reset_and_wait_healthy(self, **_kwargs):

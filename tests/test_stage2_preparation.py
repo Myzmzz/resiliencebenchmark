@@ -6,6 +6,8 @@ import json
 
 import pytest
 
+from stage2_service.contracts import AutonomyLevel, MainFaultSpec
+
 from stage2_service.preparation import (
     ApplicationTrafficCapabilityIssuer,
     KubernetesTrialPreparer,
@@ -50,25 +52,12 @@ class Binding:
     component = "cart"
 
 
-class MainFault:
-    def model_dump(self, mode):
-        del mode
-        return {
-            "fault_type": "network-delay",
-            "target": {},
-            "parameters": {"delay_ms": 1200, "interface": "eth0"},
-            "duration_seconds": 600,
-            "effect_verification": [{"criterion_id": "latency_delta"}],
-        }
-
-
 class Identity:
     episode_id = "EPI-OTEL-CART-DEADLINE-001"
 
 
 class Internal:
     runtime_binding = Binding()
-    main_fault = MainFault()
     identity = Identity()
 
 
@@ -83,7 +72,14 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
         traffic_evidence=Traffic(),
     )
     context = KubernetesTrialPreparer(Core(), issuer).prepare(
-        "campaign-1234567890abcdef-codex-t1", Episode()
+        "campaign-1234567890abcdef-codex-t1",
+        Episode(),
+        main_fault=MainFaultSpec(
+            fault_type="network-delay",
+            duration_seconds=180,
+            intensity={"delay_ms": 1000},
+        ),
+        autonomy_level=AutonomyLevel.L0_COMPLETE_TASK,
     )
 
     assert context.target.name == "cart-abc"
@@ -92,6 +88,7 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
     assert context.main_fault["duration_seconds"] == 180
     assert context.main_fault["intensity"] == {"delay_ms": 1000}
     assert context.main_fault["request_contract"]["omit_selector"] is True
+    assert context.main_fault["selection_mode"] == "explicit_api_contract"
     assert "interface" not in context.main_fault["intensity"]
     assert len(context.baseline_capability) >= 32
     assert list((tmp_path / "ledger").glob("*.json"))
@@ -116,5 +113,12 @@ def test_application_traffic_capability_fails_when_builtin_traffic_is_not_observ
     )
     with pytest.raises(PreparationError, match="traffic evidence"):
         KubernetesTrialPreparer(Core(), issuer).prepare(
-            "campaign-1234567890abcdef-codex-t1", Episode()
+            "campaign-1234567890abcdef-codex-t1",
+            Episode(),
+            main_fault=MainFaultSpec(
+                fault_type="cpu-load",
+                duration_seconds=300,
+                intensity={"cpu_percent": 80},
+            ),
+            autonomy_level=AutonomyLevel.L0_COMPLETE_TASK,
         )

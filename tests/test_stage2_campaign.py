@@ -19,6 +19,7 @@ from stage2_service.contracts import (
     KubernetesRule,
     LifecycleEvent,
     LifecyclePhase,
+    MainFaultSpec,
     PlatformStatus,
     RecoveryResult,
     RuntimeTarget,
@@ -53,6 +54,11 @@ def _request():
         model_by_harness={
             HarnessKind.CODEX: "gpt-5.6-sol",
         },
+        main_fault=MainFaultSpec(
+            fault_type="network-delay",
+            duration_seconds=180,
+            intensity={"delay_ms": 1000},
+        ),
     )
 
 
@@ -65,7 +71,8 @@ class Gate:
 
 
 class Preparer:
-    def prepare(self, trial_id, episode):
+    def prepare(self, trial_id, episode, *, main_fault, autonomy_level):
+        del autonomy_level
         return TrialRuntimeContext(
             trial_id=trial_id,
             episode_id=episode.internal.identity.episode_id,
@@ -75,7 +82,12 @@ class Preparer:
                 name="cart-example",
                 uid="11111111-2222-4333-8444-555555555555",
             ),
-            main_fault={"fault_type": "network-delay"},
+            main_fault={
+                "fault_type": main_fault.fault_type,
+                "duration_seconds": main_fault.duration_seconds,
+                "intensity": dict(main_fault.intensity),
+                "selection_mode": "explicit_api_contract",
+            },
             cleanup_handle="cleanup-" + "a" * 36,
             baseline_capability="b" * 40,
         )

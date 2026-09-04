@@ -154,6 +154,48 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual("FAULT_TYPE_NOT_AUTHORIZED", result["error"]["code"])
 
+    def test_explicit_trial_fault_contract_is_enforced_exactly(self):
+        service = ChaosControlService(
+            replace(
+                self.config,
+                expected_fault={
+                    "fault_type": "network-delay",
+                    "duration_seconds": 120,
+                    "intensity": {"delay_ms": 250},
+                },
+            ),
+            self.backend,
+        )
+
+        accepted = run(service.validate_plan(**{
+            key: value
+            for key, value in self.create_kwargs().items()
+            if key in {
+                "run_id",
+                "namespace",
+                "target_name",
+                "target_uid",
+                "fault_type",
+                "duration_seconds",
+                "intensity",
+            }
+        }))
+        rejected = call(
+            service.validate_plan(
+                run_id="episode-e2e-001-r001",
+                namespace="otel-demo",
+                target_name="checkoutservice-abc123",
+                target_uid="pod-uid-1",
+                fault_type="network-delay",
+                duration_seconds=60,
+                intensity={"delay_ms": 250},
+            )
+        )
+
+        self.assertTrue(accepted["ok"])
+        self.assertFalse(rejected["ok"])
+        self.assertEqual("FAULT_CONTRACT_MISMATCH", rejected["error"]["code"])
+
     def test_create_is_hard_disabled_by_default(self):
         service = ChaosControlService(RuntimeConfig(namespace_allowlist=frozenset({"otel-demo"})), self.backend)
 
