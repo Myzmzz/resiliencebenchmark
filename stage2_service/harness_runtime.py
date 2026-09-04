@@ -378,7 +378,10 @@ class NativeHarnessRunner:
                 clarification = _clarification_request_from_item(item, trial_id)
                 if clarification is not None:
                     question_id = str(clarification["question_id"])
-                    if question_id not in observed_question_ids:
+                    if (
+                        pending_clarification is None
+                        and question_id not in observed_question_ids
+                    ):
                         observed_question_ids.add(question_id)
                         pending_clarification = clarification
                         question_event = self._event(
