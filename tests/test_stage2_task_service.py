@@ -240,6 +240,49 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "L3_STRATEGY_SELECTION",
         "L4_RISK_RECOGNITION",
     ]
+
+
+def test_failed_semantic_nudge_is_not_counted_as_delivered_assistance():
+    events = [
+        {
+            "sequence": 1,
+            "event_type": "SEMANTIC_NUDGE",
+            "payload": {"category": "SEMANTIC_NUDGE"},
+        },
+        {
+            "sequence": 2,
+            "event_type": "HARNESS_FEEDBACK_QUEUED",
+            "payload": {
+                "payload": {
+                    "category": "SEMANTIC_NUDGE",
+                    "message": "continue recovery verification",
+                }
+            },
+        },
+        {
+            "sequence": 3,
+            "event_type": "HARNESS_FEEDBACK_FAILED",
+            "payload": {
+                "payload": {
+                    "category": "SEMANTIC_NUDGE",
+                    "message": "continue recovery verification",
+                }
+            },
+        },
+    ]
+
+    feedback = Stage2TaskService._structured_feedback(events)
+
+    assert feedback["counts"]["semantic_nudges"] == 0
+    assert feedback["semantic_nudges"] == []
+    assert feedback["assistance_level"] == "unassisted_or_unobserved"
+    assert feedback["delivery"] == {
+        "queued": 1,
+        "dispatched": 0,
+        "delivered": 0,
+        "failed": 1,
+        "unsupported": 0,
+    }
     assert autonomy.json()["levels"][0]["recommended_post_body"]["application"] == "otel-demo"
     assert all(
         "autonomy_level" not in item["recommended_post_body"]

@@ -1361,7 +1361,10 @@ class Stage2TaskService:
             and cls._event_class(event) == "semantic_nudge"
         )
         human_required = any(
-            cls._event_class(event) == "human_decision_required" for event in events
+            str(event.get("event_type") or "").upper()
+            == "HARNESS_FEEDBACK_DELIVERED"
+            and cls._event_class(event) == "human_decision_required"
+            for event in events
         )
         trials = (task_result or {}).get("trials")
         trials = trials if isinstance(trials, list) else []
@@ -1526,11 +1529,7 @@ class Stage2TaskService:
             for status in tuple(delivery):
                 if event_type == f"HARNESS_FEEDBACK_{status.upper()}":
                     delivery[status] += 1
-            if event_type not in {
-                "FACT_EVENT",
-                "AUTH_CONFIRM",
-                "SEMANTIC_NUDGE",
-            }:
+            if event_type != "HARNESS_FEEDBACK_DELIVERED":
                 continue
             event_class = cls._event_class(event)
             if event_class not in {
@@ -1539,12 +1538,22 @@ class Stage2TaskService:
                 "semantic_nudge",
             }:
                 continue
+            payload = (
+                event.get("payload")
+                if isinstance(event.get("payload"), Mapping)
+                else {}
+            )
+            nested = (
+                payload.get("payload")
+                if isinstance(payload.get("payload"), Mapping)
+                else {}
+            )
             item = {
                 "sequence": event.get("sequence"),
                 "occurred_at": event.get("occurred_at"),
                 "trial_id": event.get("trial_id"),
                 "case_id": event.get("case_id"),
-                "summary": event.get("summary"),
+                "summary": nested.get("message") or event.get("summary"),
             }
             if event_class == "fact_event":
                 groups["facts"].append(item)

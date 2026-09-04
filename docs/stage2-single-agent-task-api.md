@@ -85,7 +85,11 @@ Summary 会聚合结构化反馈，重点看三类信息：
 
 - `facts`：Harness/Controller 告诉 Agent 的事实，例如目标已替换、能力已重绑定、通道已恢复；
 - `auth_confirmations`：对原始 Prompt 范围内继续执行的确认；
-- `semantic_nudges`：推动 Agent 继续执行的语义提示；出现这类事件时，结果应按 assisted，而不是完全自主。
+- `semantic_nudges`：推动 Agent 继续执行的语义提示；这类反馈实际送达时，结果应按 assisted，而不是完全自主。
+
+三类反馈的数量只统计 `HARNESS_FEEDBACK_DELIVERED`；排队或投递失败只进入
+`delivery.queued/failed`，不计入 assisted。Stage2 的 Agent 执行窗口为 1800 秒，其中最长
+1200 秒可用于故障窗口，剩余时间用于目标确认、效果观测、清理和恢复验证。
 
 Timeline 只返回简化分类事件，适合手动轮询。Debug 返回完整脱敏事件，适合排查 Harness 与 Agent 的具体交互，但不会暴露 token、secret、password、authorization、cleanup handle 或 operation ID 等受控运行标识。
 

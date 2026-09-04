@@ -26,6 +26,7 @@ from stage2_service.contracts import (
     TrialRuntimeContext,
     default_case_specs,
 )
+from scripts.run_harness_trial import DEFAULT_TIMEOUT_SECONDS
 
 
 class DummySupervisor:
@@ -78,6 +79,11 @@ def test_codex_runtime_requires_isolated_codex_eval(tmp_path: Path):
 
     with pytest.raises(HarnessRuntimeError, match="global codex fallback is forbidden"):
         runner(tmp_path)._resolve_executable(HarnessKind.CODEX, "codex")
+
+
+def test_stage2_native_harness_timeout_covers_fault_and_lifecycle(tmp_path: Path):
+    assert DEFAULT_TIMEOUT_SECONDS == 1800
+    assert runner(tmp_path).timeout_seconds == 1800
 
 
 def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):
@@ -190,6 +196,89 @@ def test_successful_tool_metadata_does_not_create_false_permission_denial(tmp_pa
     )
 
     assert [event.kind for event in events] == ["main_fault_running"]
+
+
+def test_plan_validation_rejection_is_not_permission_or_channel_failure(tmp_path: Path):
+    events = runner(tmp_path)._normalize_tool_event(
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-c0",
+        harness=HarnessKind.CODEX,
+        runtime_context=trial_runtime(
+            "campaign-1234567890abcdef-codex-c0"
+        ),
+        item={
+            "type": "mcp_tool_call",
+            "server": "chaos_control",
+            "tool": "chaos_validate_plan",
+            "status": "completed",
+            "arguments": {"target_uid": "uid-current"},
+            "result": {
+                "structured_content": {
+                    "ok": False,
+                    "findings": [
+                        {"code": "SELECTOR_TARGET_FORBIDDEN"},
+                        {"code": "MISSING_INTENSITY_FIELD"},
+                    ],
+                }
+            },
+        },
+    )
+
+    assert [event.kind for event in events] == ["plan_rejected"]
+    assert events[0].payload["finding_codes"] == [
+        "SELECTOR_TARGET_FORBIDDEN",
+        "MISSING_INTENSITY_FIELD",
+    ]
+
+
+def test_tool_argument_rejection_is_not_channel_failure(tmp_path: Path):
+    events = runner(tmp_path)._normalize_tool_event(
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-c0",
+        harness=HarnessKind.CODEX,
+        runtime_context=trial_runtime(
+            "campaign-1234567890abcdef-codex-c0"
+        ),
+        item={
+            "type": "mcp_tool_call",
+            "server": "telemetry_ro",
+            "tool": "telemetry_jaeger_find_traces",
+            "status": "completed",
+            "result": {
+                "structured_content": {
+                    "ok": False,
+                    "error": {"code": "invalid_min_duration"},
+                }
+            },
+        },
+    )
+
+    assert [event.kind for event in events] == ["tool_request_rejected"]
+    assert events[0].payload["error_codes"] == ["invalid_min_duration"]
+
+
+def test_transport_unavailable_is_channel_failure(tmp_path: Path):
+    events = runner(tmp_path)._normalize_tool_event(
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-d5",
+        harness=HarnessKind.CODEX,
+        runtime_context=trial_runtime(
+            "campaign-1234567890abcdef-codex-d5"
+        ),
+        item={
+            "type": "mcp_tool_call",
+            "server": "telemetry_ro",
+            "tool": "telemetry_jaeger_find_traces",
+            "status": "failed",
+            "error": {
+                "code": "service_unavailable",
+                "http_status": 503,
+                "message": "MCP transport unavailable",
+            },
+        },
+    )
+
+    assert [event.kind for event in events] == ["tool_channel_error"]
 
 
 def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):

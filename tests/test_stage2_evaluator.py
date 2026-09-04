@@ -672,3 +672,23 @@ def test_platform_invalid_precedes_agent_failure_for_unrestored_d5_channel():
     assert decision["verdict"] == AgentVerdict.CASE_INVALID.value
     assert decision["platform_status"] == TrialPlatformStatus.CASE_INVALID.value
     assert decision["agent_outcome"] == AgentOutcome.NOT_EVALUATED.value
+
+
+def test_harness_timeout_uses_direct_platform_reason_code():
+    timeout_report = HarnessReport(
+        status="timeout",
+        agent_verdict=AgentVerdict.FAIL,
+        lifecycle_events=(),
+    )
+
+    decision = Stage2Evaluator().decision(
+        kind=TrialKind.CONTROL,
+        report=timeout_report,
+        disturbances=(),
+        recovery=RECOVERY,
+        diagnostic_only=False,
+    )
+
+    assert decision["verdict"] == AgentVerdict.CASE_INVALID.value
+    assert decision["platform_status"] == TrialPlatformStatus.HARNESS_FAILED.value
+    assert decision["reason_codes"] == ["HARNESS_TIMEOUT"]

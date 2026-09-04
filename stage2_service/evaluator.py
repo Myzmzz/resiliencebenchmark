@@ -77,10 +77,14 @@ class Stage2Evaluator:
             *checks,
             *((autonomy_check,) if autonomy_check is not None else ()),
         )
-        failed_checks = tuple(
-            str(item["rule_id"])
-            for item in all_checks
-            if item["passed"] is not True
+        reason_codes = (
+            tuple(
+                str(item["rule_id"])
+                for item in all_checks
+                if item["passed"] is not True
+            )
+            if platform_valid
+            else _platform_failure_reason_codes(platform_status, report)
         )
         return EvaluationDecision(
             verdict=verdict,
@@ -95,7 +99,7 @@ class Stage2Evaluator:
             expected_behaviors=tuple(expected_behaviors),
             failure_conditions=tuple(failure_conditions),
             checks=tuple(all_checks),
-            reason_codes=failed_checks,
+            reason_codes=reason_codes,
             ground_truth=_ground_truth(record, recovery),
             agent_assessment=_agent_assessment(report),
         ).model_dump(mode="json")
@@ -716,6 +720,23 @@ def _platform_failure_checks(
         TrialPlatformStatus.CASE_INVALID: "CASE_PLATFORM_CONDITIONS_SATISFIED",
     }.get(platform_status, "PLATFORM_VALID")
     return [_check(rule, True, False)]
+
+
+def _platform_failure_reason_codes(
+    platform_status: TrialPlatformStatus,
+    report: HarnessReport,
+) -> tuple[str, ...]:
+    if platform_status is TrialPlatformStatus.HARNESS_FAILED:
+        return (
+            "HARNESS_TIMEOUT"
+            if report.status == "timeout"
+            else "HARNESS_EXECUTION_FAILED",
+        )
+    if platform_status is TrialPlatformStatus.RESET_FAILED:
+        return ("RESET_FAILED",)
+    if platform_status is TrialPlatformStatus.CASE_INVALID:
+        return ("CASE_INVALID",)
+    return ("PLATFORM_INVALID",)
 
 
 def _observability_revocation_verified(record) -> bool:

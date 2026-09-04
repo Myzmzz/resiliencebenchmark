@@ -11,7 +11,7 @@ from controller.runtime_secrets import PrivateRuntimeSecretStore
 from controller.trial_preparation import TrialRuntimeContextStore
 from progression.controller import TrialTicket
 from progression.orchestrator import EventEmitter
-from scripts.run_harness_trial import run_trial
+from scripts.run_harness_trial import DEFAULT_TIMEOUT_SECONDS, run_trial
 
 from .streaming import StreamingLifecycleBridge
 
@@ -34,7 +34,7 @@ class LiveHarnessTrialRunner:
         harness_name: str,
         model_alias: str,
         artifact_root: Path,
-        timeout_seconds: int = 600,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         parent_env: Mapping[str, str] | None = None,
         trial_context_store: TrialRuntimeContextStore | None = None,
         secret_store: PrivateRuntimeSecretStore | None = None,

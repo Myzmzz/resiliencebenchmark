@@ -958,11 +958,34 @@ class CampaignEngine:
                             }
                         )
                         evaluation_decision["checks"] = checks
-                        evaluation_decision["reason_codes"] = [
-                            item["rule_id"]
-                            for item in checks
-                            if item.get("passed") is not True
-                        ]
+                        if not result.platform_valid:
+                            if (
+                                result.trial_platform_status
+                                is TrialPlatformStatus.RESET_FAILED
+                            ):
+                                final_reason = "RESET_FAILED"
+                            elif (
+                                result.trial_platform_status
+                                is TrialPlatformStatus.HARNESS_FAILED
+                            ):
+                                final_reason = (
+                                    "HARNESS_TIMEOUT"
+                                    if report.status == "timeout"
+                                    else "HARNESS_EXECUTION_FAILED"
+                                )
+                            elif (
+                                result.trial_platform_status
+                                is TrialPlatformStatus.CASE_INVALID
+                            ):
+                                final_reason = "CASE_INVALID"
+                            else:
+                                final_reason = "PLATFORM_INVALID"
+                            reason_codes = [final_reason]
+                        else:
+                            reason_codes = list(
+                                evaluation_decision.get("reason_codes") or []
+                            )
+                        evaluation_decision["reason_codes"] = reason_codes
                         result = result.model_copy(
                             update={
                                 "evaluation_reason_codes": tuple(
@@ -1456,6 +1479,17 @@ def _guided_turn_feedback(
     if str(event.get("event_type") or "").upper() != "NATIVE_TURN_COMPLETED":
         return None
     payload = event.get("payload") if isinstance(event.get("payload"), Mapping) else {}
+    turn_summary = (
+        payload.get("summary")
+        if isinstance(payload.get("summary"), Mapping)
+        else {}
+    )
+    if (
+        turn_summary.get("timed_out") is True
+        or turn_summary.get("cancelled") is True
+        or int(turn_summary.get("returncode") or 0) != 0
+    ):
+        return None
     raw_events = payload.get("lifecycle_events")
     if not isinstance(raw_events, list):
         return None

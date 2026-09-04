@@ -45,7 +45,9 @@ DEFAULT_EPISODE_SCHEMA = Path("tasks/schemas/episode-public.schema.json")
 DEFAULT_MULTI_LEVEL_EPISODE_SCHEMA = Path("tasks/schemas/multi-level-episode.schema.json")
 DEFAULT_ARTIFACT_ROOT = Path("artifacts/harness")
 DEFAULT_PROMPT_KEY = "full_lifecycle"
-DEFAULT_TIMEOUT_SECONDS = 600
+# A Trial may contain a 20-minute fault window. Keep ten additional minutes for
+# target discovery, baseline/effect checks, bounded cleanup, and final output.
+DEFAULT_TIMEOUT_SECONDS = 30 * 60
 DEFAULT_MAX_OUTPUT_BYTES = 2_000_000
 MAX_PROMPT_BYTES = 200_000
 MIN_TIMEOUT_SECONDS = 1

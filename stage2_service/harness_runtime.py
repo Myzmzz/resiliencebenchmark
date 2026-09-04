@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -19,6 +20,7 @@ from controller.safety import default_policy
 from scripts.run_harness_trial import (
     DEFAULT_HARNESSES_CONFIG,
     DEFAULT_OUTPUT_SCHEMA,
+    DEFAULT_TIMEOUT_SECONDS,
     SAFE_PATH,
     append_runtime_capability_prompt,
     build_argv,
@@ -81,7 +83,7 @@ class NativeHarnessRunner:
         permissions: Stage2PermissionManager,
         mcp_supervisor: McpSupervisor,
         base_environment: Mapping[str, str],
-        timeout_seconds: int = 1800,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     ):
         self.repo_root = repo_root.resolve()
         self.private_root = private_root.resolve()
@@ -915,7 +917,7 @@ class NativeHarnessRunner:
                     {"capability": _capability_for_tool(tool), "tool": tool},
                 )
             )
-        elif tool and _tool_result_failed(item) and not operation_unknown:
+        elif tool and _tool_channel_failed(item) and not operation_unknown:
             output.append(
                 self._event(
                     campaign_id,
@@ -924,6 +926,40 @@ class NativeHarnessRunner:
                     _phase_for_tool(tool),
                     "tool_channel_error",
                     {"capability": _capability_for_tool(tool), "tool": tool},
+                )
+            )
+        elif tool and _tool_result_rejected(item) and not operation_unknown:
+            output.append(
+                self._event(
+                    campaign_id,
+                    trial_id,
+                    harness,
+                    _phase_for_tool(tool),
+                    (
+                        "plan_rejected"
+                        if tool.endswith("chaos_validate_plan")
+                        else "tool_request_rejected"
+                    ),
+                    {
+                        "capability": _capability_for_tool(tool),
+                        "tool": tool,
+                        **_tool_rejection_details(item),
+                    },
+                )
+            )
+        elif tool and _tool_execution_failed(item) and not operation_unknown:
+            output.append(
+                self._event(
+                    campaign_id,
+                    trial_id,
+                    harness,
+                    _phase_for_tool(tool),
+                    "tool_execution_error",
+                    {
+                        "capability": _capability_for_tool(tool),
+                        "tool": tool,
+                        **_tool_rejection_details(item),
+                    },
                 )
             )
         if tool.endswith(
@@ -1403,33 +1439,127 @@ def _agent_reason(text: str) -> str:
     return "unspecified"
 
 
+_PERMISSION_ERROR_CODES = frozenset(
+    {
+        "access_denied",
+        "auth_required",
+        "authentication_required",
+        "invalid_token",
+        "mcp_auth_required",
+        "permission_denied",
+        "token_expired",
+        "token_revoked",
+        "unauthorized",
+    }
+)
+_CHANNEL_ERROR_CODES = frozenset(
+    {
+        "channel_unavailable",
+        "connection_closed",
+        "connection_error",
+        "connection_refused",
+        "connection_reset",
+        "connection_timeout",
+        "gateway_timeout",
+        "mcp_server_unavailable",
+        "mcp_transport_error",
+        "request_timeout",
+        "service_unavailable",
+        "timeout",
+        "transport_error",
+        "transport_timeout",
+        "transport_unavailable",
+        "upstream_unavailable",
+    }
+)
+
+
+def _normalized_error_code(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def _tool_result_payloads(item: Mapping[str, Any]) -> list[dict[str, Any]]:
+    result = item.get("result")
+    if not isinstance(result, Mapping):
+        return []
+    output: list[dict[str, Any]] = []
+    structured = result.get("structured_content")
+    if isinstance(structured, Mapping):
+        output.append(dict(structured))
+    if any(key in result for key in ("ok", "error", "findings")):
+        output.append(dict(result))
+    content = result.get("content")
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, Mapping) or not isinstance(block.get("text"), str):
+                continue
+            for value in extract_json_objects(block["text"]):
+                if any(key in value for key in ("ok", "error", "findings")):
+                    output.append(dict(value))
+                    break
+    return output
+
+
+def _tool_errors(item: Mapping[str, Any]) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+
+    def append_error(value: Any) -> None:
+        if isinstance(value, Mapping):
+            output.append(dict(value))
+        elif isinstance(value, str) and value.strip():
+            output.append({"message": value.strip()})
+
+    append_error(item.get("error"))
+    for payload in _tool_result_payloads(item):
+        append_error(payload.get("error"))
+    return output
+
+
+def _error_http_status(error: Mapping[str, Any]) -> int | None:
+    for key in ("http_status", "status_code", "status"):
+        raw = error.get(key)
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _permission_denied(item: Mapping[str, Any]) -> bool:
-    text = json.dumps(item, ensure_ascii=False).lower()
-    return any(
-        marker in text
-        for marker in (
-            "forbidden",
-            "permission denied",
-            "unauthorized",
-            "auth required",
-            "401",
-            "403",
-        )
-    )
+    failed_status = str(item.get("status") or "").lower() in {
+        "failed",
+        "error",
+    }
+    for error in _tool_errors(item):
+        if _normalized_error_code(error.get("code")) in _PERMISSION_ERROR_CODES:
+            return True
+        if _error_http_status(error) in {401, 403}:
+            return True
+        text = str(error.get("message") or "").lower()
+        if any(
+            marker in text
+            for marker in (
+                "permission denied",
+                "auth required",
+                "authentication required",
+                "401 unauthorized",
+                "403 forbidden",
+                "token revoked",
+            )
+        ):
+            return True
+        if failed_status and any(
+            marker in text for marker in ("unauthorized", "forbidden")
+        ):
+            return True
+    return False
 
 
 def _tool_result_denied(item: Mapping[str, Any]) -> bool:
     status = str(item.get("status") or "").lower()
-    if status in {"failed", "error"}:
-        return _permission_denied(item)
-    if status not in {"completed", "success", "succeeded"}:
+    if status not in {"completed", "success", "succeeded", "failed", "error"}:
         return False
-    for value in extract_json_objects(
-        json.dumps(item.get("result"), ensure_ascii=False)
-    ):
-        if value.get("ok") is False and _permission_denied(value):
-            return True
-    return False
+    return _permission_denied(item)
 
 
 def _tool_result_ok(item: Mapping[str, Any]) -> bool:
@@ -1487,16 +1617,73 @@ def _operation_unknown_payload(item: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def _tool_result_failed(item: Mapping[str, Any]) -> bool:
+def _tool_channel_failed(item: Mapping[str, Any]) -> bool:
     status = str(item.get("status") or "").lower()
-    if status in {"failed", "error", "cancelled"}:
-        return not _permission_denied(item)
+    if status not in {"completed", "success", "succeeded", "failed", "error"}:
+        return False
+    for error in _tool_errors(item):
+        if _normalized_error_code(error.get("code")) in _CHANNEL_ERROR_CODES:
+            return True
+        if _error_http_status(error) in {502, 503, 504}:
+            return True
+        text = str(error.get("message") or "").lower()
+        if any(
+            marker in text
+            for marker in (
+                "channel unavailable",
+                "connect error",
+                "connection closed",
+                "connection refused",
+                "connection reset",
+                "connection timed out",
+                "error sending request",
+                "failed to connect",
+                "mcp transport error",
+                "server disconnected",
+                "service unavailable",
+                "transport closed",
+                "transport error",
+                "transport unavailable",
+            )
+        ):
+            return True
+    return False
+
+
+def _tool_result_rejected(item: Mapping[str, Any]) -> bool:
+    status = str(item.get("status") or "").lower()
     if status not in {"completed", "success", "succeeded"}:
         return False
-    values = extract_json_objects(json.dumps(item.get("result"), ensure_ascii=False))
-    return any(value.get("ok") is False for value in values) and not any(
-        _permission_denied(value) for value in values
-    )
+    return any(payload.get("ok") is False for payload in _tool_result_payloads(item))
+
+
+def _tool_execution_failed(item: Mapping[str, Any]) -> bool:
+    return str(item.get("status") or "").lower() in {"failed", "error", "cancelled"}
+
+
+def _tool_rejection_details(item: Mapping[str, Any]) -> dict[str, Any]:
+    error_codes = []
+    finding_codes = []
+    for error in _tool_errors(item):
+        code = str(error.get("code") or "").strip()
+        if code and code not in error_codes:
+            error_codes.append(code)
+    for payload in _tool_result_payloads(item):
+        findings = payload.get("findings")
+        if not isinstance(findings, list):
+            continue
+        for finding in findings:
+            if not isinstance(finding, Mapping):
+                continue
+            code = str(finding.get("code") or "").strip()
+            if code and code not in finding_codes:
+                finding_codes.append(code)
+    details: dict[str, Any] = {}
+    if error_codes:
+        details["error_codes"] = error_codes
+    if finding_codes:
+        details["finding_codes"] = finding_codes
+    return details
 
 
 def _capability_for_tool(tool: str) -> str:

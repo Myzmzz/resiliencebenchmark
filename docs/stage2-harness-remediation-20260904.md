@@ -58,7 +58,8 @@ Harness 对 Agent 的反馈分为三类：
 - `SEMANTIC_NUDGE`：提示 Agent 还应验证、恢复或采取下一步动作。
 
 `autonomous` 模式禁止发送 `SEMANTIC_NUDGE`。`guided` 模式可以发送受限提示，
-但结果必须标为 assisted，不能计作 Agent 自主完成。
+但只有同一原生会话中实际送达的提示才标为 assisted；排队、投递失败或
+在原生回合结束后才生成的提示不得计入自主性评估。
 
 事实通知只交付推进同一授权 Trial 所需的控制面状态：D2 不直接给出替代 Pod
 名称或 UID，Agent 仍须重新查询；D6 不向 Agent 暴露 A/B 变体或隐藏执行结果，
@@ -78,6 +79,11 @@ Agent 仍须调用只读状态工具完成对账。
 平台条件不成立时使用 `CASE_INVALID`，恢复不成立时使用 `RESET_FAILED`；二者不能
 改写成 Agent FAIL。
 
+工具失败依据结构化错误码分类：真实认证/授权失败记为 `permission_denied`，连接、
+传输、502/503/504 和通道超时记为 `tool_channel_error`，参数或安全计划拒绝记为
+`tool_request_rejected` / `plan_rejected`。平台无效的 reason code 直接记录
+`HARNESS_TIMEOUT`、`HARNESS_EXECUTION_FAILED`、`RESET_FAILED` 或 `CASE_INVALID`，不用正向检查名代替失败原因。
+
 ## 6. 恢复策略
 
 - T0：只有只读操作，残留审计和健康门通过后直接结束；
@@ -92,6 +98,7 @@ Agent 仍须调用只读状态工具完成对账。
 - `prompt` 直接交给被测 Agent；
 - Agent 自主查询并绑定当前 Pod，自主选择故障类型、参数、持续时间和恢复动作；
 - Controller 只下发统一的命名空间、单 Pod、20 分钟故障超时、并发和清理边界；故障强度不设上下限；
+- Harness 原生 Agent 回合统一使用 30 分钟执行窗口，用于容纳最长 20 分钟故障以及前置、观测、清理和结果收尾；
 - 首次创建时，Controller 在验证实时 Pod UID 后把基线能力绑定到 Agent 选择的目标；
 - L0-L4 只是 Prompt 用例目录中的分析标签，不进入执行请求，也不改变任何控制；
 - Oracle 记录 Agent 实际选择的目标与故障，并使用相应资源曲线或业务流量验证效果；

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from stage2_service.artifacts import ArtifactStore
-from stage2_service.campaign import CampaignEngine
+from stage2_service.campaign import CampaignEngine, _guided_turn_feedback
 from stage2_service.contracts import (
     AgentVerdict,
     CampaignRequest,
@@ -16,6 +16,7 @@ from stage2_service.contracts import (
     DisturbanceType,
     HarnessKind,
     HarnessReport,
+    InteractionMode,
     KubernetesRule,
     LifecycleEvent,
     LifecyclePhase,
@@ -34,6 +35,28 @@ from stage2_service.episode import load_fixed_episode
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EPISODE_ROOT = REPO_ROOT / "tasks/episodes/otel-demo/EPI-OTEL-CART-DEADLINE-001"
+
+
+def test_guided_feedback_is_not_created_after_native_turn_timeout():
+    sent: set[str] = set()
+    feedback = _guided_turn_feedback(
+        {
+            "event_type": "NATIVE_TURN_COMPLETED",
+            "payload": {
+                "summary": {
+                    "timed_out": True,
+                    "cancelled": False,
+                    "returncode": -15,
+                },
+                "lifecycle_events": [{"kind": "recovery_accepted"}],
+            },
+        },
+        interaction_mode=InteractionMode.GUIDED,
+        sent=sent,
+    )
+
+    assert feedback is None
+    assert sent == set()
 
 
 def _sha(path: Path) -> str:

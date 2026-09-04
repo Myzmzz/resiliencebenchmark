@@ -298,8 +298,8 @@ class Stage2Finalizer:
         )
         interaction_mode = (
             str(
-                agent_result.get("interaction_mode")
-                or final_output.get("interaction_mode")
+                final_output.get("interaction_mode")
+                or agent_result.get("interaction_mode")
                 or ""
             )
             .strip()
@@ -343,7 +343,9 @@ class Stage2Finalizer:
             for item in assistance_events
         )
         guided_prompt_used = any(
-            item["category"] == "guided_prompt" for item in assistance_events
+            item["category"] == "guided_prompt"
+            and item["delivery_status"] == "delivered"
+            for item in assistance_events
         )
         structured_feedback_count = sum(
             item["category"] == "fact_event"
@@ -354,11 +356,7 @@ class Stage2Finalizer:
             agent_result.get("assisted") is True
             or final_output.get("assisted") is True
         )
-        assisted = (
-            reported_assisted
-            or semantic_nudge_used
-            or guided_prompt_used
-        )
+        assisted = semantic_nudge_used or guided_prompt_used
         semantic_nudge_violation = (
             interaction_mode == "autonomous" and semantic_nudge_used
         )

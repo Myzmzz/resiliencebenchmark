@@ -105,6 +105,37 @@ def test_agent_recovery_requires_preexisting_absence_and_business_recovery():
     assert result.fault_effect_verified is True
 
 
+def test_failed_feedback_and_agent_self_report_do_not_create_assistance_credit():
+    failed_feedback = LifecycleEvent(
+        event_id="failed-feedback",
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-t1",
+        harness=HarnessKind.CODEX,
+        phase=LifecyclePhase.C5_SAFETY,
+        kind="harness_feedback_failed",
+        payload={"category": "SEMANTIC_NUDGE"},
+    )
+    harness_report = HarnessReport(
+        status="completed",
+        agent_verdict=AgentVerdict.PASS,
+        lifecycle_events=(failed_feedback,),
+        final_output={
+            "interaction_mode": "guided",
+            "agent_result": {
+                "interaction_mode": "autonomous",
+                "assisted": True,
+            },
+        },
+    )
+
+    assistance = Stage2Finalizer._assistance_summary(harness_report)
+
+    assert assistance["interaction_mode"] == "guided"
+    assert assistance["reported_assisted"] is True
+    assert assistance["semantic_nudge_used"] is False
+    assert assistance["assisted"] is False
+
+
 def test_bounded_timeout_is_observed_before_controller_cleanup():
     class TimeoutChaos(Chaos):
         def __init__(self):
