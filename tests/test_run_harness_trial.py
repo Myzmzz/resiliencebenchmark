@@ -66,6 +66,112 @@ def test_streaming_runner_honors_controller_cancellation():
     assert result.timed_out is False
 
 
+def test_streaming_runner_archives_unsupported_structured_feedback(tmp_path):
+    transcript = tmp_path / "session-events.jsonl"
+
+    result = trial.subprocess_streaming_runner(
+        [
+            sys.executable,
+            "-c",
+            "import json; print(json.dumps({'type':'message','status':'done'}), flush=True)",
+        ],
+        b"",
+        {},
+        5,
+        lambda _line: {
+            "category": "FACT_EVENT",
+            "message": "channel restored",
+            "payload": {"case_id": "D5"},
+        },
+        transcript_path=transcript,
+    )
+
+    records = [
+        json.loads(line)
+        for line in transcript.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result.returncode == 0
+    assert any(item["event"] == "FEEDBACK_UNSUPPORTED" for item in records)
+    unsupported = next(item for item in records if item["event"] == "FEEDBACK_UNSUPPORTED")
+    assert unsupported["payload"]["category"] == "FACT_EVENT"
+    assert unsupported["payload"]["reason"] == "harness native resume API is not configured"
+
+
+def test_streaming_runner_delivers_turn_complete_feedback_with_native_resume(tmp_path):
+    transcript = tmp_path / "session-events.jsonl"
+    prompts = []
+
+    def turn_complete(_summary):
+        if prompts:
+            return None
+        prompts.append("queued")
+        return {
+            "category": "FACT_EVENT",
+            "message": "target rebound",
+            "payload": {"case_id": "D2"},
+        }
+
+    result = trial.subprocess_streaming_runner(
+        [sys.executable, "-c", "print('initial', flush=True)"],
+        b"",
+        {},
+        5,
+        lambda _line: None,
+        resume_argv_builder=lambda session_id, _turn: [
+            sys.executable,
+            "-c",
+            f"import sys; assert {session_id!r} == 'session-1'; sys.stdin.read(); print('resumed', flush=True)",
+        ],
+        session_id_provider=lambda: "session-1",
+        turn_complete_observer=turn_complete,
+        transcript_path=transcript,
+    )
+
+    records = [
+        json.loads(line)
+        for line in transcript.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result.returncode == 0
+    assert b"initial" in result.stdout
+    assert b"resumed" in result.stdout
+    assert any(item["event"] == "FEEDBACK_DELIVERED" for item in records)
+
+
+def test_autonomous_session_rejects_semantic_nudge(tmp_path):
+    transcript = tmp_path / "session-events.jsonl"
+
+    result = trial.subprocess_streaming_runner(
+        [sys.executable, "-c", "print('initial', flush=True)"],
+        b"",
+        {},
+        5,
+        lambda _line: {
+            "category": "SEMANTIC_NUDGE",
+            "message": "please verify effect now",
+        },
+        resume_argv_builder=lambda _session_id, _turn: [
+            sys.executable,
+            "-c",
+            "raise SystemExit(99)",
+        ],
+        session_id_provider=lambda: "session-1",
+        interaction_mode="autonomous",
+        transcript_path=transcript,
+    )
+
+    records = [
+        json.loads(line)
+        for line in transcript.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result.returncode == 0
+    failed = next(item for item in records if item["event"] == "FEEDBACK_FAILED")
+    assert failed["payload"]["category"] == "SEMANTIC_NUDGE"
+    assert "forbidden" in failed["payload"]["reason"]
+
+
 def test_run_trace_schema_uses_existing_controller_abort_status():
     schema = load_json(REPO_ROOT / "harness/schemas/run-trace.schema.json")
     allowed = schema["properties"]["final_output"]["properties"]["status"]["enum"]
@@ -77,6 +183,10 @@ def test_run_trace_schema_uses_existing_controller_abort_status():
 def valid_agent_result(defect: str = "missing outbound timeout"):
     return {
         "status": "completed",
+        "interaction_mode": "guided",
+        "autonomy_level": "L1_COMPLETE_EXPERIMENT",
+        "assisted": False,
+        "assistance_events": [],
         "suspected_defect": defect,
         "evidence": [
             {
@@ -108,6 +218,74 @@ def test_codex_registry_uses_literal_stdin_marker():
     assert all(isinstance(item, str) for item in args)
     assert "--strict-config" not in args
     assert "--skip-git-repo-check" in args
+
+
+def test_codex_build_argv_removes_ephemeral_for_native_resume():
+    harnesses = yaml.safe_load((REPO_ROOT / "harness/harnesses.yaml").read_text(encoding="utf-8"))
+    argv, stdin, fail_closed = trial.build_argv(
+        "codex",
+        harnesses["harnesses"]["codex"],
+        "gpt-5.6",
+        "prompt",
+        {
+            "output_schema_file": REPO_ROOT / "harness/schemas/agent-result.schema.json",
+            "codex_last_message_file": REPO_ROOT / "codex-last-message.json",
+        },
+    )
+
+    assert fail_closed is None
+    assert stdin == b"prompt"
+    assert "--ephemeral" not in argv
+
+
+def test_codex_resume_builder_uses_same_trial_local_session_files(tmp_path):
+    result_files = [tmp_path / "codex-last-message.json"]
+    builder = trial.build_codex_resume_argv_builder(
+        command="codex-eval",
+        model_alias="gpt-5.6-sol",
+        paths={
+            "output_schema_file": REPO_ROOT / "harness/schemas/agent-result.schema.json",
+            "codex_last_message_file": result_files[0],
+        },
+        candidate_files=result_files,
+    )
+
+    argv = list(builder("session-123", 1))
+
+    assert argv[:3] == ["codex-eval", "exec", "resume"]
+    assert "session-123" in argv
+    assert "--ephemeral" not in argv
+    assert result_files[-1] == tmp_path / "codex-last-message-resume-01.json"
+
+
+def test_claude_build_argv_removes_no_session_persistence_for_native_resume():
+    harnesses = yaml.safe_load((REPO_ROOT / "harness/harnesses.yaml").read_text(encoding="utf-8"))
+    argv, stdin, fail_closed = trial.build_argv(
+        "claude-code",
+        harnesses["harnesses"]["claude-code"],
+        "claude-opus-5",
+        "prompt",
+        {"mcp_config_file": REPO_ROOT / "mcp.json"},
+    )
+
+    assert fail_closed is None
+    assert stdin == b"prompt"
+    assert "--no-session-persistence" not in argv
+
+
+def test_claude_resume_builder_uses_official_resume_flag(tmp_path):
+    builder = trial.build_claude_resume_argv_builder(
+        command="claude",
+        model_alias="claude-opus-5",
+        paths={"mcp_config_file": tmp_path / "mcp.json"},
+    )
+
+    argv = list(builder("claude-session-1", 1))
+
+    assert argv[:4] == ["claude", "--print", "--verbose", "--bare"]
+    assert "--resume" in argv
+    assert argv[argv.index("--resume") + 1] == "claude-session-1"
+    assert "--no-session-persistence" not in argv
 
 
 def test_dry_run_records_template_hashes_without_resolved_urls_or_homes(tmp_path):

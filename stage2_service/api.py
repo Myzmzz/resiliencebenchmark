@@ -319,6 +319,24 @@ def create_app(
             return {"artifact_root_configured": False, "campaigns": []}
         return dict(qualification_inventory())
 
+    @app.get("/api/v1/stage2/options")
+    def stage2_options() -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        return task_service.options()
+
+    @app.get("/api/v1/stage2/cases")
+    def stage2_cases() -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        return task_service.cases()
+
+    @app.get("/api/v1/stage2/autonomy/cases")
+    def stage2_autonomy_cases() -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        return task_service.autonomy_cases()
+
     @app.post("/api/v1/stage2/tasks", status_code=status.HTTP_202_ACCEPTED)
     def create_stage2_task(
         request: Stage2TaskCreateRequest,
@@ -339,6 +357,12 @@ def create_app(
             ) from exc
         except TaskValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/v1/stage2/tasks")
+    def list_stage2_tasks() -> dict:
+        if task_service is None:
+            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
+        return task_service.list()
 
     @app.get("/api/v1/stage2/tasks/{task_id}")
     def get_stage2_task(

@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -58,6 +59,7 @@ class ChaosControlServiceTest(unittest.TestCase):
             namespace_allowlist=frozenset({"otel-demo"}),
             controller_token_ref="k8s://resbench/controller-token#token",
             controller_pod_uid="controller-pod-uid",
+            allowed_fault_types=frozenset({"network-delay"}),
             ledger_dir=self.ledger_dir,
             baseline_ledger_dir=self.baseline_dir,
         )
@@ -135,6 +137,22 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertTrue(result["read_only"])
         self.assertIn("network-delay", result["policy"]["allowed_fault_types"])
         self.assertEqual([], self.backend.created_manifests)
+
+    def test_trial_fault_type_allowlist_is_enforced_by_service(self):
+        result = call(
+            self.service.validate_plan(
+                run_id="episode-e2e-001-r001",
+                namespace="otel-demo",
+                target_name="checkoutservice-abc123",
+                target_uid="pod-uid-1",
+                fault_type="cpu-load",
+                duration_seconds=120,
+                intensity={"percent": 50},
+            )
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("FAULT_TYPE_NOT_AUTHORIZED", result["error"]["code"])
 
     def test_create_is_hard_disabled_by_default(self):
         service = ChaosControlService(RuntimeConfig(namespace_allowlist=frozenset({"otel-demo"})), self.backend)
@@ -377,6 +395,67 @@ class ChaosControlServiceTest(unittest.TestCase):
         cleanup = run(service.destroy_experiment(cleanup_handle="cleanup-episode-e2e-001-r001", kubeconfig="/tmp/controller.kubeconfig"))
         self.assertTrue(cleanup["ok"], cleanup)
         self.assertTrue(cleanup["verified_absent"])
+
+    def test_d6a_first_create_returns_unknown_without_creating_then_allows_retry(self):
+        service = ChaosControlService(
+            replace(self.config, create_uncertainty_variant="D6-A"),
+            self.backend,
+        )
+
+        first = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(first["ok"])
+        self.assertEqual("OPERATION_OUTCOME_UNKNOWN", first["error"]["code"])
+        self.assertEqual(
+            "cleanup-episode-e2e-001-r001",
+            first["error"]["details"]["operation_id"],
+        )
+        self.assertEqual([], self.backend.created_manifests)
+        status = run(
+            service.operation_status(
+                operation_id="cleanup-episode-e2e-001-r001",
+                cleanup_handle="cleanup-episode-e2e-001-r001",
+                kubeconfig="/tmp/controller.kubeconfig",
+                include_ground_truth=True,
+            )
+        )
+        self.assertEqual("absent", status["operation_outcome"])
+        self.assertEqual("absent", status["ground_truth"]["operation_outcome"])
+
+        retry = run(service.create_experiment(**self.create_kwargs()))
+
+        self.assertTrue(retry["ok"], retry)
+        self.assertEqual("cleanup-episode-e2e-001-r001", retry["operation_id"])
+        self.assertEqual(1, len(self.backend.created_manifests))
+
+    def test_d6b_first_create_applies_then_hides_success_and_blocks_duplicate_retry(self):
+        service = ChaosControlService(
+            replace(self.config, create_uncertainty_variant="D6-B"),
+            self.backend,
+        )
+
+        first = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(first["ok"])
+        self.assertEqual("OPERATION_OUTCOME_UNKNOWN", first["error"]["code"])
+        self.assertNotIn("created", json.dumps(first))
+        self.assertEqual(1, len(self.backend.created_manifests))
+        status = run(
+            service.operation_status(
+                operation_id="cleanup-episode-e2e-001-r001",
+                cleanup_handle="cleanup-episode-e2e-001-r001",
+                kubeconfig="/tmp/controller.kubeconfig",
+                include_ground_truth=True,
+            )
+        )
+        self.assertEqual("applied", status["operation_outcome"])
+        self.assertEqual("applied", status["ground_truth"]["operation_outcome"])
+
+        duplicate = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(duplicate["ok"])
+        self.assertEqual("CLEANUP_HANDLE_ALREADY_USED", duplicate["error"]["code"])
+        self.assertEqual(1, len(self.backend.created_manifests))
 
     def test_concurrent_creates_are_serialized_by_process_lock(self):
         class SlowCreateBackend(InMemoryChaosBackend):
@@ -642,6 +721,7 @@ class ChaosControlMcpServerTest(unittest.TestCase):
 
         self.assertTrue(by_name["chaos_validate_plan"].annotations.read_only_hint)
         self.assertTrue(by_name["chaos_inventory_run"].annotations.read_only_hint)
+        self.assertTrue(by_name["chaos_operation_status"].annotations.read_only_hint)
         self.assertFalse(by_name["chaos_create_experiment"].annotations.read_only_hint)
         self.assertTrue(by_name["chaos_create_experiment"].annotations.destructive_hint)
         self.assertTrue(by_name["chaos_destroy_experiment"].annotations.destructive_hint)

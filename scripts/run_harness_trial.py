@@ -18,8 +18,6 @@ import stat
 import subprocess
 import sys
 import tempfile
-import threading
-import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,6 +27,14 @@ from urllib.parse import urlparse
 
 import jsonschema
 import yaml
+
+from stage2_service.session import (
+    HarnessSession,
+    ResumeArgvBuilder,
+    discover_codex_session_id,
+    session_id_from_event,
+    structured_feedbacks_from_observer,
+)
 
 DEFAULT_HARNESSES_CONFIG = Path("harness/harnesses.yaml")
 DEFAULT_MODELS_CONFIG = Path("harness/models.yaml")
@@ -139,6 +145,7 @@ ALLOWED_MCP_TOOLS = {
         "chaos_inventory_run",
         "chaos_create_experiment",
         "chaos_get_experiment",
+        "chaos_operation_status",
         "chaos_destroy_experiment",
         "chaos_recovery_status",
     },
@@ -731,80 +738,38 @@ def subprocess_streaming_runner(
     stdin: bytes,
     env: Mapping[str, str],
     timeout_seconds: int,
-    stdout_line_observer: Callable[[bytes], None],
+    stdout_line_observer: Callable[[bytes], Any],
     cancel_requested: Callable[[], bool] | None = None,
+    *,
+    resume_argv_builder: ResumeArgvBuilder | None = None,
+    session_id_provider: Callable[[], str | None] | None = None,
+    turn_complete_observer: Callable[[Mapping[str, Any]], Any] | None = None,
+    interaction_mode: str = "guided",
+    transcript_path: Path | None = None,
+    redactor: Callable[[Any], Any] | None = None,
 ) -> CommandResult:
     """Run a harness and forward stdout JSONL before process completion."""
 
-    process = subprocess.Popen(
-        list(argv),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=dict(env),
-    )
-    stdout_chunks: list[bytes] = []
-    stderr_chunks: list[bytes] = []
-    observer_errors: list[Exception] = []
-
-    def drain_stdout() -> None:
-        assert process.stdout is not None
-        for line in iter(process.stdout.readline, b""):
-            stdout_chunks.append(line)
-            try:
-                stdout_line_observer(line)
-            except Exception as exc:  # noqa: BLE001 - terminate on observer safety failure.
-                observer_errors.append(exc)
-                process.terminate()
-                break
-
-    def drain_stderr() -> None:
-        assert process.stderr is not None
-        for line in iter(process.stderr.readline, b""):
-            stderr_chunks.append(line)
-
-    stdout_thread = threading.Thread(target=drain_stdout, daemon=True)
-    stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
-    stdout_thread.start()
-    stderr_thread.start()
-    assert process.stdin is not None
-    try:
-        process.stdin.write(stdin)
-        process.stdin.close()
-    except BrokenPipeError:
-        pass
-    timed_out = False
-    cancelled = False
-    deadline = time.monotonic() + timeout_seconds
-    while process.poll() is None:
-        if cancel_requested is not None and cancel_requested():
-            cancelled = True
-            break
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            break
-        try:
-            process.wait(timeout=min(0.25, remaining))
-        except subprocess.TimeoutExpired:
-            continue
-    if (timed_out or cancelled) and process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-    stdout_thread.join(timeout=5)
-    stderr_thread.join(timeout=5)
-    if observer_errors:
-        raise observer_errors[0]
+    session_result = HarnessSession(
+        argv=argv,
+        stdin=stdin,
+        env=env,
+        timeout_seconds=timeout_seconds,
+        stdout_line_observer=stdout_line_observer,
+        cancel_requested=cancel_requested,
+        resume_argv_builder=resume_argv_builder,
+        session_id_provider=session_id_provider,
+        turn_complete_observer=turn_complete_observer,
+        interaction_mode=interaction_mode,
+        transcript_path=transcript_path,
+        redactor=redactor,
+    ).start().wait()
     return CommandResult(
-        returncode=int(process.returncode or 0),
-        stdout=b"".join(stdout_chunks),
-        stderr=b"".join(stderr_chunks),
-        timed_out=timed_out,
-        cancelled=cancelled,
+        returncode=session_result.returncode,
+        stdout=session_result.stdout,
+        stderr=session_result.stderr,
+        timed_out=session_result.timed_out,
+        cancelled=session_result.cancelled,
     )
 
 
@@ -1004,6 +969,10 @@ def build_argv(
         item = item.replace("{{output_schema_file}}", paths.get("output_schema_file", Path("")).as_posix())
         item = item.replace("{{prompt_text}}", prompt_text)
         args.append(item)
+    if harness_name == "codex":
+        args = [item for item in args if item != "--ephemeral"]
+    elif harness_name == "claude-code":
+        args = [item for item in args if item != "--no-session-persistence"]
     if harness_name == "codex" and paths.get("codex_last_message_file"):
         output_args = ["--output-last-message", paths["codex_last_message_file"].as_posix()]
         if args and args[-1] == "-":
@@ -1053,6 +1022,70 @@ def artifact_argv(
             replacement = f"<absolute-command:{candidate.name}>" if index == 0 else "<absolute-path>"
         sanitized.append(replacement)
     return sanitized
+
+
+def build_codex_resume_argv_builder(
+    *,
+    command: str,
+    model_alias: str,
+    paths: Mapping[str, Path],
+    candidate_files: list[Path],
+) -> ResumeArgvBuilder:
+    def build(session_id: str, turn_index: int) -> Sequence[str]:
+        output_path = paths["codex_last_message_file"].with_name(
+            f"codex-last-message-resume-{turn_index:02d}.json"
+        )
+        candidate_files.append(output_path)
+        return [
+            command,
+            "exec",
+            "resume",
+            "--model",
+            model_alias,
+            "--sandbox",
+            "read-only",
+            "--skip-git-repo-check",
+            "--json",
+            "--output-schema",
+            paths["output_schema_file"].as_posix(),
+            "--output-last-message",
+            output_path.as_posix(),
+            session_id,
+            "-",
+        ]
+
+    return build
+
+
+def build_claude_resume_argv_builder(
+    *,
+    command: str,
+    model_alias: str,
+    paths: Mapping[str, Path],
+) -> ResumeArgvBuilder:
+    def build(session_id: str, turn_index: int) -> Sequence[str]:
+        del turn_index
+        return [
+            command,
+            "--print",
+            "--verbose",
+            "--bare",
+            "--output-format",
+            "stream-json",
+            "--model",
+            model_alias,
+            "--mcp-config",
+            paths["mcp_config_file"].as_posix(),
+            "--strict-mcp-config",
+            "--tools",
+            "",
+            "--allowedTools",
+            "mcp__k8s_ro,mcp__telemetry_ro,mcp__source_ro,mcp__chaos_control",
+            "--resume",
+            session_id,
+        ]
+
+    return build
 
 
 def validate_final_agent_result(
@@ -1147,6 +1180,7 @@ def run_trial(
     require_structured_result: bool = True,
     enforce_formal_runtime: bool = True,
     cancel_requested: Callable[[], bool] | None = None,
+    interaction_mode: str = "guided",
 ) -> dict[str, Any]:
     env = dict(parent_env if parent_env is not None else os.environ)
     repo = repo_root.resolve()
@@ -1191,6 +1225,7 @@ def run_trial(
     artifact_dir = artifact_dir_for(resolved_artifact_root, trial)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     events_jsonl = artifact_dir / "events.jsonl"
+    session_events_jsonl = artifact_dir / "session-events.jsonl"
     env_status, env_issues = runtime_env_status(env, execute, harness_name)
     if execute and env_issues:
         raise ValueError("; ".join(env_issues))
@@ -1229,6 +1264,7 @@ def run_trial(
             "output_schema_file": repo / DEFAULT_OUTPUT_SCHEMA,
             "codex_last_message_file": temp_root / "codex-last-message.json",
         }
+        codex_result_files = [paths["codex_last_message_file"]]
         render_codex_config(repo, codex_home, env)
         codex_auth_copied = copy_codex_auth(codex_home, env)
         paths["mcp_config_file"] = render_claude_config(repo, claude_home)
@@ -1275,6 +1311,15 @@ def run_trial(
             "stdinBytes": len(stdin),
             "envKeys": sorted(child_env.keys()),
             "runtimeEnv": env_status,
+            "session": {
+                "nativeResume": harness_name in {"codex", "claude-code"},
+                "interactionMode": interaction_mode,
+                "feedbackCategories": [
+                    "FACT_EVENT",
+                    "AUTH_CONFIRM",
+                    "SEMANTIC_NUDGE",
+                ],
+            },
             "templates": {
                 "codexConfigTemplateSha256": sha256_file(codex_template),
                 "codexAuthMode": "chatgpt-oauth" if codex_auth_copied else "gateway-api-key",
@@ -1316,9 +1361,49 @@ def run_trial(
             if event_observer is None:
                 result = (runner or subprocess_runner)(argv, stdin, child_env, timeout_seconds)
             else:
-                def observe_stdout_line(line: bytes) -> None:
+                observed_stream_events: list[dict[str, Any]] = []
+                captured_session_id: str | None = None
+
+                def observe_stdout_line(line: bytes) -> list[Any]:
+                    nonlocal captured_session_id
+                    feedbacks: list[Any] = []
                     for stream_event in extract_json_objects(redact_text(line, env)):
-                        event_observer(redact_json(stream_event, env))
+                        observed_stream_events.append(stream_event)
+                        if captured_session_id is None:
+                            captured_session_id = session_id_from_event(stream_event)
+                        response = event_observer(redact_json(stream_event, env))
+                        feedbacks.extend(structured_feedbacks_from_observer(response))
+                    return feedbacks
+
+                def observe_turn_complete(summary: Mapping[str, Any]) -> list[Any]:
+                    response = event_observer(
+                        {
+                            "type": "native_turn_completed",
+                            "summary": dict(summary),
+                            "observed_event_count": len(observed_stream_events),
+                        }
+                    )
+                    return structured_feedbacks_from_observer(response)
+
+                resume_builder: ResumeArgvBuilder | None = None
+                session_id_provider: Callable[[], str | None] | None = None
+                if harness_name == "codex":
+                    resume_builder = build_codex_resume_argv_builder(
+                        command=argv[0],
+                        model_alias=model_alias,
+                        paths=paths,
+                        candidate_files=codex_result_files,
+                    )
+                    session_id_provider = (
+                        lambda: captured_session_id or discover_codex_session_id(codex_home)
+                    )
+                elif harness_name == "claude-code":
+                    resume_builder = build_claude_resume_argv_builder(
+                        command=argv[0],
+                        model_alias=model_alias,
+                        paths=paths,
+                    )
+                    session_id_provider = lambda: captured_session_id
 
                 result = subprocess_streaming_runner(
                     argv,
@@ -1327,6 +1412,22 @@ def run_trial(
                     timeout_seconds,
                     observe_stdout_line,
                     cancel_requested,
+                    resume_argv_builder=resume_builder,
+                    session_id_provider=session_id_provider,
+                    turn_complete_observer=observe_turn_complete,
+                    interaction_mode=interaction_mode,
+                    transcript_path=session_events_jsonl,
+                    redactor=lambda value: redact_json(value, env),
+                )
+            if session_events_jsonl.is_file():
+                events.append(
+                    {
+                        "ts": utc_now(),
+                        "kind": "controller_gate",
+                        "summary": "harness session transcript captured",
+                        "payload_ref": "session-events.jsonl",
+                        "redacted": True,
+                    }
                 )
             stdout_ref, stdout_truncated = write_payload(artifact_dir, "stdout.txt", result.stdout, env, max_output_bytes)
             stderr_ref, stderr_truncated = write_payload(artifact_dir, "stderr.txt", result.stderr, env, max_output_bytes)
@@ -1374,7 +1475,7 @@ def run_trial(
                 if require_structured_result:
                     agent_ref, validation_error = validate_final_agent_result(
                         result.stdout,
-                        [paths["codex_last_message_file"]],
+                        codex_result_files,
                         artifact_dir,
                         output_schema,
                         env,
@@ -1391,6 +1492,8 @@ def run_trial(
             native_session_refs = capture_dsh_session_trace(
                 dsh_home, artifact_dir, env, events
             )
+        if session_events_jsonl.is_file():
+            native_session_refs.append("session-events.jsonl")
         shutil.rmtree(temp_root, ignore_errors=True)
         homes_deleted = not temp_root.exists()
 

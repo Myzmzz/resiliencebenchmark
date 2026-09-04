@@ -188,6 +188,8 @@ class McpTransportController(Protocol):
 
     def restore(self, names: tuple[str, ...]) -> Mapping[str, Any]: ...
 
+    def operation_uncertainty_status(self, trial_id: str) -> Mapping[str, Any]: ...
+
 
 class CompositeDisturbanceExecutor:
     def __init__(
@@ -225,6 +227,10 @@ class CompositeDisturbanceExecutor:
                 target_name=str(replacement["name"]),
                 target_uid=str(replacement["uid"]),
             )
+            if capability.get("baseline_capability_rebound") is not True:
+                raise RuntimeAdapterError(
+                    "target capability rebind was not independently verified"
+                )
             return DisturbanceRecord(
                 plan=plan,
                 applied=True,
@@ -265,10 +271,7 @@ class CompositeDisturbanceExecutor:
                     "expected_signal": plan.parameters.get("expected_signal"),
                 },
             )
-        if plan.type in {
-            DisturbanceType.TOOL_CHANNEL_INTERRUPTION,
-            DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY,
-        }:
+        if plan.type is DisturbanceType.TOOL_CHANNEL_INTERRUPTION:
             if self.mcp_supervisor is None:
                 raise RuntimeAdapterError("MCP transport controller is unavailable")
             servers = tuple(str(item) for item in plan.parameters["servers"])
@@ -294,6 +297,39 @@ class CompositeDisturbanceExecutor:
                 },
                 rolled_back=True,
                 rollback_evidence={"restored_during_apply": True, **restored},
+            )
+        if plan.type is DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY:
+            if self.mcp_supervisor is None:
+                raise RuntimeAdapterError("MCP transport controller is unavailable")
+            if not hasattr(self.mcp_supervisor, "operation_uncertainty_status"):
+                raise RuntimeAdapterError("operation outcome status backend is unavailable")
+            status = dict(self.mcp_supervisor.operation_uncertainty_status(plan.trial_id))
+            outcome = str(status.get("operation_outcome") or "unknown")
+            operation_id = str(status.get("operation_id") or "")
+            if outcome not in {"absent", "applied", "unknown"}:
+                outcome = "unknown"
+            ground_truth = dict(status.get("ground_truth") or {})
+            if not ground_truth:
+                ground_truth = {
+                    "operation_id": operation_id,
+                    "operation_outcome": outcome,
+                    "source": "chaos_control_operation_status",
+                }
+            return DisturbanceRecord(
+                plan=plan,
+                applied=True,
+                application_evidence={
+                    "verified": status.get("ok") is True,
+                    "operation_id": operation_id,
+                    "operation_outcome": outcome,
+                    "status": status,
+                },
+                ground_truth=ground_truth,
+                rolled_back=True,
+                rollback_evidence={
+                    "one_shot_response_policy_consumed": True,
+                    "persistent_response_policy_absent": True,
+                },
             )
         raise RuntimeAdapterError("unsupported Stage-2 disturbance type")
 

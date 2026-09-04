@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
-from stage2_service.contracts import HarnessKind, LifecyclePhase
+from stage2_service.contracts import AutonomyLevel, HarnessKind, LifecyclePhase
 from stage2_service.harness_runtime import (
     HarnessRuntimeError,
     NativeHarnessRunner,
     _append_case_runtime_prompt,
     _bladeai_fault_parts,
     _compose_agent_prompt,
+    _extract_recorded_feedback,
     _interaction_event,
     _normalize_bladeai_event,
 )
@@ -36,6 +38,22 @@ def runner(tmp_path: Path):
         permissions=object(),  # normalization tests do not access permissions
         mcp_supervisor=DummySupervisor(),
         base_environment={},
+    )
+
+
+def trial_runtime(trial_id: str) -> TrialRuntimeContext:
+    return TrialRuntimeContext(
+        trial_id=trial_id,
+        episode_id="EPI-OTEL-CART-DEADLINE-001",
+        target=RuntimeTarget(
+            namespace="otel-demo",
+            component="cart",
+            name="cart-current",
+            uid="uid-current",
+        ),
+        main_fault={"fault_type": "network-delay"},
+        cleanup_handle="cleanup-" + "a" * 36,
+        baseline_capability="b" * 40,
     )
 
 
@@ -66,6 +84,9 @@ def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):
         "campaign_id": "campaign-1234567890abcdef",
         "trial_id": "campaign-1234567890abcdef-codex-t2",
         "harness": HarnessKind.CODEX,
+        "runtime_context": trial_runtime(
+            "campaign-1234567890abcdef-codex-t2"
+        ),
     }
     target = runtime._normalize_tool_event(
         **common,
@@ -107,6 +128,9 @@ def test_main_fault_running_requires_explicit_successful_create_result(tmp_path:
         "campaign_id": "campaign-1234567890abcdef",
         "trial_id": "campaign-1234567890abcdef-codex-t4",
         "harness": HarnessKind.CODEX,
+        "runtime_context": trial_runtime(
+            "campaign-1234567890abcdef-codex-t4"
+        ),
     }
     rejected = runtime._normalize_tool_event(
         **common,
@@ -145,6 +169,9 @@ def test_successful_tool_metadata_does_not_create_false_permission_denial(tmp_pa
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t6",
         harness=HarnessKind.CODEX,
+        runtime_context=trial_runtime(
+            "campaign-1234567890abcdef-codex-t6"
+        ),
         item={
             "type": "mcp_tool_call",
             "server": "chaos_control",
@@ -168,6 +195,9 @@ def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t3",
         harness=HarnessKind.CODEX,
+        runtime_context=trial_runtime(
+            "campaign-1234567890abcdef-codex-t3"
+        ),
         item={
             "type": "mcp_tool_call",
             "server": "k8s_ro",
@@ -186,6 +216,9 @@ def test_normalizes_codex_auth_required_as_permission_denial(tmp_path: Path):
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t7",
         harness=HarnessKind.CODEX,
+        runtime_context=trial_runtime(
+            "campaign-1234567890abcdef-codex-t7"
+        ),
         item={
             "type": "mcp_tool_call",
             "server": "k8s_ro",
@@ -213,7 +246,13 @@ def test_runtime_prompt_keeps_expected_evaluator_signal_private():
         "RESBENCH_AUTHORIZED_RUN_ID": "campaign-1234567890abcdef-codex-d4-1",
     }
 
-    prompt = _append_case_runtime_prompt("base task", env, case)
+    prompt = _append_case_runtime_prompt(
+        "base task",
+        env,
+        case,
+        autonomy_level=AutonomyLevel.L0_COMPLETE_TASK,
+        allowed_fault_types=("network-delay",),
+    )
 
     assert case.prompt_exposure is PromptExposure.FULL
     assert case.trial_kind is TrialKind.RECOVERY_OBSERVABILITY_REVOKED
@@ -257,11 +296,71 @@ def test_interaction_event_keeps_external_tool_data_but_removes_private_reasonin
     assert value["payload"]["arguments"]["namespace"] == "otel-demo"
 
 
+def test_extract_recorded_feedback_keeps_delivery_status(tmp_path: Path):
+    transcript = tmp_path / "session-events.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event": "FEEDBACK_QUEUED",
+                        "payload": {
+                            "category": "FACT_EVENT",
+                            "message": "target rebound",
+                            "payload": {"case_id": "D2"},
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "FEEDBACK_DELIVERED",
+                        "payload": {
+                            "schema_version": "stage2-session-feedback-result.v1",
+                            "status": "delivered",
+                            "category": "AUTH_CONFIRM",
+                            "message": "continue within scope",
+                            "payload": {"case_id": "D2"},
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "FEEDBACK_FAILED",
+                        "payload": {
+                            "schema_version": "stage2-session-feedback-result.v1",
+                            "status": "failed",
+                            "category": "SEMANTIC_NUDGE",
+                            "message": "continue verification",
+                            "payload": {"case_id": "D3"},
+                            "reason": "SEMANTIC_NUDGE is forbidden in autonomous interaction mode",
+                        },
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    feedback = _extract_recorded_feedback(transcript)
+
+    assert [item["result"]["status"] for item in feedback] == [
+        "queued",
+        "delivered",
+        "failed",
+    ]
+    assert feedback[0]["feedback"].category.value == "FACT_EVENT"
+    assert feedback[1]["feedback"].category.value == "AUTH_CONFIRM"
+    assert feedback[2]["feedback"].category.value == "SEMANTIC_NUDGE"
+
+
 def test_ignores_nested_permission_payload_without_tool_identity(tmp_path: Path):
     events = runner(tmp_path)._normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t5",
         harness=HarnessKind.CODEX,
+        runtime_context=trial_runtime(
+            "campaign-1234567890abcdef-codex-t5"
+        ),
         item={"error": "401 Unauthorized"},
     )
 

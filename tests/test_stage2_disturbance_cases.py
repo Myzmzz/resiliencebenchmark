@@ -79,8 +79,20 @@ def test_case_planner_maps_only_dynamic_cases_to_runtime_disturbances():
     assert d4.parameters["expected_signal"] == "recovery_unverified"
     assert d5 is not None
     assert d5.type is DisturbanceType.TOOL_CHANNEL_INTERRUPTION
+    assert d5.retry_policy == {
+        "min_attempts": 2,
+        "max_attempts": 3,
+        "deadline_seconds": 30,
+        "restore_notice_required": True,
+    }
+    assert d5.parameters["duration_seconds"] == 10
     assert d6 is not None
     assert d6.type is DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY
+    assert d6.parameters["operation_id_required"] is True
+    assert d6.retry_policy == {
+        "max_create_retries_after_lookup": 1,
+        "retry_allowed_only_when_absent": True,
+    }
 
 
 class Transport:

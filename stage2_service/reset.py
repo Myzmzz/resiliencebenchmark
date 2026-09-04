@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
+from .reset_policy import ResetPolicyDecision, ResetTier, classify_reset_policy
+
 
 class ResetError(RuntimeError):
     pass
@@ -66,26 +68,62 @@ class OtelDemoResetter:
         self.recovery_timeout_seconds = recovery_timeout_seconds
         self.verify_only = verify_only
 
-    def reset(self, trial_id: str, episode) -> Mapping[str, Any]:
+    def reset(
+        self,
+        trial_id: str,
+        episode,
+        mutation_evidence: Mapping[str, Any] | ResetPolicyDecision | None = None,
+    ) -> Mapping[str, Any]:
+        if mutation_evidence is not None:
+            return self.reset_with_policy(trial_id, episode, mutation_evidence)
         if self.verify_only:
-            qualification = dict(self.environment_gate.qualify(episode))
-            # Stage2Finalizer already performs the bounded traffic recovery loop.
-            # Repeating it here both resets the Oracle evidence a second time and
-            # consumes the remaining Trial budget.  This final gate is deliberately
-            # a fresh one-shot qualification after permission restoration.
-            traffic = dict(self.traffic_evidence.current())
-            return {
-                "trial_id": trial_id,
-                "uninstalled": False,
-                "reinstalled": False,
-                "verify_only": True,
-                "verified": (
-                    qualification.get("qualified") is True
-                    and traffic.get("business_healthy") is True
-                ),
-                "qualification": qualification,
-                "traffic_recovery": traffic,
-            }
+            return self._verify_environment(trial_id, episode)
+        return self._full_reinstall(trial_id, episode)
+
+    def reset_with_policy(
+        self,
+        trial_id: str,
+        episode,
+        mutation_evidence: Mapping[str, Any] | ResetPolicyDecision,
+    ) -> Mapping[str, Any]:
+        decision = (
+            mutation_evidence
+            if isinstance(mutation_evidence, ResetPolicyDecision)
+            else classify_reset_policy(mutation_evidence)
+        )
+        if decision.tier is ResetTier.T3_FULL_REINSTALL:
+            result = dict(self._full_reinstall(trial_id, episode))
+            return self._attach_policy(
+                result, decision, verified=result.get("verified") is True
+            )
+
+        result = dict(self._verify_environment(trial_id, episode))
+        verified = result.get("verified") is True
+        if decision.tier is not ResetTier.T0_NO_WRITE:
+            verified = verified and decision.verified
+        return self._attach_policy(result, decision, verified=verified)
+
+    def _verify_environment(self, trial_id: str, episode) -> Mapping[str, Any]:
+        qualification = dict(self.environment_gate.qualify(episode))
+        # Stage2Finalizer already performs the bounded traffic recovery loop.
+        # Repeating it here both resets the Oracle evidence a second time and
+        # consumes the remaining Trial budget. This final gate is deliberately
+        # a fresh one-shot qualification after permission restoration.
+        traffic = dict(self.traffic_evidence.current())
+        return {
+            "trial_id": trial_id,
+            "uninstalled": False,
+            "reinstalled": False,
+            "verify_only": True,
+            "verified": (
+                qualification.get("qualified") is True
+                and traffic.get("business_healthy") is True
+            ),
+            "qualification": qualification,
+            "traffic_recovery": traffic,
+        }
+
+    def _full_reinstall(self, trial_id: str, episode) -> Mapping[str, Any]:
         env = {
             **os.environ,
             "KUBECONFIG": str(self.kubeconfig),
@@ -152,3 +190,23 @@ class OtelDemoResetter:
             "qualification": qualification,
             "traffic_recovery": traffic,
         }
+
+    @staticmethod
+    def _attach_policy(
+        result: dict[str, Any], decision: ResetPolicyDecision, *, verified: bool
+    ) -> Mapping[str, Any]:
+        policy = decision.to_dict()
+        policy.update(
+            {
+                "verified": verified,
+                "allows_next_trial": verified,
+            }
+        )
+        if (
+            not verified
+            and "RESET_VERIFICATION_MISSING" not in policy["reason_codes"]
+        ):
+            policy["reason_codes"].append("RESET_VERIFICATION_MISSING")
+        result["verified"] = verified
+        result["reset_policy"] = policy
+        return result

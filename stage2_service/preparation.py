@@ -52,6 +52,7 @@ class ApplicationTrafficCapabilityIssuer:
         self.traffic_evidence = traffic_evidence
         self.ttl_seconds = ttl_seconds
         self._token_hashes: dict[str, str] = {}
+        self._binding_versions: dict[str, int] = {}
 
     def issue(self, trial_id: str, target: RuntimeTarget) -> str:
         evidence = dict(self.traffic_evidence.current())
@@ -77,9 +78,11 @@ class ApplicationTrafficCapabilityIssuer:
             "issued_at": now.isoformat(),
             "expires_at": (now + timedelta(seconds=self.ttl_seconds)).isoformat(),
             "traffic_evidence": evidence,
+            "binding_version": 1,
         }
         _atomic_json(self.ledger_dir / f"{token_hash}.json", payload)
         self._token_hashes[trial_id] = token_hash
+        self._binding_versions[trial_id] = 1
         return token
 
     def rebind(
@@ -111,6 +114,7 @@ class ApplicationTrafficCapabilityIssuer:
         if payload.get("trial_id") != trial_id or payload.get("namespace") != namespace:
             raise PreparationError("trial baseline capability identity changed before rebind")
         rebound_at = datetime.now(UTC)
+        binding_version = self._binding_versions.get(trial_id, 1) + 1
         payload.update(
             {
                 "target_name": target_name,
@@ -120,16 +124,19 @@ class ApplicationTrafficCapabilityIssuer:
                     rebound_at + timedelta(seconds=self.ttl_seconds)
                 ).isoformat(),
                 "traffic_evidence": evidence,
+                "binding_version": binding_version,
             }
         )
         _atomic_json(path, payload)
         self.traffic_evidence.record_baseline(trial_id, evidence)
+        self._binding_versions[trial_id] = binding_version
         return {
             "trial_id": trial_id,
             "namespace": namespace,
             "target_name": target_name,
             "target_uid": target_uid,
             "baseline_capability_rebound": True,
+            "binding_version": binding_version,
         }
 
 

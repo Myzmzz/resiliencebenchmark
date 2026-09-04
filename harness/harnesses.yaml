@@ -78,6 +78,9 @@ harnesses:
       require_controller_budget_token: true
       deny_direct_oracle_access: true
       deny_unscoped_shell: true
+    session:
+      logical_resume: false
+      reason: current Stage2 adapter uses the direct one-shot worker
 
   claude-code:
     kind: claude_code
@@ -90,7 +93,6 @@ harnesses:
         - --print
         - --verbose
         - --bare
-        - --no-session-persistence
         - --output-format
         - stream-json
         - --model
@@ -117,6 +119,9 @@ harnesses:
       require_fresh_config_home_per_trial: true
       deny_direct_oracle_access: true
       deny_unscoped_shell: true
+    session:
+      logical_resume: true
+      resume_flag: --resume
 
   codex:
     kind: codex
@@ -132,7 +137,6 @@ harnesses:
         - --sandbox
         - read-only
         - --skip-git-repo-check
-        - --ephemeral
         - --json
         - --output-schema
         - "{{output_schema_file}}"
@@ -156,6 +160,9 @@ harnesses:
       require_fresh_codex_home_per_trial: true
       deny_direct_oracle_access: true
       deny_unscoped_shell: true
+    session:
+      logical_resume: true
+      resume_command: codex exec resume
 
   deepseek-harness:
     kind: official_deepseek_harness
@@ -182,6 +189,9 @@ harnesses:
       current_capture: redacted-headless-stdout-and-final-result
       session_tool_export: live-smoke-confirmed-absent-from-run-trace
       scored_trial_eligibility: blocked-until-complete-tool-trace-pass
+    session:
+      logical_resume: false
+      reason: shipped headless profile is one-shot
     models:
       source: models.yaml
       default_alias: gpt-5.6-sol

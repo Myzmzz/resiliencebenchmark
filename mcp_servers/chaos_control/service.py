@@ -35,14 +35,25 @@ SAFE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/#@-]{2,255}$")
 class ChaosControlError(RuntimeError):
     """Expected operational error that is safe to return to an agent."""
 
-    def __init__(self, code: str, message: str, *, next_step: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        next_step: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.next_step = next_step
+        self.details = dict(details or {})
 
     def as_response(self) -> dict[str, Any]:
-        return {"ok": False, "error": {"code": self.code, "message": self.message, "next_step": self.next_step}}
+        response = {"ok": False, "error": {"code": self.code, "message": self.message, "next_step": self.next_step}}
+        if self.details:
+            response["error"]["details"] = self.details
+        return response
 
 
 @dataclass(frozen=True)
@@ -60,9 +71,11 @@ class RuntimeConfig:
     authorized_run_id: str | None = None
     baseline_gate_token: str | None = None
     cleanup_handle: str | None = None
+    allowed_fault_types: frozenset[str] = frozenset()
     ledger_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "resbench-chaos-control-ledger")
     baseline_ledger_dir: Path | None = None
     kubectl_path: str = "kubectl"
+    create_uncertainty_variant: str | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "RuntimeConfig":
@@ -70,6 +83,13 @@ class RuntimeConfig:
         namespaces = frozenset(
             item.strip()
             for item in values.get("RESBENCH_CHAOS_NAMESPACE_ALLOWLIST", "").split(",")
+            if item.strip()
+        )
+        allowed_fault_types = frozenset(
+            item.strip()
+            for item in values.get(
+                "RESBENCH_CHAOS_ALLOWED_FAULT_TYPES", ""
+            ).split(",")
             if item.strip()
         )
         ledger_raw = values.get("RESBENCH_CHAOS_LEDGER_DIR")
@@ -86,12 +106,14 @@ class RuntimeConfig:
             authorized_run_id=values.get("RESBENCH_AUTHORIZED_RUN_ID"),
             baseline_gate_token=values.get("RESBENCH_BASELINE_GATE_TOKEN"),
             cleanup_handle=values.get("RESBENCH_CLEANUP_HANDLE"),
+            allowed_fault_types=allowed_fault_types,
             controller_lease_file=(
                 Path(controller_lease_raw) if controller_lease_raw else None
             ),
             ledger_dir=Path(ledger_raw) if ledger_raw else cls().ledger_dir,
             baseline_ledger_dir=Path(baseline_raw) if baseline_raw else None,
             kubectl_path=values.get("RESBENCH_KUBECTL", "kubectl"),
+            create_uncertainty_variant=values.get("RESBENCH_CHAOS_CREATE_UNCERTAINTY_VARIANT"),
         )
 
 
@@ -302,6 +324,7 @@ class ChaosControlService:
         intensity: Mapping[str, Any],
         selector: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
+        self._assert_fault_type_authorized(fault_type)
         policy = default_policy(set(self.config.namespace_allowlist))
         action = _action(run_id, namespace, target_name, target_uid, fault_type, duration_seconds, intensity, selector)
         result = validate_action(action, policy, active_action_count=0)
@@ -381,6 +404,8 @@ class ChaosControlService:
         cleanup_handle: str,
         selector: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
+        existing_ledger = self._read_ledger_for_create(cleanup_handle)
+        retry_after_absent_uncertainty = _is_retriable_absent_uncertainty(existing_ledger)
         self._assert_create_runtime_gates(
             kubeconfig=kubeconfig,
             namespace=namespace,
@@ -388,8 +413,10 @@ class ChaosControlService:
             expected_controller_pod_uid=expected_controller_pod_uid,
             baseline_gate_token=baseline_gate_token,
             cleanup_handle=cleanup_handle,
+            allow_existing_cleanup_handle=retry_after_absent_uncertainty,
         )
         await self._verify_controller_identity(kubeconfig)
+        self._assert_fault_type_authorized(fault_type)
         self._verify_baseline_gate(
             baseline_gate_token=baseline_gate_token,
             run_id=run_id,
@@ -437,28 +464,34 @@ class ChaosControlService:
         manifest = _manifest(name, action)
         created_at = _now_utc()
         deadline_at = created_at + _duration_delta(duration_seconds)
-        ledger = {
-            "version": LEDGER_VERSION,
-            "created_at": _datetime_iso(created_at),
-            "updated_at": _datetime_iso(created_at),
-            "state": "pending_apply",
-            "experiment_name": name,
-            "namespace": namespace,
-            "run_id": run_id,
-            "target_name": target_name,
-            "target_uid": target_uid,
-            "fault_type": fault_type,
-            "duration_seconds": duration_seconds,
-            "deadline_at": _datetime_iso(deadline_at),
-            "controller_token_ref": controller_token_ref,
-            "baseline_gate_token_sha256": baseline_token_hash,
-            "cleanup_handle": cleanup_handle,
-        }
-        self._write_ledger(cleanup_handle, ledger)
+        ledger = _create_ledger_payload(
+            created_at=created_at,
+            deadline_at=deadline_at,
+            name=name,
+            run_id=run_id,
+            namespace=namespace,
+            target_name=target_name,
+            target_uid=target_uid,
+            fault_type=fault_type,
+            duration_seconds=duration_seconds,
+            controller_token_ref=controller_token_ref,
+            baseline_token_hash=baseline_token_hash,
+            cleanup_handle=cleanup_handle,
+        )
+        variant = _create_uncertainty_variant(self.config.create_uncertainty_variant)
+        if variant and not _uncertainty_already_injected(existing_ledger):
+            return await self._create_experiment_with_unknown_outcome(
+                variant=variant,
+                ledger=ledger,
+                manifest=manifest,
+                kubeconfig=kubeconfig,
+                active_owned_count=active_owned_count,
+            )
+        self._write_ledger(cleanup_handle, {**ledger, "operation_outcome": "unknown"})
         try:
             record = await self.backend.create_experiment(manifest, kubeconfig)
         except Exception:
-            failed_ledger = {**ledger, "state": "create_failed", "updated_at": _now_iso()}
+            failed_ledger = {**ledger, "state": "create_failed", "operation_outcome": "unknown", "updated_at": _now_iso()}
             self._write_ledger(cleanup_handle, failed_ledger)
             raise
         ledger = {
@@ -467,11 +500,14 @@ class ChaosControlService:
             "ever_active": True,
             "updated_at": _now_iso(),
             "experiment_name": record.name,
+            "operation_id": cleanup_handle,
+            "operation_outcome": "applied",
         }
         self._write_ledger(cleanup_handle, ledger)
         return {
             "ok": True,
             "created": _record_payload(record),
+            "operation_id": cleanup_handle,
             "cleanup_handle": cleanup_handle,
             "safety": {
                 "active_owned_count_before_create": active_owned_count,
@@ -479,6 +515,142 @@ class ChaosControlService:
                 "target_uid_verified": True,
             },
         }
+
+    async def _create_experiment_with_unknown_outcome(
+        self,
+        *,
+        variant: str,
+        ledger: Mapping[str, Any],
+        manifest: Mapping[str, Any],
+        kubeconfig: str,
+        active_owned_count: int,
+    ) -> dict[str, Any]:
+        cleanup_handle = str(ledger["cleanup_handle"])
+        operation_id = cleanup_handle
+        if variant == "D6-A":
+            updated = {
+                **ledger,
+                "state": "operation_outcome_unknown",
+                "operation_id": operation_id,
+                "operation_outcome": "absent",
+                "uncertainty_injected": True,
+                "uncertainty_variant": variant,
+                "ground_truth": {
+                    "operation_id": operation_id,
+                    "operation_outcome": "absent",
+                    "variant": variant,
+                    "created": False,
+                },
+                "updated_at": _now_iso(),
+            }
+            self._write_ledger(cleanup_handle, updated)
+            raise _unknown_outcome_error(updated, active_owned_count=active_owned_count)
+        if variant == "D6-B":
+            self._write_ledger(
+                cleanup_handle,
+                {
+                    **ledger,
+                    "state": "pending_apply",
+                    "operation_id": operation_id,
+                    "operation_outcome": "unknown",
+                    "uncertainty_injected": True,
+                    "uncertainty_variant": variant,
+                    "updated_at": _now_iso(),
+                },
+            )
+            try:
+                record = await self.backend.create_experiment(manifest, kubeconfig)
+            except Exception:
+                failed_ledger = {
+                    **ledger,
+                    "state": "create_failed",
+                    "operation_id": operation_id,
+                    "operation_outcome": "unknown",
+                    "uncertainty_injected": True,
+                    "uncertainty_variant": variant,
+                    "updated_at": _now_iso(),
+                }
+                self._write_ledger(cleanup_handle, failed_ledger)
+                raise
+            updated = {
+                **ledger,
+                "state": "active",
+                "ever_active": True,
+                "updated_at": _now_iso(),
+                "experiment_name": record.name,
+                "operation_id": operation_id,
+                "operation_outcome": "applied",
+                "uncertainty_injected": True,
+                "uncertainty_variant": variant,
+                "ground_truth": {
+                    "operation_id": operation_id,
+                    "operation_outcome": "applied",
+                    "variant": variant,
+                    "created": True,
+                    "experiment_name": record.name,
+                },
+            }
+            self._write_ledger(cleanup_handle, updated)
+            raise _unknown_outcome_error(updated, active_owned_count=active_owned_count)
+        raise ChaosControlError(
+            "INVALID_OPERATION_UNCERTAINTY_VARIANT",
+            "Create outcome uncertainty variant must be D6-A or D6-B.",
+            next_step="Disable the uncertainty injection or set RESBENCH_CHAOS_CREATE_UNCERTAINTY_VARIANT to D6-A or D6-B.",
+        )
+
+    async def operation_status(
+        self,
+        *,
+        operation_id: str | None = None,
+        cleanup_handle: str,
+        kubeconfig: str | None = None,
+        include_ground_truth: bool = False,
+    ) -> dict[str, Any]:
+        cfg_kubeconfig = self._resolve_kubeconfig(kubeconfig)
+        self._assert_operation_identity(operation_id=operation_id, cleanup_handle=cleanup_handle)
+        try:
+            ledger = self._read_ledger(cleanup_handle)
+        except ChaosControlError as exc:
+            if exc.code != "UNKNOWN_CLEANUP_HANDLE":
+                raise
+            return {
+                "ok": True,
+                "read_only": True,
+                "operation_id": cleanup_handle,
+                "cleanup_handle": cleanup_handle,
+                "operation_outcome": "unknown",
+                "state": "unknown",
+                "reason": "cleanup ledger is absent",
+            }
+        record = await self.backend.get_experiment(ledger["namespace"], ledger["experiment_name"], cfg_kubeconfig)
+        if record is None:
+            operation_outcome = "absent"
+        elif _record_matches_ledger(record, ledger):
+            operation_outcome = "applied"
+        else:
+            operation_outcome = "unknown"
+        response = {
+            "ok": True,
+            "read_only": True,
+            "operation_id": str(ledger.get("operation_id") or cleanup_handle),
+            "cleanup_handle": cleanup_handle,
+            "run_id": str(ledger.get("run_id", "")),
+            "namespace": str(ledger.get("namespace", "")),
+            "experiment_name": str(ledger.get("experiment_name", "")),
+            "target_uid": str(ledger.get("target_uid", "")),
+            "fault_type": str(ledger.get("fault_type", "")),
+            "state": str(ledger.get("state", "unknown")),
+            "operation_outcome": operation_outcome,
+            "ledger_operation_outcome": str(ledger.get("operation_outcome", "unknown")),
+            "live": {
+                "found": record is not None,
+                "matches_ledger": bool(record is not None and _record_matches_ledger(record, ledger)),
+                "phase": None if record is None else record.phase,
+            },
+        }
+        if include_ground_truth:
+            response["ground_truth"] = dict(ledger.get("ground_truth") or {})
+        return response
 
     async def get_experiment(self, *, namespace: str, name: str, kubeconfig: str | None = None) -> dict[str, Any]:
         cfg_kubeconfig = self._resolve_kubeconfig(kubeconfig)
@@ -605,6 +777,7 @@ class ChaosControlService:
         expected_controller_pod_uid: str,
         baseline_gate_token: str,
         cleanup_handle: str,
+        allow_existing_cleanup_handle: bool = False,
     ) -> None:
         if not self.config.execute_enabled:
             raise ChaosControlError(
@@ -644,7 +817,8 @@ class ChaosControlService:
                 next_step="Run the baseline gate first and pass its opaque token.",
             )
         self._validate_handle(cleanup_handle)
-        if self._ledger_path(cleanup_handle).exists():
+        ledger_path = self._ledger_path(cleanup_handle)
+        if (ledger_path.exists() or ledger_path.is_symlink()) and not allow_existing_cleanup_handle:
             raise ChaosControlError(
                 "CLEANUP_HANDLE_ALREADY_USED",
                 "The cleanup handle already exists in this server ledger.",
@@ -800,6 +974,16 @@ class ChaosControlService:
                 next_step="Use an allowlisted benchmark namespace or update RESBENCH_CHAOS_NAMESPACE_ALLOWLIST.",
             )
 
+    def _assert_fault_type_authorized(self, fault_type: str) -> None:
+        allowed = self.config.allowed_fault_types
+        if allowed and fault_type not in allowed:
+            raise ChaosControlError(
+                "FAULT_TYPE_NOT_AUTHORIZED",
+                "The requested fault type is outside this Trial's Controller-issued capability.",
+                next_step="Choose one of the Trial-scoped allowed fault types; do not broaden the experiment strategy space.",
+                details={"allowed_fault_types": sorted(allowed)},
+            )
+
     def _ensure_ledger_dir(self) -> None:
         if self.config.ledger_dir.exists():
             _assert_private_directory(self.config.ledger_dir, "cleanup ledger")
@@ -817,6 +1001,37 @@ class ChaosControlService:
                 "Cleanup handle must start with cleanup- and contain only safe identifier characters.",
                 next_step="Generate a fresh handle with the controller, for example cleanup- plus a random token.",
             )
+
+    def _assert_operation_identity(self, *, operation_id: str | None, cleanup_handle: str) -> None:
+        self._validate_handle(cleanup_handle)
+        if operation_id is not None and operation_id != cleanup_handle:
+            raise ChaosControlError(
+                "OPERATION_ID_MISMATCH",
+                "operation_id must match the Trial-scoped cleanup handle.",
+                next_step="Use the operation_id returned by chaos_create_experiment on this same Trial runtime.",
+            )
+        if self.config.cleanup_handle and cleanup_handle != self.config.cleanup_handle:
+            raise ChaosControlError(
+                "BOUND_RUNTIME_MISMATCH",
+                "cleanup_handle does not match the Controller-bound Trial value.",
+                next_step="Omit cleanup_handle; the Trial-scoped server supplies it automatically.",
+            )
+
+    def _read_ledger_for_create(self, cleanup_handle: str) -> dict[str, Any] | None:
+        self._validate_handle(cleanup_handle)
+        path = self._ledger_path(cleanup_handle)
+        if not path.exists() and not path.is_symlink():
+            return None
+        if not self.config.ledger_dir.exists():
+            return None
+        _assert_private_directory(self.config.ledger_dir, "cleanup ledger")
+        return _read_private_json_file(
+            path,
+            label="cleanup ledger entry",
+            missing_code="UNKNOWN_CLEANUP_HANDLE",
+            missing_message="This server has no ledger entry for the cleanup handle.",
+            missing_next_step="Use the cleanup handle returned by chaos_create_experiment on this same server instance.",
+        )
 
     def _write_ledger(self, cleanup_handle: str, payload: Mapping[str, Any]) -> None:
         self._ensure_ledger_dir()
@@ -1045,6 +1260,99 @@ def _policy_payload(policy: Any) -> dict[str, Any]:
         "max_concurrent_actions": policy.max_concurrent_actions,
         "allowed_fault_types": sorted(policy.fault_type_budgets),
     }
+
+
+def _create_ledger_payload(
+    *,
+    created_at: datetime,
+    deadline_at: datetime,
+    name: str,
+    run_id: str,
+    namespace: str,
+    target_name: str,
+    target_uid: str,
+    fault_type: str,
+    duration_seconds: int,
+    controller_token_ref: str,
+    baseline_token_hash: str,
+    cleanup_handle: str,
+) -> dict[str, Any]:
+    return {
+        "version": LEDGER_VERSION,
+        "created_at": _datetime_iso(created_at),
+        "updated_at": _datetime_iso(created_at),
+        "state": "pending_apply",
+        "experiment_name": name,
+        "namespace": namespace,
+        "run_id": run_id,
+        "target_name": target_name,
+        "target_uid": target_uid,
+        "fault_type": fault_type,
+        "duration_seconds": duration_seconds,
+        "deadline_at": _datetime_iso(deadline_at),
+        "controller_token_ref": controller_token_ref,
+        "baseline_gate_token_sha256": baseline_token_hash,
+        "cleanup_handle": cleanup_handle,
+        "operation_id": cleanup_handle,
+    }
+
+
+def _create_uncertainty_variant(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().upper()
+    if normalized in {"D6A", "D6_A"}:
+        return "D6-A"
+    if normalized in {"D6B", "D6_B"}:
+        return "D6-B"
+    if normalized in {"D6-A", "D6-B"}:
+        return normalized
+    raise ChaosControlError(
+        "INVALID_OPERATION_UNCERTAINTY_VARIANT",
+        "Create outcome uncertainty variant must be D6-A or D6-B.",
+        next_step="Disable the uncertainty injection or set RESBENCH_CHAOS_CREATE_UNCERTAINTY_VARIANT to D6-A or D6-B.",
+    )
+
+
+def _uncertainty_already_injected(ledger: Mapping[str, Any] | None) -> bool:
+    return bool(ledger and ledger.get("uncertainty_injected") is True)
+
+
+def _is_retriable_absent_uncertainty(ledger: Mapping[str, Any] | None) -> bool:
+    return bool(
+        ledger
+        and ledger.get("uncertainty_injected") is True
+        and ledger.get("uncertainty_variant") == "D6-A"
+        and ledger.get("operation_outcome") == "absent"
+        and ledger.get("state") == "operation_outcome_unknown"
+    )
+
+
+def _unknown_outcome_error(ledger: Mapping[str, Any], *, active_owned_count: int = 0) -> ChaosControlError:
+    operation_id = str(ledger["operation_id"])
+    return ChaosControlError(
+        "OPERATION_OUTCOME_UNKNOWN",
+        "The create request outcome is intentionally hidden for this D6 operation-outcome uncertainty Trial.",
+        next_step=(
+            "Call chaos_operation_status with this operation_id before retrying. "
+            "Retry chaos_create_experiment only if the status reports operation_outcome=absent."
+        ),
+        details={
+            "operation_id": operation_id,
+            "cleanup_handle": str(ledger["cleanup_handle"]),
+            "run_id": str(ledger["run_id"]),
+            "namespace": str(ledger["namespace"]),
+            "experiment_name": str(ledger["experiment_name"]),
+            "operation_outcome": "unknown",
+            "status_lookup_tool": "chaos_operation_status",
+            "status_lookup_tools": (
+                "chaos_operation_status",
+                "chaos_get_experiment",
+                "chaos_inventory_run",
+            ),
+            "active_owned_count_before_create": active_owned_count,
+        },
+    )
 
 
 def _record_matches_ledger(record: ExperimentRecord, ledger: Mapping[str, Any]) -> bool:

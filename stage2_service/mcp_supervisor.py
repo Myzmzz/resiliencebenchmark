@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
 import subprocess
@@ -63,7 +64,7 @@ class McpSupervisor:
                 **os.environ,
                 **self.base_environment,
                 **(
-                    dict(runtime_environment or {})
+                    _chaos_control_runtime_environment(trial_id, runtime_environment)
                     if name == "chaos_control"
                     else {}
                 ),
@@ -133,6 +134,33 @@ class McpSupervisor:
             "verified": all(name in self.processes for name in names),
         }
 
+    def operation_uncertainty_status(self, trial_id: str) -> Mapping[str, Any]:
+        if "chaos_control" not in self.specs:
+            raise McpSupervisorError("chaos_control MCP server has no active Trial specification")
+        _port, env, _log_path = self.specs["chaos_control"]
+        if env.get("RESBENCH_AUTHORIZED_RUN_ID") != trial_id:
+            raise McpSupervisorError("chaos_control Trial identity does not match the requested operation status")
+        cleanup_handle = env.get("RESBENCH_CLEANUP_HANDLE")
+        if not cleanup_handle:
+            raise McpSupervisorError("chaos_control cleanup handle is missing from the Trial runtime")
+        from mcp_servers.chaos_control.service import ChaosControlService, RuntimeConfig
+
+        service = ChaosControlService(RuntimeConfig.from_env(env))
+        deadline = time.monotonic() + 15
+        latest: Mapping[str, Any] = {}
+        while time.monotonic() < deadline:
+            latest = asyncio.run(
+                service.operation_status(
+                    operation_id=cleanup_handle,
+                    cleanup_handle=cleanup_handle,
+                    include_ground_truth=True,
+                )
+            )
+            if latest.get("operation_outcome") in {"absent", "applied"}:
+                return latest
+            time.sleep(0.25)
+        return latest
+
     def _start_server(self, name: str) -> None:
         port, env, log_path = self.specs[name]
         if _port_open(port):
@@ -174,3 +202,34 @@ def _wait_process_port(process: subprocess.Popen[bytes], port: int, timeout: int
             return
         time.sleep(0.1)
     raise McpSupervisorError(f"MCP port did not become ready: {port}")
+
+
+def _chaos_control_runtime_environment(
+    trial_id: str,
+    runtime_environment: Mapping[str, str] | None,
+) -> dict[str, str]:
+    env = dict(runtime_environment or {})
+    if "RESBENCH_CHAOS_CREATE_UNCERTAINTY_VARIANT" not in env:
+        variant = _d6_variant_from_trial_id(trial_id)
+        if variant:
+            env["RESBENCH_CHAOS_CREATE_UNCERTAINTY_VARIANT"] = variant
+        else:
+            env["RESBENCH_CHAOS_CREATE_UNCERTAINTY_VARIANT"] = ""
+    return env
+
+
+def _d6_variant_from_trial_id(trial_id: str) -> str | None:
+    normalized = trial_id.lower().replace("_", "-")
+    parts = [part for part in normalized.split("-") if part]
+    for index, part in enumerate(parts):
+        if part == "d6a":
+            return "D6-A"
+        if part == "d6b":
+            return "D6-B"
+        if part == "d6" and index + 1 < len(parts):
+            suffix = parts[index + 1]
+            if suffix in {"a", "1"}:
+                return "D6-A"
+            if suffix in {"b", "2"}:
+                return "D6-B"
+    return None

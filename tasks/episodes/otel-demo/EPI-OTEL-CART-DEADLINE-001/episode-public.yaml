@@ -51,6 +51,7 @@ agent_resources:
       - chaos_inventory_run
       - chaos_create_experiment
       - chaos_get_experiment
+      - chaos_operation_status
       - chaos_destroy_experiment
       - chaos_recovery_status
   codegraph:

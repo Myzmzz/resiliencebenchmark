@@ -238,6 +238,31 @@ def create_server(
         return await _call(chaos.get_experiment(namespace=namespace, name=name, kubeconfig=_server_kubeconfig(chaos)))
 
     @server.tool(
+        name="chaos_operation_status",
+        title="Get Chaos Create Operation Status",
+        annotations=_read_annotations("Get Chaos Create Operation Status"),
+    )
+    async def chaos_operation_status(
+        operation_id: str | None = None,
+        cleanup_handle: str | None = None,
+    ) -> dict[str, Any]:
+        """Read-only reconciliation of a D6 create operation by Trial-scoped operation_id."""
+
+        try:
+            bound_cleanup_handle = _runtime_value(
+                "cleanup_handle", cleanup_handle or operation_id, chaos.config.cleanup_handle
+            )
+        except ChaosControlError as exc:
+            return exc.as_response()
+        return await _call(
+            chaos.operation_status(
+                operation_id=operation_id,
+                cleanup_handle=bound_cleanup_handle,
+                kubeconfig=_server_kubeconfig(chaos),
+            )
+        )
+
+    @server.tool(
         name="chaos_destroy_experiment",
         title="Destroy Ledger-Owned ChaosBlade Experiment",
         annotations=_destroy_annotations("Destroy Ledger-Owned ChaosBlade Experiment"),

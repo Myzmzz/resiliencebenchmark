@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from controller.scoped_kubeconfig import create_scoped_kubeconfig
+from controller.safety import default_policy
 
-from .contracts import CapabilityProfile, HarnessKind, KubernetesRule
+from .contracts import AutonomyLevel, CapabilityProfile, HarnessKind, KubernetesRule
 from .runtime_adapters import McpTokenStateRegistry
 
 
@@ -49,6 +50,7 @@ class Stage2PermissionManager:
         "chaos_inventory_run",
         "chaos_create_experiment",
         "chaos_get_experiment",
+        "chaos_operation_status",
         "chaos_destroy_experiment",
         "chaos_recovery_status",
     )
@@ -71,19 +73,32 @@ class Stage2PermissionManager:
     def provision(
         self, campaign_id, trial_id, harness, episode, runtime
     ) -> CapabilityProfile:
+        try:
+            return self._provision(
+                campaign_id, trial_id, harness, episode, runtime
+            )
+        except Exception:
+            try:
+                self.restore(trial_id)
+            except Exception:
+                pass
+            raise
+
+    def _provision(
+        self, campaign_id, trial_id, harness, episode, runtime
+    ) -> CapabilityProfile:
         del campaign_id
-        del runtime
         token = secrets.token_urlsafe(48)
         token_paths = self.token_registry.initialize(
             trial_id, {server: token for server in self.MCP_SERVERS}
         )
-        runtime: dict[str, Any] = {
+        permission_runtime: dict[str, Any] = {
             "mcp_token": token,
             "mcp_token_state_files": token_paths,
         }
         # Register cleanup state before any Kubernetes mutation so a partial
         # provisioning failure can still be revoked by the campaign finalizer.
-        self._runtime[trial_id] = runtime
+        self._runtime[trial_id] = permission_runtime
         direct_kubeconfig = harness is HarnessKind.BLADEAI
         kubernetes_rules = (
             KubernetesRule(
@@ -104,17 +119,17 @@ class Stage2PermissionManager:
             service_account = str(provisioned["service_account"])
             kubeconfig = self.private_root / trial_id / "bladeai.kubeconfig"
             if self.admin_kubeconfig is not None:
-                runtime["bladeai_kubeconfig"] = create_scoped_kubeconfig(
+                permission_runtime["bladeai_kubeconfig"] = create_scoped_kubeconfig(
                     admin_kubeconfig=self.admin_kubeconfig,
                     service_account=service_account,
                     output_path=kubeconfig,
                     duration="2h",
                 )["path"]
             else:
-                runtime["bladeai_kubeconfig"] = self.permission_backend.issue_kubeconfig(
+                permission_runtime["bladeai_kubeconfig"] = self.permission_backend.issue_kubeconfig(
                     trial_id, kubeconfig
                 )["path"]
-            runtime["bladeai_service_account"] = service_account
+            permission_runtime["bladeai_service_account"] = service_account
             kubernetes_rules = (
                 *kubernetes_rules,
                 KubernetesRule(
@@ -124,13 +139,22 @@ class Stage2PermissionManager:
                     namespace="otel-demo",
                 ),
             )
+        allowed_fault_types = (episode.internal.main_fault.fault_type,)
+        if runtime.autonomy_level is AutonomyLevel.L3_STRATEGY_SELECTION:
+            allowed_fault_types = tuple(
+                fault_type
+                for fault_type in sorted(
+                    default_policy({"otel-demo"}).fault_type_budgets
+                )
+                if fault_type != "pod-kill"
+            )
         return CapabilityProfile(
             harness=harness,
             mcp_servers=self.MCP_SERVERS,
             mcp_tools=self.MCP_TOOLS,
             kubernetes_rules=kubernetes_rules,
             direct_kubeconfig=direct_kubeconfig,
-            allowed_fault_types=(episode.internal.main_fault.fault_type,),
+            allowed_fault_types=allowed_fault_types,
             expires_at=datetime.now(UTC) + timedelta(hours=2),
         )
 

@@ -27,6 +27,7 @@ def source_digest() -> str:
         REPO_ROOT / "harness",
         REPO_ROOT / "mcp_servers",
         REPO_ROOT / "frontend",
+        REPO_ROOT / "tasks/episodes",
     ]
     files = [
         path

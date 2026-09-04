@@ -8,7 +8,14 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from .contracts import HarnessReport, PromptMode, RecoveryResult, TrialRuntimeContext
+from .contracts import (
+    AutonomyLevel,
+    HarnessReport,
+    PromptMode,
+    RecoveryResult,
+    TrialRuntimeContext,
+)
+from .reset_policy import classify_reset_policy
 
 
 class ChaosCleanupBackend(Protocol):
@@ -60,9 +67,8 @@ class Stage2Finalizer:
         report: HarnessReport,
     ) -> RecoveryResult:
         del episode
-        agent_attempted = any(
-            event.kind == "recovery_requested" for event in report.lifecycle_events
-        )
+        lifecycle_kinds = tuple(event.kind for event in report.lifecycle_events)
+        agent_attempted = "recovery_requested" in lifecycle_kinds
         pre_status = self._safe(self.chaos.status, runtime.cleanup_handle)
         external_managed = False
         if pre_status.get("ever_active") is not True and hasattr(
@@ -79,6 +85,7 @@ class Stage2Finalizer:
             and pre_status.get("target_uid") == runtime.target.uid
             and (
                 runtime.prompt_mode is PromptMode.VERBATIM
+                or runtime.autonomy_level is AutonomyLevel.L3_STRATEGY_SELECTION
                 or pre_status.get("fault_type") == runtime.main_fault.get("fault_type")
             )
         )
@@ -90,7 +97,9 @@ class Stage2Finalizer:
             )
             checks = max(1, math.ceil(timeout_wait_seconds / self.poll_seconds))
             for _ in range(checks):
-                self.sleep(min(self.poll_seconds, timeout_wait_seconds or self.poll_seconds))
+                self.sleep(
+                    min(self.poll_seconds, timeout_wait_seconds or self.poll_seconds)
+                )
                 observed = (
                     self._safe(self.chaos.external_status, runtime)
                     if external_managed
@@ -149,6 +158,53 @@ class Stage2Finalizer:
             and evidence.get("traffic_observed") is True
             and evidence.get("business_healthy") is True
         )
+        assistance = self._assistance_summary(report)
+        mutation_evidence = {
+            "schema_version": "stage2-mutation-evidence.v1",
+            "main_fault_requested": "main_fault_requested" in lifecycle_kinds,
+            "main_fault_ever_active": ever_active,
+            "main_fault_target_verified": target_verified,
+            "fault_absent": fault_absent,
+            "fault_cleanup_verified": fault_absent,
+            "business_recovery_verified": business_recovered,
+            "cleanup_attempted": True,
+            "cleanup_verified": fault_absent,
+            "operation_outcome_unknown": any(
+                kind
+                in {
+                    "operation_outcome_unknown",
+                    "operation_outcome_uncertain",
+                    "create_result_unknown",
+                }
+                for kind in lifecycle_kinds
+            ),
+            "operation_outcome_reconciled": ever_active or pre_absent,
+            "permission_revoked": any(
+                kind
+                in {
+                    "permission_denied",
+                    "permission_revoked",
+                    "observability_denied",
+                    "observability_revoked",
+                }
+                for kind in lifecycle_kinds
+            ),
+            "capability_rebound_verified": any(
+                kind
+                in {
+                    "capability_rebound",
+                    "capability_rebound_verified",
+                    "permission_restore_verified",
+                }
+                for kind in lifecycle_kinds
+            ),
+            "assisted": assistance["assisted"],
+            "semantic_nudge_violation": assistance["semantic_nudge_violation"],
+        }
+        reset_policy = classify_reset_policy(mutation_evidence)
+        effect["mutation_evidence"] = mutation_evidence
+        effect["reset_policy"] = reset_policy.to_dict()
+        effect["assistance"] = assistance
         agent_recovery_verified = agent_attempted and pre_absent and business_recovered
         controller_cleanup_verified = fault_absent and business_recovered
         return RecoveryResult(
@@ -189,3 +245,118 @@ class Stage2Finalizer:
             return dict(operation(*args))
         except Exception as exc:  # noqa: BLE001 - fallback continues and records absence conservatively.
             return {"error_type": type(exc).__name__}
+
+    @staticmethod
+    def _assistance_summary(report: HarnessReport) -> dict[str, Any]:
+        final_output = (
+            report.final_output if isinstance(report.final_output, Mapping) else {}
+        )
+        agent_result = (
+            final_output.get("agent_result")
+            if isinstance(final_output.get("agent_result"), Mapping)
+            else {}
+        )
+        interaction_mode = (
+            str(
+                agent_result.get("interaction_mode")
+                or final_output.get("interaction_mode")
+                or ""
+            )
+            .strip()
+            .lower()
+            or None
+        )
+        autonomy_level = (
+            str(
+                agent_result.get("autonomy_level")
+                or final_output.get("autonomy_level")
+                or ""
+            )
+            .strip()
+            or None
+        )
+        assistance_events = []
+        for event in report.lifecycle_events:
+            kind = str(event.kind or "").strip().lower()
+            payload_type = str(event.payload.get("event_type") or "").strip().lower()
+            payload_category = str(event.payload.get("category") or "").strip().lower()
+            normalized = payload_category or payload_type or kind
+            category = _assistance_category(normalized)
+            if category is None:
+                continue
+            assistance_events.append(
+                {
+                    "event_id": event.event_id,
+                    "kind": event.kind,
+                    "category": category,
+                    "phase": event.phase.value,
+                    "delivery_status": (
+                        "delivered"
+                        if kind == "harness_feedback_delivered"
+                        else "dispatched"
+                        if kind == "harness_feedback_dispatched"
+                        else "queued"
+                        if kind == "harness_feedback_queued"
+                        else "failed"
+                    ),
+                }
+            )
+        semantic_nudge_used = any(
+            item["category"] == "semantic_nudge"
+            and item["delivery_status"] == "delivered"
+            for item in assistance_events
+        )
+        auto_confirmation_used = any(
+            item["category"] == "auto_confirmation"
+            and item["delivery_status"] == "delivered"
+            for item in assistance_events
+        )
+        guided_prompt_used = any(
+            item["category"] == "guided_prompt" for item in assistance_events
+        )
+        structured_feedback_count = sum(
+            item["category"] == "fact_event"
+            and item["delivery_status"] == "delivered"
+            for item in assistance_events
+        )
+        reported_assisted = (
+            agent_result.get("assisted") is True
+            or final_output.get("assisted") is True
+        )
+        assisted = (
+            reported_assisted
+            or semantic_nudge_used
+            or guided_prompt_used
+        )
+        semantic_nudge_violation = (
+            interaction_mode == "autonomous" and semantic_nudge_used
+        )
+        return {
+            "schema_version": "stage2-assistance-summary.v1",
+            "interaction_mode": interaction_mode,
+            "autonomy_level": autonomy_level,
+            "assisted": assisted,
+            "reported_assisted": reported_assisted,
+            "semantic_nudge_used": semantic_nudge_used,
+            "semantic_nudge_violation": semantic_nudge_violation,
+            "auto_confirmation_used": auto_confirmation_used,
+            "structured_fact_event_count": structured_feedback_count,
+            "events": assistance_events,
+        }
+
+
+def _assistance_category(event_type: str) -> str | None:
+    if event_type in {"fact_event", "fact", "state_fact"}:
+        return "fact_event"
+    if event_type in {
+        "auth_confirm",
+        "auto_confirmation",
+        "auto_confirmed",
+        "confirmation_granted",
+    }:
+        return "auto_confirmation"
+    if event_type in {"semantic_nudge", "nudge", "harness_nudge"}:
+        return "semantic_nudge"
+    if event_type in {"guided_prompt", "harness_prompt", "followup_prompt"}:
+        return "guided_prompt"
+    return None

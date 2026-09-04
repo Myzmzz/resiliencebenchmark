@@ -111,6 +111,22 @@ class Disturbances:
 
     def apply(self, plan):
         self.applied.append(plan)
+        if plan.type is DisturbanceType.TARGET_CHANGE:
+            target = plan.parameters["target"]
+            return DisturbanceRecord(
+                plan=plan,
+                applied=True,
+                application_evidence={
+                    "old_name": target["name"],
+                    "old_uid": target["uid"],
+                    "replacement_name": "cart-replacement",
+                    "replacement_uid": "uid-new",
+                    "baseline_capability": {
+                        "baseline_capability_rebound": True,
+                        "binding_version": 2,
+                    },
+                },
+            )
         return DisturbanceRecord(
             plan=plan,
             applied=True,
@@ -135,6 +151,7 @@ class Runner:
         case,
         base_prompt,
         event_observer,
+        **_runtime_options,
     ):
         del model_alias, episode, capability, base_prompt
         events = []
@@ -433,7 +450,7 @@ class Resetter:
         self.verified = verified
         self.calls: list[str] = []
 
-    def reset(self, trial_id, _episode):
+    def reset(self, trial_id, _episode, _mutation_evidence=None):
         self.calls.append(trial_id)
         return {"verified": self.verified}
 
@@ -460,12 +477,12 @@ def _engine(tmp_path: Path, *, gate=True, reset=True):
     return engine, request, permissions, disturbances, resetter
 
 
-def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
+def test_campaign_runs_codex_nine_case_suite(tmp_path: Path):
     engine, request, permissions, disturbances, resetter = _engine(tmp_path)
     result = engine.run(request)
 
     assert result.platform_status is PlatformStatus.COMPLETED
-    assert len(result.trials) == 7
+    assert len(result.trials) == 9
     assert [item.kind for item in result.trials] == [
         TrialKind.CONTROL,
         TrialKind.PROMPT_HIDDEN_TARGET,
@@ -474,15 +491,19 @@ def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
         TrialKind.TARGET_CHANGE,
         TrialKind.EFFECT_OBSERVABILITY_REVOKED,
         TrialKind.RECOVERY_OBSERVABILITY_REVOKED,
+        TrialKind.TOOL_CHANNEL_INTERRUPTED,
+        TrialKind.OPERATION_OUTCOME_UNCERTAIN,
     ]
-    assert len(disturbances.applied) == 4
+    assert len(disturbances.applied) == 6
     assert {item.type.value for item in disturbances.applied} == {
         "target_change",
         "permission_change",
         "observability_change",
+        "tool_channel_interruption",
+        "operation_outcome_uncertainty",
     }
-    assert len(permissions.provisioned) == len(permissions.restored) == 7
-    assert len(resetter.calls) == 7
+    assert len(permissions.provisioned) == len(permissions.restored) == 9
+    assert len(resetter.calls) == 9
     assert all(item.platform_valid for item in result.trials)
     attempts = {
         path.parent.name: json.loads(path.read_text(encoding="utf-8"))
@@ -490,14 +511,14 @@ def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
             "*/disturbance-attempt.json"
         )
     }
-    assert len(attempts) == 7
+    assert len(attempts) == 9
     assert next(
         value for key, value in attempts.items() if "-c0-" in key
     )["state"] == "NOT_APPLICABLE"
     assert all(
         next(value for key, value in attempts.items() if f"-{case}-" in key)["state"]
         == "ROLLED_BACK"
-        for case in ("d1", "d2", "d3", "d4")
+        for case in ("d1", "d2", "d3", "d4", "d5", "d6-a")
     )
     assert len(
         list(
@@ -505,7 +526,7 @@ def test_campaign_runs_codex_seven_case_suite(tmp_path: Path):
                 "*/evaluation-decision.json"
             )
         )
-    ) == 7
+    ) == 9
     assert (tmp_path / result.campaign_id / "campaign/evaluation.json").is_file()
     assert (tmp_path / result.campaign_id / "manifest.sha256").is_file()
 
@@ -540,7 +561,7 @@ def test_control_failure_does_not_downgrade_later_disturbance_cases(tmp_path: Pa
     assert result.trials[0].agent_verdict is AgentVerdict.FAIL
     assert all(item.agent_verdict is AgentVerdict.PASS for item in result.trials[1:])
     assert all(item.diagnostic_only is False for item in result.trials)
-    assert evaluator.diagnostic_flags == [False] * 7
+    assert evaluator.diagnostic_flags == [False] * 9
 
 
 def test_campaign_blocks_before_harness_when_application_traffic_is_absent(tmp_path: Path):

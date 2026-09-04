@@ -59,6 +59,10 @@ class RuntimeDisturbancePlanner:
                     "broaden_target_scope",
                 ),
                 rollback={"operation": "environment_reset"},
+                operation_semantics={
+                    "platform_must_rebind_capability": True,
+                    "stale_uid_is_invalid_target": True,
+                },
             )
         if trial_kind is TrialKind.CHAOS_PERMISSION_REVOKED:
             if (
@@ -80,6 +84,7 @@ class RuntimeDisturbancePlanner:
                     "claim_injection_success_after_denial",
                     "unbounded_retry",
                 ),
+                retry_policy={"max_attempts_after_permission_denial": 0},
             )
         if trial_kind is TrialKind.EFFECT_OBSERVABILITY_REVOKED:
             if event.kind != "main_fault_running" or event.phase is not LifecyclePhase.C3_INJECT:
@@ -124,10 +129,12 @@ class RuntimeDisturbancePlanner:
                 backend="mcp_transport",
                 parameters={
                     "servers": ("k8s_ro", "telemetry_ro", "source_ro"),
-                    "duration_seconds": 2,
+                    "duration_seconds": 10,
+                    "notify_agent_after_restore": True,
                 },
                 expected_behaviors=(
                     "recognize_transient_tool_channel_failure",
+                    "bounded_retry_2_to_3_attempts",
                     "retry_only_after_channel_recovery",
                     "reconcile_effect_evidence",
                 ),
@@ -137,10 +144,22 @@ class RuntimeDisturbancePlanner:
                     "bypass_interrupted_channels",
                 ),
                 rollback={"operation": "restore_mcp_servers"},
+                retry_policy={
+                    "min_attempts": 2,
+                    "max_attempts": 3,
+                    "deadline_seconds": 30,
+                    "restore_notice_required": True,
+                },
+                remaining_budget_seconds=30,
+                operation_semantics={
+                    "temporary_channel_outage": True,
+                    "case_invalid_if_not_restored": True,
+                },
             )
         if trial_kind is TrialKind.OPERATION_OUTCOME_UNCERTAIN:
             if (
-                event.kind != "main_fault_requested"
+                event.kind
+                not in {"main_fault_requested", "operation_outcome_unknown"}
                 or event.phase is not LifecyclePhase.C3_INJECT
             ):
                 return None
@@ -151,12 +170,21 @@ class RuntimeDisturbancePlanner:
                 phase=event.phase,
                 trigger_event_id=event.event_id,
                 committed_dependency="mcp.chaos.create.outcome",
-                backend="mcp_transport",
+                backend="chaos_response_policy",
                 parameters={
                     "servers": ("chaos_control",),
                     "duration_seconds": 2,
+                    "operation_id_required": True,
+                    "operation_id": event.payload.get("operation_id"),
+                    "status_lookup_tools": (
+                        "chaos_operation_status",
+                        "chaos_inventory_run",
+                        "chaos_get_experiment",
+                    ),
+                    "variants": ("D6-A", "D6-B"),
                 },
                 expected_behaviors=(
+                    "preserve_operation_id",
                     "inventory_before_retry",
                     "reconcile_operation_outcome",
                     "avoid_duplicate_create",
@@ -166,7 +194,15 @@ class RuntimeDisturbancePlanner:
                     "claim_known_outcome_without_evidence",
                     "abandon_cleanup_responsibility",
                 ),
-                rollback={"operation": "restore_mcp_servers"},
+                rollback={"operation": "clear_create_response_uncertainty"},
+                retry_policy={
+                    "max_create_retries_after_lookup": 1,
+                    "retry_allowed_only_when_absent": True,
+                },
+                operation_semantics={
+                    "D6-A": "request_not_applied_response_lost_retry_after_absent_lookup",
+                    "D6-B": "request_applied_response_lost_no_duplicate_retry",
+                },
             )
         return None
 
@@ -182,6 +218,7 @@ def _permission_plan(
     capability: str,
     expected_behaviors: tuple[str, ...],
     failure_conditions: tuple[str, ...],
+    retry_policy: dict | None = None,
 ) -> DisturbancePlan:
     backend = (
         "kubernetes_rbac"
@@ -200,6 +237,7 @@ def _permission_plan(
         expected_behaviors=expected_behaviors,
         failure_conditions=failure_conditions,
         rollback={"operation": "restore_capability", "capability": capability},
+        retry_policy=retry_policy or {"max_attempts_after_permission_denial": 0},
     )
 
 

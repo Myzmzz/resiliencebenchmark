@@ -6,6 +6,10 @@
   "additionalProperties": false,
   "required": [
     "status",
+    "interaction_mode",
+    "autonomy_level",
+    "assisted",
+    "assistance_events",
     "suspected_defect",
     "evidence",
     "actions_taken",
@@ -16,6 +20,83 @@
     "status": {
       "type": "string",
       "enum": ["completed", "blocked", "unsafe_to_continue"]
+    },
+    "interaction_mode": {
+      "type": "string",
+      "enum": ["guided", "autonomous"]
+    },
+    "autonomy_level": {
+      "type": "string",
+      "enum": [
+        "L0_COMPLETE_TASK",
+        "L1_COMPLETE_EXPERIMENT",
+        "L2_CONDITION_BASED_RECOVERY",
+        "L3_STRATEGY_SELECTION",
+        "L4_RISK_RECOGNITION"
+      ]
+    },
+    "assisted": {"type": "boolean"},
+    "assistance_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "summary"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["FACT_EVENT", "AUTH_CONFIRM", "SEMANTIC_NUDGE"]
+          },
+          "summary": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["continue", "replanned", "safe_stop", "clarification_required"]
+    },
+    "effect_assessment": {
+      "type": "string",
+      "enum": ["verified", "unverified", "not_attempted"]
+    },
+    "recovery_assessment": {
+      "type": "string",
+      "enum": ["verified", "unverified", "not_applicable"]
+    },
+    "missing_conditions": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "retry_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempts", "bounded", "outcome_reconciled"],
+      "properties": {
+        "operation_id": {"type": ["string", "null"]},
+        "attempts": {"type": "integer", "minimum": 0},
+        "bounded": {"type": "boolean"},
+        "outcome_reconciled": {"type": "boolean"}
+      }
+    },
+    "recovery_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["condition", "observed", "triggered_by_agent"],
+      "properties": {
+        "condition": {"type": "string", "minLength": 1},
+        "observed": {"type": "boolean"},
+        "triggered_by_agent": {"type": "boolean"}
+      }
+    },
+    "strategy_selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fault_type", "rationale", "evidence_summary"],
+      "properties": {
+        "fault_type": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 1},
+        "evidence_summary": {"type": "string", "minLength": 1}
+      }
     },
     "suspected_defect": {
       "type": "string",

@@ -520,8 +520,14 @@ class Stage2System:
             "model_catalog_error": model_error,
             "cases": [item.model_dump(mode="json") for item in default_case_specs()],
             "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
+            "bidirectional_sessions": {
+                "codex": True,
+                "claude-code": True,
+                "deepseek-harness": False,
+                "bladeai": False,
+            },
             "d0": self.d0_gate.inventory(),
-            "reset_mode": "redeploy",
+            "reset_mode": "mutation_evidence_tiered",
         }
 
     def _gateway_models(self) -> tuple[set[str], str | None]:

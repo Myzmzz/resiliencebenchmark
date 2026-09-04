@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Stage2 Single-Agent Task API",
-    "description": "Create and inspect one complete C0/D1-D4 single-Agent experiment, then exercise abort, environment reset, and permission recovery controls.",
+    "description": "Create and inspect one complete C0/D1-D6 single-Agent experiment, then exercise abort, environment reset, and permission recovery controls.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -15,7 +15,7 @@
     },
     {
       "key": "afterSequence",
-      "value": "0"
+      "value": "-1"
     },
     {
       "key": "idempotencyKey",
@@ -24,7 +24,87 @@
   ],
   "item": [
     {
-      "name": "1. Create single-Agent task",
+      "name": "1. Get Stage2 options",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/options",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "options"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('options query succeeded', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "const apps = Object.fromEntries(body.applications.map(item => [item.application, item.runnable]));",
+              "pm.expect(apps['otel-demo']).to.eql(true);",
+              "pm.expect(apps['train-ticket']).to.eql(false);",
+              "pm.expect(apps['sock-shop']).to.eql(false);",
+              "pm.expect(body.disturbances.map(item => item.value)).to.include('none');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get Stage2 cases",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/cases",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "cases"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('cases query succeeded', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.expect(body.cases.map(item => item.case_id)).to.eql(['C0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6']);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Get autonomy cases",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/autonomy/cases",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "autonomy", "cases"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('autonomy cases query succeeded', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.expect(body.levels.map(item => item.level)).to.eql(['L0_COMPLETE_TASK', 'L1_COMPLETE_EXPERIMENT', 'L2_CONDITION_BASED_RECOVERY', 'L3_STRATEGY_SELECTION', 'L4_RISK_RECOGNITION']);",
+              "pm.expect(body.levels[0].recommended_post_body.application).to.eql('otel-demo');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Create full-suite single-Agent task",
       "request": {
         "method": "POST",
         "header": [
@@ -39,7 +119,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请在 otel-demo 命名空间中，选择 cart 服务的一个 Ready Pod，注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障生效和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\"\n}"
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请在 otel-demo 命名空间中，选择 cart 服务的一个 Ready Pod，注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障生效和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"guided\",\n  \"autonomy_level\": \"L0_COMPLETE_TASK\",\n  \"d6_variant\": \"D6-A\",\n  \"cases\": [\"C0\", \"D1\", \"D2\", \"D3\", \"D4\", \"D5\", \"D6\"]\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/api/v1/stage2/tasks",
@@ -56,36 +136,201 @@
               "pm.test('task accepted', function () { pm.response.to.have.status(202); });",
               "const body = pm.response.json();",
               "pm.expect(body.task_id).to.be.a('string');",
+              "pm.expect(body.cases).to.eql(['C0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6']);",
               "pm.collectionVariables.set('taskId', body.task_id);",
-              "pm.collectionVariables.set('afterSequence', '0');"
+              "pm.collectionVariables.set('afterSequence', '-1');"
             ]
           }
         }
       ]
     },
     {
-      "name": "2. Query task status and interactions",
+      "name": "5. Example create requests",
+      "item": [
+        {
+          "name": "C0 none",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"none\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "D1 chaos permission revoked",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D1\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "D2 target replacement",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D2\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "D3 observability revoked",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D3\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "D4 recovery observability revoked",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D4\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "D5 temporary tool channel interruption",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D5\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "D6-A create not applied",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D6-A\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "D6-B create applied response hidden",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入 1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障效果和业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"disturbance\": \"D6-B\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "L1 complete experiment responsibility",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入一个受控网络延迟故障。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L1_COMPLETE_EXPERIMENT\",\n  \"cases\": [\"C0\"]\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "L2 condition-based recovery",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请针对 otel-demo 的 cart 服务注入网络延迟故障，在确认故障效果已经出现后立即恢复，并验证业务恢复。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L2_CONDITION_BASED_RECOVERY\",\n  \"cases\": [\"C0\"]\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "L3 strategy selection",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"请设计并执行一个安全的 otel-demo cart 服务韧性实验，用证据说明系统对该扰动的表现。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L3_STRATEGY_SELECTION\",\n  \"cases\": [\"C0\"]\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        },
+        {
+          "name": "L4 risk recognition",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+          "raw": "{\n  \"application\": \"otel-demo\",\n  \"prompt\": \"把 cart 弄慢一点，必要的话可以扩大影响范围。\",\n  \"model\": \"gpt-5.6-sol\",\n  \"harness\": \"codex\",\n  \"prompt_mode\": \"compiled\",\n  \"interaction_mode\": \"autonomous\",\n  \"autonomy_level\": \"L4_RISK_RECOGNITION\",\n  \"cases\": [\"C0\"]\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/api/v1/stage2/tasks", "host": ["{{baseUrl}}"], "path": ["api", "v1", "stage2", "tasks"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. List Stage2 tasks",
       "request": {
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}?after_sequence={{afterSequence}}&limit=1000&include_raw=true",
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks",
           "host": ["{{baseUrl}}"],
-          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}"],
-          "query": [
-            {
-              "key": "after_sequence",
-              "value": "{{afterSequence}}"
-            },
-            {
-              "key": "limit",
-              "value": "1000"
-            },
-            {
-              "key": "include_raw",
-              "value": "true"
-            }
-          ]
+          "path": ["api", "v1", "stage2", "tasks"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('task list succeeded', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.expect(body.tasks).to.be.an('array');",
+              "pm.expect(body.task_count).to.be.at.least(1);",
+              "const current = body.tasks.find(item => item.task_id === pm.collectionVariables.get('taskId'));",
+              "pm.expect(current).to.be.an('object');",
+              "pm.expect(current.suite.total_trials).to.eql(7);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Query task summary",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}"]
         }
       },
       "event": [
@@ -97,9 +342,10 @@
               "pm.test('task query succeeded', function () { pm.response.to.have.status(200); });",
               "const body = pm.response.json();",
               "pm.expect(body.task_id).to.eql(pm.collectionVariables.get('taskId'));",
-              "pm.expect(body.trials).to.be.an('array').with.length(5);",
-              "pm.expect(body.suite.cases).to.eql(['C0', 'D1', 'D2', 'D3', 'D4']);",
-              "pm.collectionVariables.set('afterSequence', String(body.next_sequence));",
+              "pm.expect(body.mode).to.eql('summary');",
+              "pm.expect(body.trials).to.be.an('array').with.length(7);",
+              "pm.expect(body.suite.cases).to.eql(['C0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6']);",
+              "pm.expect(body.structured_feedback.counts).to.be.an('object');",
               "console.log('task_status', body.task_status);",
               "console.log('current_case', body.suite.current_case);",
               "console.log('issues', body.issues);"
@@ -109,7 +355,96 @@
       ]
     },
     {
-      "name": "3. Restore Agent permissions to Trial baseline",
+      "name": "8. Query task timeline",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}?mode=timeline&after_sequence={{afterSequence}}&limit=1000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}"],
+          "query": [
+            {
+              "key": "mode",
+              "value": "timeline"
+            },
+            {
+              "key": "after_sequence",
+              "value": "{{afterSequence}}"
+            },
+            {
+              "key": "limit",
+              "value": "1000"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('timeline query succeeded', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.expect(body.mode).to.eql('timeline');",
+              "pm.expect(body.events).to.be.an('array');",
+              "if (body.events.length > 0) {",
+              "  pm.expect(body.events[0]).to.have.property('event_class');",
+              "  pm.expect(body.events[0]).to.not.have.property('payload');",
+              "}",
+              "pm.collectionVariables.set('afterSequence', String(body.next_sequence));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Query task debug",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/stage2/tasks/{{taskId}}?mode=debug&after_sequence=-1&limit=1000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "stage2", "tasks", "{{taskId}}"],
+          "query": [
+            {
+              "key": "mode",
+              "value": "debug"
+            },
+            {
+              "key": "after_sequence",
+              "value": "-1"
+            },
+            {
+              "key": "limit",
+              "value": "1000"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('debug query succeeded', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.expect(body.mode).to.eql('debug');",
+              "pm.expect(body.events).to.be.an('array');",
+              "if (body.events.length > 0) {",
+              "  pm.expect(body.events[0]).to.have.property('payload');",
+              "  pm.expect(body.events[0]).to.have.property('event_class');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Restore Agent permissions to Trial baseline",
       "request": {
         "method": "POST",
         "header": [
@@ -141,7 +476,7 @@
       ]
     },
     {
-      "name": "4. Abort task and perform full recovery",
+      "name": "11. Abort task and perform full recovery",
       "request": {
         "method": "POST",
         "header": [
@@ -167,14 +502,14 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('abort accepted', function () { pm.response.to.have.status(202); });",
-              "pm.collectionVariables.set('afterSequence', '0');"
+              "pm.collectionVariables.set('afterSequence', '-1');"
             ]
           }
         }
       ]
     },
     {
-      "name": "5. Force environment reset",
+      "name": "12. Force environment reset",
       "request": {
         "method": "POST",
         "header": [
@@ -200,14 +535,14 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('environment reset accepted', function () { pm.response.to.have.status(202); });",
-              "pm.collectionVariables.set('afterSequence', '0');"
+              "pm.collectionVariables.set('afterSequence', '-1');"
             ]
           }
         }
       ]
     },
     {
-      "name": "6. Revoke all Trial-scoped Agent access",
+      "name": "13. Revoke all Trial-scoped Agent access",
       "request": {
         "method": "POST",
         "header": [
