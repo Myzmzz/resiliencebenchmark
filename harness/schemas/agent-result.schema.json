@@ -108,7 +108,22 @@
                 },
                 "fault_type": {"type": "string", "minLength": 1},
                 "duration_seconds": {"type": "integer", "minimum": 1},
-                "intensity": {"type": "object", "minProperties": 1},
+                "intensity": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "cpu_percent",
+                    "mem_percent",
+                    "delay_ms",
+                    "loss_percent"
+                  ],
+                  "properties": {
+                    "cpu_percent": {"type": ["number", "null"]},
+                    "mem_percent": {"type": ["number", "null"]},
+                    "delay_ms": {"type": ["number", "null"]},
+                    "loss_percent": {"type": ["number", "null"]}
+                  }
+                },
                 "effect_criterion": {"type": "string", "minLength": 1},
                 "maximum_observation_seconds": {"type": "integer", "minimum": 1},
                 "stop_conditions": {

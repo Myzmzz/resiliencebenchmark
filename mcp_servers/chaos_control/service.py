@@ -627,7 +627,11 @@ class ChaosControlService:
             "target_uid": target.get("uid") or approved.get("target_uid"),
             "fault_type": approved.get("fault_type"),
             "duration_seconds": approved.get("duration_seconds"),
-            "intensity": dict(approved.get("intensity") or {}),
+            "intensity": {
+                key: value
+                for key, value in dict(approved.get("intensity") or {}).items()
+                if value is not None
+            },
         }
         if observed != expected:
             raise ChaosControlError(

@@ -1196,7 +1196,7 @@ class Stage2TaskService:
                 task_id, trial_id, "REVOKED"
             )
         )
-        reset = dict(self.control_backend.reset_environment(task_id, "otel-demo"))
+        reset = self._abort_environment_result(task_id)
         verified = permissions.get("verified") is True and reset.get("verified") is True
         self.store.update_status(
             task_id,
@@ -1211,6 +1211,36 @@ class Stage2TaskService:
             "permission_restore": permissions,
             "environment_reset": reset,
         }
+
+    def _abort_environment_result(self, task_id: str) -> dict[str, Any]:
+        result = self.store.result(task_id) or {}
+        trials = result.get("trials")
+        trials = trials if isinstance(trials, list) else []
+        mutated = any(
+            isinstance(trial, Mapping)
+            and (
+                (trial.get("recovery") or {}).get("main_fault_ever_active") is True
+                or any(
+                    isinstance(record, Mapping) and record.get("applied") is True
+                    for record in (trial.get("disturbances") or ())
+                )
+            )
+            for trial in trials
+        )
+        clean = bool(trials) and all(
+            isinstance(trial, Mapping)
+            and (trial.get("recovery") or {}).get("fault_absent") is True
+            and (trial.get("recovery") or {}).get("business_recovery_verified")
+            is True
+            for trial in trials
+        )
+        if not mutated and clean:
+            return {
+                "verified": True,
+                "skipped": True,
+                "reason": "no fault or disturbance mutation was observed",
+            }
+        return dict(self.control_backend.reset_environment(task_id, "otel-demo"))
 
     def _reset_worker(self, task_id: str) -> Mapping[str, Any]:
         stop = self._stop_and_wait(task_id)
@@ -1261,7 +1291,17 @@ class Stage2TaskService:
     def _on_campaign_event(self, task_id: str, event: Mapping[str, Any]) -> None:
         normalized = self._normalize_campaign_event(event)
         self.store.append_event(task_id, normalized)
-        updates: dict[str, Any] = {"task_status": "RUNNING", "terminal": False}
+        current = self.store.status(task_id)
+        control_active = current.get("task_status") in {
+            "ABORTING",
+            "ABORTED",
+            "RECOVERY_FAILED",
+        }
+        updates: dict[str, Any] = (
+            {}
+            if control_active
+            else {"task_status": "RUNNING", "terminal": False}
+        )
         kind = str(event.get("kind") or "")
         payload = event.get("payload") if isinstance(event.get("payload"), Mapping) else {}
         if event.get("campaign_id"):
@@ -1296,7 +1336,8 @@ class Stage2TaskService:
                 )
         elif kind == "trial_finished":
             updates["current_phase"] = "FINALIZING"
-        self.store.update_status(task_id, **updates)
+        if updates:
+            self.store.update_status(task_id, **updates)
 
     def _on_campaign_result(self, task_id: str, result: CampaignResult) -> None:
         self.store.write_result(task_id, result.model_dump(mode="json"))
