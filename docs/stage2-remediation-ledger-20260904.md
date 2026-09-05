@@ -41,7 +41,9 @@
 
 已部署的应答模块真实检查输出：`custom / approved=null / affected_nodes=[TARGET_IDENTITY]`；`approve_recommendation / approved=true / affected_nodes=[]`。两次检查均未调用故障工具，也未创建 Stage2 实验任务。
 
-最终运行代码提交：`c7e523e`。部署镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-c7e523e`。Deployment 为1/1 Ready、1/1 Available；Pod 内已确认不完整确认会被拒绝、携带缺失字段修正后才能生成完整批准。本地18088接口的 healthz、OpenAPI、选项及历史 Debug 查询均可用。
+上一轮审批修复的运行代码提交为 `c7e523e`，对应部署镜像为 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-c7e523e`。该版验证了不完整确认会被拒绝、携带缺失字段修正后才能生成完整批准。
+
+本次 Harness 模型超时诊断代码提交为 `f4f8c72`，已部署不可变镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-f4f8c72@sha256:32ad1e20fca4bf8266b6e3be573eea03321206a794611b2a14c6ff431c6feef5`。Deployment 为1/1 Ready、1/1 Available；容器内核对单次模型超时为180秒、总尝试上限为3。本地18088接口的 healthz、选项、任务列表、Timeline 和 Debug 均可用。部署后活动任务0、ChaosBlade对象0、cart 3/3 Ready；未执行新的真实故障实验。
 
 最终现场检查：ChaosBlade 数量0；cart 保持3/3副本，load-generator 为1/1。没有启动新的第六、七轮真实故障实验。实际应答客户端检查验证了custom与确认两类回复，代码与最终部署的应答模块一致。
 
