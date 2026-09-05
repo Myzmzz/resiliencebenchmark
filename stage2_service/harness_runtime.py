@@ -636,6 +636,7 @@ class NativeHarnessRunner:
         if ref:
             write_json(artifact_dir / ref, redact_json(last_assessment, env))
         write_json(artifact_dir / "assessment-history.json", redact_json(assessment_history, env))
+        write_json(artifact_dir / "harness-conversation.json", redact_json(responder.history, env))
         status = (
             "timeout"
             if result.timed_out
@@ -705,6 +706,7 @@ class NativeHarnessRunner:
                 f"{campaign_id}/{trial_id}/stderr.txt",
                 f"{campaign_id}/{trial_id}/input-metadata.json",
                 f"{campaign_id}/{trial_id}/assessment-history.json",
+                f"{campaign_id}/{trial_id}/harness-conversation.json",
                 *((f"{campaign_id}/{trial_id}/{ref}",) if ref else ()),
                 *(f"{campaign_id}/{trial_id}/{name}" for name in native_session_refs),
             ),

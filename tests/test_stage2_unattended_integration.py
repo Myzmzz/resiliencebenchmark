@@ -33,8 +33,19 @@ PLAN = {
 
 
 class ModelAdapter:
+    def __init__(self):
+        self.question_interpretations = 0
+
     def __call__(self, instructions, context):
         if "read-only conversation interpreter" in instructions:
+            if context["messages"][-1].startswith("我还没选定"):
+                self.question_interpretations += 1
+                if self.question_interpretations == 1:
+                    return {"questions": [], "assessment": {}}
+                assert context["correction"]
+                return {"questions": [{"topic": "target", "question": context["messages"][-1],
+                                       "request_kind": "decision_help", "recommendation": None,
+                                       "required_decisions": ["target_pod"]}], "assessment": {}}
             if context["messages"][-1] == "[unreadable final answer]":
                 return {"questions": [], "assessment": {}}
             return {"questions": [], "assessment": {
@@ -81,7 +92,7 @@ class EvidenceAdapter:
         return {"application_owned": True, "load_generator_ready": True, "traffic_observed": True, "business_healthy": True}
 
 
-@pytest.mark.parametrize("scenario", ["latest", "custom", "plain", "repair", "startup", "exhausted"])
+@pytest.mark.parametrize("scenario", ["latest", "custom", "plain", "plain_question", "repair", "startup", "exhausted"])
 def test_native_conversation_completion_and_behavior_are_independent(tmp_path, scenario):
     executable = tmp_path / "codex-eval"
     executable.write_text(f"#!{Path(sys.executable).resolve()}\n" + (ROOT / "tests/fixtures/stage2_native_agent.py").read_text())
@@ -123,7 +134,7 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     answers = [event.payload for event in report.lifecycle_events if event.kind == "user_decision_received"]
     assert len(answers) == 1
     assert answers[0]["responder"] == "HARNESS"
-    assert answers[0]["answer_mode"] == ("custom" if scenario == "custom" else "approve_recommendation")
+    assert answers[0]["answer_mode"] == ("custom" if scenario in {"custom", "plain_question"} else "approve_recommendation")
     assert answers[0]["approved_plan"]["intensity"]["delay_ms"] == 300
     drafts = [event.payload for event in report.lifecycle_events if event.kind == "agent_question_updated"]
     if scenario == "latest":
@@ -135,7 +146,7 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     assert not any(event.kind.startswith("user_decision_unavailable") for event in report.lifecycle_events)
     assert report.final_output["output_repair_count"] == (1 if scenario == "repair" else 0)
     assert report.final_output["output_repaired"] is (scenario == "repair")
-    assert len(report.final_output["retry_history"]) == (1 if scenario in {"repair", "startup"} else 0)
+    assert len(report.final_output["retry_history"]) == (1 if scenario in {"repair", "startup", "plain_question"} else 0)
     evidence = EvidenceAdapter()
     recovery = Stage2Finalizer(CleanupAdapter(), evidence, sleep=lambda _: None).finalize(runtime.trial_id, None, runtime, report)
     assert evidence.window["start"] == "2026-09-04T14:00:00+00:00"
@@ -147,7 +158,7 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     assert decision["experiment_completed"] is True
     assert decision["verdict"] == "PASS"
     assert decision["agent_verdict"] == ("PARTIAL" if scenario == "plain" else "FAIL_EVIDENCE")
-    if scenario == "custom":
+    if scenario in {"custom", "plain_question"}:
         target = next(node for node in decision["node_results"] if node["node"] == "TARGET_IDENTITY")
         assert target["completion_source"] == "USER_DIRECTED"
         assert target["score"] == 2

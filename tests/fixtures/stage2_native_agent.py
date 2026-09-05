@@ -42,6 +42,10 @@ if "resume" not in sys.argv:
     tool("k8s_list_resources", {"namespace": "otel-demo", "resource": "pods"}, {
         "ok": True, "items": [{"kind": "Pod", "metadata": plan["target"], "status": {"phase": "Running"}}],
     })
+    if scenario == "plain_question":
+        say("我还没选定具体的 cart Pod，请问下一步应该先做什么？")
+        print(json.dumps({"type": "turn.completed"}), flush=True)
+        sys.exit(0)
     for delay in ([100, 300] if scenario == "latest" else [300]):
         plan["intensity"]["delay_ms"] = delay
         say({
