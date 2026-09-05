@@ -144,6 +144,8 @@ Summary 会聚合结构化反馈，重点看五类信息：
 
 Harness 解释/自动回复模型的单次客户端超时为180秒，一次原始请求加最多两次重试，总共最多三次。每次请求在 `harness-conversation.json` 中保存本地请求 ID、可获取的上游请求 ID、起止时间、耗时、输入字符/字节数与具体超时层。三次都超时时，任务输出 `HARNESS_MODEL_TIMEOUT`，不再仅显示 `HARNESS_EXECUTION_FAILED`。
 
+被测 Codex 自身使用的自定义模型提供方配置 `stream_idle_timeout_ms=180000`，即单次 SSE 模型流最长允许连续空闲3分钟。该时限与整个 Codex 会话的30分钟窗口、Harness 解释模型的180秒时限分开。Codex 若仍输出 `request timed out`，任务使用 `CODEX_MODEL_TIMEOUT` 和 `codex.model_provider_stream_idle` 记录，不再只留 `HARNESS_EXECUTION_FAILED`。
+
 Timeline 只返回简化分类事件，适合手动轮询。Debug 返回完整脱敏事件，适合排查 Harness 与 Agent 的具体交互，但不会暴露 token、secret、password、authorization、cleanup handle 或 operation ID 等受控运行标识。
 
 ## 控制操作

@@ -45,6 +45,10 @@ if scenario in {"startup", "exhausted"} and (attempt == 1 or scenario == "exhaus
 print(json.dumps({"type": "thread.started", "thread_id": "fixture-same-session"}), flush=True)
 print(json.dumps({"type": "turn.started"}), flush=True)
 text = sys.stdin.read()
+if scenario == "codex_model_timeout":
+    print(json.dumps({"type": "error", "message": "request timed out"}), flush=True)
+    print(json.dumps({"type": "turn.failed", "error": {"message": "request timed out"}}), flush=True)
+    sys.exit(1)
 if "resume" not in sys.argv:
     tool("k8s_list_resources", {"namespace": "otel-demo", "resource": "pods"}, {
         "ok": True, "items": [{"kind": "Pod", "metadata": plan["target"], "status": {"phase": "Running"}}],

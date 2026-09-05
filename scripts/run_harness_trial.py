@@ -48,6 +48,7 @@ DEFAULT_PROMPT_KEY = "full_lifecycle"
 # A Trial may contain a 20-minute fault window. Keep ten additional minutes for
 # target discovery, baseline/effect checks, bounded cleanup, and final output.
 DEFAULT_TIMEOUT_SECONDS = 30 * 60
+CODEX_MODEL_STREAM_IDLE_TIMEOUT_MS = 3 * 60 * 1000
 DEFAULT_MAX_OUTPUT_BYTES = 2_000_000
 MAX_PROMPT_BYTES = 200_000
 MIN_TIMEOUT_SECONDS = 1

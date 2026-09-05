@@ -133,7 +133,7 @@ class EvidenceAdapter:
         return {"application_owned": True, "load_generator_ready": True, "traffic_observed": True, "business_healthy": True}
 
 
-@pytest.mark.parametrize("scenario", ["latest", "custom", "advice", "plain", "plain_question", "approval_repair", "repair", "startup", "exhausted", "model_timeout"])
+@pytest.mark.parametrize("scenario", ["latest", "custom", "advice", "plain", "plain_question", "approval_repair", "repair", "startup", "exhausted", "model_timeout", "codex_model_timeout"])
 def test_native_conversation_completion_and_behavior_are_independent(tmp_path, scenario):
     executable = tmp_path / "codex-eval"
     executable.write_text(f"#!{Path(sys.executable).resolve()}\n" + (ROOT / "tests/fixtures/stage2_native_agent.py").read_text())
@@ -210,6 +210,24 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
             and item["upstream_request_id"] == "upstream-fixture-request"
             for item in history
         )
+        return
+    if scenario == "codex_model_timeout":
+        assert report.status == "failed"
+        assert report.final_output["validation_error"] is None
+        assert report.final_output["harness_error_code"] == "CODEX_MODEL_TIMEOUT"
+        assert report.final_output["harness_error"] == {
+            "error_code": "CODEX_MODEL_TIMEOUT",
+            "reason": "Codex model request timed out",
+            "timeout_layer": "codex.model_provider_stream_idle",
+            "timeout_seconds": 180,
+        }
+        assert report.final_output["retry_history"] == []
+        timeout = next(
+            event
+            for event in report.lifecycle_events
+            if event.kind == "codex_model_timeout"
+        )
+        assert timeout.payload["timeout_seconds"] == 180
         return
     assert report.status == "completed", report.final_output
     answers = [event.payload for event in report.lifecycle_events if event.kind == "user_decision_received"]

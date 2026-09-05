@@ -2333,11 +2333,11 @@ class Stage2TaskService:
             harness_error_code = trial.get("harness", {}).get("error_code")
             if harness_error_code:
                 harness_error = trial.get("harness", {}).get("error")
-                timeout_sequences = [
+                error_sequences = [
                     event.get("sequence")
                     for event in events
                     if event.get("trial_id") == trial_id
-                    and event.get("event_type") == "HARNESS_MODEL_TIMEOUT"
+                    and event.get("event_type") == str(harness_error_code)
                 ]
                 issues.append(
                     {
@@ -2355,7 +2355,7 @@ class Stage2TaskService:
                         "trial_id": trial_id,
                         "evidence_sequences": [
                             sequence
-                            for sequence in timeout_sequences
+                            for sequence in error_sequences
                             if sequence is not None
                         ],
                     }

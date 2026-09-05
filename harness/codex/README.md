@@ -28,6 +28,10 @@ The trial-local user config also selects a custom Responses provider whose
 `base_url` is rendered from `RESBENCH_LLM_BASE_URL` and whose credential comes
 only from `OPENAI_API_KEY`. `supports_websockets = false` keeps compatible
 third-party gateways on the qualified SSE transport.
+`stream_idle_timeout_ms` is rendered as 180000, giving each Codex provider
+stream a three-minute idle deadline. It is separate from the 30-minute
+Harness session deadline. Provider or reverse-proxy deadlines upstream of
+Codex may still end a request earlier and must be reported separately.
 
 Run qualification should verify the installed Codex version accepts HTTP MCP
 servers with `bearer_token_env_var`, and that `codex exec` is launched in

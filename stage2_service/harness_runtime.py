@@ -22,6 +22,7 @@ from .condition_policy import condition_policy_summary
 
 from scripts.run_harness_trial import (
     CommandResult,
+    CODEX_MODEL_STREAM_IDLE_TIMEOUT_MS,
     DEFAULT_HARNESSES_CONFIG,
     DEFAULT_OUTPUT_SCHEMA,
     DEFAULT_TIMEOUT_SECONDS,
@@ -696,6 +697,28 @@ class NativeHarnessRunner:
             )
         finally:
             self.mcp_supervisor.stop()
+        if (
+            not harness_failure
+            and harness is HarnessKind.CODEX
+            and result.returncode != 0
+            and _codex_model_request_timed_out(result)
+        ):
+            harness_failure = {
+                "error_code": "CODEX_MODEL_TIMEOUT",
+                "reason": "Codex model request timed out",
+                "timeout_layer": "codex.model_provider_stream_idle",
+                "timeout_seconds": CODEX_MODEL_STREAM_IDLE_TIMEOUT_MS // 1000,
+            }
+            self._emit(
+                lifecycle,
+                event_observer,
+                campaign_id,
+                trial_id,
+                harness,
+                LifecyclePhase.C5_SAFETY,
+                "codex_model_timeout",
+                harness_failure,
+            )
         for feedback in _extract_recorded_feedback(session_events_jsonl):
             record_feedback_result(feedback["feedback"], feedback["result"])
         (artifact_dir / "stdout.txt").write_text(
@@ -2011,6 +2034,13 @@ _CHANNEL_ERROR_CODES = frozenset(
 
 def _normalized_error_code(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def _codex_model_request_timed_out(result: CommandResult) -> bool:
+    text = (result.stdout + result.stderr).decode(
+        "utf-8", errors="replace"
+    ).lower()
+    return '"turn.failed"' in text and "request timed out" in text
 
 
 def _tool_result_payloads(item: Mapping[str, Any]) -> list[dict[str, Any]]:

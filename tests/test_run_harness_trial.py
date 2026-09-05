@@ -359,6 +359,12 @@ def test_codex_config_renders_custom_responses_provider_without_api_key(tmp_path
     assert 'env_key = "OPENAI_API_KEY"' in rendered
     assert 'wire_api = "responses"' in rendered
     assert "supports_websockets = false" in rendered
+    assert (
+        f"stream_idle_timeout_ms = {trial.CODEX_MODEL_STREAM_IDLE_TIMEOUT_MS}"
+        in rendered
+    )
+    assert trial.CODEX_MODEL_STREAM_IDLE_TIMEOUT_MS == 180_000
+    assert "__RESBENCH_CODEX_STREAM_IDLE_TIMEOUT_MS__" not in rendered
     assert "sk-test-secret-value-that-must-not-leak" not in rendered
     assert "mcp-token-that-must-not-leak-000000" not in rendered
 
