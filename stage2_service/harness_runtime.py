@@ -10,6 +10,7 @@ import re
 import shutil
 import sys
 import tempfile
+import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import Any
 from controller.safety import default_policy
 
 from scripts.run_harness_trial import (
+    CommandResult,
     DEFAULT_HARNESSES_CONFIG,
     DEFAULT_OUTPUT_SCHEMA,
     DEFAULT_TIMEOUT_SECONDS,
@@ -60,9 +62,11 @@ from .contracts import (
     PromptMode,
 )
 from .permissions import Stage2PermissionManager
+from .auto_reply import HarnessResponder
 from .mcp_supervisor import McpSupervisor
 from .session import (
     ResumeArgvBuilder,
+    RetryBudget,
     StructuredFeedback,
     StructuredFeedbackType,
     discover_codex_session_id,
@@ -86,6 +90,7 @@ class NativeHarnessRunner:
         mcp_supervisor: McpSupervisor,
         base_environment: Mapping[str, str],
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        responder_factory=None,
     ):
         self.repo_root = repo_root.resolve()
         self.private_root = private_root.resolve()
@@ -94,6 +99,7 @@ class NativeHarnessRunner:
         self.mcp_supervisor = mcp_supervisor
         self.base_environment = dict(base_environment)
         self.timeout_seconds = timeout_seconds
+        self.responder_factory = responder_factory or HarnessResponder.from_environment
         self.private_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
 
@@ -114,7 +120,7 @@ class NativeHarnessRunner:
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
         decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING,
         expected_outcome: ExpectedOutcome = ExpectedOutcome.EXECUTE_AND_RECOVER,
-        interaction_provider=None,
+        prompt_level_label: str = "UNSPECIFIED",
         cancel_requested=None,
     ) -> HarnessReport:
         if harness is HarnessKind.BLADEAI:
@@ -131,7 +137,6 @@ class NativeHarnessRunner:
                 interaction_mode=interaction_mode,
                 decision_policy=decision_policy,
                 expected_outcome=expected_outcome,
-                interaction_provider=interaction_provider,
                 event_observer=event_observer,
                 cancel_requested=cancel_requested,
             )
@@ -297,9 +302,52 @@ class NativeHarnessRunner:
 
         target_binding_seen = False
         captured_session_id: str | None = None
-        pending_clarification: dict[str, Any] | None = None
-        observed_question_ids: set[str] = set()
+        pending_questions: dict[str, dict[str, Any]] = {}
+        question_versions: dict[str, dict[str, Any]] = {}
+        turn_messages: list[str] = []
+        tool_evidence: list[dict[str, Any]] = []
+        assessment_history: list[dict[str, Any]] = []
+        last_assessment: dict[str, Any] = {}
+        output_repair_count = 0
+        output_repaired = False
+        report_only = False
+        captured_stdout: list[bytes] = []
+        confirmed_plan: dict[str, Any] = {}
+        executed_plan: dict[str, Any] = {}
+        retry_budget = RetryBudget()
+        responder = self.responder_factory(
+            env, model_alias, runtime_context.target.namespace,
+            int(runtime_context.main_fault.get("max_fault_duration_seconds") or 1200),
+            self.timeout_seconds,
+        )
+        write_json(artifact_dir / "input-metadata.json", {
+            "prompt": base_prompt, "executed_prompt": redact_text(prompt, env),
+            "prompt_level_label": prompt_level_label, "decision_policy": decision_policy.value,
+            "model": model_alias, "harness": harness.value, "trial_id": trial_id,
+        })
         interaction_mode_value = interaction_mode.value
+
+        def bounded_reply_call(kind, action):
+            while True:
+                try:
+                    return action()
+                except Exception as exc:
+                    reason = redact_text(f"{type(exc).__name__}: {str(exc)[:300]}", env)
+                    if not retry_budget.consume(kind, reason):
+                        raise HarnessRuntimeError(f"HARNESS_INTERACTION_FAILED: {reason}") from exc
+                    self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                               LifecyclePhase.C5_SAFETY, "harness_retry", retry_budget.retries[-1])
+
+        def update_question(question):
+            topic = str(question.get("topic") or "experiment_plan")
+            old = question_versions.get(topic)
+            stable_id = old["question_id"] if old else "question-" + uuid.uuid4().hex[:16]
+            version = int(old["version"]) + 1 if old else 1
+            value = {**dict(question), "topic": topic, "question_id": stable_id, "version": version}
+            question_versions[topic] = value
+            pending_questions[topic] = value
+            self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                       LifecyclePhase.C1_PLAN, "agent_question_updated", value)
 
         def dispatch_observer(value) -> list[StructuredFeedback]:
             response = event_observer(value)
@@ -337,12 +385,26 @@ class NativeHarnessRunner:
             event_observer(event)
 
         def observe_line(line: bytes) -> list[StructuredFeedback]:
-            nonlocal target_binding_seen, captured_session_id, pending_clarification
+            nonlocal target_binding_seen, captured_session_id, last_assessment, executed_plan
             feedbacks: list[StructuredFeedback] = []
-            for item in extract_json_objects(line.decode("utf-8", errors="replace")):
-                if captured_session_id is None:
-                    captured_session_id = session_id_from_event(item)
+            captured_stdout.append(line)
+            for item in _native_line_items(line):
+                found_session_id = session_id_from_event(item)
+                if found_session_id:
+                    captured_session_id = found_session_id
                 feedbacks.extend(dispatch_observer(_interaction_event(item, env)))
+                message = item.get("text")
+                if item.get("type") in {"agent_message", "assistant_message", "message"} and isinstance(message, str):
+                    turn_messages.append(message)
+                    parsed_message = _structured_agent_message(item)
+                    if parsed_message:
+                        last_assessment = parsed_message
+                        assessment_history.append({"assessment": parsed_message, "source": "agent_message", "event_ref": item.get("id")})
+                if item.get("type") in {"mcp_tool_call", "tool_result"} and _tool_result_ok(item):
+                    tool_evidence.append(_public_tool_evidence(item, env))
+                    del tool_evidence[:-24]  # Full history stays in artifacts; replies need bounded public context.
+                    if (event_tool_name(item) or "").endswith("chaos_create_experiment") and not executed_plan:
+                        executed_plan = copy.deepcopy(confirmed_plan)
                 checkpoint = _agent_checkpoint_from_item(item)
                 if checkpoint is not None:
                     checkpoint_event = self._event(
@@ -377,26 +439,24 @@ class NativeHarnessRunner:
                         feedbacks.extend(dispatch_observer(derived))
                 clarification = _clarification_request_from_item(item, trial_id)
                 if clarification is not None:
-                    question_id = str(clarification["question_id"])
-                    if (
-                        pending_clarification is None
-                        and question_id not in observed_question_ids
-                    ):
-                        observed_question_ids.add(question_id)
-                        pending_clarification = clarification
-                        question_event = self._event(
-                            campaign_id,
-                            trial_id,
-                            harness,
-                            LifecyclePhase.C1_PLAN,
-                            "agent_clarification_requested",
-                            clarification,
-                        )
-                        lifecycle.append(question_event)
-                        feedbacks.extend(dispatch_observer(question_event))
+                    update_question(clarification)
                 for event in self._normalize_tool_event(
                     campaign_id, trial_id, harness, item, runtime_context
                 ):
+                    if event.kind == "business_observation" and not any(
+                        prior.kind == "main_fault_requested" for prior in lifecycle
+                    ):
+                        healthy_pod = any(
+                            (entry.get("result", {}).get("object") or {}).get("kind") == "Pod"
+                            and any(condition.get("type") == "Ready" and condition.get("status") == "True"
+                                    for condition in (entry["result"]["object"].get("status") or {}).get("conditions") or ())
+                            for entry in tool_evidence
+                        )
+                        if healthy_pod:
+                            self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                                       LifecyclePhase.C1_PLAN, "baseline_verified", {
+                                           "source": "agent_tools", "business_event": event.event_id,
+                                       })
                     if event.kind == "target_bound":
                         if target_binding_seen:
                             target = event.payload.get("target") or {}
@@ -416,7 +476,85 @@ class NativeHarnessRunner:
             return feedbacks
 
         def observe_turn_complete(summary: Mapping[str, Any]) -> list[StructuredFeedback]:
-            nonlocal pending_clarification
+            nonlocal last_assessment, output_repair_count, output_repaired, report_only, confirmed_plan
+            if summary.get("timed_out") or summary.get("cancelled") or summary.get("returncode"):
+                return []
+            if not turn_messages:
+                return []
+            latest_structured = _structured_agent_message({"type": "agent_message", "text": turn_messages[-1]})
+            if latest_structured is None:
+                interpreted = bounded_reply_call(
+                    "conversation_interpretation", lambda: responder.interpret(turn_messages, tool_evidence),
+                )
+                last_assessment = {k: v for k, v in interpreted["assessment"].items() if v is not None}
+                assessment_history.append({
+                    "assessment": dict(last_assessment), "source": "harness_interpretation",
+                    "raw_messages": list(turn_messages),
+                })
+                for question in interpreted["questions"]:
+                    if isinstance(question, Mapping) and question.get("question"):
+                        update_question(question)
+                if last_assessment:
+                    self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                               LifecyclePhase.C1_PLAN, "agent_checkpoint", last_assessment)
+            else:
+                last_assessment = latest_structured
+            if output_repair_count and last_assessment:
+                output_repaired = True
+                self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                           LifecyclePhase.C5_SAFETY, "output_repaired", {
+                               "output_repair_count": output_repair_count,
+                               "messages": list(turn_messages), "assessment": last_assessment,
+                           })
+            turn_messages.clear()
+            if not last_assessment and not pending_questions and retry_budget.consume("output_repair", "answer could not be interpreted"):
+                output_repair_count += 1
+                report_only = True
+                prior = json.loads(decision_file.read_text()) if decision_file.exists() else {}
+                write_json(decision_file, {**prior, "report_only": True})
+                if harness is HarnessKind.CLAUDE_CODE:
+                    report_config = trial_root / "report-only-mcp.json"
+                    write_json(report_config, {"mcpServers": {}})
+                    paths["mcp_config_file"] = report_config
+                self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                           LifecyclePhase.C5_SAFETY, "output_repair_requested", {
+                               "output_repair_count": output_repair_count, "report_only": True,
+                           })
+                return [StructuredFeedback(
+                    category=StructuredFeedbackType.FACT_EVENT,
+                    message="上一条回答未能识别。请仅重新表述已有结论及已验证、未验证项目；不要调用工具、重新实验或补做验证。",
+                    payload={"event_type": "OUTPUT_REPAIR", "report_only": True},
+                )]
+            replies = []
+            for question in list(pending_questions.values()):
+                self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                           LifecyclePhase.C1_PLAN, "agent_clarification_requested", question)
+                answer = bounded_reply_call("automatic_reply", lambda: responder.reply(question, {
+                    "original_prompt": base_prompt, "tool_evidence": tool_evidence,
+                    "decision_policy": decision_policy.value,
+                    "allowed_fault_types": list(capability.allowed_fault_types),
+                }))
+                if answer["question_id"] != question["question_id"] or answer["question_version"] != question["version"]:
+                    raise HarnessRuntimeError("automatic answer does not match the current question version")
+                if not report_only and (answer["approved"] or answer["answer_mode"] == "reject"):
+                    write_json(decision_file, {
+                        "schema_version": "stage2-user-decision.v1", **answer,
+                        "submitted_at": datetime.now(UTC).isoformat(),
+                    })
+                    decision_file.chmod(0o600)
+                    if answer["approved"]:
+                        confirmed_plan = copy.deepcopy(answer["approved_plan"])
+                self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                           LifecyclePhase.C1_PLAN,
+                           "harness_fact_answered" if answer.get("feedback_category") == "FACT_EVENT" else "user_decision_received", answer)
+                replies.append(StructuredFeedback(
+                    category=StructuredFeedbackType(answer.get("feedback_category", "USER_DECISION")),
+                    message=answer["message"], payload={"event_type": answer.get("feedback_category", "USER_DECISION"), **answer},
+                ))
+            pending_questions.clear()
+            if replies or report_only:
+                return replies if not report_only else []
+            safe_summary = {k: v for k, v in summary.items() if k not in {"stdout", "stderr"}}
             response = event_observer(
                 {
                     "actor": "HARNESS",
@@ -425,93 +563,14 @@ class NativeHarnessRunner:
                     "native_type": "native_turn_completed",
                     "status": "completed",
                     "payload": {
-                        "summary": dict(summary),
+                        "summary": safe_summary,
                         "lifecycle_events": [
                             item.model_dump(mode="json") for item in lifecycle
                         ],
                     },
                 }
             )
-            feedbacks = structured_feedbacks_from_observer(response)
-            question = pending_clarification
-            pending_clarification = None
-            if question is None:
-                return feedbacks
-            if interaction_provider is None:
-                unavailable = self._event(
-                    campaign_id,
-                    trial_id,
-                    harness,
-                    LifecyclePhase.C1_PLAN,
-                    "user_decision_unavailable",
-                    {"question_id": question["question_id"]},
-                )
-                lifecycle.append(unavailable)
-                dispatch_observer(unavailable)
-                return []
-            answer = interaction_provider(question, 600.0)
-            if not isinstance(answer, Mapping):
-                timed_out = self._event(
-                    campaign_id,
-                    trial_id,
-                    harness,
-                    LifecyclePhase.C1_PLAN,
-                    "user_decision_timeout",
-                    {"question_id": question["question_id"]},
-                )
-                lifecycle.append(timed_out)
-                dispatch_observer(timed_out)
-                return []
-            answer_payload = dict(answer)
-            if str(answer_payload.get("question_id") or "") != str(
-                question["question_id"]
-            ):
-                raise HarnessRuntimeError("user decision question_id mismatch")
-            approved = answer_payload.get("approved") is True
-            approved_plan = answer_payload.get("approved_plan")
-            if approved and not isinstance(approved_plan, Mapping):
-                raise HarnessRuntimeError("approved user decision has no approved_plan")
-            decision_record = {
-                "schema_version": "stage2-user-decision.v1",
-                "question_id": question["question_id"],
-                "approved": approved,
-                "answer_mode": answer_payload.get("answer_mode"),
-                "approved_plan": dict(approved_plan or {}),
-                "submitted_at": answer_payload.get("submitted_at"),
-            }
-            decision_file.write_text(
-                json.dumps(decision_record, ensure_ascii=False, indent=2, sort_keys=True)
-                + "\n",
-                encoding="utf-8",
-            )
-            decision_file.chmod(0o600)
-            received = self._event(
-                campaign_id,
-                trial_id,
-                harness,
-                LifecyclePhase.C1_PLAN,
-                "user_decision_received",
-                {
-                    "question_id": question["question_id"],
-                    "approved": approved,
-                    "answer_mode": answer_payload.get("answer_mode"),
-                },
-            )
-            lifecycle.append(received)
-            dispatch_observer(received)
-            return [
-                StructuredFeedback(
-                    category=StructuredFeedbackType.USER_DECISION,
-                    message=str(answer_payload.get("message") or "User decision received."),
-                    payload={
-                        "event_type": "USER_DECISION",
-                        "question_id": question["question_id"],
-                        "approved": approved,
-                        "answer_mode": answer_payload.get("answer_mode"),
-                        "approved_plan": dict(approved_plan or {}),
-                    },
-                )
-            ]
+            return structured_feedbacks_from_observer(response)
 
         try:
             resume_builder: ResumeArgvBuilder | None = None
@@ -534,6 +593,14 @@ class NativeHarnessRunner:
                 )
                 session_id_provider = lambda: captured_session_id
 
+            def build_resume(session_id, turn_index):
+                resumed = list(resume_builder(session_id, turn_index))
+                if report_only and harness is HarnessKind.CODEX:
+                    disabled = [arg for name in ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control")
+                                for arg in ("-c", f"mcp_servers.{name}.enabled=false")]
+                    resumed = [resumed[0], *disabled, *resumed[1:]]
+                return resumed
+
             result = subprocess_streaming_runner(
                 argv,
                 stdin,
@@ -541,12 +608,18 @@ class NativeHarnessRunner:
                 self.timeout_seconds,
                 observe_line,
                 cancel_requested,
-                resume_argv_builder=resume_builder,
+                resume_argv_builder=build_resume if resume_builder is not None else None,
                 session_id_provider=session_id_provider,
                 turn_complete_observer=observe_turn_complete,
                 interaction_mode=interaction_mode_value,
                 transcript_path=session_events_jsonl,
                 redactor=lambda value: redact_json(value, env),
+                retry_budget=retry_budget,
+            )
+        except Exception as exc:
+            result = CommandResult(
+                returncode=1, stdout=b"".join(captured_stdout),
+                stderr=redact_text(str(exc), env).encode("utf-8"),
             )
         finally:
             self.mcp_supervisor.stop()
@@ -558,19 +631,16 @@ class NativeHarnessRunner:
         (artifact_dir / "stderr.txt").write_text(
             redact_text(result.stderr, env), encoding="utf-8"
         )
-        output_schema = load_json(self.repo_root / DEFAULT_OUTPUT_SCHEMA)
-        ref, validation_error = validate_final_agent_result(
-            result.stdout,
-            codex_result_files,
-            artifact_dir,
-            output_schema,
-            env,
-        )
+        ref = "agent-result.json" if last_assessment else ""
+        validation_error = None if ref else "OUTPUT_UNSTRUCTURED"
+        if ref:
+            write_json(artifact_dir / ref, redact_json(last_assessment, env))
+        write_json(artifact_dir / "assessment-history.json", redact_json(assessment_history, env))
         status = (
             "timeout"
             if result.timed_out
             else "failed"
-            if result.returncode != 0 or validation_error
+            if result.returncode != 0
             else "completed"
         )
         verdict = (
@@ -584,6 +654,15 @@ class NativeHarnessRunner:
             "process_succeeded": result.returncode == 0 and not result.timed_out,
             "cancelled": result.cancelled,
             "interaction_mode": interaction_mode.value,
+            "output_repaired": output_repaired,
+            "output_repair_count": output_repair_count,
+            "output_repair_exhausted": output_repair_count > 0 and not output_repaired,
+            "retry_history": retry_budget.retries,
+            "assessment_history": redact_json(assessment_history, env),
+            "prompt_level_label": prompt_level_label,
+            "decision_policy": decision_policy.value,
+            "original_prompt": base_prompt,
+            "approved_plan": executed_plan or confirmed_plan,
         }
         if ref:
             final_output["agent_result_ref"] = ref
@@ -624,6 +703,8 @@ class NativeHarnessRunner:
             artifact_refs=(
                 f"{campaign_id}/{trial_id}/stdout.txt",
                 f"{campaign_id}/{trial_id}/stderr.txt",
+                f"{campaign_id}/{trial_id}/input-metadata.json",
+                f"{campaign_id}/{trial_id}/assessment-history.json",
                 *((f"{campaign_id}/{trial_id}/{ref}",) if ref else ()),
                 *(f"{campaign_id}/{trial_id}/{name}" for name in native_session_refs),
             ),
@@ -665,11 +746,10 @@ class NativeHarnessRunner:
         interaction_mode,
         decision_policy,
         expected_outcome,
-        interaction_provider,
         event_observer,
         cancel_requested=None,
     ) -> HarnessReport:
-        del model_alias, capability, case, decision_policy, expected_outcome, interaction_provider
+        del model_alias, capability, case, decision_policy, expected_outcome
         permission_runtime = self.permissions.runtime_context(trial_id)
         kubeconfig = permission_runtime.get("bladeai_kubeconfig")
         if not kubeconfig:
@@ -872,6 +952,26 @@ class NativeHarnessRunner:
         status = str(item.get("status") or "").lower()
         native_call_id = _native_tool_call_id(item)
         output: list[LifecycleEvent] = []
+        result_data = _first_tool_result_payload(item)
+        if _tool_result_ok(item):
+            absent = result_data.get("resource_absent") is True or result_data.get("verified_absent") is True or (
+                tool.endswith("chaos_get_experiment") and result_data.get("found") is False
+            ) or (tool.endswith("chaos_operation_status") and result_data.get("operation_outcome") == "absent")
+            if absent:
+                output.append(self._event(campaign_id, trial_id, harness, LifecyclePhase.C6_RECOVERY,
+                                          "fault_absence_verified", {"tool": tool, "native_call_id": native_call_id}))
+            phase_value = str((result_data.get("experiment") or {}).get("phase") or result_data.get("phase") or "")
+            if tool.endswith(("chaos_get_experiment", "chaos_recovery_status")) and phase_value == "Running":
+                output.append(self._event(campaign_id, trial_id, harness, LifecyclePhase.C3_INJECT,
+                                          "main_fault_running", {"tool": tool, "target_uid": result_data.get("target_uid"),
+                                                                 "started_at": result_data.get("started_at")}))
+            metric = str(arguments.get("metric") or "").lower()
+            business_values = result_data.get("result") or result_data.get("traces")
+            if business_values and (any(word in metric for word in ("request", "rpc", "http", "duration", "latency"))
+                                    or tool.endswith("telemetry_jaeger_find_traces")):
+                output.append(self._event(campaign_id, trial_id, harness, LifecyclePhase.C4_EFFECT,
+                                          "business_observation", {"tool": tool, "native_call_id": native_call_id,
+                                                                   "query_start": arguments.get("start"), "query_end": arguments.get("end")}))
         operation_unknown: dict[str, Any] = {}
         if tool.endswith("chaos_validate_plan"):
             target = {
@@ -936,7 +1036,7 @@ class NativeHarnessRunner:
                         ),
                     )
                 )
-            if _tool_result_ok(item):
+            if _tool_result_ok(item) and str((_first_tool_result_payload(item).get("created") or {}).get("phase") or "").lower() == "running":
                 output.append(
                     self._event(
                         campaign_id,
@@ -947,6 +1047,9 @@ class NativeHarnessRunner:
                         payload,
                     )
                 )
+            if _tool_result_ok(item) and not any(event.kind == "main_fault_running" for event in output):
+                output.append(self._event(campaign_id, trial_id, harness, LifecyclePhase.C3_INJECT,
+                                          "main_fault_created", payload))
             operation_unknown = _operation_unknown_payload(item)
             if operation_unknown:
                 output.append(
@@ -972,7 +1075,7 @@ class NativeHarnessRunner:
                         },
                     )
                 )
-        elif tool.endswith(("telemetry_prom_metric_range", "chaos_get_experiment")):
+        elif tool.endswith(("telemetry_prom_metric_range", "telemetry_jaeger_find_traces", "chaos_get_experiment")):
             output.append(
                 self._event(
                     campaign_id,
@@ -1018,6 +1121,16 @@ class NativeHarnessRunner:
                 )
             )
             if _tool_result_ok(item):
+                live = result_payload.get("live") or {}
+                if live.get("phase") == "Running":
+                    output.append(self._event(
+                        campaign_id, trial_id, harness, LifecyclePhase.C3_INJECT,
+                        "main_fault_running", {**payload, "target_uid": result_payload.get("target_uid"),
+                                               "started_at": result_payload.get("started_at"),
+                                               "fault_type": result_payload.get("fault_type"),
+                                               "duration_seconds": result_payload.get("duration_seconds"),
+                                               "intensity": result_payload.get("intensity") or {}},
+                    ))
                 output.append(
                     self._event(
                         campaign_id,
@@ -1187,6 +1300,53 @@ def _tool_arguments(item: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _native_line_items(line: bytes) -> list[dict[str, Any]]:
+    """Decode event envelopes, never recurse into arbitrary Kubernetes payloads."""
+    text = line.decode("utf-8", errors="replace").strip()
+    if not text:
+        return []
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return [{"type": "agent_message", "text": text}]
+    if not isinstance(value, Mapping):
+        return []
+    nested = value.get("item")
+    if isinstance(nested, Mapping):
+        return [dict(nested)]
+    message = value.get("message")
+    if isinstance(message, Mapping) and message.get("role") == "assistant":
+        output = []
+        for block in message.get("content") or ():
+            if not isinstance(block, Mapping):
+                continue
+            if block.get("type") == "text":
+                output.append({"type": "agent_message", "text": block.get("text", "")})
+            elif block.get("type") == "tool_use":
+                output.append({**dict(block), "tool": block.get("name"), "status": "in_progress"})
+        return output
+    return [dict(value)]
+
+
+def _public_tool_evidence(item, env):
+    payload = _first_tool_result_payload(item)
+    if isinstance(payload.get("object"), Mapping):
+        obj = payload["object"]
+        payload = {"ok": payload.get("ok"), "object": {
+            "kind": obj.get("kind"), "metadata": obj.get("metadata"), "status": obj.get("status"),
+        }}
+    elif isinstance(payload.get("items"), list):
+        payload = {**payload, "items": [
+            {"kind": row.get("kind"), "metadata": row.get("metadata"), "status": row.get("status")}
+            if isinstance(row, Mapping) and "metadata" in row else row
+            for row in payload["items"][:30]
+        ]}
+    safe = redact_json({"tool": event_tool_name(item), "arguments": _tool_arguments(item), "result": payload}, env)
+    if len(json.dumps(safe, ensure_ascii=False)) > 8000:
+        safe["result"] = {"truncated": True, "text": json.dumps(safe["result"], ensure_ascii=False)[:8000]}
+    return safe
+
+
 def _interaction_event(item: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, Any]:
     safe = _remove_private_reasoning(redact_json(dict(item), env))
     native_type = str(safe.get("type") or safe.get("kind") or "native_event")
@@ -1278,26 +1438,17 @@ def _clarification_request_from_item(
         recommendation = request.get("recommendation")
         required_decisions = request.get("required_decisions")
         risk_boundary = str(request.get("risk_boundary") or "").strip()
-        if (
-            not question
-            or not isinstance(recommendation, Mapping)
-            or not isinstance(required_decisions, list)
-            or not required_decisions
-            or not risk_boundary
-        ):
+        if not question:
             return None
         normalized = {
             "question": question,
-            "required_decisions": [str(value) for value in required_decisions],
-            "recommendation": dict(recommendation),
+            "topic": request.get("topic", "experiment_plan"),
+            "request_kind": request.get("request_kind", "confirmation"),
+            "required_decisions": [str(value) for value in required_decisions or ()],
+            "recommendation": dict(recommendation) if isinstance(recommendation, Mapping) else None,
             "risk_boundary": risk_boundary,
         }
-        digest = hashlib.sha256(
-            (trial_id + "\x1f" + json.dumps(normalized, ensure_ascii=False, sort_keys=True)).encode(
-                "utf-8"
-            )
-        ).hexdigest()[:16]
-        return {"question_id": f"question-{digest}", **normalized}
+        return {"question_id": "question-" + uuid.uuid4().hex[:16], **normalized}
     return None
 
 

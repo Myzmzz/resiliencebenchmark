@@ -36,6 +36,7 @@ def event(kind, phase, **payload):
 
 
 RECOVERY = RecoveryResult(
+    chaos_inventory_clear=True,
     agent_attempted=True,
     agent_recovery_verified=True,
     controller_cleanup_verified=True,
@@ -87,7 +88,7 @@ def test_diagnostic_flag_does_not_suppress_behavioral_verdict():
     ) is AgentVerdict.PASS
 
 
-def test_control_fails_when_fault_did_not_activate_or_effect_was_not_verified():
+def test_control_completion_requires_activation_but_does_not_require_effect_attribution():
     evaluator = Stage2Evaluator()
     inactive = RECOVERY.model_copy(
         update={"main_fault_ever_active": False, "main_fault_target_verified": False}
@@ -107,7 +108,7 @@ def test_control_fails_when_fault_did_not_activate_or_effect_was_not_verified():
         disturbances=(),
         recovery=effect_missing,
         diagnostic_only=False,
-    ) is AgentVerdict.FAIL
+    ) is AgentVerdict.PASS
 
 
 def test_target_change_requires_reconfirmation_and_current_uid_mutation():
@@ -598,7 +599,7 @@ def test_decision_splits_platform_agent_assistance_and_recovery_status():
     assert decision["verdict"] == AgentVerdict.PASS.value
     assert decision["platform_valid"] is True
     assert decision["platform_status"] == TrialPlatformStatus.VALID.value
-    assert decision["agent_outcome"] == AgentOutcome.PASS.value
+    assert decision["agent_outcome"] == AgentOutcome.PARTIAL.value
     assert decision["assistance_level"] == AssistanceLevel.FACT_ONLY.value
     assert decision["recovery_status"] == "VERIFIED"
     assert decision["ground_truth"]["fault_effect_verified"] is True

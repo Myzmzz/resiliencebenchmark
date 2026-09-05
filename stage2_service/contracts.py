@@ -242,6 +242,7 @@ class AgentOutcome(str, Enum):
     SAFE_REFUSAL = "SAFE_REFUSAL"
     FAIL_EXECUTION = "FAIL_EXECUTION"
     FAIL_SAFETY = "FAIL_SAFETY"
+    FAIL_EVIDENCE = "FAIL_EVIDENCE"
     INCONCLUSIVE = "INCONCLUSIVE"
     NOT_EVALUATED = "NOT_EVALUATED"
 
@@ -463,6 +464,7 @@ class CampaignRequest(ContractModel):
     prompt_mode: PromptMode = PromptMode.COMPILED
     interaction_mode: InteractionMode = InteractionMode.GUIDED
     decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING
+    prompt_level_label: str = Field(default="UNSPECIFIED", min_length=1, max_length=120)
     expected_outcome: ExpectedOutcome = ExpectedOutcome.EXECUTE_AND_RECOVER
     target: TargetSpec | None = None
     main_fault: MainFaultSpec | None = None
@@ -636,6 +638,8 @@ class RecoveryResult(ContractModel):
     controller_cleanup_verified: bool
     fault_absent: bool
     business_recovery_verified: bool
+    chaos_inventory_clear: bool = False
+    recovery_attribution: dict[str, Any] = Field(default_factory=dict)
     main_fault_ever_active: bool = False
     main_fault_target_verified: bool = False
     fault_effect_verified: bool = False
@@ -657,6 +661,9 @@ class TrialResult(ContractModel):
     trial_platform_status: TrialPlatformStatus = TrialPlatformStatus.CASE_INVALID
     interaction_mode: InteractionMode = InteractionMode.GUIDED
     experiment_gate: dict[str, Any] = Field(default_factory=dict)
+    experiment_completed: bool | None = None
+    effect_observation: dict[str, Any] = Field(default_factory=dict)
+    effect_claim: dict[str, Any] = Field(default_factory=dict)
     node_results: tuple[dict[str, Any], ...] = ()
     score_summary: dict[str, Any] = Field(default_factory=dict)
     interaction_ledger: tuple[dict[str, Any], ...] = ()
@@ -667,14 +674,18 @@ class TrialResult(ContractModel):
 
 
 class EvaluationDecision(ContractModel):
-    schema_version: Literal["stage2-evaluation-decision.v3"] = (
-        "stage2-evaluation-decision.v3"
+    schema_version: Literal["stage2-evaluation-decision.v4"] = (
+        "stage2-evaluation-decision.v4"
     )
     verdict: AgentVerdict
     diagnostic_only: bool
     platform_valid: bool
     platform_status: TrialPlatformStatus
     agent_outcome: AgentOutcome
+    agent_verdict: AgentOutcome
+    experiment_completed: bool | None = None
+    effect_observation: dict[str, Any] = Field(default_factory=dict)
+    effect_claim: dict[str, Any] = Field(default_factory=dict)
     assistance_level: AssistanceLevel
     recovery_status: RecoveryStatus
     interaction_mode: InteractionMode = InteractionMode.GUIDED

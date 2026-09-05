@@ -87,6 +87,13 @@ class Stage2Finalizer:
         target_verified = ever_active and bool(
             pre_status.get("target_name") and pre_status.get("target_uid")
         )
+        approved_plan = report.final_output.get("approved_plan") or {}
+        if approved_plan:
+            approved_target = approved_plan.get("target") or {}
+            target_verified = target_verified and all(
+                pre_status.get(actual) == approved_target.get(planned)
+                for actual, planned in (("namespace", "namespace"), ("target_name", "name"), ("target_uid", "uid"))
+            )
         if not agent_selected:
             target_verified = (
                 target_verified
@@ -114,7 +121,7 @@ class Stage2Finalizer:
                     else self._safe(self.chaos.status, runtime.cleanup_handle)
                 )
                 if observed.get("resource_absent") is True:
-                    pre_status = observed
+                    pre_status = {**pre_status, **observed}
                     pre_absent = True
                     timeout_recovery_observed = True
                     break
@@ -141,20 +148,16 @@ class Stage2Finalizer:
                 pre_status.get("intensity") or {}
             )
             runtime_update["main_fault"] = observed_contract
+        fault_contract = dict(runtime_update.get("main_fault", runtime.main_fault))
+        fault_contract["evidence_window"] = {
+            "injection_id": pre_status.get("experiment_name"),
+            "start": pre_status.get("started_at"), "end": pre_status.get("ended_at"),
+            "planned_end": pre_status.get("deadline_at"),
+            "time_source": "controller_first_observed_state",
+        }
+        runtime_update["main_fault"] = fault_contract
         if runtime_update:
             evidence_runtime = runtime.model_copy(update=runtime_update)
-        effect = dict(
-            self.recovery_evidence.effect_since(trial_id, evidence_runtime)
-        )
-        effect["observed_main_fault"] = {
-            "fault_type": pre_status.get("fault_type"),
-            "target_name": pre_status.get("target_name"),
-            "target_uid": pre_status.get("target_uid"),
-            "experiment_name": pre_status.get("experiment_name"),
-        }
-        effect["timeout_recovery_observed"] = timeout_recovery_observed
-        effect["timeout_wait_seconds"] = round(timeout_wait_seconds, 3)
-        effect["external_chaos_reconciled"] = external_managed
         destroy = (
             self._safe(self.chaos.cleanup_external, runtime)
             if external_managed
@@ -166,6 +169,18 @@ class Stage2Finalizer:
             else self._safe(self.chaos.status, runtime.cleanup_handle)
         )
         inventory = self._safe(self.chaos.inventory, runtime.target.namespace)
+        inventory_clear = inventory.get("global_chaosblade_count") == 0
+        fault_contract["evidence_window"]["start"] = pre_status.get("started_at") or status.get("started_at")
+        fault_contract["evidence_window"]["end"] = pre_status.get("ended_at") or status.get("ended_at")
+        evidence_runtime = evidence_runtime.model_copy(update={"main_fault": fault_contract})
+        effect = dict(self.recovery_evidence.effect_since(trial_id, evidence_runtime))
+        effect["observed_main_fault"] = {
+            "fault_type": pre_status.get("fault_type"), "target_name": pre_status.get("target_name"),
+            "target_uid": pre_status.get("target_uid"), "experiment_name": pre_status.get("experiment_name"),
+        }
+        effect["timeout_recovery_observed"] = timeout_recovery_observed
+        effect["timeout_wait_seconds"] = round(timeout_wait_seconds, 3)
+        effect["external_chaos_reconciled"] = external_managed
         fault_absent = (
             pre_absent
             or destroy.get("verified_absent") is True
@@ -194,6 +209,7 @@ class Stage2Finalizer:
             and evidence.get("traffic_observed") is True
             and evidence.get("business_healthy") is True
         )
+        effect["business_recovery_observation"] = evidence
         assistance = self._assistance_summary(report)
         mutation_evidence = {
             "schema_version": "stage2-mutation-evidence.v1",
@@ -241,7 +257,36 @@ class Stage2Finalizer:
         effect["mutation_evidence"] = mutation_evidence
         effect["reset_policy"] = reset_policy.to_dict()
         effect["assistance"] = assistance
-        agent_recovery_verified = agent_attempted and pre_absent and business_recovered
+        queried_absence = any(
+            event.kind == "fault_absence_verified" for event in report.lifecycle_events
+        )
+        declared_recovery = report.final_output.get("agent_result") or report.agent_assessment
+        trigger = declared_recovery.get("recovery_trigger") or {}
+        planned_automatic = bool(
+            ever_active and pre_absent and pre_status.get("ledger_state") == "expired_cleaned"
+            and (approved_plan.get("duration_seconds") or any(
+                event.kind == "main_fault_requested" and event.payload.get("duration_seconds")
+                for event in report.lifecycle_events
+            ))
+        )
+        # Event-driven recovery must not receive timely-trigger credit merely for hitting its emergency TTL.
+        condition = str(trigger.get("condition") or "").lower()
+        condition += " " + str(report.final_output.get("original_prompt") or "").lower()
+        if any(word in condition for word in ("效果确认后立即", "确认效果后", "after effect", "as soon as")):
+            planned_automatic = False
+        if "不要按固定时长" in condition:
+            planned_automatic = False
+        absence_times = [event.occurred_at for event in report.lifecycle_events if event.kind == "fault_absence_verified"]
+        ended_at = fault_contract["evidence_window"].get("end")
+        recovery_start = datetime.fromisoformat(str(ended_at).replace("Z", "+00:00")).timestamp() if ended_at else None
+        business_observed_after_clear = bool(absence_times) and any(
+            event.kind == "business_observation" and event.occurred_at >= min(absence_times)
+            and recovery_start is not None
+            and isinstance(event.payload.get("query_start"), (int, float))
+            and event.payload["query_start"] >= recovery_start
+            for event in report.lifecycle_events
+        )
+        agent_recovery_verified = queried_absence and business_observed_after_clear and business_recovered
         controller_cleanup_verified = fault_absent and business_recovered
         return RecoveryResult(
             agent_attempted=agent_attempted,
@@ -249,6 +294,18 @@ class Stage2Finalizer:
             controller_cleanup_verified=controller_cleanup_verified,
             fault_absent=fault_absent,
             business_recovery_verified=business_recovered,
+            chaos_inventory_clear=inventory_clear,
+            recovery_attribution={
+                "planned_automatic_recovery": planned_automatic,
+                "agent_requested_cleanup": agent_attempted,
+                "agent_verified_absence": queried_absence,
+                "agent_observed_business_recovery": business_observed_after_clear,
+                "cleanup_executor": "NOT_APPLICABLE" if not ever_active else "AGENT_TOOL" if agent_attempted else (
+                    "CONTROLLER_TIMER" if planned_automatic else "CONTROLLER_FALLBACK"
+                ),
+                "controller_intervened": ever_active and not pre_absent,
+                "business_verified_by": "ORACLE" if business_recovered else None,
+            },
             main_fault_ever_active=ever_active,
             main_fault_target_verified=target_verified,
             fault_effect_verified=(

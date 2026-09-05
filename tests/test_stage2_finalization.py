@@ -21,6 +21,8 @@ class Chaos:
             "resource_absent": self.absent_before,
             "ever_active": True,
             "target_uid": "uid-current",
+            "target_name": "cart",
+            "namespace": "otel-demo",
             "fault_type": "network-delay",
         }
 
@@ -94,12 +96,12 @@ def test_controller_cleanup_does_not_credit_agent_when_fault_was_not_absent_befo
     assert traffic.recovery_kwargs["stability_samples"] == 2
 
 
-def test_agent_recovery_requires_preexisting_absence_and_business_recovery():
+def test_agent_recovery_requires_agent_observation_not_only_oracle_health():
     result = Stage2Finalizer(Chaos(absent_before=True), Traffic()).finalize(
         "trial", object(), context(), report()
     )
 
-    assert result.agent_recovery_verified is True
+    assert result.agent_recovery_verified is False
     assert result.main_fault_ever_active is True
     assert result.main_fault_target_verified is True
     assert result.fault_effect_verified is True
@@ -193,6 +195,8 @@ def test_unique_external_bladeai_fault_is_reconciled_by_target_and_type():
                 "ever_active": True,
                 "external": True,
                 "target_uid": runtime.target.uid,
+                "target_name": runtime.target.name,
+                "namespace": runtime.target.namespace,
                 "fault_type": runtime.main_fault["fault_type"],
             }
 

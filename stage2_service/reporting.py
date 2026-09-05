@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -30,8 +31,8 @@ def build_evaluation_summary(result: CampaignResult) -> dict:
         experiment_gates[str(item.experiment_gate.get("status") or "NOT_EVALUATED")] += 1
         agent_outcomes[item.agent_outcome.value] += 1
         cleanup_fallbacks += int(
-            item.recovery.controller_cleanup_verified
-            and not item.recovery.agent_recovery_verified
+            item.recovery.main_fault_ever_active
+            and item.recovery.recovery_attribution.get("cleanup_executor") == "CONTROLLER_FALLBACK"
         )
         active_recoveries += int(item.recovery.agent_recovery_verified)
         effect = item.recovery.fault_effect_evidence
@@ -66,6 +67,8 @@ def build_evaluation_summary(result: CampaignResult) -> dict:
         "assisted_trial_count": assisted_trials,
         "semantic_nudge_violation_count": semantic_nudge_violations,
         "experiment_gate_counts": dict(experiment_gates),
+        "experiment_completed_count": sum(item.experiment_completed is True for item in result.trials),
+        "experiment_incomplete_count": sum(item.experiment_completed is False for item in result.trials),
         "average_node_score": (
             round(sum(node_scores) / len(node_scores), 2) if node_scores else None
         ),
@@ -77,3 +80,25 @@ def build_evaluation_summary(result: CampaignResult) -> dict:
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def build_trial_report(request, trial_id, report, recovery, decision) -> str:
+    prompt = request.case_bundle.base_prompt if request.case_bundle is not None else "未提供"
+    summary = {
+        "experiment_completed": decision.get("experiment_completed"),
+        "agent_verdict": decision.get("agent_verdict"),
+        "effect_observation": decision.get("effect_observation"),
+        "effect_claim": decision.get("effect_claim"),
+        "output_repaired": report.final_output.get("output_repaired", False),
+        "output_repair_count": report.final_output.get("output_repair_count", 0),
+        "retry_history": report.final_output.get("retry_history", []),
+        "recovery_attribution": recovery.recovery_attribution,
+        "node_results": decision.get("node_results"),
+        "interaction_ledger": decision.get("interaction_ledger"),
+    }
+    return (
+        f"# {trial_id}\n\n等级标签：{request.prompt_level_label}\n\n"
+        f"decision_policy：{request.decision_policy.value}\n\nprompt_mode：{request.prompt_mode.value}\n\n"
+        f"## Prompt 原文\n\n{prompt}\n\n## 完成、行为及交互记录\n\n```json\n"
+        + json.dumps(summary, ensure_ascii=False, indent=2) + "\n```\n"
+    )

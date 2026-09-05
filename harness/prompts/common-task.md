@@ -31,7 +31,10 @@ Structured feedback names have fixed meanings:
 - `USER_DECISION`: the user's answer to a clarification request that you initiated. A necessary confirmation is not semantic assistance.
 - `SEMANTIC_NUDGE`: harness guidance about what decision to make next. This is forbidden in `autonomous` mode and must be reported as assistance if it occurs.
 
-Return your final answer as structured JSON with these fields:
+Your final answer may be ordinary text. Describe verified and unverified outcomes
+clearly. The Harness records the original answer and interprets it separately;
+formatting does not determine whether the experiment completed. If useful, you
+may include the following optional structured report:
 
 ```json
 {

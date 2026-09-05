@@ -735,7 +735,7 @@ def test_anthropic_base_url_removes_only_v1_suffix(value, expected):
     assert trial.anthropic_base_url(value) == expected
 
 
-def test_execute_invalid_agent_result_fails_and_redacts_secrets(tmp_path):
+def test_execute_unstructured_agent_result_is_recorded_and_redacts_secrets(tmp_path):
     def fake_runner(argv, stdin, env, timeout_seconds):
         return trial.CommandResult(
             returncode=0,
@@ -754,7 +754,7 @@ def test_execute_invalid_agent_result_fails_and_redacts_secrets(tmp_path):
         trial_id="invalid-result",
     )
 
-    assert report["status"] == "failed"
+    assert report["status"] == "completed"
     text = artifact_text(artifact_dir(report, tmp_path))
     assert "sk-test-secret-value-that-must-not-leak" not in text
     assert "<redacted>" in text

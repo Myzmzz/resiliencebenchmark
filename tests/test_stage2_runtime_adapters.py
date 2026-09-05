@@ -159,7 +159,7 @@ def test_cart_recovery_is_not_blocked_by_unrelated_cold_start_endpoints():
     assert evidence["target_success_rate"] == 1.0
 
 
-def test_cart_fault_effect_is_computed_from_post_baseline_request_delta():
+def test_cart_effect_without_actual_fault_window_is_not_inferred_from_late_counters():
     snapshots = iter(
         [
             {
@@ -220,9 +220,8 @@ def test_cart_fault_effect_is_computed_from_post_baseline_request_delta():
         ),
     )
 
-    assert effect["verified"] is True
-    assert effect["cart_request_delta"] == 3
-    assert effect["latency_delta_ms"] > 100
+    assert effect["verified"] is False
+    assert effect["reason"] == "actual fault window is not established"
 
 
 def test_cpu_effect_uses_fault_specific_prometheus_evidence():
@@ -270,17 +269,20 @@ def test_cpu_effect_uses_fault_specific_prometheus_evidence():
                 ]
             },
         },
+        prometheus_metadata_loader=lambda *_args: {"data": []},
     )
     evidence.record_baseline("campaign-cpu", evidence.current())
 
     effect = evidence.effect_since(
         "campaign-cpu",
         SimpleNamespace(
+            trial_id="campaign-cpu",
             main_fault={
                 "fault_type": "cpu-load",
                 "intensity": {"cpu_percent": 80},
+                "evidence_window": {"start": 1, "end": 2},
             },
-            target=SimpleNamespace(name="cart-abc", uid="uid-current"),
+            target=SimpleNamespace(namespace="otel-demo", name="cart-abc", uid="uid-current"),
         ),
     )
 

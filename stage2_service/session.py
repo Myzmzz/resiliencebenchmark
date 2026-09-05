@@ -61,6 +61,20 @@ Redactor = Callable[[Any], Any]
 TurnCompleteObserver = Callable[[Mapping[str, Any]], Any]
 
 
+@dataclass
+class RetryBudget:
+    """One shared first-attempt-plus-two-retries budget per Trial."""
+
+    max_attempts: int = 3
+    retries: list[dict[str, Any]] = field(default_factory=list)
+
+    def consume(self, kind: str, reason: str) -> bool:
+        if len(self.retries) >= self.max_attempts - 1:
+            return False
+        self.retries.append({"kind": kind, "reason": reason, "attempt": len(self.retries) + 2})
+        return True
+
+
 class HarnessSession:
     """Run a logical harness session across one or more native CLI turns."""
 
@@ -77,9 +91,10 @@ class HarnessSession:
         session_id_provider: SessionIdProvider | None = None,
         turn_complete_observer: TurnCompleteObserver | None = None,
         interaction_mode: str = "guided",
-        max_feedback_turns: int = 6,
+        max_feedback_turns: int | None = None,
         transcript_path: Path | None = None,
         redactor: Redactor | None = None,
+        retry_budget: RetryBudget | None = None,
     ):
         self.argv = list(argv)
         self.stdin = bytes(stdin)
@@ -91,9 +106,10 @@ class HarnessSession:
         self.session_id_provider = session_id_provider
         self.turn_complete_observer = turn_complete_observer
         self.interaction_mode = interaction_mode
-        self.max_feedback_turns = max(1, max_feedback_turns)
+        self.max_feedback_turns = max(1, max_feedback_turns) if max_feedback_turns is not None else None
         self.transcript_path = transcript_path
         self.redactor = redactor or (lambda value: value)
+        self.retry_budget = retry_budget or RetryBudget()
         self._pending_feedback: list[StructuredFeedback] = []
         self._lock = threading.Lock()
         self._session_id: str | None = None
@@ -169,7 +185,7 @@ class HarnessSession:
         if not self._started:
             self.start()
         deadline = time.monotonic() + self.timeout_seconds
-        aggregate = self._run_turn(self.argv, self.stdin, deadline, "initial")
+        aggregate = self._run_with_retry(self.argv, self.stdin, deadline, "initial")
         while (
             not aggregate.timed_out
             and not aggregate.cancelled
@@ -178,7 +194,7 @@ class HarnessSession:
             feedback = self._pop_feedback()
             if feedback is None:
                 break
-            if self._turn_index >= self.max_feedback_turns:
+            if self.max_feedback_turns is not None and self._turn_index >= self.max_feedback_turns:
                 self._record(
                     "FEEDBACK_FAILED",
                     {
@@ -218,7 +234,7 @@ class HarnessSession:
                 "turn": self._turn_index,
             }
             self._record("FEEDBACK_DISPATCHED", dispatch)
-            resumed = self._run_turn(
+            resumed = self._run_with_retry(
                 list(self.resume_argv_builder(self._session_id, self._turn_index)),
                 feedback.prompt(),
                 deadline,
@@ -262,6 +278,40 @@ class HarnessSession:
         ):
             self._fail_pending_feedback("native turn ended before feedback delivery")
         return aggregate
+
+    def _run_with_retry(self, argv, stdin, deadline, turn_kind) -> SessionCommandResult:
+        stdout = b""
+        stderr = b""
+        current_argv = list(argv)
+        while True:
+            result = self._run_turn(current_argv, stdin, deadline, turn_kind)
+            stdout += result.stdout
+            stderr += result.stderr
+            error = (result.stdout + result.stderr).decode("utf-8", errors="replace").lower()
+            schema_error = "invalid schema" in error and "codex_output_schema" in error
+            transient = any(marker in error for marker in (
+                "selected model is at capacity", "rate limit exceeded", "service unavailable",
+                "connection refused", "connection reset", "stream disconnected before completion",
+            ))
+            acted = any(marker in result.stdout for marker in (
+                b'"mcp_tool_call"', b'"tool_use"', b'"command_execution"', b'"agent_message"',
+            ))
+            can_retry = not acted and not result.cancelled and not result.timed_out
+            if schema_error and "--output-schema" in current_argv and can_retry:
+                index = current_argv.index("--output-schema")
+                del current_argv[index:index + 2]
+                repair = "invalid native output constraint removed"
+            elif transient and not schema_error and can_retry:
+                repair = "transient native startup failure before Agent activity"
+            else:
+                return SessionCommandResult(
+                    returncode=result.returncode if not schema_error else 1,
+                    stdout=stdout, stderr=stderr, timed_out=result.timed_out, cancelled=result.cancelled,
+                )
+            if not self.retry_budget.consume("native_startup", repair):
+                self._record("RETRY_BUDGET_EXHAUSTED", {"kind": "native_startup", "reason": repair})
+                return SessionCommandResult(1, stdout, stderr)
+            self._record("NATIVE_RETRY", self.retry_budget.retries[-1])
 
     def cancel(self) -> None:
         process = self._current_process

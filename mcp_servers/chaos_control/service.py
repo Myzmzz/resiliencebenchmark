@@ -547,7 +547,8 @@ class ChaosControlService:
         ledger = {
             **ledger,
             "state": "active",
-            "ever_active": True,
+            "ever_active": record.phase.lower() == "running",
+            "started_at": _now_iso() if record.phase.lower() == "running" else None,
             "updated_at": _now_iso(),
             "experiment_name": record.name,
             "operation_id": cleanup_handle,
@@ -576,6 +577,7 @@ class ChaosControlService:
         duration_seconds: int,
         intensity: Mapping[str, Any],
     ) -> None:
+        self._assert_not_report_only()
         if self.config.decision_policy == "agent_delegated":
             return
         if self.config.decision_policy != "clarify_missing":
@@ -702,7 +704,8 @@ class ChaosControlService:
             updated = {
                 **ledger,
                 "state": "active",
-                "ever_active": True,
+                "ever_active": record.phase.lower() == "running",
+                "started_at": _now_iso() if record.phase.lower() == "running" else None,
                 "updated_at": _now_iso(),
                 "experiment_name": record.name,
                 "operation_id": operation_id,
@@ -750,6 +753,7 @@ class ChaosControlService:
                 "reason": "cleanup ledger is absent",
             }
         record = await self.backend.get_experiment(ledger["namespace"], ledger["experiment_name"], cfg_kubeconfig)
+        ledger = self._observe_fault_window(ledger, record)
         if record is None:
             operation_outcome = "absent"
         elif _record_matches_ledger(record, ledger):
@@ -765,10 +769,15 @@ class ChaosControlService:
             "namespace": str(ledger.get("namespace", "")),
             "experiment_name": str(ledger.get("experiment_name", "")),
             "target_uid": str(ledger.get("target_uid", "")),
+            "target_name": str(ledger.get("target_name", "")),
             "fault_type": str(ledger.get("fault_type", "")),
+            "duration_seconds": ledger.get("duration_seconds"),
+            "intensity": dict(ledger.get("intensity") or {}),
             "state": str(ledger.get("state", "unknown")),
             "operation_outcome": operation_outcome,
             "ledger_operation_outcome": str(ledger.get("operation_outcome", "unknown")),
+            "started_at": ledger.get("started_at"),
+            "ended_at": ledger.get("ended_at"),
             "live": {
                 "found": record is not None,
                 "matches_ledger": bool(record is not None and _record_matches_ledger(record, ledger)),
@@ -791,21 +800,35 @@ class ChaosControlService:
             return await self._destroy_experiment_locked(cleanup_handle=cleanup_handle, kubeconfig=kubeconfig)
 
     async def _destroy_experiment_locked(self, *, cleanup_handle: str, kubeconfig: str) -> dict[str, Any]:
+        self._assert_not_report_only()
         self._assert_destroy_runtime_gates(kubeconfig=kubeconfig, cleanup_handle=cleanup_handle)
         ledger = self._read_ledger(cleanup_handle)
         namespace = ledger["namespace"]
         name = ledger["experiment_name"]
+        ledger = self._observe_fault_window(ledger, await self.backend.get_experiment(namespace, name, kubeconfig))
         await self._delete_and_verify_from_ledger(ledger, kubeconfig)
         self._write_ledger(
             cleanup_handle,
             {
                 **ledger,
                 "state": "destroyed",
+                "ended_at": ledger.get("ended_at") or _now_iso(),
                 "cleanup_error": None,
                 "updated_at": _now_iso(),
             },
         )
         return {"ok": True, "destroyed": name, "namespace": namespace, "verified_absent": True, "idempotent": True}
+
+    def _assert_not_report_only(self) -> None:
+        path = self.config.user_decision_file
+        if path and path.is_file():
+            decision = json.loads(path.read_text(encoding="utf-8"))
+            if decision.get("report_only") is True:
+                raise ChaosControlError(
+                    "OUTPUT_REPAIR_MUTATION_FORBIDDEN",
+                    "This turn may only repair the report; no experiment mutation is allowed.",
+                    next_step="Describe existing evidence without creating or destroying experiments.",
+                )
 
     async def cleanup_expired_leases(self, *, now: datetime | None = None) -> dict[str, Any]:
         async with self._mutation_lock:
@@ -830,12 +853,15 @@ class ChaosControlService:
                 state = str(payload.get("state", ""))
                 if state not in {"active", "pending", "pending_apply", "create_failed", "cleanup_error"}:
                     continue
+                record = await self.backend.get_experiment(payload["namespace"], payload["experiment_name"], kubeconfig)
+                payload = self._observe_fault_window(payload, record)
                 deadline_at = _parse_datetime(payload.get("deadline_at"))
                 if deadline_at is None or deadline_at > current_time:
                     continue
                 inspected += 1
                 await self._delete_and_verify_from_ledger(payload, kubeconfig)
-                updated = {**payload, "state": "expired_cleaned", "cleanup_error": None, "updated_at": _now_iso()}
+                updated = {**payload, "state": "expired_cleaned", "cleanup_error": None,
+                           "ended_at": payload.get("ended_at") or _now_iso(), "updated_at": _now_iso()}
                 self._write_ledger(str(payload["cleanup_handle"]), updated)
                 cleaned.append(str(payload["cleanup_handle"]))
             except Exception as exc:  # noqa: BLE001 - watchdog cleanup must keep scanning
@@ -858,6 +884,7 @@ class ChaosControlService:
         cfg_kubeconfig = self._resolve_kubeconfig(kubeconfig)
         ledger = self._read_ledger(cleanup_handle)
         record = await self.backend.get_experiment(ledger["namespace"], ledger["experiment_name"], cfg_kubeconfig)
+        ledger = self._observe_fault_window(ledger, record)
         return {
             "ok": True,
             "read_only": True,
@@ -876,8 +903,27 @@ class ChaosControlService:
             "intensity": dict(ledger.get("intensity") or {}),
             "created_at": ledger.get("created_at"),
             "deadline_at": ledger.get("deadline_at"),
+            "started_at": ledger.get("started_at"),
+            "ended_at": ledger.get("ended_at"),
             "ever_active": bool(ledger.get("ever_active")),
         }
+
+    def _observe_fault_window(self, ledger, record):
+        """Record first observed Running/absence, retaining timestamps on retries."""
+        changes = {}
+        if record is not None and _record_matches_ledger(record, ledger) and record.phase.lower() == "running":
+            if not ledger.get("started_at"):
+                changes.update(started_at=_now_iso(), ever_active=True)
+        elif record is None and ledger.get("ever_active") and not ledger.get("ended_at"):
+            changes["ended_at"] = _now_iso()
+        if changes:
+            latest = self._read_ledger(ledger["cleanup_handle"])
+            for key, value in changes.items():
+                if not latest.get(key):
+                    latest[key] = value
+            self._write_ledger(ledger["cleanup_handle"], latest)
+            return latest
+        return ledger
 
     async def _delete_and_verify_from_ledger(self, ledger: Mapping[str, Any], kubeconfig: str) -> None:
         namespace = str(ledger["namespace"])

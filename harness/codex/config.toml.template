@@ -11,6 +11,8 @@ base_url = "__RESBENCH_LLM_BASE_URL__"
 env_key = "OPENAI_API_KEY"
 wire_api = "responses"
 supports_websockets = false
+request_max_retries = 0
+stream_max_retries = 0
 
 [features]
 apps = false

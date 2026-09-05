@@ -749,6 +749,7 @@ def subprocess_streaming_runner(
     interaction_mode: str = "guided",
     transcript_path: Path | None = None,
     redactor: Callable[[Any], Any] | None = None,
+    retry_budget=None,
 ) -> CommandResult:
     """Run a harness and forward stdout JSONL before process completion."""
 
@@ -765,6 +766,7 @@ def subprocess_streaming_runner(
         interaction_mode=interaction_mode,
         transcript_path=transcript_path,
         redactor=redactor,
+        retry_budget=retry_budget,
     ).start().wait()
     return CommandResult(
         returncode=session_result.returncode,
@@ -1048,8 +1050,6 @@ def build_codex_resume_argv_builder(
             model_alias,
             "--skip-git-repo-check",
             "--json",
-            "--output-schema",
-            paths["output_schema_file"].as_posix(),
             "--output-last-message",
             output_path.as_posix(),
             session_id,
@@ -1483,7 +1483,7 @@ def run_trial(
                         env,
                     )
                     if validation_error:
-                        status = "failed"
+                        status = "completed"
                         error = validation_error
                     else:
                         status = "completed"

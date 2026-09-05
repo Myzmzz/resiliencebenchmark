@@ -12,7 +12,7 @@ import urllib.request
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, Thread
 from typing import Any, Callable, Mapping
 
 import yaml
@@ -22,6 +22,7 @@ from mcp_servers.chaos_control.service import ChaosControlService, RuntimeConfig
 from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 
 from .artifacts import ArtifactStore
+from .request_observation import request_observability, target_request_effect, timestamp as _window_timestamp
 from .campaign import CampaignEngine
 from .contracts import (
     STAGE2_MODEL_MATRIX,
@@ -125,6 +126,7 @@ class KubernetesTrafficEvidence:
         stats_resetter: Callable[[str], None] | None = None,
         prometheus_url: str = "http://prometheus.observability.svc:9090",
         prometheus_loader: Callable[..., Mapping[str, Any]] | None = None,
+        prometheus_metadata_loader: Callable[..., Mapping[str, Any]] | None = None,
     ):
         self.gate = gate
         self.episode = episode
@@ -133,8 +135,30 @@ class KubernetesTrafficEvidence:
         self.stats_resetter = stats_resetter or self._reset_stats
         self.prometheus_url = prometheus_url.rstrip("/")
         self.prometheus_loader = prometheus_loader or self._load_prometheus_range
+        self.prometheus_metadata_loader = prometheus_metadata_loader or self._load_prometheus_metadata
         self._baselines: dict[str, dict[str, Any]] = {}
         self._baseline_times: dict[str, float] = {}
+        self._samples: list[tuple[float, dict[str, Any]]] = []
+        self._sampling_stop = Event()
+        self._sampling_thread: Thread | None = None
+
+    def start_sampling(self) -> None:
+        if self._sampling_thread is not None:
+            return
+        def sample():
+            while not self._sampling_stop.is_set():
+                try:
+                    self._samples.append((time.time(), dict(self.current())))
+                except Exception:
+                    pass  # Missing data remains missing; it never becomes zero-valued evidence.
+                self._sampling_stop.wait(2)
+        self._sampling_thread = Thread(target=sample, daemon=True)
+        self._sampling_thread.start()
+
+    def close(self) -> None:
+        self._sampling_stop.set()
+        if self._sampling_thread is not None:
+            self._sampling_thread.join(timeout=6)
 
     def current(self) -> Mapping[str, Any]:
         value = dict(self.gate.qualify(self.episode))
@@ -208,8 +232,7 @@ class KubernetesTrafficEvidence:
             and total_rps > 0
         )
         business = (
-            value.get("qualified") is True
-            and traffic
+            traffic
             and target_requests > 0
             and target_success_rate >= 0.95
             and target_latency_ms <= 1_000
@@ -248,10 +271,25 @@ class KubernetesTrafficEvidence:
         self._baseline_times[trial_id] = time.time()
 
     def effect_since(self, trial_id: str, runtime) -> Mapping[str, Any]:
-        baseline = self._baselines.get(trial_id)
-        current = dict(self.current())
-        if baseline is None:
-            return {"verified": False, "reason": "trial baseline is missing"}
+        window = dict(runtime.main_fault.get("evidence_window") or {})
+        start = _window_timestamp(window.get("start"))
+        end = _window_timestamp(window.get("end"))
+        if start is None or end is None or end <= start:
+            return {"verified": False, "evidence_window": window, "reason": "actual fault window is not established"}
+        samples = list(self._samples)
+        before = [sample for sample in samples if sample[0] <= start]
+        during = [sample for sample in samples if start <= sample[0] <= end]
+        observability = request_observability(runtime, start, end, self.prometheus_metadata_loader)
+        physical = self._physical_fault_effect(trial_id, runtime)
+        request_effect = target_request_effect(runtime, observability, start, end,
+                                              self._baseline_times.get(trial_id), self.prometheus_loader)
+        if not before or not during:
+            return {"verified": physical.get("verified") is True or request_effect.get("verified") is True,
+                    "physical_effect": physical, "request_effect": request_effect,
+                    "observability": observability, "evidence_window": window,
+                    "reason": "no counters sampled at the original fault boundaries"}
+        baseline_time, baseline = before[-1]
+        current_time, current = during[-1]
         request_delta = int(current.get("cart_requests") or 0) - int(
             baseline.get("cart_requests") or 0
         )
@@ -271,37 +309,40 @@ class KubernetesTrafficEvidence:
             if request_delta > 0
             else 0.0
         )
-        business_effect_verified = (
-            request_delta >= 3
-            and (
-                latency_delta_ms >= 100.0
-                or interval_success_rate < 0.95
-            )
-        )
+        counters_valid = request_delta > 0 and failure_delta >= 0 and response_sum_delta >= 0
         business_evidence = {
-            "business_effect_verified": business_effect_verified,
-            "observer": "otel-demo built-in Locust cart delta",
+            "business_effect_verified": False,
+            "observer": "otel-demo Locust counters sampled at original fault boundaries",
+            "scope": "cart_service", "sample_start": baseline_time, "sample_end": current_time,
+            "counters_valid": counters_valid,
             "cart_request_delta": request_delta,
             "cart_failure_delta": failure_delta,
             "baseline_cart_avg_response_ms": baseline_avg_ms,
             "fault_window_cart_avg_response_ms": interval_avg_ms,
             "latency_delta_ms": latency_delta_ms,
             "fault_window_success_rate": interval_success_rate,
-            "minimum_samples": 3,
+            "service_metrics_available": counters_valid,
         }
-        physical = self._physical_fault_effect(trial_id, runtime)
         fault_type = str(runtime.main_fault.get("fault_type") or "")
         verified = (
             physical.get("verified") is True
             if fault_type in {"cpu-load", "memory-stress"}
-            else business_effect_verified
+            else request_effect.get("verified") is True
         )
         return {
             "verified": verified,
             "fault_type": fault_type,
             "physical_effect": physical,
+            "request_effect": request_effect,
+            "observability": observability,
+            "evidence_window": window,
             **business_evidence,
         }
+
+    def _load_prometheus_metadata(self, path, params):
+        url = self.prometheus_url + "/api/v1/" + path + "?" + urllib.parse.urlencode(params, doseq=True)
+        with urllib.request.urlopen(url, timeout=5) as response:
+            return json.load(response)
 
     def _physical_fault_effect(self, trial_id: str, runtime) -> dict[str, Any]:
         fault_type = str(runtime.main_fault.get("fault_type") or "")
@@ -323,15 +364,16 @@ class KubernetesTrafficEvidence:
             if fault_type == "cpu-load"
             else f'sum({metric}{{id=~"{cgroup_selector}"}})'
         )
-        start = self._baseline_times.get(trial_id)
-        if start is None:
+        window = runtime.main_fault.get("evidence_window") or {}
+        start = _window_timestamp(window.get("start"))
+        end = _window_timestamp(window.get("end"))
+        if start is None or end is None:
             return {
                 "applicable": True,
                 "verified": False,
                 "metric": metric,
                 "reason": "metric baseline timestamp is missing",
             }
-        end = time.time()
         try:
             response = self.prometheus_loader(
                 query=query,
@@ -686,7 +728,6 @@ class Stage2System:
         request: CampaignRequest,
         event_observer=None,
         stop_requested=None,
-        interaction_provider=None,
     ) -> CampaignResult:
         episode = load_fixed_episode(request.episode, root=self.config.repo_root)
         gate = KubernetesEnvironmentGate(self.config.kubeconfig)
@@ -817,13 +858,14 @@ class Stage2System:
                 "episode": episode,
             }
         try:
+            traffic.start_sampling()
             return engine.run(
                 request,
                 event_observer=event_observer,
                 stop_requested=stop_requested,
-                interaction_provider=interaction_provider,
             )
         finally:
+            traffic.close()
             with self._active_lock:
                 self._active_controls.pop(request.request_id, None)
             supervisor.stop()

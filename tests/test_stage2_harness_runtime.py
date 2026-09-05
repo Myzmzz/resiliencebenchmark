@@ -223,7 +223,7 @@ def test_main_fault_running_requires_explicit_successful_create_result(tmp_path:
     )
 
     assert all(event.kind != "main_fault_running" for event in rejected)
-    assert [event.kind for event in accepted] == ["main_fault_running"]
+    assert [event.kind for event in accepted] == ["main_fault_created"]
 
 
 def test_successful_tool_metadata_does_not_create_false_permission_denial(tmp_path: Path):
@@ -249,7 +249,7 @@ def test_successful_tool_metadata_does_not_create_false_permission_denial(tmp_pa
         },
     )
 
-    assert [event.kind for event in events] == ["main_fault_running"]
+    assert [event.kind for event in events] == ["main_fault_created"]
 
 
 def test_plan_validation_rejection_is_not_permission_or_channel_failure(tmp_path: Path):
@@ -307,8 +307,8 @@ def test_tool_argument_rejection_is_not_channel_failure(tmp_path: Path):
         },
     )
 
-    assert [event.kind for event in events] == ["tool_request_rejected"]
-    assert events[0].payload["error_codes"] == ["invalid_min_duration"]
+    assert [event.kind for event in events] == ["effect_check_started", "tool_request_rejected"]
+    assert events[-1].payload["error_codes"] == ["invalid_min_duration"]
 
 
 def test_transport_unavailable_is_channel_failure(tmp_path: Path):
@@ -332,7 +332,7 @@ def test_transport_unavailable_is_channel_failure(tmp_path: Path):
         },
     )
 
-    assert [event.kind for event in events] == ["tool_channel_error"]
+    assert [event.kind for event in events] == ["effect_check_started", "tool_channel_error"]
 
 
 def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
@@ -414,7 +414,7 @@ def test_matrix_prompt_is_appended_without_replacing_common_contract():
         task,
     )
 
-    assert "Return your final answer as structured JSON" in prompt
+    assert "Your final answer may be ordinary text" in prompt
     assert "Follow the full benchmark lifecycle explicitly" in prompt
     assert "Public episode contract follows" in prompt
     assert "User-requested experiment task follows" in prompt

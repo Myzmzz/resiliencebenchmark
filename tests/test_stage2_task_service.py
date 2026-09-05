@@ -180,7 +180,7 @@ def test_creates_persistent_seven_trial_task_and_reuses_idempotency_key(tmp_path
         time.sleep(0.01)
     assert status["task_status"] == "COMPLETED"
     assert status["input"]["cases"] == ["C0", "D1", "D2", "D3", "D4", "D5", "D6"]
-    assert status["input"]["interaction_mode"] == "autonomous"
+    assert status["input"]["interaction_mode"] == "guided"
     assert status["input"]["prompt_mode"] == "verbatim"
     assert len(status["trials"]) == 7
     timeline = service.get(created["task_id"], mode=TaskDetailMode.TIMELINE)
@@ -321,7 +321,7 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     )
 
 
-def test_task_answer_resumes_the_exact_pending_question(tmp_path):
+def test_task_exposes_automatic_harness_response_without_an_external_answer_endpoint(tmp_path):
     service, supervisor, _controls = task_service(tmp_path, SlowRunner())
     client = TestClient(create_app(supervisor, task_service=service))
     created = client.post(
@@ -370,7 +370,7 @@ def test_task_answer_resumes_the_exact_pending_question(tmp_path):
         },
     )
     waiting = client.get(f"/api/v1/stage2/tasks/{task_id}").json()
-    assert waiting["task_status"] == "WAITING_FOR_USER"
+    assert waiting["task_status"] == "HARNESS_RESPONDING"
     assert waiting["pending_question"]["recommendation"] == recommendation
 
     response = client.post(
@@ -381,18 +381,19 @@ def test_task_answer_resumes_the_exact_pending_question(tmp_path):
         },
     )
 
-    assert response.status_code == 202
-    assert response.json()["queued"] is True
+    assert response.status_code == 404
+    service._on_campaign_event(task_id, {
+        "kind": "lifecycle_event", "campaign_id": "campaign-taskslow0001",
+        "payload": {"trial_id": "campaign-taskslow0001-codex-c0-1", "case_id": "C0",
+                    "event_kind": "user_decision_received", "payload": {
+                        "responder": "HARNESS", "question_id": "question-0123456789abcdef",
+                        "answer_mode": "approve_recommendation", "approved": True,
+                    }},
+    })
     state = service.store.status(task_id)
     assert state["task_status"] == "RUNNING"
     assert state["pending_question"] is None
-    queued = supervisor.interactions[task_id][0]
-    assert queued["approved_plan"] == recommendation
-    received = supervisor.wait_interaction(
-        task_id, "question-0123456789abcdef", 0.1
-    )
-    assert received is not None
-    assert received["approved_plan"] == recommendation
+    assert supervisor.interactions[task_id] == []
 
 
 def test_failed_semantic_nudge_is_not_counted_as_delivered_assistance():

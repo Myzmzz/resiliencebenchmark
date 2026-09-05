@@ -24,10 +24,12 @@ class ArtifactStore:
             path.relative_to(campaign_root)
         except ValueError as exc:
             raise ValueError("artifact path escaped campaign root") from exc
-        if path.suffix != ".json":
-            raise ValueError("stage2 artifacts must be JSON")
+        if path.suffix not in {".json", ".md"}:
+            raise ValueError("stage2 artifacts must be JSON or Markdown")
+        if path.suffix == ".md" and not isinstance(payload, str):
+            raise ValueError("Markdown artifact content must be text")
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        content = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        content = payload if path.suffix == ".md" else json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
         with temporary.open("w", encoding="utf-8") as handle:
             os.chmod(temporary, 0o600)

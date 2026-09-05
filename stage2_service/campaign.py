@@ -46,7 +46,7 @@ from .contracts import (
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
 from .qualification import D0QualificationGate
-from .reporting import build_evaluation_summary
+from .reporting import build_evaluation_summary, build_trial_report
 
 
 EventObserver = Callable[[Any], Any]
@@ -87,7 +87,6 @@ class HarnessRunner(Protocol):
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
         decision_policy=None,
         expected_outcome=None,
-        interaction_provider=None,
     ) -> HarnessReport: ...
 
 
@@ -171,8 +170,6 @@ class CampaignEngine:
         request: CampaignRequest,
         event_observer: EventObserver | None = None,
         stop_requested: Callable[[], bool] | None = None,
-        interaction_provider: Callable[[Mapping[str, Any], float], Mapping[str, Any] | None]
-        | None = None,
     ) -> CampaignResult:
         started_at = datetime.now(UTC)
         campaign_id = f"campaign-{uuid4().hex[:16]}"
@@ -565,10 +562,10 @@ class CampaignEngine:
                             runner_kwargs["cancel_requested"] = should_stop
                         if "decision_policy" in runner_parameters:
                             runner_kwargs["decision_policy"] = request.decision_policy
+                        if "prompt_level_label" in runner_parameters:
+                            runner_kwargs["prompt_level_label"] = request.prompt_level_label
                         if "expected_outcome" in runner_parameters:
                             runner_kwargs["expected_outcome"] = request.expected_outcome
-                        if "interaction_provider" in runner_parameters:
-                            runner_kwargs["interaction_provider"] = interaction_provider
                         report = self.harness_runner.run(**runner_kwargs)
                         emit(
                             "agent_response_captured",
@@ -804,6 +801,10 @@ class CampaignEngine:
                                     ],
                                 )
                             )
+                        refs.append(self.artifacts.write(
+                            campaign_id, f"trials/{trial_id}/report.md",
+                            build_trial_report(request, trial_id, report, recovery, evaluation_decision),
+                        ))
                         result = TrialResult(
                             trial_id=trial_id,
                             harness=harness,
@@ -811,6 +812,9 @@ class CampaignEngine:
                             runtime_target=runtime.target,
                             platform_valid=platform_valid,
                             diagnostic_only=diagnostic_only,
+                            experiment_completed=evaluation_decision.get("experiment_completed"),
+                            effect_observation=dict(evaluation_decision.get("effect_observation") or {}),
+                            effect_claim=dict(evaluation_decision.get("effect_claim") or {}),
                             agent_verdict=(
                                 verdict
                                 if platform_valid
@@ -1531,7 +1535,10 @@ def _guided_turn_feedback(
         return None
     nudge_id = ""
     message = ""
-    if "main_fault_running" in kinds and not kinds & {
+    if "main_fault_created" in kinds and "main_fault_running" not in kinds:
+        nudge_id = "verify_fault_running"
+        message = "创建请求已返回。请查询已有实验的实际状态，确认是否进入 Running；不要重复创建故障。"
+    elif "main_fault_running" in kinds and not kinds & {
         "effect_check_started",
         "effect_verified",
         "effect_unverified",
@@ -1545,16 +1552,20 @@ def _guided_turn_feedback(
     elif "effect_check_started" in kinds and not kinds & {
         "recovery_requested",
         "recovery_accepted",
+        "fault_absence_verified",
+        "recovery_verified",
+        "recovery_unverified",
     }:
         nudge_id = "complete_recovery"
         message = (
             "Effect observation started, but the authorized lifecycle has not reached "
             "fault cleanup. Continue the existing task through bounded recovery."
         )
-    elif "recovery_accepted" in kinds and not kinds & {
+    elif kinds & {"recovery_accepted", "fault_absence_verified"} and not kinds & {
         "recovery_verified",
         "recovery_unverified",
         "business_recovery_verified",
+        "business_observation",
     }:
         nudge_id = "verify_recovery"
         message = (

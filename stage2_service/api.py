@@ -28,7 +28,6 @@ from .task_service import (
     AbortTaskRequest,
     EnvironmentResetRequest,
     PermissionRestoreRequest,
-    Stage2TaskAnswerRequest,
     Stage2TaskCreateRequest,
     Stage2TaskService,
     TaskDetailMode,
@@ -87,20 +86,13 @@ class CampaignSupervisor:
                 kwargs["event_observer"] = observe
             if "stop_requested" in parameters:
                 kwargs["stop_requested"] = self.stop_events[request.request_id].is_set
-            if "interaction_provider" in parameters:
-                kwargs["interaction_provider"] = (
-                    lambda question, timeout_seconds: self.wait_interaction(
-                        request.request_id,
-                        str(question.get("question_id") or ""),
-                        timeout_seconds,
-                    )
-                )
             if kwargs:
                 result = self.runner.run(request, **kwargs)
             else:
                 result = self.runner.run(request)
         except TypeError:
-            result = self.runner.run(request)
+            # A runner bug must never start the Trial again without its callbacks.
+            raise
         sink = self.result_sinks.get(request.request_id)
         if sink is not None:
             sink(result)
@@ -445,24 +437,6 @@ def create_app(
             )
         except TaskNotFound as exc:
             raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
-
-    @app.post(
-        "/api/v1/stage2/tasks/{task_id}/answers",
-        status_code=status.HTTP_202_ACCEPTED,
-    )
-    def answer_stage2_task(
-        task_id: str, request: Stage2TaskAnswerRequest
-    ) -> dict:
-        if task_service is None:
-            raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
-        try:
-            return task_service.answer(task_id, request)
-        except TaskNotFound as exc:
-            raise HTTPException(status_code=404, detail="Stage2 task not found") from exc
-        except TaskValidationError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except TaskConflict as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post(
         "/api/v1/stage2/tasks/{task_id}/abort",
