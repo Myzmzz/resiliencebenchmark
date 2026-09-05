@@ -46,6 +46,8 @@
 
 本次 Harness 模型超时诊断代码提交为 `f4f8c72`，已部署不可变镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-f4f8c72@sha256:32ad1e20fca4bf8266b6e3be573eea03321206a794611b2a14c6ff431c6feef5`。Deployment 为1/1 Ready、1/1 Available；容器内核对单次模型超时为180秒、总尝试上限为3。本地18088接口的 healthz、选项、任务列表、Timeline 和 Debug 均可用。部署后活动任务0、ChaosBlade对象0、cart 3/3 Ready；未执行新的真实故障实验。
 
+本次指标与归因整改代码提交为 `1e24a17`，已部署不可变镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-1e24a17@sha256:1b9e59f7a57b10e2bfe0177924be99f009fc1a3df25bd22077de786c6057c2c9`。容器内实算确认100ms阈值的容差下界为40ms，任务选项输出 `effect_threshold_tolerance_ratio=0.6` 与 `recovery_metric_policy=final_metric_without_request_count_gate`，错误的“类型已给定”标签可自动纠正并保留原值。Deployment 1/1 Ready、1/1 Available，部署后活动任务0、ChaosBlade对象0、cart 3/3 Ready、load-generator 1/1 Ready；未执行新的真实故障实验。
+
 最终现场检查：ChaosBlade 数量0；cart 保持3/3副本，load-generator 为1/1。没有启动新的第六、七轮真实故障实验。实际应答客户端检查验证了custom与确认两类回复，代码与最终部署的应答模块一致。
 
 当前相关检查共189项通过，其中10个为会话/窗口集成场景。新增的 `model_timeout` 场景使用立即超时的本地适配器，只验证请求诊断、三次上限和错误码传播，不等于真实模型的180秒超时已被触发。真实第六、七轮故障实验及最终验收仍待用户手动进行；请求和结果查看方式见 `docs/stage2-manual-check-20260904.md`。
