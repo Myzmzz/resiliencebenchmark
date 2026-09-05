@@ -87,7 +87,7 @@ class HarnessResponder:
             "omit requests for help just because no plan exists. All messages are utterances "
             "from the tested Agent. Chinese requests such as 请问下一步该做什么 and 是否确认 "
             "are questions to the Harness, even without a proposed target or parameters. "
-            "mistake a narration of next actions for a question. Each question has topic (a short "
+            "Do not mistake a narration of next actions for a question. Each question has topic (a short "
             "stable name for the decision), question (verbatim text), recommendation (ONLY "
             "choices already proposed by the Agent; null if absent), required_decisions (array), "
             "risk_boundary (Agent's words, or empty). request_kind is confirmation for an existing choice, decision_help "
