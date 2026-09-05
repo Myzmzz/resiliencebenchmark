@@ -71,10 +71,22 @@ class RetryBudget:
     max_attempts: int = 3
     retries: list[dict[str, Any]] = field(default_factory=list)
 
-    def consume(self, kind: str, reason: str) -> bool:
+    def consume(
+        self,
+        kind: str,
+        reason: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> bool:
         if len(self.retries) >= self.max_attempts - 1:
             return False
-        self.retries.append({"kind": kind, "reason": reason, "attempt": len(self.retries) + 2})
+        self.retries.append(
+            {
+                "kind": kind,
+                "reason": reason,
+                "attempt": len(self.retries) + 2,
+                **dict(details or {}),
+            }
+        )
         return True
 
 

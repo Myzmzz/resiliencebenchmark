@@ -64,7 +64,7 @@ from .contracts import (
     PromptMode,
 )
 from .permissions import Stage2PermissionManager
-from .auto_reply import HarnessResponder
+from .auto_reply import HarnessModelTimeout, HarnessResponder
 from .mcp_supervisor import McpSupervisor
 from .session import (
     ResumeArgvBuilder,
@@ -78,7 +78,16 @@ from .session import (
 
 
 class HarnessRuntimeError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str | None = None,
+        diagnostic: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.diagnostic = dict(diagnostic or {})
 
 
 class NativeHarnessRunner:
@@ -323,6 +332,7 @@ class NativeHarnessRunner:
         confirmed_plan: dict[str, Any] = {}
         executed_plan: dict[str, Any] = {}
         retry_budget = RetryBudget()
+        harness_failure: dict[str, Any] = {}
         responder = self.responder_factory(
             env, model_alias, runtime_context.target.namespace,
             int(runtime_context.main_fault.get("max_fault_duration_seconds") or 1200),
@@ -336,13 +346,63 @@ class NativeHarnessRunner:
         interaction_mode_value = interaction_mode.value
 
         def bounded_reply_call(kind, action):
+            nonlocal harness_failure
             while True:
                 try:
                     return action()
                 except Exception as exc:
                     reason = redact_text(f"{type(exc).__name__}: {str(exc)[:300]}", env)
-                    if not retry_budget.consume(kind, reason):
-                        raise HarnessRuntimeError(f"HARNESS_INTERACTION_FAILED: {reason}") from exc
+                    diagnostic = (
+                        dict(exc.diagnostic)
+                        if isinstance(exc, HarnessModelTimeout)
+                        else {}
+                    )
+                    error_code = (
+                        HarnessModelTimeout.error_code
+                        if isinstance(exc, HarnessModelTimeout)
+                        else "HARNESS_INTERACTION_FAILED"
+                    )
+                    retry_details = {
+                        key: diagnostic.get(key)
+                        for key in (
+                            "attempt",
+                            "request_id",
+                            "upstream_request_id",
+                            "started_at",
+                            "ended_at",
+                            "duration_ms",
+                            "input_characters",
+                            "input_bytes",
+                            "timeout_seconds",
+                            "timeout_layer",
+                            "model",
+                        )
+                        if diagnostic.get(key) is not None
+                    }
+                    retry_details["error_code"] = error_code
+                    if isinstance(exc, HarnessModelTimeout):
+                        self._emit(
+                            lifecycle,
+                            event_observer,
+                            campaign_id,
+                            trial_id,
+                            harness,
+                            LifecyclePhase.C5_SAFETY,
+                            "harness_model_timeout",
+                            retry_details,
+                        )
+                    if not retry_budget.consume(kind, reason, retry_details):
+                        harness_failure = {
+                            "error_code": error_code,
+                            "operation": kind,
+                            "reason": reason,
+                            **retry_details,
+                        }
+                        raise HarnessRuntimeError(
+                            f"{error_code}: {reason}",
+                            error_code=error_code,
+                            diagnostic=harness_failure,
+                        ) from exc
                     self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
                                LifecyclePhase.C5_SAFETY, "harness_retry", retry_budget.retries[-1])
 
@@ -625,6 +685,11 @@ class NativeHarnessRunner:
                 retry_budget=retry_budget,
             )
         except Exception as exc:
+            if isinstance(exc, HarnessRuntimeError) and exc.error_code:
+                harness_failure = {
+                    "error_code": exc.error_code,
+                    **dict(exc.diagnostic),
+                }
             result = CommandResult(
                 returncode=1, stdout=b"".join(captured_stdout),
                 stderr=redact_text(str(exc), env).encode("utf-8"),
@@ -640,7 +705,11 @@ class NativeHarnessRunner:
             redact_text(result.stderr, env), encoding="utf-8"
         )
         ref = "agent-result.json" if last_assessment else ""
-        validation_error = None if ref else "OUTPUT_UNSTRUCTURED"
+        validation_error = (
+            None
+            if ref or harness_failure
+            else "OUTPUT_UNSTRUCTURED"
+        )
         if ref:
             write_json(artifact_dir / ref, redact_json(last_assessment, env))
         write_json(artifact_dir / "assessment-history.json", redact_json(assessment_history, env))
@@ -667,6 +736,14 @@ class NativeHarnessRunner:
             "output_repair_count": output_repair_count,
             "output_repair_exhausted": output_repair_count > 0 and not output_repaired,
             "retry_history": retry_budget.retries,
+            "harness_error_code": harness_failure.get("error_code"),
+            "harness_error": redact_json(harness_failure, env),
+            "harness_model_request_count": sum(
+                item.get("schema_version")
+                == "stage2-harness-model-request.v1"
+                for item in responder.history
+            ),
+            "harness_model_history_ref": "harness-conversation.json",
             "assessment_history": redact_json(assessment_history, env),
             "prompt_level_label": prompt_level_label,
             "decision_policy": decision_policy.value,

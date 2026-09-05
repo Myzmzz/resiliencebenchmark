@@ -13,7 +13,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from stage2_service.auto_reply import HarnessResponder
+from stage2_service.auto_reply import (
+    HARNESS_MODEL_TIMEOUT_SECONDS,
+    HarnessResponder,
+)
 from stage2_service.contracts import (
     CapabilityProfile, DecisionPolicy, HarnessKind, PromptMode, RuntimeTarget,
     Stage2CaseId, TrialKind, TrialRuntimeContext, default_case_specs,
@@ -39,13 +42,20 @@ PLAN = {
 }
 
 
+class FixtureReadTimeout(TimeoutError):
+    request_id = "upstream-fixture-request"
+
+
 class ModelAdapter:
-    def __init__(self):
+    def __init__(self, scenario):
+        self.scenario = scenario
         self.question_interpretations = 0
         self.approval_replies = 0
 
     def __call__(self, instructions, context):
         if "read-only conversation interpreter" in instructions:
+            if self.scenario == "model_timeout":
+                raise FixtureReadTimeout("fixture Harness model read deadline exceeded")
             if context["messages"][-1].startswith("我还没选定"):
                 self.question_interpretations += 1
                 if self.question_interpretations == 1:
@@ -123,7 +133,7 @@ class EvidenceAdapter:
         return {"application_owned": True, "load_generator_ready": True, "traffic_observed": True, "business_healthy": True}
 
 
-@pytest.mark.parametrize("scenario", ["latest", "custom", "advice", "plain", "plain_question", "approval_repair", "repair", "startup", "exhausted"])
+@pytest.mark.parametrize("scenario", ["latest", "custom", "advice", "plain", "plain_question", "approval_repair", "repair", "startup", "exhausted", "model_timeout"])
 def test_native_conversation_completion_and_behavior_are_independent(tmp_path, scenario):
     executable = tmp_path / "codex-eval"
     executable.write_text(f"#!{Path(sys.executable).resolve()}\n" + (ROOT / "tests/fixtures/stage2_native_agent.py").read_text())
@@ -145,7 +155,7 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
         permissions=permissions, mcp_supervisor=McpAdapter(), timeout_seconds=30,
         base_environment={"RESBENCH_CODEX_EVAL_BIN": str(executable)},
         responder_factory=lambda _env, _model, ns, fault_budget, obs_budget: HarnessResponder(
-            model_call=ModelAdapter(), namespace=ns, max_fault_seconds=fault_budget, max_observation_seconds=1200,
+            model_call=ModelAdapter(scenario), namespace=ns, max_fault_seconds=fault_budget, max_observation_seconds=1200,
         ),
     )
     report = runner.run(
@@ -160,6 +170,46 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
         assert report.status == "failed"
         assert len(report.final_output["retry_history"]) == 2
         assert not any(event.kind == "main_fault_requested" for event in report.lifecycle_events)
+        return
+    if scenario == "model_timeout":
+        assert report.status == "failed"
+        assert report.final_output["validation_error"] is None
+        assert report.final_output["harness_error_code"] == "HARNESS_MODEL_TIMEOUT"
+        assert report.final_output["harness_model_request_count"] == 3
+        assert len(report.final_output["retry_history"]) == 2
+        timeout_events = [
+            event
+            for event in report.lifecycle_events
+            if event.kind == "harness_model_timeout"
+        ]
+        assert len(timeout_events) == 3
+        assert [event.payload["attempt"] for event in timeout_events] == [1, 2, 3]
+        assert all(
+            event.payload["timeout_seconds"] == HARNESS_MODEL_TIMEOUT_SECONDS
+            and event.payload["timeout_layer"] == "harness_model.transport_read"
+            and event.payload["upstream_request_id"] == "upstream-fixture-request"
+            for event in timeout_events
+        )
+        root = (
+            tmp_path
+            / "artifacts/campaign-1234567890abcdef"
+            / runtime.trial_id
+        )
+        history = json.loads((root / "harness-conversation.json").read_text())
+        assert len(history) == 3
+        assert len({item["request_id"] for item in history}) == 3
+        assert all(
+            item["status"] == "timeout"
+            and item["started_at"]
+            and item["ended_at"]
+            and item["duration_ms"] >= 0
+            and item["input_characters"] > 0
+            and item["input_bytes"] >= item["input_characters"]
+            and item["timeout_seconds"] == HARNESS_MODEL_TIMEOUT_SECONDS
+            and item["timeout_layer"] == "harness_model.transport_read"
+            and item["upstream_request_id"] == "upstream-fixture-request"
+            for item in history
+        )
         return
     assert report.status == "completed", report.final_output
     answers = [event.payload for event in report.lifecycle_events if event.kind == "user_decision_received"]

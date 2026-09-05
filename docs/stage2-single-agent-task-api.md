@@ -120,6 +120,7 @@ limit           默认 200，最大 1000
 - `score_summary` 原始节点分和来源调整后的总分；
 - `interaction_ledger` Agent、用户与 Harness 的真实交互归因；
 - `harness.output_repaired/output_repair_count/retry_history` 补答与修正过程；
+- `harness.error_code/error/model_request_count/model_history_ref` Harness 模型失败的专用错误码、末次诊断、请求数和详细 artifact；
 - `agent_input` 和每轮 `input-metadata.json`、`report.md` 中的 Prompt 全文、等级标签与决策策略；
 - 权限恢复、环境重置和中止操作状态。
 
@@ -138,6 +139,8 @@ Summary 会聚合结构化反馈，重点看五类信息：
 三类反馈的数量只统计 `HARNESS_FEEDBACK_DELIVERED`；排队或投递失败只进入
 `delivery.queued/failed`，不计入 assisted。Stage2 的 Agent 执行窗口为 1800 秒，其中最长
 1200 秒可用于故障窗口，剩余时间用于目标确认、效果观测、清理和恢复验证。
+
+Harness 解释/自动回复模型的单次客户端超时为180秒，一次原始请求加最多两次重试，总共最多三次。每次请求在 `harness-conversation.json` 中保存本地请求 ID、可获取的上游请求 ID、起止时间、耗时、输入字符/字节数与具体超时层。三次都超时时，任务输出 `HARNESS_MODEL_TIMEOUT`，不再仅显示 `HARNESS_EXECUTION_FAILED`。
 
 Timeline 只返回简化分类事件，适合手动轮询。Debug 返回完整脱敏事件，适合排查 Harness 与 Agent 的具体交互，但不会暴露 token、secret、password、authorization、cleanup handle 或 operation ID 等受控运行标识。
 

@@ -1978,6 +1978,14 @@ class Stage2TaskService:
             "harness": {
                 "status": report.get("status"),
                 "process_succeeded": final_output.get("process_succeeded"),
+                "error_code": final_output.get("harness_error_code"),
+                "error": final_output.get("harness_error"),
+                "model_request_count": final_output.get(
+                    "harness_model_request_count", 0
+                ),
+                "model_history_ref": final_output.get(
+                    "harness_model_history_ref"
+                ),
                 "lifecycle_event_count": len(report.get("lifecycle_events") or []),
                 "retry_history": final_output.get("retry_history", []),
                 "output_repaired": final_output.get("output_repaired", False),
@@ -2229,6 +2237,36 @@ class Stage2TaskService:
                 )
         for trial in trials:
             trial_id = trial.get("trial_id")
+            harness_error_code = trial.get("harness", {}).get("error_code")
+            if harness_error_code:
+                harness_error = trial.get("harness", {}).get("error")
+                timeout_sequences = [
+                    event.get("sequence")
+                    for event in events
+                    if event.get("trial_id") == trial_id
+                    and event.get("event_type") == "HARNESS_MODEL_TIMEOUT"
+                ]
+                issues.append(
+                    {
+                        "owner": "HARNESS",
+                        "code": str(harness_error_code),
+                        "severity": "ERROR",
+                        "message": str(
+                            (
+                                harness_error.get("reason")
+                                if isinstance(harness_error, Mapping)
+                                else harness_error
+                            )
+                            or "Harness model request failed"
+                        ),
+                        "trial_id": trial_id,
+                        "evidence_sequences": [
+                            sequence
+                            for sequence in timeout_sequences
+                            if sequence is not None
+                        ],
+                    }
+                )
             validation = trial.get("agent_response", {}).get("output_validation")
             if validation:
                 issues.append(

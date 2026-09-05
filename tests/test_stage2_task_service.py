@@ -462,6 +462,40 @@ def test_failed_semantic_nudge_is_not_counted_as_delivered_assistance():
     assert feedback["counts"]["clarification_requests"] == 0
 
 
+def test_task_issue_preserves_harness_model_timeout_diagnostics():
+    issues = Stage2TaskService._issues(
+        {},
+        [
+            {
+                "trial_id": "trial-timeout",
+                "event_type": "HARNESS_MODEL_TIMEOUT",
+                "sequence": 42,
+            }
+        ],
+        [
+            {
+                "trial_id": "trial-timeout",
+                "harness": {
+                    "error_code": "HARNESS_MODEL_TIMEOUT",
+                    "error": {
+                        "request_id": "harness-model-request-1",
+                        "timeout_layer": "harness_model.transport_read",
+                        "reason": "Harness model read timed out",
+                    },
+                },
+                "agent_response": {},
+                "disturbance": {},
+                "evaluation": {},
+            }
+        ],
+    )
+
+    assert issues[0]["owner"] == "HARNESS"
+    assert issues[0]["code"] == "HARNESS_MODEL_TIMEOUT"
+    assert issues[0]["message"] == "Harness model read timed out"
+    assert issues[0]["evidence_sequences"] == [42]
+
+
 def test_single_case_selection_updates_task_suite_and_campaign_request(tmp_path):
     service, _supervisor, _controls = task_service(tmp_path, Runner())
 

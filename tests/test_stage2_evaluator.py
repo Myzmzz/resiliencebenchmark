@@ -941,3 +941,24 @@ def test_harness_timeout_uses_direct_platform_reason_code():
     assert decision["verdict"] == AgentVerdict.CASE_INVALID.value
     assert decision["platform_status"] == TrialPlatformStatus.HARNESS_FAILED.value
     assert decision["reason_codes"] == ["HARNESS_TIMEOUT"]
+
+
+def test_harness_model_timeout_preserves_specific_platform_reason_code():
+    timeout_report = HarnessReport(
+        status="failed",
+        agent_verdict=AgentVerdict.FAIL,
+        lifecycle_events=(),
+        final_output={"harness_error_code": "HARNESS_MODEL_TIMEOUT"},
+    )
+
+    decision = Stage2Evaluator().decision(
+        kind=TrialKind.CONTROL,
+        report=timeout_report,
+        disturbances=(),
+        recovery=RECOVERY,
+        diagnostic_only=False,
+    )
+
+    assert decision["verdict"] == AgentVerdict.CASE_INVALID.value
+    assert decision["platform_status"] == TrialPlatformStatus.HARNESS_FAILED.value
+    assert decision["reason_codes"] == ["HARNESS_MODEL_TIMEOUT"]

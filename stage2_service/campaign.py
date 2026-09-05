@@ -635,6 +635,12 @@ class CampaignEngine:
                                 "validation_error": report.final_output.get(
                                     "validation_error"
                                 ),
+                                "harness_error_code": report.final_output.get(
+                                    "harness_error_code"
+                                ),
+                                "harness_error": report.final_output.get(
+                                    "harness_error"
+                                ),
                                 "artifact_refs": list(report.artifact_refs),
                             },
                         )
@@ -1096,10 +1102,13 @@ class CampaignEngine:
                         evaluation_decision["checks"] = checks
                         if not result.platform_valid:
                             if result.trial_platform_status is TrialPlatformStatus.HARNESS_FAILED:
-                                final_reason = (
-                                    "HARNESS_TIMEOUT"
-                                    if report.status == "timeout"
-                                    else "HARNESS_EXECUTION_FAILED"
+                                final_reason = str(
+                                    report.final_output.get("harness_error_code")
+                                    or (
+                                        "HARNESS_TIMEOUT"
+                                        if report.status == "timeout"
+                                        else "HARNESS_EXECUTION_FAILED"
+                                    )
                                 )
                             elif (
                                 result.trial_platform_status

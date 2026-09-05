@@ -769,6 +769,9 @@ def _platform_failure_reason_codes(
     report: HarnessReport,
 ) -> tuple[str, ...]:
     if platform_status is TrialPlatformStatus.HARNESS_FAILED:
+        harness_error_code = report.final_output.get("harness_error_code")
+        if harness_error_code:
+            return (str(harness_error_code),)
         return (
             "HARNESS_TIMEOUT"
             if report.status == "timeout"

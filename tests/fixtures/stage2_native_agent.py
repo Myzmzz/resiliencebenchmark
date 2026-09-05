@@ -57,6 +57,10 @@ if "resume" not in sys.argv:
         say("请确认上述完整计划：仅对 otel-demo/cart-a 注入300ms网络延迟，效果持续成立后主动清理，并使用安全 TTL 兜底。")
         print(json.dumps({"type": "turn.completed"}), flush=True)
         sys.exit(0)
+    if scenario == "model_timeout":
+        say("目标已找到，但这条回答需要 Harness 解释。")
+        print(json.dumps({"type": "turn.completed"}), flush=True)
+        sys.exit(0)
     for delay in ([100, 300] if scenario == "latest" else [300]):
         plan["intensity"]["delay_ms"] = delay
         say({
