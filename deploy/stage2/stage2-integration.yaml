@@ -27,6 +27,50 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+      initContainers:
+        # LiteLLM model gateway as a native sidecar (restartPolicy: Always):
+        # it is up before the Stage-2 process starts, restarts with the pod,
+        # and stops with the main container so batch Jobs can complete.
+        # Routing table: ConfigMap litellm-config (deploy/stage2/litellm/).
+        # Upstream credentials: Secret litellm-upstream.
+        - name: litellm
+          image: 1.94.151.57:85/observe/aiobs-litellm:v1
+          imagePullPolicy: IfNotPresent
+          restartPolicy: Always
+          args:
+            - --config
+            - /etc/litellm/config.yaml
+            - --port
+            - "4000"
+          envFrom:
+            - secretRef:
+                name: litellm-upstream
+          ports:
+            - name: litellm
+              containerPort: 4000
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /etc/litellm
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /health/liveliness
+              port: litellm
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: litellm
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
       containers:
         - name: stage2
           image: __STAGE2_IMAGE__
@@ -106,6 +150,9 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 2Gi
+        - name: litellm-config
+          configMap:
+            name: litellm-config
 ---
 apiVersion: v1
 kind: Service

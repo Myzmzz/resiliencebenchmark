@@ -143,7 +143,9 @@ def test_deepseek_headless_templates_select_model_and_disable_builtin_tools():
             "models"
         ]
     }
-    assert "gpt-5.6-sol" in provider_models
+    # The template carries only the alias placeholder; run_harness_trial
+    # substitutes the selected model (covered by test_run_harness_trial).
+    assert provider_models == {"__RESBENCH_MODEL_ALIAS__"}
     disabled = {item["id"] for item in patch if isinstance(item, dict) and item.get("disabled") is True}
     assert {"code-runtime", "tool-bash", "tool-pwsh", "tool-fs", "tool-web", "tool-subagent"} <= disabled
     inserted = next(item["insert"] for item in patch if isinstance(item, dict) and "insert" in item)

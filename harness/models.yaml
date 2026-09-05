@@ -2,7 +2,10 @@ version: resiliencebenchmark.harness.models/v1
 description: >
   LLM registry for benchmark harnesses. Values here are aliases and runtime
   credential references only; no concrete keys, endpoints, IPs, or local paths
-  belong in this file.
+  belong in this file. Aliases are the public model names served by the
+  LiteLLM gateway sidecar (deploy/stage2/litellm/config.yaml maps each alias
+  to its upstream provider); stage2_service.contracts.STAGE2_MODEL_MATRIX lists
+  the subset the Stage-2 matrix runs against.
 
 credential_refs:
   default_openai_compatible:
@@ -55,10 +58,14 @@ defaults:
       must_not_request_secrets: true
 
 models:
+  # Harness default (Codex / BladeAI / DeepSeek Harness). Served through the
+  # gateway from the aigcbest relay (deploy/stage2/litellm/config.yaml explains
+  # why not nexustokenai); Codex uses the Responses wire API, Claude Code
+  # reaches it through the gateway's Anthropic Messages bridge.
   gpt-5.5:
     upstream_model: gpt-5.5
     display_name: GPT-5.5
-    protocol_candidates: [openai_responses]
+    protocol_candidates: [openai_responses, openai_chat_completions, anthropic_messages]
     authentication_modes: [chatgpt_oauth, api_key]
     capability_probe:
       current_oauth_catalog: available
@@ -73,15 +80,29 @@ models:
     protocol_candidates: [openai_responses, openai_chat_completions]
     capability_probe:
       status: probe_required
-  deepseek-v4-pro:
-    upstream_model: deepseek-v4-pro
-    display_name: DeepSeek V4 Pro
-    protocol_candidates: [openai_chat_completions, anthropic_messages]
+  # DeepSeek official API. The gateway maps the dated aliases to DeepSeek's
+  # undated ids (deepseek-v4-flash / deepseek-v4-pro); aliases stay lowercase
+  # because Stage-2 request ids embed them.
+  deepseek-v4-pro-0813:
+    upstream_model: deepseek-v4-pro-0813
+    display_name: DeepSeek V4 Pro (2026-08-13)
+    protocol_candidates: [openai_chat_completions, openai_responses, anthropic_messages]
     capability_probe: {}
+  deepseek-v4-flash-0731:
+    upstream_model: deepseek-v4-flash-0731
+    display_name: DeepSeek V4 Flash (2026-07-31)
+    protocol_candidates: [openai_chat_completions, openai_responses, anthropic_messages]
+    capability_probe: {}
+  # Alibaba Cloud DashScope (OpenAI-compatible mode) through the gateway.
   qwen3.8-max:
     upstream_model: qwen3.8-max
     display_name: Qwen 3.8 Max
-    protocol_candidates: [openai_chat_completions]
+    protocol_candidates: [openai_chat_completions, openai_responses, anthropic_messages]
+    capability_probe: {}
+  qwen3.8-flash:
+    upstream_model: qwen3.8-flash
+    display_name: Qwen 3.8 Flash
+    protocol_candidates: [openai_chat_completions, openai_responses, anthropic_messages]
     capability_probe: {}
   claude-opus-5:
     upstream_model: claude-opus-5

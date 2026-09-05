@@ -51,6 +51,7 @@ from scripts.run_harness_trial import (
 )
 
 from .contracts import (
+    STAGE2_DEFAULT_MODEL,
     AgentVerdict,
     CaseSpec,
     CapabilityProfile,
@@ -960,7 +961,7 @@ class NativeHarnessRunner:
                 "RESBENCH_LLM_BASE_URL", ""
             ),
             "BLADE_AI_MODEL_NAME": self.base_environment.get(
-                "STAGE2_BLADEAI_MODEL", "gpt-5.6"
+                "STAGE2_BLADEAI_MODEL", STAGE2_DEFAULT_MODEL
             ),
             "BLADE_AI_KUBECONFIG_PATH": str(kubeconfig),
             "BLADE_AI_BLADE_PATH": str(blade_runtime / "blade"),

@@ -180,7 +180,7 @@ export async function getPreflight(signal?: AbortSignal): Promise<PreflightStatu
         bladeai: payload.harnesses.includes("bladeai"),
       }
     : payload.harnesses;
-  const models = payload.models ?? { codex: payload.model ?? "gpt-5.6-sol" };
+  const models = payload.models ?? { codex: payload.model ?? "gpt-5.5" };
   const qualified = payload.status !== "ERROR" && Object.values(harnesses).some(Boolean);
   return {
     schema_version: "stage2-console-preflight.v1",

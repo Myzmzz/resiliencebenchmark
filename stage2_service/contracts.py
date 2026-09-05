@@ -59,7 +59,29 @@ TASK_STAGE2_CASE_IDS = (
     Stage2CaseId.D6,
 )
 
-STAGE2_MODEL_MATRIX = ("gpt-5.6-sol", "claude-opus-5")
+# Public gateway aliases the Stage-2 service accepts for single-agent tasks,
+# D0 campaigns and preflight. Every alias must be served by the LiteLLM sidecar
+# (deploy/stage2/litellm/config.yaml) and registered in harness/models.yaml;
+# tests/test_render_litellm_gateway.py guards that agreement. Aliases stay
+# lowercase because request ids embed them.
+STAGE2_SUPPORTED_MODELS = (
+    "gpt-5.5",
+    "claude-opus-5",
+    "deepseek-v4-pro-0813",
+    "deepseek-v4-flash-0731",
+    "qwen3.8-max",
+    "qwen3.8-flash",
+)
+
+# Model axis of the formal Stage-2 matrix (4 Harnesses x these models). It stays
+# at two flagship models so a formal run needs eight sealed D0 qualification
+# campaigns; the remaining supported aliases are available to single-agent
+# tasks and diagnostic campaigns without widening the matrix.
+STAGE2_MODEL_MATRIX = ("gpt-5.5", "claude-opus-5")
+
+# Default alias for Harnesses that speak the OpenAI protocol (Codex, BladeAI,
+# DeepSeek Harness). Claude Code keeps claude-opus-5 as its native model.
+STAGE2_DEFAULT_MODEL = "gpt-5.5"
 
 
 class LifecyclePhase(str, Enum):
@@ -471,7 +493,7 @@ class CampaignRequest(ContractModel):
     episode: FixedEpisodeRef
     harnesses: tuple[HarnessKind, ...] = (HarnessKind.CODEX,)
     model_by_harness: dict[HarnessKind, str] = Field(
-        default_factory=lambda: {HarnessKind.CODEX: "gpt-5.6-sol"}
+        default_factory=lambda: {HarnessKind.CODEX: STAGE2_DEFAULT_MODEL}
     )
     qualification_mode: Literal["required", "diagnostic"] = "diagnostic"
     qualification_refs: dict[HarnessKind, D0QualificationRef] = Field(

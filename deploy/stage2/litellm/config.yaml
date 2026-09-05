@@ -1,0 +1,122 @@
+# LiteLLM proxy routing table for the Stage-2 model gateway.
+#
+# The proxy runs as a sidecar inside every Stage-2 pod and listens on
+# loopback port 4000 (RESBENCH_LLM_BASE_URL=http://127.0.0.1:4000/v1), so
+# every Harness (Codex / Claude Code / DeepSeek Harness / BladeAI) talks a single
+# OpenAI-compatible protocol family to one place while this file decides which
+# upstream provider actually serves each public alias.
+#
+# Rules:
+#   * `model_name` is the public alias. It must match the alias used in
+#     harness/models.yaml and stage2_service.contracts.STAGE2_MODEL_MATRIX.
+#     Aliases stay lowercase because Stage-2 request ids embed them.
+#   * `litellm_params.model` is `<litellm provider>/<upstream model id>`.
+#     `openai/` means "OpenAI-compatible upstream at api_base" and gives Codex a
+#     native /v1/responses pass-through; `anthropic/` speaks the Messages API.
+#   * Credentials are never written here. Every `os.environ/NAME` reference is
+#     resolved from the `litellm-upstream` Secret, which
+#     scripts/render_litellm_gateway.py renders from a local env file
+#     (see providers.env.example).
+#   * One alias maps to exactly one upstream on purpose: silently load-balancing
+#     or failing over between providers mid-trial would confound benchmark
+#     results. Alternate routes get their own explicit alias instead.
+
+model_list:
+  # ---------------------------------------------------------------------------
+  # Harness default: GPT-5.5 via the aigcbest (new-api) relay.
+  # Chosen over nexustokenai on 2026-09-05 after a side-by-side sample: the
+  # nexustokenai relay prefixes chat-completion content with an invisible
+  # U+200B zero-width space (strict JSON parsing fails, so the probe check
+  # structured_json_output fails), returned one Cloudflare 524 timeout, and
+  # rejects python-urllib clients (Cloudflare error 1010). aigcbest answered
+  # 48/48 sampled requests cleanly across chat, responses and messages, with
+  # 3-8x faster tool-call round trips.
+  # ---------------------------------------------------------------------------
+  - model_name: gpt-5.5
+    litellm_params:
+      model: openai/gpt-5.5
+      api_base: https://api2.aigcbest.top/v1
+      api_key: os.environ/AIGCBEST_API_KEY
+
+  # Explicit alternate route for GPT-5.5 through the nexustokenai relay. Its
+  # Responses API output is clean; chat completions carry the U+200B prefix.
+  # Select it deliberately (model=gpt-5.5-nexustokenai); it is not an
+  # automatic fallback for `gpt-5.5`.
+  - model_name: gpt-5.5-nexustokenai
+    litellm_params:
+      model: openai/gpt-5.5
+      api_base: https://api.nexustokenai.com/v1
+      api_key: os.environ/NEXUSTOKENAI_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # DeepSeek official API. DeepSeek publishes undated ids (deepseek-v4-flash,
+  # deepseek-v4-pro); the dated public aliases pin the V4 Flash 07-31 and
+  # V4 Pro 08-13 releases that those ids currently serve.
+  # ---------------------------------------------------------------------------
+  - model_name: deepseek-v4-flash-0731
+    litellm_params:
+      model: openai/deepseek-v4-flash
+      api_base: https://api.deepseek.com/v1
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  - model_name: deepseek-v4-pro-0813
+    litellm_params:
+      model: openai/deepseek-v4-pro
+      api_base: https://api.deepseek.com/v1
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # Alibaba Cloud DashScope (OpenAI-compatible mode) for Qwen 3.8.
+  # ---------------------------------------------------------------------------
+  - model_name: qwen3.8-max
+    litellm_params:
+      model: openai/qwen3.8-max
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key: os.environ/DASHSCOPE_API_KEY
+
+  - model_name: qwen3.8-flash
+    litellm_params:
+      model: openai/qwen3.8-flash
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key: os.environ/DASHSCOPE_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # Acucompute console (previous gateway). claude-opus-5 is only served over
+  # the Anthropic protocol by this account, so LiteLLM converts the OpenAI
+  # protocol the Harnesses speak into Messages API calls. gpt-5.6-sol stays
+  # registered so earlier qualification refs still resolve.
+  # ---------------------------------------------------------------------------
+  - model_name: claude-opus-5
+    litellm_params:
+      model: anthropic/claude-opus-5
+      api_base: https://console.acucompute.com
+      api_key: os.environ/ACUCOMPUTE_API_KEY
+
+  - model_name: gpt-5.6-sol
+    litellm_params:
+      model: openai/gpt-5.6-sol
+      api_base: https://console.acucompute.com/v1
+      api_key: os.environ/ACUCOMPUTE_API_KEY
+
+litellm_settings:
+  # Drop request parameters an upstream does not understand instead of
+  # failing the call (matches the previously deployed gateway).
+  drop_params: true
+  # Carried over from the gateway deployed on 2026-09-05. It caps a single
+  # upstream request, not a whole agent turn. Measured worst case so far is a
+  # 77s parallel-tool-call probe, so the margin is real but not large; raise
+  # this if long reasoning turns start failing at exactly two minutes.
+  request_timeout: 120
+  # Harness templates already disable client-side retries; keep the proxy from
+  # silently re-issuing a request the trial transcript will not show.
+  num_retries: 0
+  set_verbose: false
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+# router_settings:
+#   # Automatic provider fail-over is intentionally disabled. If stability ever
+#   # matters more than upstream identity, enable it explicitly:
+#   fallbacks:
+#     - gpt-5.5: [gpt-5.5-nexustokenai]

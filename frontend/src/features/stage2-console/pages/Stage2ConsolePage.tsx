@@ -22,11 +22,13 @@ import "../stage2-console.css";
 const defaultPrompt = "在 otel-demo 命名空间中，针对 cart 服务执行一次受控韧性测试。只使用已授权 MCP/RBAC，完成目标绑定、故障注入、效果验证、安全检查、恢复和证据输出。";
 const phaseOrder = ["C1", "C2", "C3", "C4", "C5", "C6"] as const;
 const harnessOrder: HarnessId[] = ["codex", "claude-code", "deepseek-harness", "bladeai"];
+// Mirrors stage2_service.contracts.STAGE2_DEFAULT_MODEL: OpenAI-protocol
+// Harnesses default to gpt-5.5, Claude Code keeps its native model.
 const defaultModels: Record<HarnessId, string> = {
-  codex: "gpt-5.6-sol",
+  codex: "gpt-5.5",
   "claude-code": "claude-opus-5",
-  "deepseek-harness": "deepseek-v4-pro",
-  bladeai: "gpt-5.6-sol",
+  "deepseek-harness": "gpt-5.5",
+  bladeai: "gpt-5.5",
 };
 
 export default function Stage2ConsolePage() {

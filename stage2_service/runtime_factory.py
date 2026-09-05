@@ -27,7 +27,8 @@ from .campaign import CampaignEngine
 from .condition_monitor import ConditionRecoveryMonitor
 from .condition_policy import evaluate_condition
 from .contracts import (
-    STAGE2_MODEL_MATRIX,
+    STAGE2_DEFAULT_MODEL,
+    STAGE2_SUPPORTED_MODELS,
     CampaignRequest,
     CampaignResult,
     default_case_specs,
@@ -797,7 +798,7 @@ class Stage2System:
         model_matrix = {
             name: {
                 model: ready and model in available_models
-                for model in STAGE2_MODEL_MATRIX
+                for model in STAGE2_SUPPORTED_MODELS
             }
             for name, ready in runtimes.items()
         }
@@ -808,7 +809,7 @@ class Stage2System:
             "schema_version": "stage2-preflight.v2",
             "status": "READY" if any(harnesses.values()) else "ERROR",
             "harnesses": harnesses,
-            "models": list(STAGE2_MODEL_MATRIX),
+            "models": list(STAGE2_SUPPORTED_MODELS),
             "model_matrix": model_matrix,
             "available_models": sorted(available_models),
             "model_catalog_error": model_error,
@@ -921,10 +922,10 @@ class Stage2System:
                     for harness in request.harnesses
                     if harness.value == "bladeai"
                 ),
-                "gpt-5.6",
+                STAGE2_DEFAULT_MODEL,
             )
             if any(harness.value == "bladeai" for harness in request.harnesses)
-            else "gpt-5.6",
+            else STAGE2_DEFAULT_MODEL,
         }
         harness_runner = NativeHarnessRunner(
             repo_root=self.config.repo_root,

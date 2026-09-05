@@ -42,8 +42,11 @@ Configuration files in this directory must only contain environment-variable ref
 
 Expected runtime references:
 
-- `RESBENCH_LLM_BASE_URL`: OpenAI/NewAPI-compatible gateway base URL.
-- `RESBENCH_LLM_API_KEY`: gateway credential.
+- `RESBENCH_LLM_BASE_URL`: OpenAI/NewAPI-compatible gateway base URL. In the
+  Stage-2 pods this is the LiteLLM sidecar on loopback
+  (`http://127.0.0.1:4000/v1`); its alias-to-provider routing lives in
+  `deploy/stage2/litellm/` and must agree with `models.yaml`.
+- `RESBENCH_LLM_API_KEY`: gateway credential (the LiteLLM master key).
 - `RESBENCH_K8S_MCP_URL`, `RESBENCH_TELEMETRY_MCP_URL`, `RESBENCH_SOURCE_MCP_URL`, `RESBENCH_CHAOS_CONTROL_MCP_URL`: per-trial loopback MCP endpoints.
 - `RESBENCH_MCP_TOKEN`: per-trial bearer token; templates reference its variable name and never store its value.
 

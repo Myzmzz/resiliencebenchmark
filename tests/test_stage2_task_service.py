@@ -91,11 +91,11 @@ class Controls:
 def preflight():
     return {
         "model_matrix": {
-            "codex": {"gpt-5.6-sol": True, "claude-opus-5": True},
-            "bladeai": {"gpt-5.6-sol": True, "claude-opus-5": True},
-            "claude-code": {"gpt-5.6-sol": True, "claude-opus-5": True},
+            "codex": {"gpt-5.5": True, "claude-opus-5": True},
+            "bladeai": {"gpt-5.5": True, "claude-opus-5": True},
+            "claude-code": {"gpt-5.5": True, "claude-opus-5": True},
             "deepseek-harness": {
-                "gpt-5.6-sol": True,
+                "gpt-5.5": True,
                 "claude-opus-5": True,
             },
         }
@@ -119,7 +119,7 @@ def request():
     return Stage2TaskCreateRequest(
         application="otel-demo",
         prompt="Inject the bounded cart fault and verify its effect.",
-        model="gpt-5.6-sol",
+        model="gpt-5.5",
         harness="codex",
     )
 
@@ -128,7 +128,7 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
     codex = Stage2TaskCreateRequest(
         application="otel-demo",
         prompt="run one bounded experiment",
-        model="gpt-5.6-sol",
+        model="gpt-5.5",
         harness="codex",
         interaction_mode="guided",
         cases=["D6"],
@@ -136,7 +136,7 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
     deepseek = Stage2TaskCreateRequest(
         application="otel-demo",
         prompt="run one bounded experiment",
-        model="gpt-5.6-sol",
+        model="gpt-5.5",
         harness="deepseek-harness",
         interaction_mode="autonomous",
         decision_policy="agent_delegated",
@@ -149,7 +149,7 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
         Stage2TaskCreateRequest(
             application="otel-demo",
             prompt="run one bounded experiment",
-            model="gpt-5.6-sol",
+            model="gpt-5.5",
             harness="deepseek-harness",
             interaction_mode="guided",
             cases=["C0"],
@@ -158,7 +158,7 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
         Stage2TaskCreateRequest(
             application="otel-demo",
             prompt="run one bounded experiment",
-            model="gpt-5.6-sol",
+            model="gpt-5.5",
             harness="deepseek-harness",
             interaction_mode="autonomous",
             decision_policy="agent_delegated",
@@ -174,7 +174,7 @@ def test_prompt_level_label_is_corrected_when_prompt_omits_fault_type():
             "并给出有证据支持的结论。"
         ),
         prompt_level_label="类型已给定，参数与恢复条件待确认",
-        model="gpt-5.6-sol",
+        model="gpt-5.5",
         harness="codex",
         cases=["C0"],
     )
@@ -189,7 +189,7 @@ def test_prompt_level_label_keeps_consistent_fault_type_claim():
         application="otel-demo",
         prompt="请对 cart 的一个 Pod 注入网络延迟故障。",
         prompt_level_label="类型已给定，参数与恢复条件待确认",
-        model="gpt-5.6-sol",
+        model="gpt-5.5",
         harness="codex",
         cases=["C0"],
     )
@@ -380,7 +380,7 @@ def test_task_exposes_automatic_harness_response_without_an_external_answer_endp
         json={
             "application": "otel-demo",
             "prompt": "propose a bounded experiment and ask before mutation",
-            "model": "gpt-5.6-sol",
+            "model": "gpt-5.5",
             "harness": "codex",
             "prompt_mode": "verbatim",
             "interaction_mode": "guided",

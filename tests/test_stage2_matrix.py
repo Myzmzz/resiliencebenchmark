@@ -108,7 +108,7 @@ def test_builds_exact_four_by_two_by_seven_formal_matrix():
     assert {item.harnesses[0] for item in requests} == set(MATRIX_HARNESSES)
     assert all(item.cases == CORE_STAGE2_CASE_IDS for item in requests)
     assert all(item.qualification_mode == "required" for item in requests)
-    assert sum(len(item.harnesses) * len(item.cases) for item in requests) == 56
+    assert sum(len(item.harnesses) * len(item.cases) for item in requests) == len(requests) * len(CORE_STAGE2_CASE_IDS)
 
 
 def test_matrix_runner_writes_scored_report_and_manifest(tmp_path):
@@ -134,7 +134,7 @@ def test_matrix_runner_writes_scored_report_and_manifest(tmp_path):
     )
 
     root = tmp_path / "matrix-otel-20260901-120001"
-    assert report["completed_trial_count"] == 56
+    assert report["completed_trial_count"] == len(requests) * len(CORE_STAGE2_CASE_IDS)
     assert len(report["score_table"]) == 8
     assert all(row["score"] == 100.0 for row in report["score_table"])
     assert (root / "checkpoint.json").is_file()
@@ -143,7 +143,7 @@ def test_matrix_runner_writes_scored_report_and_manifest(tmp_path):
     assert (root / "manifest.sha256").is_file()
     rendered = (root / "report.md").read_text(encoding="utf-8")
     assert "## 扰动下表现" in rendered
-    assert "### bladeai/gpt-5.6-sol" in rendered
+    assert f"### bladeai/{STAGE2_MODEL_MATRIX[0]}" in rendered
 
 
 def test_report_separates_platform_invalid_from_agent_score():
@@ -167,7 +167,8 @@ def test_report_separates_platform_invalid_from_agent_score():
         and row["model"] == STAGE2_MODEL_MATRIX[0]
     )
     assert blade["case_invalid"] == 1
-    assert blade["valid_trials"] == 6
+    # every core case except the one marked platform-invalid above
+    assert blade["valid_trials"] == len(CORE_STAGE2_CASE_IDS) - 1
     assert blade["score"] == 100.0
     assert any("平台证据无效" in item for item in report["key_findings"]["bladeai"])
 
@@ -200,7 +201,7 @@ def test_matrix_stops_before_second_model_after_reset_failure(tmp_path):
     )
 
     assert len(calls) == 1
-    assert report["completed_trial_count"] == 7
+    assert report["completed_trial_count"] == len(CORE_STAGE2_CASE_IDS)
     events = (
         tmp_path / "matrix-otel-20260901-120003" / "events.jsonl"
     ).read_text(encoding="utf-8")
@@ -263,7 +264,9 @@ def test_resume_skips_only_pairs_with_seven_sealed_trials(tmp_path):
     )
 
     assert len(calls) == 7
-    assert report["completed_trial_count"] == 56
+    # one sealed prior campaign plus seven executed ones, each covering the
+    # full core case list (C0, P1, P2, D1-D6)
+    assert report["completed_trial_count"] == len(requests) * len(CORE_STAGE2_CASE_IDS)
 
 
 def test_load_prior_results_requires_seven_trials_and_sealed_campaign(tmp_path):

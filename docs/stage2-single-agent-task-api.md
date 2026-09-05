@@ -22,7 +22,7 @@
 {
   "application": "otel-demo",
   "prompt": "请针对 otel-demo 的 cart 服务注入高 CPU 故障，持续 5 分钟后自动恢复。",
-  "model": "gpt-5.6-sol",
+  "model": "gpt-5.5",
   "harness": "codex",
   "prompt_mode": "verbatim",
   "interaction_mode": "guided",
@@ -36,6 +36,8 @@
 当前端到端 Stage2 Episode/runtime 只有 `otel-demo` 可运行。`GET /api/v1/stage2/options` 会把 `otel-demo` 标为 `runnable=true`；`train-ticket` 和 `sock-shop` 可以出现在候选列表里，但会标为 `runnable=false`，原因是还缺少 Stage2 Episode 和 runtime adapter。`POST /api/v1/stage2/tasks` 仍只接受真正可运行的系统；传不可运行系统会得到 422。
 
 接口中的智能体选择字段沿用现有名称 `harness`：`codex`、`claude-code`、`deepseek-harness` 或 `bladeai`。可选模型及每个 Harness/模型组合当前是否可运行，以 `/api/v1/stage2/options` 返回的 `model_matrix` 为准，不能只凭模型名称判断。
+
+`model` 取值为网关别名，当前支持 `gpt-5.5`（Harness 默认）、`claude-opus-5`、`deepseek-v4-pro-0813`、`deepseek-v4-flash-0731`、`qwen3.8-max`、`qwen3.8-flash`（定义在 `stage2_service.contracts.STAGE2_SUPPORTED_MODELS`，路由见 `deploy/stage2/litellm/config.yaml`）；传入其他别名会得到 422。正式矩阵的模型轴仍是 `STAGE2_MODEL_MATRIX`（`gpt-5.5` 与 `claude-opus-5`），其余别名用于单智能体任务与诊断性 campaign。
 
 命令能力以部署中的实际版本为准：Codex CLI 0.139.0 使用
 `codex exec --sandbox read-only resume ...`；Claude Code 2.1.233 使用

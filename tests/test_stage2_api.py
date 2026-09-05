@@ -7,7 +7,7 @@ import time
 from fastapi.testclient import TestClient
 
 from stage2_service.api import CampaignSupervisor, create_app
-from stage2_service.contracts import CampaignResult, PlatformStatus
+from stage2_service.contracts import CORE_STAGE2_CASE_IDS, CampaignResult, PlatformStatus
 
 from .test_stage2_campaign import _request
 
@@ -92,15 +92,21 @@ def test_generates_codex_case_bundle_and_preflight_contract():
     preflight = client.get("/api/v1/preflight")
 
     assert bundle.status_code == 200
-    expected_cases = ["C0", "P1", "P2", "D1", "D2", "D3", "D4"]
+    expected_cases = [case.value for case in CORE_STAGE2_CASE_IDS]
     assert [item["case_id"] for item in bundle.json()["cases"]] == expected_cases
     assert [item["case_id"] for item in preflight.json()["cases"]] == expected_cases
     assert preflight.status_code == 200
     assert preflight.json()["harnesses"]["codex"] is True
-    assert preflight.json()["models"] == ["gpt-5.6-sol", "claude-opus-5"]
+    assert preflight.json()["models"] == [
+        "gpt-5.5",
+        "claude-opus-5",
+        "deepseek-v4-pro-0813",
+        "deepseek-v4-flash-0731",
+        "qwen3.8-max",
+        "qwen3.8-flash",
+    ]
     assert preflight.json()["model_matrix"]["codex"] == {
-        "gpt-5.6-sol": True,
-        "claude-opus-5": True,
+        model: True for model in preflight.json()["models"]
     }
 
 

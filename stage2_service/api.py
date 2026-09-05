@@ -15,7 +15,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from .contracts import (
-    STAGE2_MODEL_MATRIX,
+    STAGE2_SUPPORTED_MODELS,
     CampaignRequest,
     CampaignResult,
     CaseBundle,
@@ -330,9 +330,9 @@ def create_app(
                 "deepseek-harness": False,
                 "bladeai": False,
             },
-            "models": list(STAGE2_MODEL_MATRIX),
+            "models": list(STAGE2_SUPPORTED_MODELS),
             "model_matrix": {
-                harness: {model: available for model in STAGE2_MODEL_MATRIX}
+                harness: {model: available for model in STAGE2_SUPPORTED_MODELS}
                 for harness, available in {
                     "codex": True,
                     "claude-code": False,

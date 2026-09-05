@@ -13,7 +13,7 @@ from threading import Lock
 from typing import Any, Literal, Mapping, Protocol
 from uuid import uuid4
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from controller.safety import default_policy
 
@@ -30,7 +30,8 @@ from .contracts import (
     InteractionMode,
     OperationUncertaintyVariant,
     PromptMode,
-    STAGE2_MODEL_MATRIX,
+    STAGE2_DEFAULT_MODEL,
+    STAGE2_SUPPORTED_MODELS,
     SUPPORTED_STAGE2_FAULT_TYPES,
     Stage2CaseId,
     TASK_STAGE2_CASE_IDS,
@@ -163,7 +164,11 @@ class Stage2TaskCreateRequest(ContractModel):
         default=PromptMode.VERBATIM,
         description="verbatim sends the user prompt unchanged; compiled adds the managed benchmark envelope",
     )
-    model: Literal["gpt-5.6-sol", "claude-opus-5"]
+    model: str = Field(
+        min_length=1,
+        max_length=80,
+        description="public gateway alias; must be one of STAGE2_SUPPORTED_MODELS",
+    )
     harness: HarnessKind
     interaction_mode: InteractionMode = Field(
         default=InteractionMode.GUIDED,
@@ -192,6 +197,15 @@ class Stage2TaskCreateRequest(ContractModel):
         default=None,
         description="optional single-case shortcut; none maps to C0, D6-A/D6-B map to D6 variants",
     )
+
+    @field_validator("model")
+    @classmethod
+    def validate_model_alias(cls, value: str) -> str:
+        """Reject aliases the gateway matrix does not serve (HTTP 422)."""
+        if value not in STAGE2_SUPPORTED_MODELS:
+            allowed = ", ".join(STAGE2_SUPPORTED_MODELS)
+            raise ValueError(f"model must be one of: {allowed}")
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -781,7 +795,7 @@ class Stage2TaskService:
                 }
                 for harness in HarnessKind
             ],
-            "models": list(STAGE2_MODEL_MATRIX),
+            "models": list(STAGE2_SUPPORTED_MODELS),
             "model_matrix": model_matrix,
             "prompt_modes": [item.value for item in PromptMode],
             "interaction_modes": [item.value for item in InteractionMode],
@@ -1631,7 +1645,7 @@ class Stage2TaskService:
             "recommended_post_body": {
                 "application": "otel-demo",
                 "prompt": body["prompt"],
-                "model": "gpt-5.6-sol",
+                "model": STAGE2_DEFAULT_MODEL,
                 "harness": "codex",
                 "prompt_mode": body["prompt_mode"],
                 "interaction_mode": body["interaction_mode"],

@@ -15,9 +15,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from harness.d0.common import evaluation_ready_result
+from stage2_service.contracts import STAGE2_MODEL_MATRIX
 
 HARNESSES = ("bladeai", "claude-code", "codex", "deepseek-harness")
-MODELS = ("gpt-5.6-sol", "claude-opus-5")
+# The qualification matrix covers every alias the Stage-2 service exposes.
+MODELS = STAGE2_MODEL_MATRIX
 
 
 def parser() -> argparse.ArgumentParser:
@@ -28,7 +30,10 @@ def parser() -> argparse.ArgumentParser:
         action="append",
         required=True,
         metavar="MODEL/HARNESS=CAMPAIGN_ID",
-        help="repeat once for every one of the eight model/Harness pairs",
+        help=(
+            "repeat once for every model/Harness pair "
+            f"({len(MODELS)} models x {len(HARNESSES)} Harnesses)"
+        ),
     )
     value.add_argument("--output", type=Path, required=True)
     return value
