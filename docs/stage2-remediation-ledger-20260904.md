@@ -39,7 +39,7 @@
 
 已部署的应答模块真实检查输出：`custom / approved=null / affected_nodes=[TARGET_IDENTITY]`；`approve_recommendation / approved=true / affected_nodes=[]`。两次检查均未调用故障工具，也未创建 Stage2 实验任务。
 
-最终运行代码提交：`9c570c1`。部署镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-9c570c1`，41层。Deployment 为1/1 Ready、1/1 Available；本地18088接口的 healthz、OpenAPI、选项及历史 Debug 查询均可用。
+最终运行代码提交：`1cb15b7`。部署镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-1cb15b7`。Deployment 为1/1 Ready、1/1 Available；Pod 内已确认应答解释提示包含最新修正。本地18088接口的 healthz、OpenAPI、选项及历史 Debug 查询均可用。
 
 最终现场检查：ChaosBlade 数量0；cart 保持3/3副本，load-generator 为1/1。没有启动新的第六、七轮真实故障实验。实际应答客户端检查验证了custom与确认两类回复，代码与最终部署的应答模块一致。
 
