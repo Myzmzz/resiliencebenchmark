@@ -40,11 +40,11 @@
 
 已部署的应答模块真实检查输出：`custom / approved=null / affected_nodes=[TARGET_IDENTITY]`；`approve_recommendation / approved=true / affected_nodes=[]`。两次检查均未调用故障工具，也未创建 Stage2 实验任务。
 
-最终运行代码提交：`1cb15b7`。部署镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-1cb15b7`。Deployment 为1/1 Ready、1/1 Available；Pod 内已确认应答解释提示包含最新修正。本地18088接口的 healthz、OpenAPI、选项及历史 Debug 查询均可用。
+最终运行代码提交：`c7e523e`。部署镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-c7e523e`。Deployment 为1/1 Ready、1/1 Available；Pod 内已确认不完整确认会被拒绝、携带缺失字段修正后才能生成完整批准。本地18088接口的 healthz、OpenAPI、选项及历史 Debug 查询均可用。
 
 最终现场检查：ChaosBlade 数量0；cart 保持3/3副本，load-generator 为1/1。没有启动新的第六、七轮真实故障实验。实际应答客户端检查验证了custom与确认两类回复，代码与最终部署的应答模块一致。
 
-相关检查共175项通过，其中9个为会话/窗口集成场景。审计 skill 已同步并校验通过。真实第六、七轮故障实验及最终验收仍待用户手动进行；请求和结果查看方式见 `docs/stage2-manual-check-20260904.md`。
+前期相关检查共175项通过，其中9个为会话/窗口集成场景。本次新增 `approval_repair` 集成场景，并复跑76项相关检查通过。审计 skill 已同步并校验通过。真实第六、七轮故障实验及最终验收仍待用户手动进行；请求和结果查看方式见 `docs/stage2-manual-check-20260904.md`。
 
 ## 交付核对范围
 
