@@ -1,0 +1,7 @@
+schema_version: stage2-permission-profile.v1
+profile_id: p5-no-mcp
+mcp_servers: []
+bladeai_native:
+  kubernetes_read: true
+  kubernetes_metrics: true
+  chaosblade_execute: true

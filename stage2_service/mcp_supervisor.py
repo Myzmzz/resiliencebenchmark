@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
-from .contracts import HarnessKind
+from .contracts import HarnessKind, McpServerName
 
 
 class McpSupervisorError(RuntimeError):
@@ -45,6 +45,7 @@ class McpSupervisor:
         harness: HarnessKind,
         token: str,
         token_state_files: Mapping[str, str],
+        servers: tuple[McpServerName, ...],
     ) -> dict[str, str]:
         self.stop()
         transport = "sse" if harness is HarnessKind.BLADEAI else "streamable-http"
@@ -52,61 +53,98 @@ class McpSupervisor:
         log_root = self.private_root / trial_id / "mcp-logs"
         log_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         urls: dict[str, str] = {}
-        for name, port in ports.items():
-            if _port_open(port):
-                raise McpSupervisorError(f"MCP loopback port is already in use: {port}")
-            path = "/sse" if transport == "sse" else "/mcp"
-            resource = f"http://127.0.0.1:{port}{path}"
-            env = {
-                **os.environ,
-                **self.base_environment,
-                "RESBENCH_MCP_TOKEN": token,
-                "RESBENCH_MCP_TOKEN_STATE_FILE": str(token_state_files[name]),
-                "RESBENCH_MCP_TRANSPORT": transport,
-                "RESBENCH_MCP_HTTP_HOST": "127.0.0.1",
-                "RESBENCH_MCP_HTTP_PORT": str(port),
-                "RESBENCH_MCP_HTTP_PATH": path,
-                "RESBENCH_MCP_ISSUER_URL": "http://127.0.0.1:17999",
-                "RESBENCH_MCP_RESOURCE_URL": resource,
-                "RESBENCH_MCP_SCOPE": f"stage2:{trial_id}:{name}",
-            }
-            log = (log_root / f"{name}.log").open("ab")
-            self.logs.append(log)
-            process = subprocess.Popen(
-                [sys.executable, "-m", f"mcp_servers.{name}"],
-                stdin=subprocess.DEVNULL,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                env=env,
-            )
-            self.processes.append(process)
-            urls[name] = resource
-        for process, port in zip(self.processes, ports.values(), strict=True):
-            _wait_process_port(process, port, timeout=30)
+        selected = tuple(server.value for server in servers)
+        try:
+            for name in selected:
+                port = ports[name]
+                token_state_file = token_state_files.get(name)
+                if not token_state_file:
+                    raise McpSupervisorError(
+                        f"MCP token state was not provisioned for server: {name}"
+                    )
+                if _port_open(port):
+                    raise McpSupervisorError(
+                        f"MCP loopback port is already in use: {port}"
+                    )
+                path = "/sse" if transport == "sse" else "/mcp"
+                resource = f"http://127.0.0.1:{port}{path}"
+                env = {
+                    **os.environ,
+                    **self.base_environment,
+                    "RESBENCH_MCP_TOKEN": token,
+                    "RESBENCH_MCP_TOKEN_STATE_FILE": str(token_state_file),
+                    "RESBENCH_MCP_TRANSPORT": transport,
+                    "RESBENCH_MCP_HTTP_HOST": "127.0.0.1",
+                    "RESBENCH_MCP_HTTP_PORT": str(port),
+                    "RESBENCH_MCP_HTTP_PATH": path,
+                    "RESBENCH_MCP_ISSUER_URL": "http://127.0.0.1:17999",
+                    "RESBENCH_MCP_RESOURCE_URL": resource,
+                    "RESBENCH_MCP_SCOPE": f"stage2:{trial_id}:{name}",
+                }
+                log = (log_root / f"{name}.log").open("ab")
+                self.logs.append(log)
+                process = subprocess.Popen(
+                    [sys.executable, "-m", f"mcp_servers.{name}"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                )
+                self.processes.append(process)
+                _wait_process_port(process, port, timeout=30)
+                urls[name] = resource
+        except Exception:
+            self.stop()
+            raise
+
+        environment_names = {
+            "k8s_ro": (
+                "RESBENCH_K8S_MCP_URL",
+                "RESBENCH_BLADEAI_K8S_MCP_SSE_URL",
+            ),
+            "telemetry_ro": (
+                "RESBENCH_TELEMETRY_MCP_URL",
+                "RESBENCH_BLADEAI_TELEMETRY_MCP_SSE_URL",
+            ),
+            "source_ro": (
+                "RESBENCH_SOURCE_MCP_URL",
+                "RESBENCH_BLADEAI_SOURCE_MCP_SSE_URL",
+            ),
+            "chaos_control": (
+                "RESBENCH_CHAOS_CONTROL_MCP_URL",
+                "RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL",
+            ),
+        }
         return {
-            "RESBENCH_K8S_MCP_URL": urls["k8s_ro"],
-            "RESBENCH_TELEMETRY_MCP_URL": urls["telemetry_ro"],
-            "RESBENCH_SOURCE_MCP_URL": urls["source_ro"],
-            "RESBENCH_CHAOS_CONTROL_MCP_URL": urls["chaos_control"],
-            "RESBENCH_BLADEAI_K8S_MCP_SSE_URL": urls["k8s_ro"],
-            "RESBENCH_BLADEAI_TELEMETRY_MCP_SSE_URL": urls["telemetry_ro"],
-            "RESBENCH_BLADEAI_SOURCE_MCP_SSE_URL": urls["source_ro"],
-            "RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL": urls["chaos_control"],
+            env_name: urls[name]
+            for name in selected
+            for env_name in environment_names[name]
         }
 
     def stop(self) -> None:
         for process in reversed(self.processes):
             if process.poll() is None:
-                process.terminate()
+                try:
+                    process.terminate()
+                except OSError:
+                    pass
         for process in reversed(self.processes):
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+                try:
+                    process.kill()
+                    process.wait(timeout=5)
+                except OSError:
+                    pass
+            except OSError:
+                pass
         self.processes.clear()
         for log in self.logs:
-            log.close()
+            try:
+                log.close()
+            except OSError:
+                pass
         self.logs.clear()
 
 

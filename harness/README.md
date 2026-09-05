@@ -21,13 +21,15 @@ harness/
 ├── harnesses.yaml              # Agent/Harness adapter registry
 ├── models.yaml                 # LLM alias registry and capability probes
 ├── mcp-tools.yaml              # MCP tool surface exposed to agents
+├── permission-profiles/        # P0-P5 static permission profiles
 ├── codex/                      # Trial-local Codex MCP config template
 ├── claude-code/                # Strict Claude Code MCP config template
-├── bladeai/                    # v0.6.2 native-SSE verifier adapter
-├── deepseek-harness/           # Pinned DSH installer and Cordis MCP patch
-├── runner/                     # Uniform dry-run-first trial launcher contract
+├── bladeai/                    # Trial-local BladeAI SSE MCP template
+├── deepseek-harness/           # DSH Trial config and Cordis MCP patch
+├── runner/                     # Uniform trial launcher contract
 ├── schemas/
 │   ├── agent-result.schema.json # Common structured final result
+│   ├── permission-profile.schema.json # Static permission profile
 │   └── run-trace.schema.json    # Replayable trial trace contract
 └── prompts/
     ├── common-task.md          # Shared task envelope
@@ -56,3 +58,24 @@ prepare -> qualify -> baseline -> plan -> execute -> observe -> recover -> repor
 ```
 
 `controller/` owns phase transitions, safety checks, budgets, and cleanup. Harness adapters must stop when the controller revokes a tool, expires a budget, or requests cleanup.
+
+## Static permission profiles
+
+Stage-2 Campaign requests carry one `permission_profile`. The built-in P0-P5
+profiles live under `permission-profiles/` and are also available from:
+
+```text
+GET /api/v1/permission-profiles
+```
+
+The selected profile is applied before a Trial process starts:
+
+- Codex receives a filtered Trial-local `config.toml`;
+- Claude Code receives a filtered MCP JSON and matching `--allowedTools`;
+- DeepSeek Harness receives a filtered Trial-local Cordis patch;
+- BladeAI receives a Trial-local `$HOME/.blade-ai/mcp.json` plus independently
+  scoped native Kubernetes permissions.
+
+`p5-no-mcp` intentionally supplies no MCP token or endpoint to the Agent. A
+disabled MCP Server is omitted from the rendered configuration rather than
+merely described as disabled in the prompt.

@@ -9,6 +9,7 @@ from typing import Protocol
 from fastapi import FastAPI, HTTPException, status
 
 from .contracts import CampaignRequest, CampaignResult
+from .permission_profiles import load_permission_profiles
 
 
 class CampaignRunner(Protocol):
@@ -53,6 +54,14 @@ def create_app(supervisor: CampaignSupervisor) -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/v1/permission-profiles")
+    def permission_profiles() -> dict:
+        profiles = load_permission_profiles()
+        return {
+            "schema_version": "stage2-permission-profile-list.v1",
+            "profiles": [profile.model_dump(mode="json") for profile in profiles],
+        }
 
     @app.post("/api/v1/campaigns", status_code=status.HTTP_202_ACCEPTED)
     def create_campaign(request: CampaignRequest) -> dict[str, str]:

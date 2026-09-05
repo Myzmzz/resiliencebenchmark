@@ -1,55 +1,62 @@
 # BladeAI MCP Harness Adapter
 
-This adapter targets BladeAI v0.6.2 as an MCP client. The verified local source
-parses a Claude-style `mcp.json` with BladeAI extensions:
+The Stage-2 adapter runs BladeAI through its native Session/Turn/SSE service
+interface. It does not use the former fixed L4 worker that pre-filled a target,
+fault, and recovery policy.
 
-- root key: `mcpServers`
-- transports: `stdio` and `http`
-- `http` implementation: MCP SDK `sse_client`
-- phase attachment: `clarification`, `phase1`, `phase2`, `verifier`
-- enable switch: `BLADE_AI_MCP_ENABLED`
-- declared config path switch: `BLADE_AI_MCP_CONFIG_PATH`
+The host-qualified BladeAI `0.7.0` runtime is an MCP client. Its configuration
+uses a Claude-style `mcp.json` with BladeAI extensions:
 
-The important boundary is transport. BladeAI v0.6.2's `http` client uses the
-MCP SDK SSE client. The benchmark host runtime prepares native authenticated SSE
-listeners for BladeAI on loopback ports `18181-18183`. Live qualification
-connected all three read-only clients to `verifier`; `chaos_control` remained
-disabled and unconnected.
+- root key: `mcpServers`;
+- transports: `stdio` and `http`;
+- the current `http` client connects to an MCP SSE endpoint;
+- phase attachment: `clarification`, `phase1`, `phase2`, or `verifier`;
+- enable switch: `BLADE_AI_MCP_ENABLED`.
 
-## Template
+## Static permission profile behavior
 
-`mcp.json.template` wires the read-only benchmark MCP services:
+Every Trial receives a private `HOME`. The adapter renders the selected static
+permission profile to:
 
-- `k8s_ro`
-- `telemetry_ro`
-- `source_ro`
+```text
+$HOME/.blade-ai/mcp.json
+```
 
-Each server uses `transport: "http"`, a host-native SSE URL supplied by runtime
-rendering, and `Authorization: Bearer ${RESBENCH_MCP_TOKEN}`. The template
-attaches these tools only to `verifier`. This is conservative for v0.6.2 because
-BladeAI's target guard does not have a stable way to classify arbitrary dynamic
-MCP tools as read-only during planning or execution.
+Only selected MCP servers are written. When no MCP server is selected,
+`BLADE_AI_MCP_ENABLED=false` and no MCP token is passed to the BladeAI process.
+The configured path environment variable is also set for forward compatibility,
+but the standard `HOME` location remains authoritative for the current loader.
 
-`chaos_control` is present but disabled. ChaosBlade write actions for benchmark
-runs must be performed by the external benchmark controller after the controller
-budget token, target Pod UID, baseline capability, global ChaosBlade inventory,
-and cleanup handle gates pass.
+The read-only services are attached to both `clarification` and `verifier` so
+BladeAI can discover current evidence before planning and verify the outcome
+after execution:
 
-## Qualification
+- `k8s_ro`;
+- `telemetry_ro`;
+- `source_ro`.
 
-For a trial-local BladeAI run:
+`chaos_control` remains absent from the BladeAI MCP graph in this phase because
+BladeAI retains its native ChaosBlade execution path. That native path is
+controlled independently through the Trial's scoped Kubernetes identity and
+the `bladeai_native.chaosblade_execute` profile flag.
 
-1. Render `mcp.json.template` with runtime-only environment variables.
-2. Put the rendered file at `~/.blade-ai/mcp.json`.
-3. Set `BLADE_AI_MCP_ENABLED=true`.
-4. Set `BLADE_AI_MCP_CONFIG_PATH` to the rendered path for forward
-   compatibility, but do not rely on it alone for v0.6.2.
-5. Render the read-only URLs to the host-native authenticated SSE listeners on
-   loopback ports `18181-18183`.
-6. Start BladeAI and verify logs show MCP connections for `k8s_ro`,
-   `telemetry_ro`, and `source_ro`.
-7. Verify no BladeAI-visible `chaos_control` tools are connected.
+## Native permission controls
 
-The live host passed these read-only checks with BladeAI v0.6.2. The timed
-server smoke emitted a non-fatal cancel-scope warning while disconnecting after
-successful startup; scored trials still need complete BladeAI trajectory export.
+The same static profile independently controls:
+
+- `bladeai_native.kubernetes_read`;
+- `bladeai_native.kubernetes_metrics`;
+- `bladeai_native.chaosblade_execute`.
+
+The Permission Manager always creates a Trial-specific ServiceAccount and
+kubeconfig, but creates only the RoleBindings selected by the profile. This
+allows an MCP channel to be removed while retaining BladeAI's legal native
+alternative, or vice versa.
+
+## Qualification boundary
+
+The target host has produced real `tool_start` and `tool_end` evidence for the
+custom `k8s_ro` and `telemetry_ro` services. That proves client compatibility.
+The new Stage-2 Session adapter and all P0-P5 profiles still require the user's
+manual integration qualification before they can be described as deployed or
+used for formal scores.

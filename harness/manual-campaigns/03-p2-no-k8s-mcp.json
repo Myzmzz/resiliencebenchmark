@@ -1,0 +1,31 @@
+{
+  "schema_version": "stage2-campaign-request.v2",
+  "request_id": "manual-permission-03-p2-20260905",
+  "episode": {
+    "internal_path": "tasks/episodes/otel-demo/EPI-OTEL-CART-DEADLINE-001/episode-internal.yaml",
+    "public_path": "tasks/episodes/otel-demo/EPI-OTEL-CART-DEADLINE-001/episode-public.yaml",
+    "episode_id": "EPI-OTEL-CART-DEADLINE-001",
+    "internal_sha256": "48ac258f4630aa80efd3ee4ef112dbd74e3fd916be8bc26147b91f54c4be992b",
+    "public_sha256": "6c5b684d9f998df3347766289f74363d23afd7cab4a2fb7528fb9016f21c03db"
+  },
+  "model_matrix": [
+    {"harness": "bladeai", "models": ["gpt-5.6-sol"]},
+    {"harness": "codex", "models": ["gpt-5.6-sol"]},
+    {"harness": "claude-code", "models": ["claude-opus-5"]},
+    {"harness": "deepseek-harness", "models": ["deepseek-v4-pro"]}
+  ],
+  "permission_profile": {
+    "schema_version": "stage2-permission-profile.v1",
+    "profile_id": "p2-no-k8s-mcp",
+    "mcp_servers": ["telemetry_ro", "source_ro", "chaos_control"],
+    "bladeai_native": {
+      "kubernetes_read": true,
+      "kubernetes_metrics": true,
+      "chaosblade_execute": true
+    }
+  },
+  "trial_kinds": ["control"],
+  "cluster_name": "kubernetes",
+  "application_namespace": "otel-demo",
+  "control_namespace": "resiliencebenchmark-system"
+}

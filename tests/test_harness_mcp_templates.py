@@ -7,13 +7,14 @@ from pathlib import Path
 
 import yaml
 
-from scripts import benchmark_prepare
+from scripts import benchmark_prepare, run_harness_trial as trial
 
 
 CODEX_TEMPLATE = Path("harness/codex/config.toml.template")
 CLAUDE_TEMPLATE = Path("harness/claude-code/mcp.json.template")
 DSH_SETTINGS_TEMPLATE = Path("harness/deepseek-harness/settings.yaml.template")
 DSH_MCP_PATCH = Path("harness/deepseek-harness/mcp.cordis.patch.yml")
+BLADEAI_TEMPLATE = Path("harness/bladeai/mcp.json.template")
 EXPECTED_ENDPOINTS = {
     "k8s_ro": "RESBENCH_K8S_MCP_URL",
     "telemetry_ro": "RESBENCH_TELEMETRY_MCP_URL",
@@ -122,11 +123,91 @@ def test_readmes_document_trial_isolation_and_launch_boundaries():
 
 def test_claude_headless_adapter_explicitly_allows_only_mcp_servers():
     harnesses = yaml.safe_load(Path("harness/harnesses.yaml").read_text(encoding="utf-8"))
-    args = harnesses["harnesses"]["claude-code"]["entrypoint"]["args"]
+    definition = harnesses["harnesses"]["claude-code"]
+    args = definition["entrypoint"]["args"]
 
     assert args[args.index("--tools") + 1] == ""
-    allowed = set(args[args.index("--allowedTools") + 1].split(","))
-    assert allowed == {f"mcp__{name}" for name in EXPECTED_ENDPOINTS}
+    assert args[args.index("--allowedTools") + 1] == "{{allowed_mcp_tools}}"
+    argv, _stdin, error = trial.build_argv(
+        "claude-code",
+        definition,
+        "claude-opus-5",
+        "task",
+        {"mcp_config_file": Path("/tmp/mcp.json")},
+        ("k8s_ro", "source_ro"),
+    )
+    assert error is None
+    allowed = set(argv[argv.index("--allowedTools") + 1].split(","))
+    assert allowed == {"mcp__k8s_ro", "mcp__source_ro"}
+
+
+def test_static_permission_profile_filters_all_four_harness_configs(tmp_path):
+    allowed = ("k8s_ro", "source_ro")
+    env = {
+        "RESBENCH_LLM_BASE_URL": "https://gateway.example/v1",
+        "RESBENCH_K8S_MCP_URL": "http://127.0.0.1:18081/mcp",
+        "RESBENCH_SOURCE_MCP_URL": "http://127.0.0.1:18083/mcp",
+    }
+
+    codex = trial.render_codex_config(
+        Path("."), tmp_path / "codex", env, allowed
+    ).read_text(encoding="utf-8")
+    claude = json.loads(
+        trial.render_claude_config(
+            Path("."), tmp_path / "claude", allowed
+        ).read_text(encoding="utf-8")
+    )
+    trial.render_dsh_contract(
+        Path("."), tmp_path / "dsh", env, "deepseek-v4-pro", allowed
+    )
+    dsh = (tmp_path / "dsh/cordis.patch.yml").read_text(encoding="utf-8")
+    bladeai = json.loads(
+        trial.render_bladeai_config(
+            Path("."), tmp_path / "bladeai", allowed
+        ).read_text(encoding="utf-8")
+    )
+
+    assert set(
+        re.findall(r"^\[mcp_servers\.([a-z0-9_]+)\]$", codex, re.MULTILINE)
+    ) == set(allowed)
+    assert set(claude["mcpServers"]) == set(allowed)
+    assert set(re.findall(r"serverName:\s*([a-z0-9_]+)", dsh)) == set(allowed)
+    assert set(bladeai["mcpServers"]) == set(allowed)
+    assert (tmp_path / "bladeai/.blade-ai/mcp.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_empty_static_permission_profile_renders_no_mcp_servers(tmp_path):
+    env = {"RESBENCH_LLM_BASE_URL": "https://gateway.example/v1"}
+
+    codex = trial.render_codex_config(
+        Path("."), tmp_path / "codex", env, ()
+    ).read_text(encoding="utf-8")
+    claude = json.loads(
+        trial.render_claude_config(
+            Path("."), tmp_path / "claude", ()
+        ).read_text(encoding="utf-8")
+    )
+    trial.render_dsh_contract(
+        Path("."), tmp_path / "dsh", env, "deepseek-v4-pro", ()
+    )
+    dsh = (tmp_path / "dsh/cordis.patch.yml").read_text(encoding="utf-8")
+
+    assert "[mcp_servers." not in codex
+    assert claude["mcpServers"] == {}
+    assert "serverName:" not in dsh
+    assert "- insert:" not in dsh
+
+
+def test_bladeai_read_only_mcp_is_available_for_discovery_and_verification():
+    document = json.loads(BLADEAI_TEMPLATE.read_text(encoding="utf-8"))
+
+    for name in ("k8s_ro", "telemetry_ro", "source_ro"):
+        assert document["mcpServers"][name]["attach_to"] == [
+            "clarification",
+            "verifier",
+        ]
+    assert document["mcpServers"]["chaos_control"]["enabled"] is False
+    assert document["mcpServers"]["chaos_control"]["attach_to"] == []
 
 
 def test_deepseek_headless_templates_select_model_and_disable_builtin_tools():
@@ -137,6 +218,13 @@ def test_deepseek_headless_templates_select_model_and_disable_builtin_tools():
         "provider": "benchmark-gateway",
         "model": "__RESBENCH_MODEL_ALIAS__",
     }
+    provider_models = {
+        value["id"]
+        for value in settings["llm-pi-ai"]["providers"]["benchmark-gateway"][
+            "models"
+        ]
+    }
+    assert "gpt-5.6-sol" in provider_models
     disabled = {item["id"] for item in patch if isinstance(item, dict) and item.get("disabled") is True}
     assert {"code-runtime", "tool-bash", "tool-pwsh", "tool-fs", "tool-web", "tool-subagent"} <= disabled
     inserted = next(item["insert"] for item in patch if isinstance(item, dict) and "insert" in item)

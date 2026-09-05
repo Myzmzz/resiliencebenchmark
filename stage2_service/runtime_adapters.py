@@ -152,6 +152,28 @@ class McpTokenStateRegistry:
         _atomic_token(self._path(trial_id, server), token)
         return {"server": server, "capability": capability, "verified": True}
 
+    def cleanup(self, trial_id: str) -> dict[str, Any]:
+        prefix = f"{trial_id}:"
+        removed_servers = sorted(
+            key.removeprefix(prefix)
+            for key in tuple(self._original)
+            if key.startswith(prefix)
+        )
+        for server in removed_servers:
+            self._original.pop(f"{trial_id}:{server}", None)
+            self._path(trial_id, server).unlink(missing_ok=True)
+        directory = self.root / trial_id
+        if directory.is_dir():
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+        return {
+            "trial_id": trial_id,
+            "removed_servers": removed_servers,
+            "verified": not directory.exists(),
+        }
+
     def _path(self, trial_id: str, server: str) -> Path:
         if not trial_id.startswith("campaign-") or server not in {
             "k8s_ro",
@@ -166,12 +188,29 @@ class McpTokenStateRegistry:
 
 
 class RbacPermissionBackend(Protocol):
+    def revoke_read(self, trial_id: str) -> dict[str, Any]: ...
+
+    def restore_read(self, trial_id: str) -> dict[str, Any]: ...
+
     def revoke_metrics(self, trial_id: str) -> dict[str, Any]: ...
 
     def restore_metrics(self, trial_id: str) -> dict[str, Any]: ...
 
+    def revoke_chaos(self, trial_id: str) -> dict[str, Any]: ...
+
+    def restore_chaos(self, trial_id: str) -> dict[str, Any]: ...
+
+    def revoke_observability(self, trial_id: str) -> dict[str, Any]: ...
+
+    def restore_observability(self, trial_id: str) -> dict[str, Any]: ...
+
 
 class CompositeDisturbanceExecutor:
+    BLADEAI_OBSERVABILITY_MCP_CAPABILITIES = (
+        "mcp.k8s.read",
+        "mcp.telemetry.read",
+    )
+
     def __init__(
         self,
         *,
@@ -204,15 +243,7 @@ class CompositeDisturbanceExecutor:
                 },
             )
         if plan.type is DisturbanceType.PERMISSION_CHANGE:
-            capability = str(plan.parameters["revoke_capability"])
-            if plan.backend == "mcp_policy":
-                evidence = self.mcp_tokens.revoke(plan.trial_id, capability)
-            elif plan.backend == "kubernetes_rbac" and capability == "metrics.k8s.io":
-                if self.rbac_permissions is None:
-                    raise RuntimeAdapterError("Kubernetes RBAC backend is unavailable")
-                evidence = self.rbac_permissions.revoke_metrics(plan.trial_id)
-            else:
-                raise RuntimeAdapterError("unsupported permission disturbance backend")
+            evidence = self._apply_permission_change(plan)
             return DisturbanceRecord(
                 plan=plan,
                 applied=True,
@@ -222,15 +253,7 @@ class CompositeDisturbanceExecutor:
 
     def rollback(self, record: DisturbanceRecord) -> DisturbanceRecord:
         if record.plan.type is DisturbanceType.PERMISSION_CHANGE:
-            capability = str(record.plan.parameters["revoke_capability"])
-            if record.plan.backend == "mcp_policy":
-                evidence = self.mcp_tokens.restore(record.plan.trial_id, capability)
-            elif record.plan.backend == "kubernetes_rbac" and capability == "metrics.k8s.io":
-                if self.rbac_permissions is None:
-                    raise RuntimeAdapterError("Kubernetes RBAC backend is unavailable")
-                evidence = self.rbac_permissions.restore_metrics(record.plan.trial_id)
-            else:
-                raise RuntimeAdapterError("unsupported permission restoration backend")
+            evidence = self._restore_permission_change(record.plan)
             return record.model_copy(
                 update={"rolled_back": True, "rollback_evidence": evidence}
             )
@@ -240,6 +263,111 @@ class CompositeDisturbanceExecutor:
                 "rollback_evidence": {"deferred_to_environment_reset": True},
             }
         )
+
+    def _apply_permission_change(self, plan) -> dict[str, Any]:
+        capability = str(plan.parameters["revoke_capability"])
+        if plan.backend == "mcp_policy":
+            return self.mcp_tokens.revoke(plan.trial_id, capability)
+        if plan.backend == "kubernetes_rbac":
+            backend = self._rbac_backend()
+            operation = {
+                "k8s.read": backend.revoke_read,
+                "metrics.k8s.io": backend.revoke_metrics,
+                "native.blade.create": backend.revoke_chaos,
+            }.get(capability)
+            if operation is None:
+                raise RuntimeAdapterError(
+                    f"unsupported Kubernetes RBAC capability: {capability}"
+                )
+            return operation(plan.trial_id)
+        if plan.backend == "composite" and capability == "bladeai.observability.all":
+            backend = self._rbac_backend()
+            mcp = self._revoke_mcp_capabilities(
+                plan.trial_id, self.BLADEAI_OBSERVABILITY_MCP_CAPABILITIES
+            )
+            try:
+                kubernetes = backend.revoke_observability(plan.trial_id)
+            except Exception:
+                self._restore_mcp_capabilities(
+                    plan.trial_id, self.BLADEAI_OBSERVABILITY_MCP_CAPABILITIES
+                )
+                raise
+            return {
+                "capability": capability,
+                "revoked": True,
+                "mcp": mcp,
+                "kubernetes": kubernetes,
+            }
+        raise RuntimeAdapterError("unsupported permission disturbance backend")
+
+    def _restore_permission_change(self, plan) -> dict[str, Any]:
+        capability = str(plan.parameters["revoke_capability"])
+        if plan.backend == "mcp_policy":
+            return self.mcp_tokens.restore(plan.trial_id, capability)
+        if plan.backend == "kubernetes_rbac":
+            backend = self._rbac_backend()
+            operation = {
+                "k8s.read": backend.restore_read,
+                "metrics.k8s.io": backend.restore_metrics,
+                "native.blade.create": backend.restore_chaos,
+            }.get(capability)
+            if operation is None:
+                raise RuntimeAdapterError(
+                    f"unsupported Kubernetes RBAC capability: {capability}"
+                )
+            return operation(plan.trial_id)
+        if plan.backend == "composite" and capability == "bladeai.observability.all":
+            backend = self._rbac_backend()
+            kubernetes = backend.restore_observability(plan.trial_id)
+            try:
+                mcp = self._restore_mcp_capabilities(
+                    plan.trial_id, self.BLADEAI_OBSERVABILITY_MCP_CAPABILITIES
+                )
+            except Exception:
+                backend.revoke_observability(plan.trial_id)
+                raise
+            return {
+                "capability": capability,
+                "verified": True,
+                "mcp": mcp,
+                "kubernetes": kubernetes,
+            }
+        raise RuntimeAdapterError("unsupported permission restoration backend")
+
+    def _rbac_backend(self) -> RbacPermissionBackend:
+        if self.rbac_permissions is None:
+            raise RuntimeAdapterError("Kubernetes RBAC backend is unavailable")
+        return self.rbac_permissions
+
+    def _revoke_mcp_capabilities(
+        self, trial_id: str, capabilities: tuple[str, ...]
+    ) -> dict[str, Any]:
+        evidence: dict[str, Any] = {}
+        try:
+            for capability in capabilities:
+                evidence[capability] = self.mcp_tokens.revoke(
+                    trial_id, capability
+                )
+        except Exception:
+            for capability in reversed(tuple(evidence)):
+                self.mcp_tokens.restore(trial_id, capability)
+            raise
+        return evidence
+
+    def _restore_mcp_capabilities(
+        self, trial_id: str, capabilities: tuple[str, ...]
+    ) -> dict[str, Any]:
+        evidence: dict[str, Any] = {}
+        try:
+            for capability in capabilities:
+                evidence[capability] = self.mcp_tokens.restore(
+                    trial_id, capability
+                )
+        except Exception:
+            for capability in reversed(tuple(evidence)):
+                self.mcp_tokens.revoke(trial_id, capability)
+            raise
+        return evidence
 
 
 def _validate_token(token: str) -> None:

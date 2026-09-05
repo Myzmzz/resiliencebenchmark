@@ -65,11 +65,16 @@ class RuntimeDisturbancePlanner:
             capability = next((str(item) for item in dependencies if str(item)), "")
             if not capability:
                 return None
-            backend = (
-                "kubernetes_rbac"
-                if capability.startswith("k8s.") or capability == "metrics.k8s.io"
-                else "mcp_policy"
-            )
+            if capability == "bladeai.observability.all":
+                backend = "composite"
+            elif capability in {
+                "k8s.read",
+                "metrics.k8s.io",
+                "native.blade.create",
+            }:
+                backend = "kubernetes_rbac"
+            else:
+                backend = "mcp_policy"
             return DisturbancePlan(
                 disturbance_id=_id(event, "permission"),
                 trial_id=event.trial_id,

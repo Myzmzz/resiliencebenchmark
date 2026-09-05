@@ -37,6 +37,20 @@ variables. Execute mode requires all seven variables, validates every URL as
 plain `http(s)` without userinfo/query/fragment, and requires a 32-character or
 longer MCP token with no whitespace.
 
+Formal Trials and interactive debugging must use different launchers. The
+formal names are `codex`, `claude`, and `dsh`; they are resolved only through the
+runner's fixed `SAFE_PATH`, must be root-owned and non-writable by group/other,
+and are launched by a non-root OS user. The runner rejects launchers or argv that
+contain global MCP configuration, static-token loading, or permission-bypass
+markers. It also verifies that the active Home and MCP configuration are under
+the current Trial-private directory and that the child receives exactly the
+current Trial MCP token.
+
+Operator-owned interactive launchers such as `claude-manual` and `dsh-manual`
+may load persistent credentials or relaxed permission settings, but the formal
+runner never resolves those names. A Trial that cannot satisfy this separation
+fails before the Agent process starts; it must not be scored as an Agent failure.
+
 The runner maps those values to the real CLI environment expected by each
 harness:
 
@@ -49,23 +63,49 @@ harness:
 - DeepSeek Harness keeps the seven `RESBENCH_*` variables, receives
   `DSH_HOME`, and sets `DSH_TOOLS_MODE=native`.
 
+Stage-2 Campaigns use the `stage2-campaign-request.v2` model matrix. A Harness
+selection may contain multiple models; each Harness-model pair receives its own
+complete Control and disturbance Trial sequence:
+
+```yaml
+model_matrix:
+  - harness: codex
+    models: [gpt-5.6, gpt-5.6-sol, gpt-5.5]
+  - harness: claude-code
+    models: [claude-opus-5, deepseek-v4-pro]
+  - harness: deepseek-harness
+    models: [deepseek-v4-pro, claude-opus-5]
+  - harness: bladeai
+    models: [gpt-5.6, claude-opus-5]
+```
+
+The matrix compiler freezes the model registry SHA-256 and selects only a
+protocol declared by both the model and Harness. Codex requires Responses,
+Claude Code requires Anthropic Messages, and DeepSeek Harness/BladeAI require
+OpenAI Chat Completions. Unknown or incompatible cells block before environment
+qualification. The production Stage-2 runtime also requires the alias or
+upstream id to appear in the gateway `/models` catalog before any Trial starts.
+Trial results record requested alias, upstream model, protocol, registry digest,
+provider-reported model when available, and identity verification. A provider
+identity mismatch makes the Trial `CASE_INVALID` rather than an Agent failure.
+
 Codex gets a rendered trial-local `CODEX_HOME/config.toml` with MCP URLs but
 only the token environment variable name. Claude Code gets a trial-local MCP
 JSON copied from the template so `${...}` expansion remains owned by Claude.
-DeepSeek Harness uses the verified `@deepseek-ai/dsh@0.1.0-rc.7` headless
-single-run contract. The runner renders `DSH_HOME/settings.yaml` from the pinned
-template, including `agent-default-model`, copies `DSH_HOME/cordis.patch.yml`,
-and launches:
+DeepSeek Harness is supplied by the evaluation environment. The runner renders
+`DSH_HOME/settings.yaml` from the adapter template, including
+`agent-default-model`, copies `DSH_HOME/cordis.patch.yml`, and launches the
+environment-provided command:
 
 ```bash
 dsh --profile headless "<public prompt>"
 ```
 
-The verified headless contract guarantees final text and exit status, but a
+The expected headless contract provides final text and exit status, but a
 complete machine-readable DSH tool transcript has not yet been qualified on the
-target host. DSH execute mode is therefore suitable for installation/MCP smoke
-only; it cannot enter scored cross-Harness results until the session tool trace
-is exported, redacted, and validated before `DSH_HOME` deletion.
+target environment. DSH cannot enter scored cross-Harness results until the
+session tool trace is exported, redacted, and validated before `DSH_HOME`
+deletion. Installation success is not a Benchmark result.
 
 The official headless CLI accepts the task as an argv argument. That means the
 prompt can appear in a local process listing while the process is running, so

@@ -36,3 +36,44 @@ def test_single_service_accepts_and_returns_campaign_result():
             break
     assert result.status_code == 200
     assert result.json()["status"] == "COMPLETED"
+
+
+def test_stage2_api_lists_static_permission_profiles():
+    client = TestClient(create_app(CampaignSupervisor(Runner())))
+
+    response = client.get("/api/v1/permission-profiles")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "stage2-permission-profile-list.v1"
+    assert {item["profile_id"] for item in payload["profiles"]} == {
+        "p0-full-authorized",
+        "p1-no-telemetry-mcp",
+        "p2-no-k8s-mcp",
+        "p3-read-only",
+        "p4-no-native-k8s-metrics",
+        "p5-no-mcp",
+    }
+
+
+def test_stage2_api_rejects_obsolete_single_model_request_contract():
+    client = TestClient(create_app(CampaignSupervisor(Runner())))
+    request = _request().model_dump(mode="json")
+    request["schema_version"] = "stage2-campaign-request.v1"
+    request["harnesses"] = ["codex"]
+    request["model_by_harness"] = {"codex": "gpt-5.6"}
+    request.pop("model_matrix")
+
+    response = client.post("/api/v1/campaigns", json=request)
+
+    assert response.status_code == 422
+
+
+def test_stage2_api_rejects_static_or_disturbance_sequences_without_control_first():
+    client = TestClient(create_app(CampaignSupervisor(Runner())))
+    request = _request().model_dump(mode="json")
+    request["trial_kinds"] = ["permission_change"]
+
+    response = client.post("/api/v1/campaigns", json=request)
+
+    assert response.status_code == 422

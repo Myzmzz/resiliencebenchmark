@@ -46,6 +46,9 @@ evaluator = ["schemas/*.json"]
 scoring = ["schemas/*.json"]
 harness = [
   "*.yaml",
+  "permission-profiles/*.yaml",
+  "permission-profiles/*.md",
+  "bladeai/*.template",
   "codex/*.template",
   "claude-code/*.template",
   "deepseek-harness/*.template",

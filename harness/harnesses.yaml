@@ -10,6 +10,8 @@ shared:
     retain_raw_transcript: true
     redact_secret_patterns: true
   allowed_mcp_tools_ref: mcp-tools.yaml
+  permission_profiles_dir: permission-profiles
+  permission_profile_schema: schemas/permission-profile.schema.json
   mcp_client_templates:
     bladeai: bladeai/mcp.json.template
     codex: codex/config.toml.template
@@ -32,20 +34,22 @@ shared:
 harnesses:
   bladeai:
     kind: bladeai
-    status: live_read_only_sse_qualified
-    qualification_status: passed_with_nonfatal_shutdown_warning
+    status: static_permission_profile_implemented
+    qualification_status: manual_stage2_integration_pending
     entrypoint:
-      mode: cli_or_service
-      command: blade-ai
+      mode: trial_local_session_service
+      command: python
       prompt_transport: adapter_owned
-      args: []
+      args:
+        - -m
+        - chaos_agent.server.app
     mcp:
       template: bladeai/mcp.json.template
       qualification: bladeai/qualification.yaml
       env_example: bladeai/env.example
       enabled_flag: env:BLADE_AI_MCP_ENABLED
       config_path_flag: env:BLADE_AI_MCP_CONFIG_PATH
-      config_path_status: declared_but_bladeai_v0_6_2_loader_uses_home_default
+      config_path_status: trial_home_default_is_authoritative
       transport_status: native_sse_runtime_live_qualified_read_only
       host_native_sse_listeners:
         k8s_ro: 127.0.0.1:18181
@@ -57,16 +61,20 @@ harnesses:
         - source_ro
       attach_to:
         k8s_ro:
+          - clarification
           - verifier
         telemetry_ro:
+          - clarification
           - verifier
         source_ro:
+          - clarification
           - verifier
       chaos_control: disabled_in_bladeai_external_controller_only
     models:
       source: models.yaml
       candidate_aliases_requiring_probe:
         - gpt-5.6
+        - gpt-5.6-sol
         - deepseek-v4-pro
         - qwen3.8-max
         - claude-opus-5
@@ -100,7 +108,7 @@ harnesses:
         - --tools
         - ""
         - --allowedTools
-        - mcp__k8s_ro,mcp__telemetry_ro,mcp__source_ro,mcp__chaos_control
+        - "{{allowed_mcp_tools}}"
     environment:
       anthropic_base_url: env:RESBENCH_LLM_BASE_URL
       anthropic_api_key: env:RESBENCH_LLM_API_KEY
@@ -141,6 +149,7 @@ harnesses:
       source: models.yaml
       candidate_aliases_requiring_probe:
         - gpt-5.6
+        - gpt-5.6-sol
         - deepseek-v4-pro
         - qwen3.8-max
         - claude-opus-5
@@ -155,22 +164,9 @@ harnesses:
   deepseek-harness:
     kind: official_deepseek_harness
     status: live_connectivity_smoke_qualified_tool_trace_pending
-    version_pin:
-      upstream: "@deepseek-ai/dsh"
-      distribution: npm
-      channel: developer_preview
-      package_version: 0.1.0-rc.7
-      npm_dist_tag_policy: do_not_use_latest
-      npm_integrity: sha512-ZceDCJ8FAywih+USW/OMk9jEhunlvJBGEz4kqrhau23hPzbciOazZrywH0nBRsaalSeAJ1JGBmjtw4OSjToStw==
-      runtime_lock: deepseek-harness/runtime-lock/package-lock.json
-      runtime_lock_sha256: 3fd8d9fe3f91cc780d70dc443977edf077e054c756c1eb248b63fe2e64ad9f72
-      git_tag: dsh-v0.1.0-rc.7
-      commit: 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
-      verification_status: source_top_level_integrity_transitive_lock_and_remote_identity_passed
-      note: Developer preview pin supplied by environment-prep inventory; install exactly this version and integrity for repeatable trials.
     entrypoint:
       mode: headless_cli
-      command: /opt/resiliencebenchmark/deepseek-harness/bin/dsh
+      command: dsh
       prompt_transport: single_positional_argument
       args:
         - --profile

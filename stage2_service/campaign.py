@@ -1,4 +1,4 @@
-"""Autonomous Campaign engine for one fixed Episode and four native Harnesses."""
+"""Autonomous Campaign engine for one fixed Episode and a Harness-model matrix."""
 
 from __future__ import annotations
 
@@ -16,7 +16,9 @@ from .contracts import (
     DisturbanceRecord,
     HarnessKind,
     HarnessReport,
+    ModelEvaluationSummary,
     PlatformStatus,
+    PermissionProfile,
     RecoveryResult,
     TrialKind,
     TrialResult,
@@ -24,6 +26,7 @@ from .contracts import (
 )
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
+from .model_matrix import ModelMatrixCompiler, ModelMatrixError, bind_provider_identity
 
 
 EventObserver = Callable[[Any], None]
@@ -41,6 +44,7 @@ class PermissionManager(Protocol):
         harness: HarnessKind,
         episode: LoadedEpisode,
         runtime: TrialRuntimeContext,
+        permission_profile: PermissionProfile,
     ) -> CapabilityProfile: ...
 
     def restore(self, trial_id: str) -> Mapping[str, Any]: ...
@@ -92,12 +96,6 @@ class TrialPreparer(Protocol):
 
 
 class CampaignEngine:
-    TRIAL_ORDER = (
-        TrialKind.CONTROL,
-        TrialKind.TARGET_CHANGE,
-        TrialKind.PERMISSION_CHANGE,
-    )
-
     def __init__(
         self,
         *,
@@ -112,6 +110,7 @@ class CampaignEngine:
         evaluator: TrialEvaluator,
         resetter: EnvironmentResetter,
         artifacts: ArtifactStore,
+        model_matrix: ModelMatrixCompiler,
     ):
         self.episode = episode
         self.environment_gate = environment_gate
@@ -124,12 +123,41 @@ class CampaignEngine:
         self.evaluator = evaluator
         self.resetter = resetter
         self.artifacts = artifacts
+        self.model_matrix = model_matrix
 
     def run(self, request: CampaignRequest) -> CampaignResult:
         started_at = datetime.now(UTC)
         campaign_id = f"campaign-{uuid4().hex[:16]}"
         results: list[TrialResult] = []
         try:
+            self.artifacts.write(
+                campaign_id,
+                "campaign/request.json",
+                request.model_dump(mode="json"),
+            )
+            try:
+                variants = self.model_matrix.compile(request)
+            except ModelMatrixError as exc:
+                return self._finish(
+                    campaign_id,
+                    request,
+                    started_at,
+                    PlatformStatus.BLOCKED,
+                    results,
+                    str(exc),
+                )
+            self.artifacts.write(
+                campaign_id,
+                "campaign/model-matrix.json",
+                [
+                    {
+                        "variant_id": variant.variant_id,
+                        "harness": variant.harness.value,
+                        "model_identity": variant.identity.model_dump(mode="json"),
+                    }
+                    for variant in variants
+                ],
+            )
             qualification = dict(self.environment_gate.qualify(self.episode))
             self.artifacts.write(campaign_id, "environment/qualification.json", qualification)
             if qualification.get("qualified") is not True:
@@ -141,15 +169,11 @@ class CampaignEngine:
                     results,
                     "remote environment prerequisites are not satisfied",
                 )
-            self.artifacts.write(
-                campaign_id,
-                "campaign/request.json",
-                request.model_dump(mode="json"),
-            )
-            for harness in request.harnesses:
+            for variant in variants:
+                harness = variant.harness
                 control_passed = True
-                for index, kind in enumerate(self.TRIAL_ORDER, start=1):
-                    trial_id = f"{campaign_id}-{harness.value}-t{index}"
+                for index, kind in enumerate(request.trial_kinds, start=1):
+                    trial_id = f"{campaign_id}-{variant.variant_id}-t{index}"
                     runtime: TrialRuntimeContext | None = None
                     report: HarnessReport | None = None
                     recovery: RecoveryResult | None = None
@@ -169,6 +193,7 @@ class CampaignEngine:
                             harness,
                             self.episode,
                             runtime,
+                            request.permission_profile,
                         )
                         self.artifacts.write(
                             campaign_id,
@@ -187,11 +212,14 @@ class CampaignEngine:
                             campaign_id=campaign_id,
                             trial_id=trial_id,
                             harness=harness,
-                            model_alias=request.model_by_harness[harness],
+                            model_alias=variant.identity.requested_alias,
                             episode=self.episode,
                             runtime_context=runtime,
                             capability=capability,
                             event_observer=observe,
+                        )
+                        model_identity = bind_provider_identity(
+                            variant.identity, report.provider_reported_model
                         )
                         recovery = self.finalizer.finalize(
                             trial_id, self.episode, runtime, report
@@ -223,6 +251,7 @@ class CampaignEngine:
                                 kind is TrialKind.CONTROL
                                 or len(disturbance_records) == 1
                             )
+                            and model_identity.verification != "provider_mismatch"
                         )
                         refs = [
                             self.artifacts.write(
@@ -250,6 +279,8 @@ class CampaignEngine:
                         result = TrialResult(
                             trial_id=trial_id,
                             harness=harness,
+                            permission_profile_id=request.permission_profile.profile_id,
+                            model_identity=model_identity,
                             kind=kind,
                             runtime_target=runtime.target,
                             platform_valid=platform_valid,
@@ -428,11 +459,47 @@ class CampaignEngine:
         results: list[TrialResult],
         error: str | None = None,
     ) -> CampaignResult:
+        grouped: dict[tuple[HarnessKind, str], list[TrialResult]] = {}
+        for trial in results:
+            key = (trial.harness, trial.model_identity.requested_alias)
+            grouped.setdefault(key, []).append(trial)
+        model_summaries: list[ModelEvaluationSummary] = []
+        for (harness, _alias), trials in grouped.items():
+            identity = trials[0].model_identity
+            valid = [trial for trial in trials if trial.platform_valid]
+            pass_count = sum(
+                trial.agent_verdict is AgentVerdict.PASS for trial in valid
+            )
+            model_summaries.append(
+                ModelEvaluationSummary(
+                    harness=harness,
+                    requested_alias=identity.requested_alias,
+                    upstream_model=identity.upstream_model,
+                    provider_protocol=identity.provider_protocol,
+                    registry_sha256=identity.registry_sha256,
+                    total_trials=len(trials),
+                    valid_trials=len(valid),
+                    pass_count=pass_count,
+                    fail_count=sum(
+                        trial.agent_verdict is AgentVerdict.FAIL for trial in valid
+                    ),
+                    inconclusive_count=sum(
+                        trial.agent_verdict is AgentVerdict.INCONCLUSIVE
+                        for trial in valid
+                    ),
+                    case_invalid_count=sum(
+                        trial.agent_verdict is AgentVerdict.CASE_INVALID
+                        for trial in trials
+                    ),
+                    pass_rate=pass_count / len(valid) if valid else None,
+                )
+            )
         return CampaignResult(
             campaign_id=campaign_id,
             request_id=request.request_id,
             platform_status=status,
             trials=tuple(results),
+            model_summaries=tuple(model_summaries),
             started_at=started_at,
             finished_at=datetime.now(UTC),
             error=error,

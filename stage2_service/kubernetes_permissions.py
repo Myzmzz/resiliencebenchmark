@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+from .contracts import BladeAINativePermissions
+
 
 class KubernetesPermissionError(RuntimeError):
     pass
@@ -19,6 +21,7 @@ class KubernetesPermissionBackend:
     CONTROL_NAMESPACE = "resiliencebenchmark-system"
     APPLICATION_NAMESPACE = "otel-demo"
     TOKEN_AUDIENCE = "https://kubernetes.default.svc.cluster.local"
+    CHAOS_CLUSTER_ROLE = "resbench-mcp-chaos-global-control"
 
     def __init__(self, core_api: Any, rbac_api: Any, auth_api: Any):
         self.core_api = core_api
@@ -40,7 +43,9 @@ class KubernetesPermissionBackend:
             client.AuthenticationV1Api(),
         )
 
-    def provision_bladeai(self, trial_id: str) -> dict[str, Any]:
+    def provision_bladeai(
+        self, trial_id: str, permissions: BladeAINativePermissions
+    ) -> dict[str, Any]:
         from kubernetes import client
         from kubernetes.client.rest import ApiException
 
@@ -75,20 +80,31 @@ class KubernetesPermissionBackend:
                 verbs=["get", "list"],
             )
         ]
-        self._create_or_replace_role(read_role, read_rules, labels)
-        self._create_or_replace_role(metrics_role, metrics_rules, labels)
-        self._create_or_replace_binding(
-            read_binding, read_role, service_account, labels
-        )
-        self._create_or_replace_binding(
-            metrics_binding, metrics_role, service_account, labels
-        )
-        self._create_or_replace_cluster_binding(
-            chaos_binding,
-            "resbench-mcp-chaos-global-control",
-            service_account,
-            labels,
-        )
+        if permissions.kubernetes_read:
+            self._create_or_replace_role(read_role, read_rules, labels)
+            self._create_or_replace_binding(
+                read_binding, read_role, service_account, labels
+            )
+        else:
+            self._delete_namespaced_binding(read_binding)
+            self._delete_namespaced_role(read_role)
+        if permissions.kubernetes_metrics:
+            self._create_or_replace_role(metrics_role, metrics_rules, labels)
+            self._create_or_replace_binding(
+                metrics_binding, metrics_role, service_account, labels
+            )
+        else:
+            self._delete_namespaced_binding(metrics_binding)
+            self._delete_namespaced_role(metrics_role)
+        if permissions.chaosblade_execute:
+            self._create_or_replace_cluster_binding(
+                chaos_binding,
+                self.CHAOS_CLUSTER_ROLE,
+                service_account,
+                labels,
+            )
+        else:
+            self._delete_cluster_binding(chaos_binding)
         return {
             "service_account": service_account,
             "read_role": read_role,
@@ -96,13 +112,110 @@ class KubernetesPermissionBackend:
             "read_binding": read_binding,
             "metrics_binding": metrics_binding,
             "chaos_binding": chaos_binding,
+            "permissions": permissions.model_dump(mode="json"),
             "provisioned": True,
         }
 
+    def revoke_read(self, trial_id: str) -> dict[str, Any]:
+        state = self._state(trial_id)
+        self._delete_namespaced_binding(state["read_binding"])
+        return {
+            "capability": "k8s.read",
+            "binding": state["read_binding"],
+            "revoked": True,
+        }
+
+    def restore_read(self, trial_id: str) -> dict[str, Any]:
+        state = self._state(trial_id)
+        self._create_or_replace_binding(
+            state["read_binding"],
+            state["read_role"],
+            state["service_account"],
+            self._labels(state),
+        )
+        return {
+            "capability": "k8s.read",
+            "binding": state["read_binding"],
+            "verified": True,
+        }
+
     def revoke_metrics(self, trial_id: str) -> dict[str, Any]:
+        state = self._state(trial_id)
+        self._delete_namespaced_binding(state["metrics_binding"])
+        return {
+            "capability": "metrics.k8s.io",
+            "binding": state["metrics_binding"],
+            "revoked": True,
+        }
+
+    def restore_metrics(self, trial_id: str) -> dict[str, Any]:
+        state = self._state(trial_id)
+        self._create_or_replace_binding(
+            state["metrics_binding"],
+            state["metrics_role"],
+            state["service_account"],
+            self._labels(state),
+        )
+        return {
+            "capability": "metrics.k8s.io",
+            "binding": state["metrics_binding"],
+            "verified": True,
+        }
+
+    def revoke_chaos(self, trial_id: str) -> dict[str, Any]:
+        state = self._state(trial_id)
+        self._delete_cluster_binding(state["chaos_binding"])
+        return {
+            "capability": "native.blade.create",
+            "binding": state["chaos_binding"],
+            "revoked": True,
+        }
+
+    def restore_chaos(self, trial_id: str) -> dict[str, Any]:
+        state = self._state(trial_id)
+        self._create_or_replace_cluster_binding(
+            state["chaos_binding"],
+            self.CHAOS_CLUSTER_ROLE,
+            state["service_account"],
+            self._labels(state),
+        )
+        return {
+            "capability": "native.blade.create",
+            "binding": state["chaos_binding"],
+            "verified": True,
+        }
+
+    def revoke_observability(self, trial_id: str) -> dict[str, Any]:
+        read = self.revoke_read(trial_id)
+        try:
+            metrics = self.revoke_metrics(trial_id)
+        except Exception:
+            self.restore_read(trial_id)
+            raise
+        return {
+            "capability": "bladeai.observability.all",
+            "revoked": True,
+            "read": read,
+            "metrics": metrics,
+        }
+
+    def restore_observability(self, trial_id: str) -> dict[str, Any]:
+        read = self.restore_read(trial_id)
+        try:
+            metrics = self.restore_metrics(trial_id)
+        except Exception:
+            self.revoke_read(trial_id)
+            raise
+        return {
+            "capability": "bladeai.observability.all",
+            "verified": True,
+            "read": read,
+            "metrics": metrics,
+        }
+
+    def _delete_namespaced_binding(self, name: str) -> None:
         from kubernetes.client.rest import ApiException
 
-        name = self._metrics_name(trial_id)
         try:
             self.rbac_api.delete_namespaced_role_binding(
                 name=name,
@@ -111,20 +224,27 @@ class KubernetesPermissionBackend:
         except ApiException as exc:
             if exc.status != 404:
                 raise
-        return {"capability": "metrics.k8s.io", "binding": name, "revoked": True}
 
-    def restore_metrics(self, trial_id: str) -> dict[str, Any]:
-        state = self._state(trial_id)
-        self._create_or_replace_binding(
-            state["metrics_binding"],
-            state["metrics_role"],
-            state["service_account"],
-            {
-                "app.kubernetes.io/managed-by": "resbench-stage2",
-                "resiliencebenchmark.io/trial": state["suffix"],
-            },
-        )
-        return {"capability": "metrics.k8s.io", "verified": True}
+    def _delete_cluster_binding(self, name: str) -> None:
+        from kubernetes.client.rest import ApiException
+
+        try:
+            self.rbac_api.delete_cluster_role_binding(name=name)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+
+    def _delete_namespaced_role(self, name: str) -> None:
+        from kubernetes.client.rest import ApiException
+
+        try:
+            self.rbac_api.delete_namespaced_role(
+                name=name,
+                namespace=self.APPLICATION_NAMESPACE,
+            )
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
 
     def cleanup_trial(self, trial_id: str) -> dict[str, Any]:
         from kubernetes.client.rest import ApiException
@@ -331,6 +451,9 @@ class KubernetesPermissionBackend:
             "chaos_binding": f"resbench-bladeai-chaos-{suffix}",
         }
 
-    @classmethod
-    def _metrics_name(cls, trial_id: str) -> str:
-        return cls._state(trial_id)["metrics_binding"]
+    @staticmethod
+    def _labels(state: dict[str, str]) -> dict[str, str]:
+        return {
+            "app.kubernetes.io/managed-by": "resbench-stage2",
+            "resiliencebenchmark.io/trial": state["suffix"],
+        }

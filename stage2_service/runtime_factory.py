@@ -28,6 +28,7 @@ from .finalization import Stage2Finalizer
 from .harness_runtime import NativeHarnessRunner
 from .kubernetes_permissions import KubernetesPermissionBackend
 from .mcp_supervisor import McpSupervisor
+from .model_matrix import ModelMatrixCompiler, load_gateway_model_ids
 from .permissions import Stage2PermissionManager
 from .preparation import ApplicationTrafficCapabilityIssuer, KubernetesTrialPreparer
 from .reset import OtelDemoResetter
@@ -422,20 +423,13 @@ class Stage2System:
             "RESBENCH_LLM_API_KEY": self.config.llm_api_key,
             "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": controller_token_ref,
             "RESBENCH_CHAOS_CONTROLLER_POD_UID": self.config.controller_pod_uid,
-            "STAGE2_BLADEAI_PYTHON": os.environ.get(
-                "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
-            ),
-            "STAGE2_BLADEAI_MODEL": request.model_by_harness.get(
-                next(
-                    harness
-                    for harness in request.harnesses
-                    if harness.value == "bladeai"
-                ),
-                "gpt-5.6",
-            )
-            if any(harness.value == "bladeai" for harness in request.harnesses)
-            else "gpt-5.6",
         }
+        for name in (
+            "STAGE2_BLADEAI_PYTHON",
+            "STAGE2_BLADEAI_CHAOSBLADE_ROOT",
+        ):
+            if os.environ.get(name):
+                harness_environment[name] = os.environ[name]
         harness_runner = NativeHarnessRunner(
             repo_root=self.config.repo_root,
             private_root=private / "harness",
@@ -476,6 +470,13 @@ class Stage2System:
             evaluator=Stage2Evaluator(),
             resetter=resetter,
             artifacts=ArtifactStore(self.config.artifact_root),
+            model_matrix=ModelMatrixCompiler(
+                self.config.repo_root / "harness/models.yaml",
+                provider_models_loader=lambda: load_gateway_model_ids(
+                    self.config.llm_base_url,
+                    self.config.llm_api_key,
+                ),
+            ),
         )
         return engine.run(request)
 

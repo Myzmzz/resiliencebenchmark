@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 IDENTIFIER = r"^[a-z0-9][a-z0-9._-]{1,127}$"
+MODEL_ALIAS = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+ModelAlias = Annotated[str, Field(pattern=MODEL_ALIAS)]
 
 
 class ContractModel(BaseModel):
@@ -21,6 +23,19 @@ class HarnessKind(str, Enum):
     CLAUDE_CODE = "claude-code"
     DEEPSEEK = "deepseek-harness"
     BLADEAI = "bladeai"
+
+
+class McpServerName(str, Enum):
+    K8S_RO = "k8s_ro"
+    TELEMETRY_RO = "telemetry_ro"
+    SOURCE_RO = "source_ro"
+    CHAOS_CONTROL = "chaos_control"
+
+
+class ModelProtocol(str, Enum):
+    OPENAI_RESPONSES = "openai_responses"
+    OPENAI_CHAT_COMPLETIONS = "openai_chat_completions"
+    ANTHROPIC_MESSAGES = "anthropic_messages"
 
 
 class LifecyclePhase(str, Enum):
@@ -65,19 +80,78 @@ class FixedEpisodeRef(ContractModel):
     public_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class HarnessModelSelection(ContractModel):
+    harness: HarnessKind
+    models: tuple[ModelAlias, ...] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_models(self) -> HarnessModelSelection:
+        if len(set(self.models)) != len(self.models):
+            raise ValueError("models must be unique within one Harness selection")
+        return self
+
+
+class BladeAINativePermissions(ContractModel):
+    """Static native permissions exposed only to a BladeAI Trial."""
+
+    kubernetes_read: bool = True
+    kubernetes_metrics: bool = True
+    chaosblade_execute: bool = True
+
+
+class PermissionProfile(ContractModel):
+    """Static tool surface applied before every Trial process starts."""
+
+    schema_version: Literal["stage2-permission-profile.v1"] = (
+        "stage2-permission-profile.v1"
+    )
+    profile_id: str = Field(
+        default="p0-full-authorized",
+        pattern=r"^[a-z0-9][a-z0-9._-]{1,127}$",
+    )
+    mcp_servers: tuple[McpServerName, ...] = (
+        McpServerName.K8S_RO,
+        McpServerName.TELEMETRY_RO,
+        McpServerName.SOURCE_RO,
+        McpServerName.CHAOS_CONTROL,
+    )
+    bladeai_native: BladeAINativePermissions = Field(
+        default_factory=BladeAINativePermissions
+    )
+
+    @model_validator(mode="after")
+    def validate_mcp_servers(self) -> PermissionProfile:
+        if len(set(self.mcp_servers)) != len(self.mcp_servers):
+            raise ValueError("mcp_servers must be unique")
+        return self
+
+
+class ModelIdentity(ContractModel):
+    requested_alias: ModelAlias
+    upstream_model: ModelAlias
+    provider_protocol: ModelProtocol
+    registry_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    provider_reported_model: str | None = None
+    verification: Literal[
+        "registry_frozen", "provider_verified", "provider_mismatch"
+    ] = "registry_frozen"
+
+
 class CampaignRequest(ContractModel):
-    schema_version: Literal["stage2-campaign-request.v1"] = (
-        "stage2-campaign-request.v1"
+    schema_version: Literal["stage2-campaign-request.v2"] = (
+        "stage2-campaign-request.v2"
     )
     request_id: str = Field(pattern=IDENTIFIER)
     episode: FixedEpisodeRef
-    harnesses: tuple[HarnessKind, ...] = (
-        HarnessKind.CODEX,
-        HarnessKind.CLAUDE_CODE,
-        HarnessKind.DEEPSEEK,
-        HarnessKind.BLADEAI,
+    model_matrix: tuple[HarnessModelSelection, ...] = Field(
+        min_length=1, max_length=128
     )
-    model_by_harness: dict[HarnessKind, str]
+    permission_profile: PermissionProfile = Field(default_factory=PermissionProfile)
+    trial_kinds: tuple[TrialKind, ...] = (
+        TrialKind.CONTROL,
+        TrialKind.TARGET_CHANGE,
+        TrialKind.PERMISSION_CHANGE,
+    )
     cluster_name: Literal["kubernetes"] = "kubernetes"
     application_namespace: Literal["otel-demo"] = "otel-demo"
     control_namespace: Literal["resiliencebenchmark-system"] = (
@@ -86,11 +160,15 @@ class CampaignRequest(ContractModel):
 
     @model_validator(mode="after")
     def validate_harness_matrix(self) -> CampaignRequest:
-        if len(set(self.harnesses)) != len(self.harnesses):
-            raise ValueError("campaign harnesses must be unique")
-        missing = set(self.harnesses) - set(self.model_by_harness)
-        if missing:
-            raise ValueError("every harness requires one frozen model alias")
+        harnesses = [selection.harness for selection in self.model_matrix]
+        if len(set(harnesses)) != len(harnesses):
+            raise ValueError("Harness selections must be unique in the model matrix")
+        if not self.trial_kinds:
+            raise ValueError("trial_kinds must not be empty")
+        if len(set(self.trial_kinds)) != len(self.trial_kinds):
+            raise ValueError("trial_kinds must be unique")
+        if self.trial_kinds[0] is not TrialKind.CONTROL:
+            raise ValueError("trial_kinds must begin with control")
         return self
 
 
@@ -102,14 +180,16 @@ class KubernetesRule(ContractModel):
 
 
 class CapabilityProfile(ContractModel):
-    schema_version: Literal["stage2-capability-profile.v1"] = (
-        "stage2-capability-profile.v1"
+    schema_version: Literal["stage2-capability-profile.v2"] = (
+        "stage2-capability-profile.v2"
     )
+    permission_profile_id: str
     harness: HarnessKind
-    mcp_servers: tuple[str, ...]
+    mcp_servers: tuple[McpServerName, ...]
     mcp_tools: tuple[str, ...]
     kubernetes_rules: tuple[KubernetesRule, ...]
     direct_kubeconfig: bool
+    native_permissions: BladeAINativePermissions
     allowed_fault_types: tuple[str, ...]
     expires_at: datetime
 
@@ -159,7 +239,9 @@ class DisturbancePlan(ContractModel):
     phase: LifecyclePhase
     trigger_event_id: str
     committed_dependency: str
-    backend: Literal["kubernetes", "mcp_policy", "kubernetes_rbac"]
+    backend: Literal[
+        "kubernetes", "mcp_policy", "kubernetes_rbac", "composite"
+    ]
     parameters: dict[str, Any]
     expected_behaviors: tuple[str, ...]
     failure_conditions: tuple[str, ...]
@@ -179,6 +261,7 @@ class HarnessReport(ContractModel):
     agent_verdict: AgentVerdict
     lifecycle_events: tuple[LifecycleEvent, ...]
     artifact_refs: tuple[str, ...] = ()
+    provider_reported_model: str | None = None
     final_output: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -198,6 +281,8 @@ class RecoveryResult(ContractModel):
 class TrialResult(ContractModel):
     trial_id: str
     harness: HarnessKind
+    permission_profile_id: str
+    model_identity: ModelIdentity
     kind: TrialKind
     runtime_target: RuntimeTarget
     platform_valid: bool
@@ -208,6 +293,21 @@ class TrialResult(ContractModel):
     artifact_refs: tuple[str, ...]
 
 
+class ModelEvaluationSummary(ContractModel):
+    harness: HarnessKind
+    requested_alias: ModelAlias
+    upstream_model: ModelAlias
+    provider_protocol: ModelProtocol
+    registry_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    total_trials: int = Field(ge=0)
+    valid_trials: int = Field(ge=0)
+    pass_count: int = Field(ge=0)
+    fail_count: int = Field(ge=0)
+    inconclusive_count: int = Field(ge=0)
+    case_invalid_count: int = Field(ge=0)
+    pass_rate: float | None = Field(default=None, ge=0, le=1)
+
+
 class CampaignResult(ContractModel):
     schema_version: Literal["stage2-campaign-result.v1"] = (
         "stage2-campaign-result.v1"
@@ -216,6 +316,7 @@ class CampaignResult(ContractModel):
     request_id: str
     platform_status: PlatformStatus
     trials: tuple[TrialResult, ...]
+    model_summaries: tuple[ModelEvaluationSummary, ...] = ()
     started_at: datetime
     finished_at: datetime
     error: str | None = None
