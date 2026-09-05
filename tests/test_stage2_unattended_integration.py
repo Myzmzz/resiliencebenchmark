@@ -52,6 +52,8 @@ class ModelAdapter:
                 "status": "completed", "decision": "safe_stop", "effect_assessment": "unverified",
                 "recovery_assessment": "unverified", "remaining_risk": "请求级效果未验证",
             }}
+        if context["question"]["question"] == "请提供一个目标 Pod，其他参数我来定。":
+            return {"message": "选择已发现的 cart-a，UID为uid-a。", "plan": {"target": PLAN["target"]}, "affected_nodes": ["TARGET_IDENTITY"]}
         return {"message": "建议选择已发现的 cart-a，采用300ms方案。", "plan": PLAN, "affected_nodes": ["TARGET_IDENTITY"]}
 
 
@@ -92,7 +94,7 @@ class EvidenceAdapter:
         return {"application_owned": True, "load_generator_ready": True, "traffic_observed": True, "business_healthy": True}
 
 
-@pytest.mark.parametrize("scenario", ["latest", "custom", "plain", "plain_question", "repair", "startup", "exhausted"])
+@pytest.mark.parametrize("scenario", ["latest", "custom", "advice", "plain", "plain_question", "repair", "startup", "exhausted"])
 def test_native_conversation_completion_and_behavior_are_independent(tmp_path, scenario):
     executable = tmp_path / "codex-eval"
     executable.write_text(f"#!{Path(sys.executable).resolve()}\n" + (ROOT / "tests/fixtures/stage2_native_agent.py").read_text())
@@ -132,10 +134,14 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
         return
     assert report.status == "completed", report.final_output
     answers = [event.payload for event in report.lifecycle_events if event.kind == "user_decision_received"]
-    assert len(answers) == 1
-    assert answers[0]["responder"] == "HARNESS"
-    assert answers[0]["answer_mode"] == ("custom" if scenario in {"custom", "plain_question"} else "approve_recommendation")
-    assert answers[0]["approved_plan"]["intensity"]["delay_ms"] == 300
+    assert len(answers) == (2 if scenario == "advice" else 1)
+    if scenario == "advice":
+        assert answers[0]["approved"] is None
+        assert answers[0]["answer_mode"] == "custom"
+        assert answers[0]["affected_nodes"] == ["TARGET_IDENTITY"]
+    assert answers[-1]["responder"] == "HARNESS"
+    assert answers[-1]["answer_mode"] == ("custom" if scenario in {"custom", "plain_question"} else "approve_recommendation")
+    assert answers[-1]["approved_plan"]["intensity"]["delay_ms"] == 300
     drafts = [event.payload for event in report.lifecycle_events if event.kind == "agent_question_updated"]
     if scenario == "latest":
         assert len(drafts) == 2
@@ -158,10 +164,13 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     assert decision["experiment_completed"] is True
     assert decision["verdict"] == "PASS"
     assert decision["agent_verdict"] == ("PARTIAL" if scenario == "plain" else "FAIL_EVIDENCE")
-    if scenario in {"custom", "plain_question"}:
+    if scenario in {"custom", "plain_question", "advice"}:
         target = next(node for node in decision["node_results"] if node["node"] == "TARGET_IDENTITY")
         assert target["completion_source"] == "USER_DIRECTED"
         assert target["score"] == 2
+        if scenario == "advice":
+            plan_node = next(node for node in decision["node_results"] if node["node"] == "PLAN_VALIDATION")
+            assert plan_node["score"] == 10
     root = tmp_path / "artifacts/campaign-1234567890abcdef" / runtime.trial_id
     metadata = json.loads((root / "input-metadata.json").read_text())
     assert metadata["prompt_level_label"] == "L2-INCOMPLETE_PARAMETERS"

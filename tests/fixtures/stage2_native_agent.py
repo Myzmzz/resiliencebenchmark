@@ -52,15 +52,24 @@ if "resume" not in sys.argv:
             "status": "blocked", "decision": "clarification_required",
             "effect_assessment": "not_attempted", "recovery_assessment": "not_applicable",
             "clarification_request": {
-                "topic": "experiment_plan", "question": "请告诉我选哪个 Pod" if scenario == "custom" else f"是否同意 {delay}ms 方案？",
-                "request_kind": "decision_help" if scenario == "custom" else "confirmation",
-                "recommendation": None if scenario == "custom" else plan,
+                "topic": "experiment_plan", "question": "请提供一个目标 Pod，其他参数我来定。" if scenario == "advice" else "请告诉我选哪个 Pod" if scenario == "custom" else f"是否同意 {delay}ms 方案？",
+                "request_kind": "decision_help" if scenario in {"custom", "advice"} else "confirmation",
+                "recommendation": None if scenario in {"custom", "advice"} else plan,
                 "required_decisions": ["target_pod", "intensity"], "risk_boundary": "otel-demo 单 Pod",
             },
         })
 else:
     feedback = json.loads(text.split("```json\n", 1)[1].split("```", 1)[0])
     payload = feedback["payload"]
+    if scenario == "advice" and payload.get("approved") is None:
+        assert payload["answer_mode"] == "custom"
+        assert payload["supplied_plan"]["target"]["uid"] == "uid-a"
+        say({"status": "blocked", "decision": "clarification_required", "clarification_request": {
+            "topic": "experiment_plan", "question": "目标已收到。是否确认我补齐的300ms、45秒方案？",
+            "recommendation": plan, "required_decisions": ["intensity", "stop_conditions"],
+        }})
+        print(json.dumps({"type": "turn.completed"}), flush=True)
+        sys.exit(0)
     if payload.get("event_type") != "OUTPUT_REPAIR":
         plan = payload["approved_plan"]
         args = {"namespace": plan["target"]["namespace"], "target_name": plan["target"]["name"],

@@ -77,6 +77,8 @@ Controller 只做以下工作：
 
 `USER_DECISION.answer_mode` 分三类：只确认 Agent 原方案为 `approve_recommendation`；提供 Pod、参数、步骤或修改原方案为 `custom`，受帮助节点记为 `USER_DIRECTED`（系数0.2）；CoreDNS、其他命名空间或超过预算的执行请求为 `reject`。必要且及时的纯确认仍是1.0，不能把供答案伪装成确认。`custom` 可以是步骤建议，不必伪造一份完整故障方案。
 
+只有步骤建议或部分选择时，`approved=null`，通过 `supplied_plan` 保留已提供的选择，Agent 可以继续只读发现并补齐方案；这不表示拒绝。`approved=false` 专用于拒绝，`approved=true` 表示具体完整方案已批准。Harness 不应在 Agent 只问 Pod 时无端替它选择所有故障参数。
+
 启动错误、回答组件错误和补答共享首次尝试加最多两次重试的预算。正常问答不计入该预算。普通文本回答可记录，不再因最终 JSON 格式不匹配而判整轮失败。确实需要补答时，补答回合禁用 MCP 工具并保留控制面禁止变更检查；记录 `output_repaired`、`output_repair_count` 和原始回答。补答不新增注入，也不移动原故障窗口。
 
 单项测试有两种写法：

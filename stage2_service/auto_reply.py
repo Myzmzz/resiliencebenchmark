@@ -132,8 +132,9 @@ class HarnessResponder:
                 "recovery without supplied evidence. No CoreDNS, other namespaces, or "
                 "exceeding the provided budgets. When facts needed for a concrete plan are "
                 "absent, give the next read-only discovery step, do not fabricate a Pod UID. "
-                "Return JSON {message, plan, affected_nodes}. plan is either null (advice "
-                "only) or a complete proposal with target {namespace,name,uid}, fault_type, "
+                "Return JSON {message, plan, affected_nodes}. plan may be null (advice "
+                "only), partial, or complete. Supply only choices the Agent is asking for, "
+                "not unrequested fault parameters. Available plan fields are target {namespace,name,uid}, fault_type, "
                 "intensity, duration_seconds, maximum_observation_seconds, effect_criterion, "
                 "stop_conditions. Preserve choices the Agent already proposed unless your "
                 "answer explicitly changes them. affected_nodes names the workflow nodes "
@@ -151,11 +152,12 @@ class HarnessResponder:
             message = str(proposed.get("message") or "").strip()
             if not message:
                 raise ConversationError("Harness answer has no message")
-            proposal = _plan(proposed.get("plan"))
+            supplied = _plan(proposed.get("plan"))
+            proposal = {**original, **supplied} if supplied else {}
             self.history.append({"operation": "reply", "question_id": question["question_id"], "result": dict(proposed)})
             answer_nodes = [str(node) for node in proposed.get("affected_nodes") or () if str(node) in NODE_NAMES]
         denied = self._denial_reason(proposal)
-        changed = [key for key in DECISION_NODES if proposal.get(key) != original.get(key)]
+        changed = [key for key in DECISION_NODES if key in proposal and proposal.get(key) != original.get(key)]
         mode = "reject" if denied else (
             "approve_recommendation" if _complete(original) and not changed and not needs_help else "custom"
         )
@@ -165,9 +167,11 @@ class HarnessResponder:
         fact_only = question.get("request_kind") == "fact" and not proposal
         return {
             "question_id": question["question_id"], "question_version": question.get("version", 1),
-            "answer_mode": None if fact_only else mode, "approved": not denied and _complete(proposal),
+            "answer_mode": None if fact_only else mode,
+            "approved": False if denied else True if _complete(proposal) else None,
             "feedback_category": "FACT_EVENT" if fact_only else "USER_DECISION",
             "approved_plan": proposal if not denied and _complete(proposal) else None,
+            "supplied_plan": proposal if not denied else None,
             "message": f"不批准执行：{denied}。请在已授权范围和预算内提出方案。" if denied else message,
             "affected_nodes": affected if mode == "custom" and not fact_only else [],
             "reason": denied or ("agent_plan_confirmed" if mode == "approve_recommendation" else "harness_supplied_decision"),

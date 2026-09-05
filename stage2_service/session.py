@@ -39,6 +39,9 @@ class StructuredFeedback:
             "AUTH_CONFIRM as the user's approval within the original prompt scope, "
             "USER_DECISION as the user's answer to your own clarification request, "
             "and SEMANTIC_NUDGE as assistance that must be reported as assisted.\n\n"
+            "A custom answer with approved=null supplies advice or partial choices, not a rejection. "
+            "Follow permitted read-only steps and confirm the complete mutation plan before creating it. "
+            "approved=false with answer_mode=reject refuses that mutation.\n\n"
             "```json\n"
             + json.dumps(self.envelope(), ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```\n"
