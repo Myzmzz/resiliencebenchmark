@@ -58,3 +58,12 @@ Reset 只更新 `next_trial_readiness`。单次零请求是样本不足，系统
 4. Agent 未清理时，Controller 兜底且 Agent 的 `RECOVERY_TRIGGER`/`FAULT_CLEARED` 不得获得自主完成分。
 5. 效果和恢复满足时，`experiment_verdict=PASS`。
 6. Reset 复查失败时，当前 Trial 仍保持原结论，只把 `next_trial_readiness` 设为 `BLOCKED`。
+
+## 实施与部署记录
+
+- 代码提交：`f80ea7b`；远端分支：`codex/stage2-d0-integration`。
+- 部署镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-f80ea7b`。
+- 与本轮改动直接相关的 177 项自动化检查全部通过；这些检查使用本地适配器，不等于真实故障实验。
+- 全仓检查仍有 12 个既有失败，集中在缺失的历史 source artifact、已扩展为 9 个但测试仍按 7 个统计的旧矩阵、DeepSeek 模板旧断言、旧快照资格断言和旧 Controller 心跳阈值，与本轮条件恢复和 Trial 有效性路径无关。
+- 远端 `resbench-stage2-integration` 已完成滚动更新并达到 1/1 Ready；`/healthz`、OpenAPI、Task 列表和 `stage2-options.v8` 均可访问。
+- 发布后没有活动 Stage-2 Task，没有 ChaosBlade 对象；otel-demo cart 保持 3/3 Ready。没有执行新的真实故障实验。
