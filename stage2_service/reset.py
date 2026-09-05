@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
+from .condition_policy import CONDITION_POLICY
 from .reset_policy import ResetPolicyDecision, ResetTier, classify_reset_policy
 
 
@@ -77,7 +78,7 @@ class OtelDemoResetter:
         if mutation_evidence is not None:
             return self.reset_with_policy(trial_id, episode, mutation_evidence)
         if self.verify_only:
-            return self._verify_environment(trial_id, episode)
+            return self._verify_environment(trial_id, episode, {})
         return self._full_reinstall(trial_id, episode)
 
     def reset_with_policy(
@@ -86,10 +87,15 @@ class OtelDemoResetter:
         episode,
         mutation_evidence: Mapping[str, Any] | ResetPolicyDecision,
     ) -> Mapping[str, Any]:
+        source_evidence = (
+            {}
+            if isinstance(mutation_evidence, ResetPolicyDecision)
+            else dict(mutation_evidence)
+        )
         decision = (
             mutation_evidence
             if isinstance(mutation_evidence, ResetPolicyDecision)
-            else classify_reset_policy(mutation_evidence)
+            else classify_reset_policy(source_evidence)
         )
         if decision.tier is ResetTier.T3_FULL_REINSTALL:
             result = dict(self._full_reinstall(trial_id, episode))
@@ -97,19 +103,37 @@ class OtelDemoResetter:
                 result, decision, verified=result.get("verified") is True
             )
 
-        result = dict(self._verify_environment(trial_id, episode))
+        result = dict(
+            self._verify_environment(trial_id, episode, source_evidence)
+        )
         verified = result.get("verified") is True
         if decision.tier is not ResetTier.T0_NO_WRITE:
             verified = verified and decision.verified
         return self._attach_policy(result, decision, verified=verified)
 
-    def _verify_environment(self, trial_id: str, episode) -> Mapping[str, Any]:
+    def _verify_environment(
+        self,
+        trial_id: str,
+        episode,
+        prior_evidence: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
         qualification = dict(self.environment_gate.qualify(episode))
-        # Stage2Finalizer already performs the bounded traffic recovery loop.
-        # Repeating it here both resets the Oracle evidence a second time and
-        # consumes the remaining Trial budget. This final gate is deliberately
-        # a fresh one-shot qualification after permission restoration.
         traffic = dict(self.traffic_evidence.current())
+        if traffic.get("business_healthy") is not True:
+            traffic = dict(
+                self.traffic_evidence.wait_until_healthy(
+                    timeout_seconds=self.recovery_timeout_seconds,
+                    minimum_requests=10,
+                    stability_samples=(
+                        CONDITION_POLICY["recovery_sustain_seconds"] // 10 + 1
+                    ),
+                )
+            )
+        prior_recovery = (
+            prior_evidence.get("fault_absent") is True
+            and prior_evidence.get("business_recovery_verified") is True
+        )
+        traffic_verified = traffic.get("business_healthy") is True
         return {
             "trial_id": trial_id,
             "uninstalled": False,
@@ -117,8 +141,14 @@ class OtelDemoResetter:
             "verify_only": True,
             "verified": (
                 qualification.get("qualified") is True
-                and traffic.get("business_healthy") is True
+                and traffic_verified
             ),
+            "verification_source": (
+                "bounded_current_traffic"
+                if traffic_verified
+                else "unverified"
+            ),
+            "prior_trial_recovery_verified": prior_recovery,
             "qualification": qualification,
             "traffic_recovery": traffic,
         }
@@ -176,7 +206,11 @@ class OtelDemoResetter:
         qualification = dict(self.environment_gate.qualify(episode))
         traffic = dict(
             self.traffic_evidence.reset_and_wait_healthy(
-                timeout_seconds=self.recovery_timeout_seconds
+                timeout_seconds=self.recovery_timeout_seconds,
+                minimum_requests=10,
+                stability_samples=(
+                    CONDITION_POLICY["recovery_sustain_seconds"] // 10 + 1
+                ),
             )
         )
         return {

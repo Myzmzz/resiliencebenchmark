@@ -131,7 +131,7 @@ def create_server(
         run_id: str | None = None,
         selector: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Read-only validation of a proposed single-Pod ChaosBlade plan."""
+        """Validate a single-Pod plan; duration_seconds is the automatic safety TTL, not the normal finish condition."""
 
         try:
             bound_run_id = _runtime_value(
@@ -182,7 +182,7 @@ def create_server(
         cleanup_handle: str | None = None,
         selector: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Create one gated experiment; Trial identity and gates are server-bound."""
+        """Create one gated experiment; duration_seconds is an automatic safety TTL and the Agent should destroy earlier when its approved effect condition is sustained."""
 
         try:
             bound_run_id = _runtime_value(

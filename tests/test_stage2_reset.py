@@ -28,6 +28,7 @@ class Gate:
 class Traffic:
     def __init__(self):
         self.reset_calls = 0
+        self.wait_calls = 0
 
     def current(self):
         return {
@@ -41,6 +42,10 @@ class Traffic:
 
     def reset_and_wait_healthy(self, **_kwargs):
         self.reset_calls += 1
+        return self.current()
+
+    def wait_until_healthy(self, **_kwargs):
+        self.wait_calls += 1
         return self.current()
 
 
@@ -97,3 +102,51 @@ def test_verify_only_uses_fresh_snapshot_without_repeating_recovery_loop(tmp_pat
     assert result["verified"] is True
     assert traffic.reset_calls == 0
     assert runner.calls == []
+
+
+def test_verify_only_retries_an_insufficient_zero_request_snapshot(tmp_path: Path):
+    class InitiallyEmptyTraffic(Traffic):
+        def current(self):
+            return {
+                "application_owned": True,
+                "load_generator_ready": True,
+                "traffic_observed": False,
+                "business_healthy": False,
+                "target_requests": 0,
+                "sample_status": "insufficient",
+            }
+
+        def wait_until_healthy(self, **_kwargs):
+            self.wait_calls += 1
+            return {
+                "application_owned": True,
+                "load_generator_ready": True,
+                "traffic_observed": True,
+                "business_healthy": True,
+                "target_requests": 12,
+                "sample_status": "healthy",
+            }
+
+    repo = Path(__file__).resolve().parents[1]
+    kubeconfig = tmp_path / "kubeconfig"
+    runtime = tmp_path / "runtime.env"
+    chart = tmp_path / "opentelemetry-demo-0.40.5.tgz"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runtime.write_text("HARBOR_REGISTRY=registry.example\n", encoding="utf-8")
+    chart.write_bytes(b"pinned chart fixture")
+    traffic = InitiallyEmptyTraffic()
+
+    result = OtelDemoResetter(
+        repo_root=repo,
+        kubeconfig=kubeconfig,
+        runtime_env_file=runtime,
+        chart_file=chart,
+        environment_gate=Gate(),
+        traffic_evidence=traffic,
+        runner=Runner(),
+        verify_only=True,
+    ).reset("campaign-1234567890abcdef-codex-t3", object())
+
+    assert result["verified"] is True
+    assert result["verification_source"] == "bounded_current_traffic"
+    assert traffic.wait_calls == 1

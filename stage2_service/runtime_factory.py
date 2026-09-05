@@ -24,6 +24,8 @@ from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 from .artifacts import ArtifactStore
 from .request_observation import request_observability, target_request_effect, timestamp as _window_timestamp
 from .campaign import CampaignEngine
+from .condition_monitor import ConditionRecoveryMonitor
+from .condition_policy import evaluate_condition
 from .contracts import (
     STAGE2_MODEL_MATRIX,
     CampaignRequest,
@@ -210,6 +212,13 @@ class KubernetesTrafficEvidence:
         cart_avg_ms = (
             cart_response_sum_ms / cart_requests if cart_requests else 0.0
         )
+        cart_p95_ms = max(
+            (
+                float(item.get("response_time_percentile_0.95") or 0.0)
+                for item in cart_rows
+            ),
+            default=0.0,
+        )
         success_rate = (requests - failures) / requests if requests else 0.0
         cart_success_rate = (
             (cart_requests - cart_failures) / cart_requests
@@ -254,8 +263,13 @@ class KubernetesTrafficEvidence:
             "p95_ms": p95_ms,
             "business_scope": target_scope,
             "target_requests": target_requests,
+            "target_failures": cart_failures if cart_rows else failures,
             "target_success_rate": target_success_rate,
             "target_latency_ms": target_latency_ms,
+            "target_response_sum_ms": (
+                cart_response_sum_ms if cart_rows else 0.0
+            ),
+            "target_p95_ms": cart_p95_ms if cart_rows else p95_ms,
             "target_current_rps": target_current_rps,
             "target_current_fail_per_sec": target_current_fail,
             "cart_requests": cart_requests,
@@ -270,7 +284,15 @@ class KubernetesTrafficEvidence:
         self._baselines[trial_id] = dict(evidence)
         self._baseline_times[trial_id] = time.time()
 
-    def effect_since(self, trial_id: str, runtime) -> Mapping[str, Any]:
+    def baseline(self, trial_id: str) -> Mapping[str, Any]:
+        return dict(self._baselines.get(trial_id) or {})
+
+    def effect_since(
+        self,
+        trial_id: str,
+        runtime,
+        approved_plan: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
         window = dict(runtime.main_fault.get("evidence_window") or {})
         start = _window_timestamp(window.get("start"))
         end = _window_timestamp(window.get("end"))
@@ -323,17 +345,68 @@ class KubernetesTrafficEvidence:
             "fault_window_success_rate": interval_success_rate,
             "service_metrics_available": counters_valid,
         }
+        service_condition: dict[str, Any] = {
+            "matched": False,
+            "reason": "approved effect condition is unavailable",
+        }
+        condition = (
+            approved_plan.get("effect_condition")
+            if isinstance(approved_plan, Mapping)
+            else None
+        )
+        if isinstance(condition, Mapping):
+            try:
+                matched, condition_evidence = evaluate_condition(
+                    condition,
+                    baseline=baseline,
+                    sample=current,
+                )
+                service_condition = {
+                    **condition_evidence,
+                    "matched": matched,
+                    "scope": "cart_service",
+                }
+            except Exception as exc:  # noqa: BLE001 - invalid evidence stays false.
+                service_condition = {
+                    "matched": False,
+                    "error_type": type(exc).__name__,
+                    "scope": "cart_service",
+                }
+        sustain_seconds = int(
+            approved_plan.get("effect_sustain_seconds") or 0
+        ) if isinstance(approved_plan, Mapping) else 0
+        service_condition["sustain_required_seconds"] = sustain_seconds
+        service_condition["sustain_verified"] = sustain_seconds == 0
+        service_verified = (
+            service_condition.get("matched") is True
+            and sustain_seconds == 0
+        )
         fault_type = str(runtime.main_fault.get("fault_type") or "")
         verified = (
             physical.get("verified") is True
             if fault_type in {"cpu-load", "memory-stress"}
-            else request_effect.get("verified") is True
+            else (
+                request_effect.get("verified") is True
+                or service_verified
+            )
+        )
+        business_evidence["business_effect_verified"] = (
+            request_effect.get("verified") is True
+            or service_verified
         )
         return {
             "verified": verified,
             "fault_type": fault_type,
             "physical_effect": physical,
             "request_effect": request_effect,
+            "service_condition": service_condition,
+            "attribution_scope": (
+                "target_pod"
+                if request_effect.get("verified") is True
+                else "cart_service"
+                if service_verified
+                else None
+            ),
             "observability": observability,
             "evidence_window": window,
             **business_evidence,
@@ -425,6 +498,8 @@ class KubernetesTrafficEvidence:
         timeout_seconds: int = 300,
         minimum_requests: int = 20,
         stability_samples: int = 3,
+        baseline: Mapping[str, Any] | None = None,
+        recovery_condition: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         reset_url = self.stats_url.removesuffix("/stats/requests") + "/stats/reset"
         deadline = time.monotonic() + timeout_seconds
@@ -472,35 +547,89 @@ class KubernetesTrafficEvidence:
                 return reset_error
             time.sleep(min(5.0, remaining))
         last = {}
+        recovery_stable = 0
+        counter_anchor = {
+            "target_requests": 0,
+            "target_failures": 0,
+            "target_response_sum_ms": 0.0,
+        }
         while True:
             try:
                 last = dict(self.current())
             except Exception as exc:  # noqa: BLE001
                 last = {"business_healthy": False, "error_type": type(exc).__name__}
-            if (
-                int(last.get("target_requests") or 0) >= minimum_requests
-                and last.get("business_healthy") is True
+            enough = int(last.get("target_requests") or 0) >= minimum_requests
+            recovery_ok = last.get("business_healthy") is True
+            condition_evidence: dict[str, Any] | None = None
+            if isinstance(baseline, Mapping) and isinstance(
+                recovery_condition, Mapping
             ):
+                recovery_ok, condition_evidence = evaluate_condition(
+                    recovery_condition,
+                    baseline=baseline,
+                    sample=last,
+                    counter_anchor=counter_anchor,
+                )
+                enough = enough and condition_evidence.get("enough_requests") is True
+            recovery_stable = recovery_stable + 1 if enough and recovery_ok else 0
+            last["recovery_condition_evidence"] = condition_evidence
+            last["stability_samples_observed"] = recovery_stable
+            last["stability_samples_required"] = stability_samples
+            if recovery_condition is not None:
+                last["business_healthy"] = False
+            if recovery_stable >= stability_samples:
                 last["stats_reset_count"] = reset_count
+                last["business_healthy"] = True
                 return last
-            if int(last.get("target_requests") or 0) >= minimum_requests:
-                current_rps = float(last.get("target_current_rps") or 0.0)
-                current_fail = float(last.get("target_current_fail_per_sec") or 0.0)
-                if current_rps > 0 and current_fail / current_rps <= 0.05:
-                    try:
-                        self.stats_resetter(reset_url)
-                        reset_count += 1
-                        last = {}
-                    except Exception as exc:  # noqa: BLE001
-                        last = {
-                            "business_healthy": False,
-                            "stage": "stats_rereset",
-                            "error_type": type(exc).__name__,
-                            "stats_reset_count": reset_count,
-                        }
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 last["stats_reset_count"] = reset_count
+                return last
+            time.sleep(min(10.0, remaining))
+
+    def wait_until_healthy(
+        self,
+        *,
+        timeout_seconds: int = 180,
+        minimum_requests: int = 10,
+        stability_samples: int = 7,
+    ) -> Mapping[str, Any]:
+        """Wait for a stable business window without resetting workload counters."""
+
+        deadline = time.monotonic() + timeout_seconds
+        stable = 0
+        attempts = 0
+        last: dict[str, Any] = {}
+        while True:
+            attempts += 1
+            try:
+                last = dict(self.current())
+            except Exception as exc:  # noqa: BLE001 - keep the state unknown.
+                last = {
+                    "business_healthy": False,
+                    "sample_status": "unavailable",
+                    "error_type": type(exc).__name__,
+                }
+            enough = int(last.get("target_requests") or 0) >= minimum_requests
+            healthy = last.get("business_healthy") is True
+            if enough and healthy:
+                stable += 1
+            else:
+                stable = 0
+            last["sample_status"] = (
+                "healthy"
+                if enough and healthy
+                else "insufficient"
+                if int(last.get("target_requests") or 0) < minimum_requests
+                else "unhealthy"
+            )
+            last["verification_attempts"] = attempts
+            last["stability_samples_observed"] = stable
+            last["stability_samples_required"] = stability_samples
+            if stable >= stability_samples:
+                return last
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 return last
             time.sleep(min(10.0, remaining))
 
@@ -764,6 +893,8 @@ class Stage2System:
             "RESBENCH_JAEGER_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
             "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
             "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(private / "telemetry"),
+            "RESBENCH_WORKLOAD_STATS_URL": "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
+            "RESBENCH_WORKLOAD_STAT_NAME": "/api/cart",
             "RESBENCH_SOURCE_ROOT": str(self.config.source_root),
             "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": "otel-demo",
             "RESBENCH_CHAOS_EXECUTE_ENABLED": "true",
@@ -821,8 +952,11 @@ class Stage2System:
             mcp_supervisor=supervisor,
         )
         chaos_service = ChaosControlService(RuntimeConfig.from_env(mcp_environment))
+        cleanup_backend = DirectChaosCleanup(
+            chaos_service, self.config.kubeconfig
+        )
         finalizer = Stage2Finalizer(
-            DirectChaosCleanup(chaos_service, self.config.kubeconfig),
+            cleanup_backend,
             traffic,
             recovery_timeout_seconds=180,
         )
@@ -848,6 +982,9 @@ class Stage2System:
             finalizer=finalizer,
             evaluator=Stage2Evaluator(),
             resetter=resetter,
+            condition_monitor_factory=lambda: ConditionRecoveryMonitor(
+                traffic, cleanup_backend
+            ),
             artifacts=ArtifactStore(self.config.artifact_root),
             qualification_gate=self.d0_gate,
         )

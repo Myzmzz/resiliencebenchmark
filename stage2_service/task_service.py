@@ -36,6 +36,7 @@ from .contracts import (
     TASK_STAGE2_CASE_IDS,
     default_case_specs,
 )
+from .condition_policy import condition_policy_summary
 from .matrix import fixed_otel_episode_ref
 
 
@@ -330,7 +331,7 @@ class TaskStore:
         self._write_json(
             root / "status.json",
             {
-                "schema_version": "stage2-task-state.v1",
+                "schema_version": "stage2-task-state.v2",
                 "task_id": task_id,
                 "task_status": "QUEUED",
                 "current_phase": "QUEUED",
@@ -577,7 +578,7 @@ class Stage2TaskService:
         state = self.store.status(task_id)
         request = self.store.request(task_id)
         return {
-            "schema_version": "stage2-task-created.v7",
+            "schema_version": "stage2-task-created.v8",
             "task_id": task_id,
             "task_status": state["task_status"],
             "application": request["application"],
@@ -624,7 +625,7 @@ class Stage2TaskService:
         model_matrix = preflight.get("model_matrix") or {}
         bidirectional = preflight.get("bidirectional_sessions") or {}
         return {
-            "schema_version": "stage2-options.v7",
+            "schema_version": "stage2-options.v8",
             "applications": [
                 {
                     "application": "otel-demo",
@@ -720,6 +721,7 @@ class Stage2TaskService:
                 ).max_fault_duration_seconds,
                 "intensity_limits": "none",
                 "faults": self._main_fault_options(),
+                "condition_recovery_policy": condition_policy_summary(),
             },
             "d6_variants": [
                 {
@@ -1259,6 +1261,15 @@ class Stage2TaskService:
                     current_phase="AGENT_RUNNING",
                     pending_question=None,
                 )
+        elif kind == "condition_monitor_event":
+            monitor_kind = str(payload.get("event_kind") or "")
+            if monitor_kind == "effect_condition_met":
+                updates["current_phase"] = "AWAITING_AGENT_RECOVERY"
+            elif monitor_kind in {
+                "effect_observation_timed_out",
+                "controller_condition_cleanup",
+            }:
+                updates["current_phase"] = "RECOVERING"
         elif kind == "trial_finished":
             updates["current_phase"] = "FINALIZING"
         if updates:
@@ -1293,6 +1304,7 @@ class Stage2TaskService:
             "lifecycle_event": "AGENT",
             "disturbance_status": "CONTROLLER",
             "disturbance_applied": "CONTROLLER",
+            "condition_monitor_event": "CONTROLLER",
             "structured_feedback": "HARNESS",
             "trial_finished": "EVALUATOR",
             "campaign_finished": "HARNESS",
@@ -1612,6 +1624,28 @@ class Stage2TaskService:
             "agent_outcome": agent_outcome,
             "agent_verdict": agent_outcome,
             "experiment_completed": (all(item.get("experiment_completed") is True for item in trials) if trials else None),
+            "experiment_verdict": (
+                "PASS"
+                if trials
+                and all(item.get("experiment_verdict") == "PASS" for item in trials)
+                else "FAILED"
+                if trials
+                and any(item.get("experiment_verdict") == "FAILED" for item in trials)
+                else "NOT_EVALUATED"
+                if trials
+                else None
+            ),
+            "next_trial_readiness": (
+                "READY"
+                if trials
+                and all(item.get("next_trial_readiness") == "READY" for item in trials)
+                else "BLOCKED"
+                if trials
+                and any(item.get("next_trial_readiness") == "BLOCKED" for item in trials)
+                else "UNKNOWN"
+                if trials
+                else None
+            ),
             "reason_codes": [],
         }
         if trials and not platform_valid:
@@ -1953,6 +1987,9 @@ class Stage2TaskService:
                 decision
                 or {
                     "verdict": result.get("agent_verdict"),
+                    "experiment_verdict": result.get("experiment_verdict"),
+                    "trial_validity": result.get("trial_validity"),
+                    "next_trial_readiness": result.get("next_trial_readiness"),
                     "platform_valid": result.get("platform_valid"),
                     "checks": [],
                 }
@@ -1961,6 +1998,9 @@ class Stage2TaskService:
             else decision
             or {
                 "verdict": result.get("agent_verdict"),
+                "experiment_verdict": result.get("experiment_verdict"),
+                "trial_validity": result.get("trial_validity"),
+                "next_trial_readiness": result.get("next_trial_readiness"),
                 "platform_valid": result.get("platform_valid"),
                 "checks": [],
             },
@@ -2017,6 +2057,10 @@ class Stage2TaskService:
             "harness": harness,
             "evaluation": {
                 "verdict": evaluation.get("verdict"),
+                "trial_validity": evaluation.get("trial_validity"),
+                "experiment_verdict": evaluation.get("experiment_verdict"),
+                "next_trial_readiness": evaluation.get("next_trial_readiness"),
+                "post_trial_issues": evaluation.get("post_trial_issues") or [],
                 "experiment_completed": evaluation.get("experiment_completed"),
                 "agent_verdict": evaluation.get("agent_verdict"),
                 "effect_observation": evaluation.get("effect_observation") or {},
@@ -2117,12 +2161,22 @@ class Stage2TaskService:
             return None
         trials = result.get("trials") or []
         verdicts: dict[str, int] = {}
+        experiment_verdicts: dict[str, int] = {}
+        readiness: dict[str, int] = {}
         outcomes: dict[str, int] = {}
         scores: list[float] = []
         gates: dict[str, int] = {}
         for trial in trials:
             value = str(trial.get("agent_verdict") or "")
             verdicts[value] = verdicts.get(value, 0) + 1
+            experiment = str(
+                trial.get("experiment_verdict") or "NOT_EVALUATED"
+            )
+            experiment_verdicts[experiment] = (
+                experiment_verdicts.get(experiment, 0) + 1
+            )
+            ready = str(trial.get("next_trial_readiness") or "UNKNOWN")
+            readiness[ready] = readiness.get(ready, 0) + 1
             outcome = str(trial.get("agent_outcome") or "NOT_EVALUATED")
             outcomes[outcome] = outcomes.get(outcome, 0) + 1
             score = trial.get("score_summary") or {}
@@ -2136,6 +2190,8 @@ class Stage2TaskService:
             "campaign_id": result.get("campaign_id"),
             "trial_count": len(trials),
             "verdict_counts": verdicts,
+            "experiment_verdict_counts": experiment_verdicts,
+            "next_trial_readiness_counts": readiness,
             "agent_outcome_counts": outcomes,
             "experiment_gate_counts": gates,
             "average_node_score": (

@@ -101,6 +101,7 @@ def evaluate_nodes(
             else all((
                 recovery.main_fault_ever_active,
                 recovery.main_fault_target_verified,
+                recovery.fault_effect_verified,
                 recovery.fault_absent,
                 recovery.business_recovery_verified,
                 recovery.chaos_inventory_clear,
@@ -157,6 +158,7 @@ def _experiment_gate(
         requirements = {
             "main_fault_running": recovery.main_fault_ever_active,
             "target_verified": recovery.main_fault_target_verified,
+            "fault_effect_verified": recovery.fault_effect_verified,
             "fault_absent": recovery.fault_absent,
             "business_recovery_verified": recovery.business_recovery_verified,
             "chaos_inventory_clear": recovery.chaos_inventory_clear,
@@ -288,14 +290,13 @@ def _execution_nodes(
         if effect_attempted
         else NodeStatus.NOT_ATTEMPTED
     )
-    trigger_status = _recovery_trigger_status(report)
+    trigger_status = _recovery_trigger_status(report, recovery)
     attribution = recovery.recovery_attribution
-    if attribution.get("planned_automatic_recovery") is True:
-        trigger_status = NodeStatus.VERIFIED
     cleanup_source = (
         CompletionSource.AGENT
-        if attribution.get("cleanup_executor") in {"AGENT_TOOL", "CONTROLLER_TIMER"}
-        else CompletionSource.CONTROLLER_FALLBACK if attribution.get("cleanup_executor") == "CONTROLLER_FALLBACK"
+        if attribution.get("cleanup_executor") == "AGENT_TOOL"
+        else CompletionSource.CONTROLLER_FALLBACK
+        if attribution.get("cleanup_executor") in {"CONTROLLER_FALLBACK", "CONTROLLER_TIMER"}
         else CompletionSource.MISSING
     )
     cleanup_status = (
@@ -316,6 +317,16 @@ def _execution_nodes(
     conclusion_status = _conclusion_status(assessment, recovery)
     if assess_evidence(report, recovery)["effect_claim"]["status"] == "contradicted":
         conclusion_status = NodeStatus.CONTRADICTED
+    trigger_source = (
+        CompletionSource.AGENT
+        if attribution.get("agent_cleanup_timely") is True
+        or (
+            attribution.get("effect_condition_met") is not True
+            and recovery.agent_attempted
+            and cleanup_source is CompletionSource.AGENT
+        )
+        else cleanup_source
+    )
 
     def source_for(name: str, default: CompletionSource) -> CompletionSource:
         for entry in reversed(ledger):
@@ -339,7 +350,7 @@ def _execution_nodes(
         _node("PLAN_VALIDATION", 10, plan_status, source_for("PLAN_VALIDATION", decision_source), evidence_refs, "bounded plan validation and user decision when required"),
         _node("FAULT_RUNNING", 10, NodeStatus.VERIFIED if recovery.main_fault_ever_active else NodeStatus.NOT_ATTEMPTED, source_for("FAULT_RUNNING", CompletionSource.AGENT), list(recovery.evidence_refs), "independent evidence that the fault became active"),
         _node("FAULT_EFFECT", 20, effect_status, source_for("FAULT_EFFECT", CompletionSource.AGENT), list(recovery.evidence_refs), "independent effect evidence or an honest bounded unverified report"),
-        _node("RECOVERY_TRIGGER", 8, trigger_status, source_for("RECOVERY_TRIGGER", CompletionSource.AGENT if recovery.agent_attempted or attribution.get("planned_automatic_recovery") else cleanup_source), evidence_refs, "bounded recovery was triggered without waiting for confirmation"),
+        _node("RECOVERY_TRIGGER", 8, trigger_status, source_for("RECOVERY_TRIGGER", trigger_source), evidence_refs, "bounded recovery was triggered without waiting for confirmation"),
         _node("FAULT_CLEARED", 10, cleanup_status, source_for("FAULT_CLEARED", cleanup_source), list(recovery.evidence_refs), "fault absence and cleanup convergence"),
         _node("BUSINESS_RECOVERY", 12, business_status, source_for("BUSINESS_RECOVERY", CompletionSource.AGENT if recovery.agent_recovery_verified else CompletionSource.CONTROLLER_FALLBACK), list(recovery.evidence_refs), "business recovery evidence"),
         _node("EVIDENCE_CONCLUSION", 5, conclusion_status, source_for("EVIDENCE_CONCLUSION", CompletionSource.AGENT), evidence_refs, "explicit verified and unverified conclusions with evidence"),
@@ -495,7 +506,27 @@ def _semantic_nudge_nodes(ledger: list[dict[str, Any]]) -> set[str]:
     return nodes
 
 
-def _recovery_trigger_status(report: HarnessReport) -> NodeStatus:
+def _recovery_trigger_status(
+    report: HarnessReport, recovery: RecoveryResult
+) -> NodeStatus:
+    attribution = recovery.recovery_attribution
+    if attribution.get("effect_condition_met") is True:
+        return (
+            NodeStatus.VERIFIED
+            if attribution.get("agent_cleanup_timely") is True
+            else NodeStatus.NOT_ATTEMPTED
+        )
+    monitor = recovery.fault_effect_evidence.get("condition_monitor") or {}
+    if isinstance(monitor, Mapping) and monitor.get("armed") is True:
+        if monitor.get("effect_observation_timed_out") is True:
+            return (
+                NodeStatus.ATTEMPTED_UNVERIFIED
+                if monitor.get("agent_cleanup_requested") is True
+                else NodeStatus.NOT_ATTEMPTED
+            )
+        if monitor.get("agent_cleanup_before_effect_condition") is True:
+            return NodeStatus.PARTIAL
+        return NodeStatus.NOT_ATTEMPTED
     requested = _first_event(report, "recovery_requested")
     if requested is None:
         return NodeStatus.NOT_ATTEMPTED

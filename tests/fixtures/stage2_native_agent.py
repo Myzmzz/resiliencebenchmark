@@ -28,8 +28,15 @@ def tool(name, args, result):
 plan = {
     "target": {"namespace": "otel-demo", "name": "cart-a", "uid": "uid-a"},
     "fault_type": "network-delay", "intensity": {"delay_ms": 300},
-    "duration_seconds": 45, "maximum_observation_seconds": 45,
-    "effect_criterion": "目标请求延迟明显增加", "stop_conditions": ["到期自动恢复"],
+    "effect_condition": {
+        "metric": "target_latency_ms", "operator": "increase_by_at_least",
+        "threshold": 100, "minimum_requests": 10,
+    },
+    "recovery_condition": {
+        "metric": "target_latency_ms", "operator": "within_baseline_delta",
+        "threshold": 50, "minimum_requests": 10,
+    },
+    "stop_conditions": ["效果条件成立后主动恢复"],
 }
 if scenario in {"startup", "exhausted"} and (attempt == 1 or scenario == "exhausted"):
     print(json.dumps({"type": "error", "message": "service unavailable"}), flush=True)
@@ -47,7 +54,7 @@ if "resume" not in sys.argv:
         print(json.dumps({"type": "turn.completed"}), flush=True)
         sys.exit(0)
     if scenario == "approval_repair":
-        say("请确认上述完整计划：仅对 otel-demo/cart-a 注入300ms网络延迟，持续45秒并到期清理。")
+        say("请确认上述完整计划：仅对 otel-demo/cart-a 注入300ms网络延迟，效果持续成立后主动清理，并使用安全 TTL 兜底。")
         print(json.dumps({"type": "turn.completed"}), flush=True)
         sys.exit(0)
     for delay in ([100, 300] if scenario == "latest" else [300]):
@@ -69,7 +76,7 @@ else:
         assert payload["answer_mode"] == "custom"
         assert payload["supplied_plan"]["target"]["uid"] == "uid-a"
         say({"status": "blocked", "decision": "clarification_required", "clarification_request": {
-            "topic": "experiment_plan", "question": "目标已收到。是否确认我补齐的300ms、45秒方案？",
+            "topic": "experiment_plan", "question": "目标已收到。是否确认我补齐的300ms条件恢复方案？",
             "recommendation": plan, "required_decisions": ["intensity", "stop_conditions"],
         }})
         print(json.dumps({"type": "turn.completed"}), flush=True)
@@ -78,7 +85,7 @@ else:
         plan = payload["approved_plan"]
         args = {"namespace": plan["target"]["namespace"], "target_name": plan["target"]["name"],
                 "target_uid": plan["target"]["uid"], "fault_type": plan["fault_type"],
-                "intensity": plan["intensity"], "duration_seconds": plan["duration_seconds"]}
+                "intensity": plan["intensity"], "duration_seconds": plan["safety_ttl_seconds"]}
         tool("chaos_validate_plan", args, {"ok": True, "findings": []})
         tool("chaos_create_experiment", args, {"ok": True, "created": {"phase": "Initialized"}})
         tool("chaos_operation_status", {}, {"ok": True, "operation_outcome": "applied", "live": {"phase": "Running"}, "target_uid": "uid-a"})
@@ -91,6 +98,6 @@ else:
         say({
             "status": "completed", "decision": "safe_stop", "effect_assessment": "verified",
             "recovery_assessment": "unverified", "missing_conditions": ["没有取得请求级效果证据"],
-            "remaining_risk": "请求级延迟效果未验证", "recovery_trigger": {"condition": "到期自动恢复"},
+            "remaining_risk": "请求级延迟效果未验证", "recovery_trigger": {"condition": "效果条件持续成立后主动恢复"},
         })
 print(json.dumps({"type": "turn.completed"}), flush=True)

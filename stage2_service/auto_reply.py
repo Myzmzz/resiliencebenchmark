@@ -13,14 +13,20 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Any
 
+from .condition_policy import (
+    CONDITION_POLICY,
+    apply_condition_policy,
+    condition_plan_complete,
+    validate_condition_plan,
+)
+
 
 DECISION_NODES = {
     "target": ["TARGET_IDENTITY"],
     "fault_type": ["PLAN_VALIDATION"],
     "intensity": ["PLAN_VALIDATION"],
-    "duration_seconds": ["PLAN_VALIDATION", "RECOVERY_TRIGGER"],
-    "maximum_observation_seconds": ["PLAN_VALIDATION", "RECOVERY_TRIGGER"],
-    "effect_criterion": ["FAULT_EFFECT"],
+    "effect_condition": ["FAULT_EFFECT", "RECOVERY_TRIGGER"],
+    "recovery_condition": ["BUSINESS_RECOVERY"],
     "stop_conditions": ["PLAN_VALIDATION", "RECOVERY_TRIGGER"],
 }
 NODE_NAMES = {"SCOPE_CONFIRMATION", "TARGET_IDENTITY", "HEALTH_BASELINE", "PLAN_VALIDATION",
@@ -97,8 +103,13 @@ class HarnessResponder:
             "risk_boundary (Agent's words, or empty). request_kind is confirmation for an existing choice, decision_help "
             "when the Agent asks you to choose or tell it what to do, and fact for fact questions. "
             "Distinct topics stay separate; repeated versions use the final complete wording. A plan may contain target {namespace,name,uid}, "
-            "fault_type, intensity, duration_seconds, maximum_observation_seconds, effect_criterion "
-            "and stop_conditions. Assessment extracts only the Agent's explicit claims: status, "
+            "fault_type, intensity, effect_condition {metric,operator,threshold,minimum_requests}, "
+            "recovery_condition {metric,operator,threshold,minimum_requests}, and stop_conditions. "
+            "Supported workload metrics are target_latency_ms, target_success_rate, and target_current_rps. "
+            "Effect operators are increase_by_at_least, decrease_by_at_least, at_or_above, and at_or_below. "
+            "Recovery operators are within_baseline_delta, at_or_above, and at_or_below. "
+            "Do not invent timing values: the Controller adds its fixed condition policy. "
+            "Assessment extracts only the Agent's explicit claims: status, "
             "decision, effect_assessment, recovery_assessment, actions_taken, missing_conditions, "
             "remaining_risk, recovery_check, evidence, recovery_trigger, strategy_selection. "
             "Use verified ONLY when that specific outcome is explicitly claimed verified; "
@@ -121,7 +132,7 @@ class HarnessResponder:
 
     def reply(self, question: Mapping[str, Any], context: Mapping[str, Any]) -> dict[str, Any]:
         question_id = str(question["question_id"])
-        original = _plan(question.get("recommendation"))
+        original = apply_condition_policy(_plan(question.get("recommendation")))
         needs_help = question.get("request_kind") in {"decision_help", "fact"}
         if _complete(original) and not needs_help:
             proposal = original
@@ -139,9 +150,14 @@ class HarnessResponder:
                 "absent, give the next read-only discovery step, do not fabricate a Pod UID. "
                 "Return JSON {message, plan, affected_nodes}. plan may be null (advice "
                 "only), partial, or complete. Supply only choices the Agent is asking for, "
-                "not unrequested fault parameters. Available plan fields are target {namespace,name,uid}, fault_type, "
-                "intensity, duration_seconds, maximum_observation_seconds, effect_criterion, "
-                "stop_conditions. Preserve choices the Agent already proposed unless your "
+                "not unrequested fault parameters. Available Agent-owned plan fields are target {namespace,name,uid}, fault_type, "
+                "intensity, effect_condition {metric,operator,threshold,minimum_requests}, "
+                "recovery_condition {metric,operator,threshold,minimum_requests}, and stop_conditions. "
+                "Supported workload metrics are target_latency_ms, target_success_rate, and target_current_rps. "
+                "Effect operators are increase_by_at_least, decrease_by_at_least, at_or_above, and at_or_below. "
+                "Recovery operators are within_baseline_delta, at_or_above, and at_or_below. "
+                "Do not supply duration fields; the Controller adds the approved condition timing policy. "
+                "Preserve choices the Agent already proposed unless your "
                 "answer explicitly changes them. "
                 "A confirmation that refers to 'the above plan' must reconstruct choices from the full "
                 "question and risk_boundary. Never say 确认, 同意, 批准, or approved unless plan is complete. "
@@ -162,7 +178,7 @@ class HarnessResponder:
             if not message:
                 raise ConversationError("Harness answer has no message")
             supplied = _plan(proposed.get("plan"))
-            proposal = {**original, **supplied} if supplied else {}
+            proposal = apply_condition_policy({**original, **supplied} if supplied else original)
             self.history.append({"operation": "reply", "question_id": question_id, "result": dict(proposed)})
             answer_nodes = [str(node) for node in proposed.get("affected_nodes") or () if str(node) in NODE_NAMES]
         denied = self._denial_reason(proposal)
@@ -175,6 +191,8 @@ class HarnessResponder:
             self.reply_errors[question_id] = correction
             raise ConversationError("approval text requires a complete plan: " + ", ".join(missing))
         self.reply_errors.pop(question_id, None)
+        if denied is None and _complete(proposal):
+            message = _append_condition_policy_message(message, proposal)
         changed = [key for key in DECISION_NODES if key in proposal and proposal.get(key) != original.get(key)]
         mode = "reject" if denied else (
             "approve_recommendation" if _complete(original) and not changed and not needs_help else "custom"
@@ -204,8 +222,9 @@ class HarnessResponder:
             return "目标涉及 CoreDNS"
         if target.get("namespace") and target["namespace"] != self.namespace:
             return "目标位于授权命名空间之外"
-        for key, maximum in (("duration_seconds", self.max_fault_seconds),
-                             ("maximum_observation_seconds", self.max_observation_seconds)):
+        for key, maximum in (("safety_ttl_seconds", self.max_fault_seconds),
+                             ("effect_observation_seconds", self.max_observation_seconds),
+                             ("recovery_observation_seconds", self.max_observation_seconds)):
             if plan.get(key) is not None and float(plan[key]) > maximum:
                 return f"{key} 超过授权预算 {maximum} 秒"
         return None
@@ -226,11 +245,13 @@ def _complete(plan: Mapping[str, Any]) -> bool:
         return False
     if any(str(target.get(key)).lower() in {"unbound", "unknown", "tbd", "待定", "?"} for key in ("name", "uid")):
         return False
+    policy_matches = all(plan.get(key) == value for key, value in CONDITION_POLICY.items())
     return bool(
-        plan.get("fault_type") and plan.get("intensity") and plan.get("effect_criterion")
-        and plan.get("stop_conditions") and isinstance(plan.get("duration_seconds"), (int, float))
-        and 0 < plan["duration_seconds"] and isinstance(plan.get("maximum_observation_seconds"), (int, float))
-        and 0 < plan["maximum_observation_seconds"]
+        plan.get("fault_type")
+        and plan.get("intensity")
+        and plan.get("stop_conditions")
+        and policy_matches
+        and condition_plan_complete(plan)
     )
 
 
@@ -245,15 +266,27 @@ def _missing_plan_fields(plan: Mapping[str, Any]) -> list[str]:
         missing.append("fault_type")
     if not plan.get("intensity"):
         missing.append("intensity")
-    if not isinstance(plan.get("duration_seconds"), (int, float)) or plan["duration_seconds"] <= 0:
-        missing.append("duration_seconds")
-    if not isinstance(plan.get("maximum_observation_seconds"), (int, float)) or plan["maximum_observation_seconds"] <= 0:
-        missing.append("maximum_observation_seconds")
-    if not plan.get("effect_criterion"):
-        missing.append("effect_criterion")
+    missing.extend(validate_condition_plan(plan))
     if not plan.get("stop_conditions"):
         missing.append("stop_conditions")
     return missing
+
+
+def _append_condition_policy_message(message: str, plan: Mapping[str, Any]) -> str:
+    policy = CONDITION_POLICY
+    effect = json.dumps(plan["effect_condition"], ensure_ascii=False, sort_keys=True)
+    recovery = json.dumps(plan["recovery_condition"], ensure_ascii=False, sort_keys=True)
+    suffix = (
+        f"执行时将 chaos_control 的 duration_seconds 设为 {policy['safety_ttl_seconds']}，"
+        "它仅是自动清理的安全 TTL，不是正常等待时长。"
+        f"效果条件为 {effect}；最多观察 {policy['effect_observation_seconds']} 秒，"
+        f"条件连续成立 {policy['effect_sustain_seconds']} 秒后请在 "
+        f"{policy['agent_cleanup_seconds']} 秒内主动清理。"
+        f"恢复条件为 {recovery}；清理后最多观察 {policy['recovery_observation_seconds']} 秒，"
+        f"连续稳定 {policy['recovery_sustain_seconds']} 秒后再结束。"
+    )
+    base = message.strip()
+    return f"{base} {suffix}" if base else suffix
 
 
 def _approval_message(message: str) -> bool:
@@ -269,7 +302,7 @@ def _approval_message(message: str) -> bool:
 
 
 def _requested_nodes(question: Mapping[str, Any]) -> list[str]:
-    names = {"target_pod": "target", "maximum_observation_time": "maximum_observation_seconds"}
+    names = {"target_pod": "target"}
     nodes = {node for item in question.get("required_decisions") or ()
              for node in DECISION_NODES.get(names.get(str(item), str(item)), [])}
     text = str(question.get("question") or "").lower()

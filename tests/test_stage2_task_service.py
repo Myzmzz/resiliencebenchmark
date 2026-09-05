@@ -286,6 +286,18 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     )
     assert options.json()["safety_envelope"]["max_fault_duration_seconds"] == 1200
     assert options.json()["safety_envelope"]["intensity_limits"] == "none"
+    condition_policy = options.json()["safety_envelope"][
+        "condition_recovery_policy"
+    ]
+    assert condition_policy == {
+        "recovery_mode": "effect_condition",
+        "safety_ttl_seconds": 600,
+        "effect_observation_seconds": 300,
+        "effect_sustain_seconds": 60,
+        "agent_cleanup_seconds": 60,
+        "recovery_observation_seconds": 180,
+        "recovery_sustain_seconds": 60,
+    }
     assert cpu["intensity_fields"]["cpu_percent"] == {
         "type": "number",
         "unit": "percent",
@@ -344,11 +356,20 @@ def test_task_exposes_automatic_harness_response_without_an_external_answer_endp
             "uid": "11111111-2222-4333-8444-555555555555",
         },
         "fault_type": "network-delay",
-        "duration_seconds": 60,
         "intensity": {"delay_ms": 250},
-        "effect_criterion": "target-bound latency rises",
-        "maximum_observation_seconds": 60,
-        "stop_conditions": ["deadline reached"],
+        "effect_condition": {
+            "metric": "target_latency_ms",
+            "operator": "increase_by_at_least",
+            "threshold": 100,
+            "minimum_requests": 10,
+        },
+        "recovery_condition": {
+            "metric": "target_latency_ms",
+            "operator": "within_baseline_delta",
+            "threshold": 50,
+            "minimum_requests": 10,
+        },
+        "stop_conditions": ["effect condition met"],
     }
     service._on_campaign_event(
         task_id,

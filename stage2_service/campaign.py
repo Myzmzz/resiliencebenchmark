@@ -27,11 +27,13 @@ from .contracts import (
     CapabilityProfile,
     DisturbanceRecord,
     DisturbanceType,
+    ExperimentVerdict,
     FeedbackCategory,
     HarnessKind,
     HarnessReport,
     LifecycleEvent,
     InteractionMode,
+    NextTrialReadiness,
     PlatformStatus,
     PromptMode,
     RecoveryResult,
@@ -39,6 +41,7 @@ from .contracts import (
     Stage2CaseId,
     TrialKind,
     TrialPlatformStatus,
+    TrialValidity,
     TrialResult,
     TrialRuntimeContext,
     default_case_specs,
@@ -121,6 +124,21 @@ class EnvironmentResetter(Protocol):
     ) -> Mapping[str, Any]: ...
 
 
+class ConditionMonitor(Protocol):
+    def arm(
+        self,
+        *,
+        trial_id: str,
+        cleanup_handle: str,
+        plan: Mapping[str, Any],
+        emit: Callable[[str, Mapping[str, Any]], None],
+    ) -> None: ...
+
+    def agent_cleanup_requested(self, occurred_at: datetime) -> None: ...
+
+    def finish(self) -> Mapping[str, Any]: ...
+
+
 class TrialPreparer(Protocol):
     def prepare(
         self,
@@ -147,6 +165,7 @@ class CampaignEngine:
         finalizer: TrialFinalizer,
         evaluator: TrialEvaluator,
         resetter: EnvironmentResetter,
+        condition_monitor_factory: Callable[[], ConditionMonitor],
         artifacts: ArtifactStore,
         qualification_gate: D0QualificationGate | None = None,
         max_campaign_seconds: int = 7200,
@@ -161,6 +180,7 @@ class CampaignEngine:
         self.finalizer = finalizer
         self.evaluator = evaluator
         self.resetter = resetter
+        self.condition_monitor_factory = condition_monitor_factory
         self.artifacts = artifacts
         self.qualification_gate = qualification_gate or D0QualificationGate(None)
         self.max_campaign_seconds = max_campaign_seconds
@@ -264,6 +284,7 @@ class CampaignEngine:
                     runtime: TrialRuntimeContext | None = None
                     report: HarnessReport | None = None
                     recovery: RecoveryResult | None = None
+                    condition_monitor = self.condition_monitor_factory()
                     permission_started = False
                     disturbance_records: list[DisturbanceRecord] = []
                     evaluation_decision: dict[str, Any] | None = None
@@ -331,10 +352,37 @@ class CampaignEngine:
 
                         current_target = runtime.target.model_dump(mode="json")
                         guided_nudges_sent: set[str] = set()
+                        condition_plan: dict[str, Any] = {}
 
                         def observe(event: Any) -> Mapping[str, Any] | None:
-                            nonlocal runtime
+                            nonlocal runtime, condition_plan
                             if isinstance(event, LifecycleEvent):
+                                if (
+                                    event.kind == "user_decision_received"
+                                    and event.payload.get("approved") is True
+                                    and isinstance(event.payload.get("approved_plan"), Mapping)
+                                ):
+                                    condition_plan = dict(event.payload["approved_plan"])
+                                if event.kind == "recovery_requested":
+                                    condition_monitor.agent_cleanup_requested(
+                                        event.occurred_at
+                                    )
+                                if event.kind in {"main_fault_created", "main_fault_running"} and condition_plan:
+                                    condition_monitor.arm(
+                                        trial_id=trial_id,
+                                        cleanup_handle=runtime.cleanup_handle,
+                                        plan=condition_plan,
+                                        emit=lambda monitor_kind, monitor_payload: emit(
+                                            "condition_monitor_event",
+                                            {
+                                                "trial_id": trial_id,
+                                                "case_id": case.case_id.value,
+                                                "event_kind": monitor_kind,
+                                                "monitor_kind": monitor_kind,
+                                                **dict(monitor_payload),
+                                            },
+                                        ),
+                                    )
                                 if event.kind in {
                                     "target_bound",
                                     "target_reconfirmed",
@@ -567,6 +615,15 @@ class CampaignEngine:
                         if "expected_outcome" in runner_parameters:
                             runner_kwargs["expected_outcome"] = request.expected_outcome
                         report = self.harness_runner.run(**runner_kwargs)
+                        condition_result = dict(condition_monitor.finish())
+                        report = report.model_copy(
+                            update={
+                                "final_output": {
+                                    **dict(report.final_output),
+                                    "condition_monitor": condition_result,
+                                }
+                            }
+                        )
                         emit(
                             "agent_response_captured",
                             {
@@ -722,7 +779,7 @@ class CampaignEngine:
                                 else TrialPlatformStatus.HARNESS_FAILED
                             )
                             evaluation_decision = {
-                                "schema_version": "stage2-evaluation-decision.v3",
+                                "schema_version": "stage2-evaluation-decision.v5",
                                 "verdict": (
                                     verdict.value
                                     if fallback_platform_valid
@@ -731,6 +788,20 @@ class CampaignEngine:
                                 "diagnostic_only": diagnostic_only,
                                 "platform_valid": fallback_platform_valid,
                                 "platform_status": fallback_platform_status.value,
+                                "trial_validity": (
+                                    TrialValidity.VALID.value
+                                    if fallback_platform_valid
+                                    else TrialValidity.CASE_INVALID.value
+                                ),
+                                "experiment_verdict": (
+                                    ExperimentVerdict.PASS.value
+                                    if fallback_platform_valid
+                                    and verdict is AgentVerdict.PASS
+                                    else ExperimentVerdict.FAILED.value
+                                    if fallback_platform_valid
+                                    else ExperimentVerdict.NOT_EVALUATED.value
+                                ),
+                                "next_trial_readiness": NextTrialReadiness.UNKNOWN.value,
                                 "agent_outcome": (
                                     AgentOutcome.NOT_EVALUATED.value
                                     if not fallback_platform_valid
@@ -841,6 +912,19 @@ class CampaignEngine:
                                     TrialPlatformStatus.CASE_INVALID.value,
                                 )
                             ),
+                            trial_validity=TrialValidity(
+                                evaluation_decision.get(
+                                    "trial_validity",
+                                    TrialValidity.CASE_INVALID.value,
+                                )
+                            ),
+                            experiment_verdict=ExperimentVerdict(
+                                evaluation_decision.get(
+                                    "experiment_verdict",
+                                    ExperimentVerdict.NOT_EVALUATED.value,
+                                )
+                            ),
+                            next_trial_readiness=NextTrialReadiness.UNKNOWN,
                             interaction_mode=InteractionMode(
                                 evaluation_decision.get(
                                     "interaction_mode", request.interaction_mode.value
@@ -869,6 +953,7 @@ class CampaignEngine:
                             artifact_refs=tuple(refs),
                         )
                     except Exception as exc:  # noqa: BLE001 - cleanup is mandatory.
+                        condition_monitor.finish()
                         if disturbance_attempt.get("state") == "WAITING_TRIGGER":
                             _update_disturbance_attempt(
                                 disturbance_attempt,
@@ -938,15 +1023,15 @@ class CampaignEngine:
                         restore.get("verified") is True
                         and reset.get("verified") is True
                     )
-                    final_platform_status = (
-                        result.trial_platform_status
+                    next_trial_readiness = (
+                        NextTrialReadiness.READY
                         if cleanup_verified
-                        else TrialPlatformStatus.RESET_FAILED
+                        else NextTrialReadiness.BLOCKED
                     )
-                    final_agent_outcome = (
-                        result.agent_outcome
+                    post_trial_issues = (
+                        ()
                         if cleanup_verified
-                        else AgentOutcome.NOT_EVALUATED
+                        else ("POST_TRIAL_ENVIRONMENT_NOT_READY",)
                     )
                     final_recovery = result.recovery
                     if isinstance(reset.get("reset_policy"), Mapping):
@@ -961,19 +1046,8 @@ class CampaignEngine:
                         )
                     result = result.model_copy(
                         update={
-                            "platform_valid": result.platform_valid and cleanup_verified,
-                            "agent_verdict": (
-                                result.agent_verdict
-                                if result.platform_valid and cleanup_verified
-                                else AgentVerdict.CASE_INVALID
-                            ),
-                            "agent_outcome": final_agent_outcome,
-                            "trial_platform_status": final_platform_status,
-                            "recovery_status": (
-                                result.recovery_status
-                                if cleanup_verified
-                                else RecoveryStatus.CLEANUP_FAILED
-                            ),
+                            "next_trial_readiness": next_trial_readiness,
+                            "post_trial_issues": post_trial_issues,
                             "recovery": final_recovery,
                             "artifact_refs": (
                                 *result.artifact_refs,
@@ -993,6 +1067,10 @@ class CampaignEngine:
                                 "platform_valid": result.platform_valid,
                                 "verdict": result.agent_verdict.value,
                                 "platform_status": result.trial_platform_status.value,
+                                "trial_validity": result.trial_validity.value,
+                                "experiment_verdict": result.experiment_verdict.value,
+                                "next_trial_readiness": result.next_trial_readiness.value,
+                                "post_trial_issues": list(result.post_trial_issues),
                                 "agent_outcome": result.agent_outcome.value,
                                 "assistance_level": result.assistance_level.value,
                                 "recovery_status": result.recovery_status.value,
@@ -1005,10 +1083,10 @@ class CampaignEngine:
                         checks = list(evaluation_decision.get("checks") or [])
                         checks.append(
                             {
-                                "rule_id": "PLATFORM_VALID",
+                                "rule_id": "NEXT_TRIAL_READY",
                                 "expected": True,
-                                "observed": result.platform_valid,
-                                "passed": result.platform_valid,
+                                "observed": cleanup_verified,
+                                "passed": cleanup_verified,
                                 "evidence_refs": [
                                     f"{campaign_id}/trials/{trial_id}/permission-restore.json",
                                     f"{campaign_id}/trials/{trial_id}/environment-reset.json",
@@ -1017,15 +1095,7 @@ class CampaignEngine:
                         )
                         evaluation_decision["checks"] = checks
                         if not result.platform_valid:
-                            if (
-                                result.trial_platform_status
-                                is TrialPlatformStatus.RESET_FAILED
-                            ):
-                                final_reason = "RESET_FAILED"
-                            elif (
-                                result.trial_platform_status
-                                is TrialPlatformStatus.HARNESS_FAILED
-                            ):
+                            if result.trial_platform_status is TrialPlatformStatus.HARNESS_FAILED:
                                 final_reason = (
                                     "HARNESS_TIMEOUT"
                                     if report.status == "timeout"
@@ -1043,6 +1113,10 @@ class CampaignEngine:
                             reason_codes = list(
                                 evaluation_decision.get("reason_codes") or []
                             )
+                            if not cleanup_verified:
+                                reason_codes.append(
+                                    "POST_TRIAL_ENVIRONMENT_NOT_READY"
+                                )
                         evaluation_decision["reason_codes"] = reason_codes
                         result = result.model_copy(
                             update={
@@ -1067,6 +1141,9 @@ class CampaignEngine:
                             "harness": harness.value,
                             "case_id": case.case_id.value,
                             "platform_valid": result.platform_valid,
+                            "trial_validity": result.trial_validity.value,
+                            "experiment_verdict": result.experiment_verdict.value,
+                            "next_trial_readiness": result.next_trial_readiness.value,
                             "agent_verdict": result.agent_verdict.value,
                             "agent_outcome": result.agent_outcome.value,
                             "score_summary": result.score_summary,
@@ -1086,9 +1163,9 @@ class CampaignEngine:
                             campaign_id,
                             request,
                             started_at,
-                            PlatformStatus.RESET_FAILED,
+                            PlatformStatus.BLOCKED,
                             results,
-                            "permission restore or environment reset failed",
+                            "post-trial environment is not ready for another Trial",
                         )
                     if should_stop():
                         emit("campaign_stopped", {"after_trial": trial_id})

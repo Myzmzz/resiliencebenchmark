@@ -14,6 +14,8 @@ from .contracts import (
     RecoveryResult,
     TrialRuntimeContext,
 )
+from .condition_policy import CONDITION_POLICY
+from .request_observation import timestamp as evidence_timestamp
 from .reset_policy import classify_reset_policy
 
 
@@ -32,8 +34,13 @@ class ChaosCleanupBackend(Protocol):
 class RecoveryEvidenceProvider(Protocol):
     def current(self) -> Mapping[str, Any]: ...
 
+    def baseline(self, trial_id: str) -> Mapping[str, Any]: ...
+
     def effect_since(
-        self, trial_id: str, runtime: TrialRuntimeContext
+        self,
+        trial_id: str,
+        runtime: TrialRuntimeContext,
+        approved_plan: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]: ...
 
     def reset_and_wait_healthy(
@@ -42,6 +49,8 @@ class RecoveryEvidenceProvider(Protocol):
         timeout_seconds: int = 300,
         minimum_requests: int = 20,
         stability_samples: int = 3,
+        baseline: Mapping[str, Any] | None = None,
+        recovery_condition: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]: ...
 
 
@@ -174,7 +183,32 @@ class Stage2Finalizer:
         fault_contract["evidence_window"]["start"] = pre_status.get("started_at") or status.get("started_at")
         fault_contract["evidence_window"]["end"] = pre_status.get("ended_at") or status.get("ended_at")
         evidence_runtime = evidence_runtime.model_copy(update={"main_fault": fault_contract})
-        effect = dict(self.recovery_evidence.effect_since(trial_id, evidence_runtime))
+        effect = dict(
+            self.recovery_evidence.effect_since(
+                trial_id, evidence_runtime, approved_plan
+            )
+        )
+        condition_monitor = dict(
+            report.final_output.get("condition_monitor") or {}
+        )
+        effect["condition_monitor"] = condition_monitor
+        if (
+            approved_plan.get("recovery_mode") == "effect_condition"
+            and condition_monitor
+        ):
+            effect["verified"] = (
+                condition_monitor.get("effect_condition_met") is True
+            )
+        if condition_monitor.get("effect_condition_met") is True:
+            effect["verified"] = True
+            service_condition = dict(effect.get("service_condition") or {})
+            service_condition["sustain_verified"] = True
+            service_condition["condition_met_at"] = condition_monitor.get(
+                "effect_condition_met_at"
+            )
+            effect["service_condition"] = service_condition
+            if not effect.get("attribution_scope"):
+                effect["attribution_scope"] = "cart_service"
         effect["observed_main_fault"] = {
             "fault_type": pre_status.get("fault_type"), "target_name": pre_status.get("target_name"),
             "target_uid": pre_status.get("target_uid"), "experiment_name": pre_status.get("experiment_name"),
@@ -196,7 +230,15 @@ class Stage2Finalizer:
                 self.recovery_evidence.reset_and_wait_healthy(
                     timeout_seconds=self.recovery_timeout_seconds,
                     minimum_requests=10,
-                    stability_samples=2,
+                    stability_samples=(
+                        CONDITION_POLICY["recovery_sustain_seconds"] // 10 + 1
+                    ),
+                    baseline=self.recovery_evidence.baseline(trial_id),
+                    recovery_condition=(
+                        approved_plan.get("recovery_condition")
+                        if isinstance(approved_plan, Mapping)
+                        else None
+                    ),
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -267,7 +309,7 @@ class Stage2Finalizer:
         trigger = declared_recovery.get("recovery_trigger")
         planned_automatic = bool(
             ever_active and pre_absent and pre_status.get("ledger_state") == "expired_cleaned"
-            and (approved_plan.get("duration_seconds") or any(
+            and (approved_plan.get("safety_ttl_seconds") or any(
                 event.kind == "main_fault_requested" and event.payload.get("duration_seconds")
                 for event in report.lifecycle_events
             ))
@@ -287,18 +329,25 @@ class Stage2Finalizer:
         ended_at = fault_contract["evidence_window"].get("end")
         recovery_start = datetime.fromisoformat(str(ended_at).replace("Z", "+00:00")).timestamp() if ended_at else None
         business_observed_after_clear = bool(absence_times) and any(
-            event.kind == "business_observation" and event.occurred_at >= min(absence_times)
+            event.kind == "business_observation"
+            and event.occurred_at >= min(absence_times)
             and recovery_start is not None
-            and isinstance(event.payload.get("query_start"), (int, float))
-            and event.payload["query_start"] >= recovery_start
+            and evidence_timestamp(event.payload.get("query_start")) is not None
+            and float(evidence_timestamp(event.payload.get("query_start")))
+            >= recovery_start
             for event in report.lifecycle_events
         )
         agent_recovery_verified = queried_absence and business_observed_after_clear and business_recovered
         controller_cleanup_verified = fault_absent and business_recovered
+        ledger_state = str(
+            pre_status.get("ledger_state") or pre_status.get("state") or ""
+        )
+        timer_cleaned = ledger_state == "expired_cleaned"
         cleanup_executor = (
             "NOT_APPLICABLE" if not ever_active else
+            "CONTROLLER_TIMER" if timer_cleaned else
+            "CONTROLLER_FALLBACK" if condition_monitor.get("controller_fallback_used") is True else
             "AGENT_TOOL" if agent_cleanup_accepted and pre_absent else
-            "CONTROLLER_TIMER" if planned_automatic else
             "CONTROLLER_FALLBACK" if not pre_absent or pre_status.get("ledger_state") == "expired_cleaned" else
             "UNATTRIBUTED"
         )
@@ -310,13 +359,20 @@ class Stage2Finalizer:
             business_recovery_verified=business_recovered,
             chaos_inventory_clear=inventory_clear,
             recovery_attribution={
-                "planned_automatic_recovery": planned_automatic,
+                "planned_automatic_recovery": planned_automatic and timer_cleaned,
+                "effect_condition_met": condition_monitor.get("effect_condition_met") is True,
+                "effect_condition_met_at": condition_monitor.get("effect_condition_met_at"),
+                "agent_cleanup_timely": condition_monitor.get("agent_cleanup_timely") is True,
                 "agent_requested_cleanup": agent_attempted,
                 "agent_cleanup_accepted": agent_cleanup_accepted,
                 "agent_verified_absence": queried_absence,
                 "agent_observed_business_recovery": business_observed_after_clear,
                 "cleanup_executor": cleanup_executor,
-                "controller_intervened": ever_active and not pre_absent,
+                "controller_intervened": (
+                    condition_monitor.get("controller_fallback_used") is True
+                    or timer_cleaned
+                    or (ever_active and not pre_absent)
+                ),
                 "business_verified_by": "ORACLE" if business_recovered else None,
             },
             main_fault_ever_active=ever_active,

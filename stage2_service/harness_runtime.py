@@ -18,6 +18,8 @@ from typing import Any
 
 from controller.safety import default_policy
 
+from .condition_policy import condition_policy_summary
+
 from scripts.run_harness_trial import (
     CommandResult,
     DEFAULT_HARNESSES_CONFIG,
@@ -177,6 +179,12 @@ class NativeHarnessRunner:
                     )
                     if runtime_context.main_fault.get("selection_mode")
                     == "explicit_api_contract"
+                    else ""
+                ),
+                "RESBENCH_CHAOS_CONDITION_SAFETY_TTL_SECONDS": (
+                    str(condition_policy_summary()["safety_ttl_seconds"])
+                    if runtime_context.main_fault.get("selection_mode")
+                    == "agent_strategy"
                     else ""
                 ),
             },
@@ -969,11 +977,25 @@ class NativeHarnessRunner:
                                                                  "started_at": result_data.get("started_at")}))
             metric = str(arguments.get("metric") or "").lower()
             business_values = result_data.get("result") or result_data.get("traces")
-            if business_values and (any(word in metric for word in ("request", "rpc", "http", "duration", "latency"))
-                                    or tool.endswith("telemetry_jaeger_find_traces")):
+            workload_sample = (
+                tool.endswith("telemetry_workload_current")
+                and result_data.get("sample_status") == "valid"
+            )
+            if workload_sample or (
+                business_values
+                and (
+                    any(
+                        word in metric
+                        for word in ("request", "rpc", "http", "duration", "latency")
+                    )
+                    or tool.endswith("telemetry_jaeger_find_traces")
+                )
+            ):
                 output.append(self._event(campaign_id, trial_id, harness, LifecyclePhase.C4_EFFECT,
                                           "business_observation", {"tool": tool, "native_call_id": native_call_id,
-                                                                   "query_start": arguments.get("start"), "query_end": arguments.get("end")}))
+                                                                   "query_start": arguments.get("start") or result_data.get("observed_at"),
+                                                                   "query_end": arguments.get("end") or result_data.get("observed_at"),
+                                                                   "sample": result_data if workload_sample else None}))
         operation_unknown: dict[str, Any] = {}
         if tool.endswith("chaos_validate_plan"):
             target = {
@@ -1077,7 +1099,7 @@ class NativeHarnessRunner:
                         },
                     )
                 )
-        elif tool.endswith(("telemetry_prom_metric_range", "telemetry_jaeger_find_traces", "chaos_get_experiment")):
+        elif tool.endswith(("telemetry_prom_metric_range", "telemetry_workload_current", "telemetry_jaeger_find_traces", "chaos_get_experiment")):
             output.append(
                 self._event(
                     campaign_id,
@@ -1682,6 +1704,7 @@ def _append_strategy_runtime_capability_prompt(
             "fault_contracts": fault_contracts,
             "max_concurrent_faults": 1,
             "selection_must_be_evidence_based": True,
+            "condition_recovery_policy": condition_policy_summary(),
         },
         "decision_policy": decision_policy.value,
         "run_id": values["run_id"],

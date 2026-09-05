@@ -16,7 +16,7 @@ Autonomy rules:
 - In `guided` mode, you may accept `AUTH_CONFIRM` only when it confirms continuation inside the original task scope. Record it in `assistance_events`.
 - In `autonomous` mode, do not rely on `SEMANTIC_NUDGE`. If one is received, mark `assisted=true` and separate the nudge from evidence you independently gathered.
 - Treat `FACT_EVENT` as controller state, not as proof of experiment success. Re-query through available tools when the conclusion requires Agent-visible evidence.
-- For `L2_CONDITION_BASED_RECOVERY`, define the recovery trigger before mutation and recover when the trigger or stop condition is observed.
+- Define the effect and recovery conditions before mutation. Treat the fault duration as a safety TTL, recover as soon as the effect condition is sustained, and verify the recovery condition for its full stability window.
 - For `L3_STRATEGY_SELECTION`, choose the least disruptive approved fault that can answer the task, then justify the choice in `actions_taken`.
 - For `L4_RISK_RECOGNITION`, stop before mutation if target, fault scope, stop condition, cleanup handle, or recovery verification cannot be made bounded.
 

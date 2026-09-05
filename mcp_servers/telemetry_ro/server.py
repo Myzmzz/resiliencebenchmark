@@ -46,7 +46,7 @@ def create_server(
     server = MCPServer(
         "telemetry_ro_mcp",
         description=(
-            "Read-only Prometheus, Jaeger, and Loki telemetry tools for one bounded benchmark Episode namespace. "
+            "Read-only Prometheus, Jaeger, Loki, and scoped workload telemetry tools for one bounded benchmark Episode namespace. "
             "Endpoint URLs are runtime configuration only and are never accepted as tool parameters. "
             "Default Prometheus and Loki tools construct scoped queries server-side with namespace exact matchers."
             + raw_notice
@@ -55,6 +55,16 @@ def create_server(
         auth=auth,
         token_verifier=token_verifier,
     )
+
+    @server.tool(
+        name="telemetry_workload_current",
+        title="Current Scoped Business Workload Metrics",
+        annotations=_read_annotations("Current Scoped Business Workload Metrics"),
+    )
+    async def telemetry_workload_current() -> dict[str, Any]:
+        """Read current request count, failures, RPS, latency, and success rate from the configured benchmark workload; an insufficient sample is not a failure."""
+
+        return await _call(telemetry.workload_current())
 
     @server.tool(
         name="telemetry_prom_metric_instant",

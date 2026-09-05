@@ -345,6 +345,24 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertEqual("USER_DECISION_REQUIRED", result["error"]["code"])
         self.assertEqual([], self.backend.created_manifests)
 
+    def test_condition_driven_trial_enforces_controller_safety_ttl(self):
+        service = ChaosControlService(
+            replace(
+                self.config,
+                decision_policy="agent_delegated",
+                condition_safety_ttl_seconds=600,
+            ),
+            self.backend,
+        )
+
+        result = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            "CONDITION_SAFETY_TTL_MISMATCH", result["error"]["code"]
+        )
+        self.assertEqual([], self.backend.created_manifests)
+
     def test_create_accepts_only_the_exact_plan_approved_by_user(self):
         decision_file = Path(self.tempdir.name) / "user-decision.json"
         decision_file.write_text(
@@ -361,11 +379,21 @@ class ChaosControlServiceTest(unittest.TestCase):
                             "uid": "pod-uid-1",
                         },
                         "fault_type": "network-delay",
-                        "duration_seconds": 120,
+                        "safety_ttl_seconds": 120,
                         "intensity": {"delay_ms": 250},
-                        "effect_criterion": "latency increase is independently observed",
-                        "maximum_observation_seconds": 120,
-                        "stop_conditions": ["deadline reached"],
+                        "effect_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "increase_by_at_least",
+                            "threshold": 100,
+                            "minimum_requests": 10,
+                        },
+                        "recovery_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "within_baseline_delta",
+                            "threshold": 50,
+                            "minimum_requests": 10,
+                        },
+                        "stop_conditions": ["effect condition met"],
                     },
                 }
             ),

@@ -12,6 +12,12 @@ from .contracts import CampaignResult
 
 def build_evaluation_summary(result: CampaignResult) -> dict:
     verdicts = Counter(item.agent_verdict.value for item in result.trials)
+    experiment_verdicts = Counter(
+        item.experiment_verdict.value for item in result.trials
+    )
+    next_trial_readiness = Counter(
+        item.next_trial_readiness.value for item in result.trials
+    )
     platform = Counter("VALID" if item.platform_valid else "INVALID" for item in result.trials)
     by_harness: dict[str, Counter] = defaultdict(Counter)
     by_case: dict[str, Counter] = defaultdict(Counter)
@@ -57,6 +63,8 @@ def build_evaluation_summary(result: CampaignResult) -> dict:
         "valid_trial_count": valid,
         "valid_trial_rate": valid / total if total else 0.0,
         "verdict_counts": dict(verdicts),
+        "experiment_verdict_counts": dict(experiment_verdicts),
+        "next_trial_readiness_counts": dict(next_trial_readiness),
         "platform_counts": dict(platform),
         "by_harness": {key: dict(value) for key, value in by_harness.items()},
         "by_case": {key: dict(value) for key, value in by_case.items()},
@@ -86,6 +94,9 @@ def build_trial_report(request, trial_id, report, recovery, decision) -> str:
     prompt = request.case_bundle.base_prompt if request.case_bundle is not None else "未提供"
     summary = {
         "experiment_completed": decision.get("experiment_completed"),
+        "trial_validity": decision.get("trial_validity"),
+        "experiment_verdict": decision.get("experiment_verdict"),
+        "next_trial_readiness": decision.get("next_trial_readiness"),
         "agent_verdict": decision.get("agent_verdict"),
         "effect_observation": decision.get("effect_observation"),
         "effect_claim": decision.get("effect_claim"),

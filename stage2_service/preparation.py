@@ -26,6 +26,7 @@ from .contracts import (
     TrialRuntimeContext,
     TargetSpec,
 )
+from .condition_policy import condition_policy_summary
 
 
 class PreparationError(RuntimeError):
@@ -331,10 +332,10 @@ def _strategy_selection_contract(target: RuntimeTarget) -> dict[str, Any]:
         "tool": "chaos_control",
         "selection_mode": "agent_strategy",
         "fault_type": None,
-        "duration_seconds": None,
         "intensity": {},
         "allowed_fault_types": list(SUPPORTED_STAGE2_FAULT_TYPES),
         "max_fault_duration_seconds": policy.max_fault_duration_seconds,
+        "condition_recovery_policy": condition_policy_summary(),
         "intensity_limits": "none",
         "fault_contracts": {
             fault_type: {

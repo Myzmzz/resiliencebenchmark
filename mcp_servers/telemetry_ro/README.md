@@ -1,6 +1,6 @@
 # telemetry_ro MCP
 
-`telemetry_ro` exposes read-only Prometheus, Jaeger, and Loki tools for bounded
+`telemetry_ro` exposes read-only Prometheus, Jaeger, Loki, and benchmark workload tools for bounded
 BenchmarkFactory episode windows. Endpoint URLs are runtime configuration only;
 agents cannot pass upstream URLs as tool arguments.
 
@@ -15,6 +15,15 @@ Required runtime scope:
   arbitrary PromQL/LogQL tools and direct Jaeger trace-id lookup are hidden and
   rejected by default. Set to `true` only for explicit qualification or
   debugging runs; those tools are unqualified for shared-cluster production use.
+- `RESBENCH_WORKLOAD_STATS_URL`: Controller-configured Locust request-statistics
+  endpoint. Agents never provide or receive this URL.
+- `RESBENCH_WORKLOAD_STAT_NAME`: the single workload row exposed to the current
+  Episode, such as `/api/cart`.
+
+`telemetry_workload_current` returns the scoped workload's raw request count,
+failure count, response-time sum, average/P95 latency, RPS, and success rate.
+It does not reveal the independent Oracle threshold or verdict. A zero-request
+snapshot is returned as `sample_status=insufficient`, not as a business failure.
 
 Production-default Prometheus and Loki tools are structured. Agents provide a
 metric name, exact non-namespace label filters, optional `rate`/`increase`

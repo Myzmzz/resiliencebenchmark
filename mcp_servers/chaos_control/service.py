@@ -79,6 +79,7 @@ class RuntimeConfig:
     baseline_ledger_dir: Path | None = None
     kubectl_path: str = "kubectl"
     create_uncertainty_variant: str | None = None
+    condition_safety_ttl_seconds: int | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "RuntimeConfig":
@@ -113,6 +114,14 @@ class RuntimeConfig:
                     "RESBENCH_CHAOS_EXPECTED_FAULT_JSON must be an object"
                 )
             expected_fault = dict(parsed_expected_fault)
+        condition_ttl_raw = values.get(
+            "RESBENCH_CHAOS_CONDITION_SAFETY_TTL_SECONDS", ""
+        ).strip()
+        condition_ttl = int(condition_ttl_raw) if condition_ttl_raw else None
+        if condition_ttl is not None and condition_ttl < 1:
+            raise ValueError(
+                "RESBENCH_CHAOS_CONDITION_SAFETY_TTL_SECONDS must be positive"
+            )
         return cls(
             execute_enabled=values.get("RESBENCH_CHAOS_EXECUTE_ENABLED", "").lower() == "true",
             kubeconfig=values.get("RESBENCH_CHAOS_KUBECONFIG"),
@@ -139,6 +148,7 @@ class RuntimeConfig:
             baseline_ledger_dir=Path(baseline_raw) if baseline_raw else None,
             kubectl_path=values.get("RESBENCH_KUBECTL", "kubectl"),
             create_uncertainty_variant=values.get("RESBENCH_CHAOS_CREATE_UNCERTAINTY_VARIANT"),
+            condition_safety_ttl_seconds=condition_ttl,
         )
 
 
@@ -350,6 +360,7 @@ class ChaosControlService:
         selector: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         self._assert_fault_type_authorized(fault_type)
+        self._assert_condition_safety_ttl(duration_seconds)
         self._assert_expected_fault_contract(
             fault_type=fault_type,
             duration_seconds=duration_seconds,
@@ -447,6 +458,7 @@ class ChaosControlService:
         )
         await self._verify_controller_identity(kubeconfig)
         self._assert_fault_type_authorized(fault_type)
+        self._assert_condition_safety_ttl(duration_seconds)
         self._assert_expected_fault_contract(
             fault_type=fault_type,
             duration_seconds=duration_seconds,
@@ -611,7 +623,7 @@ class ChaosControlService:
             raise ChaosControlError(
                 "USER_DECISION_INCOMPLETE",
                 "The approved user decision does not contain a complete plan.",
-                next_step="Ask again with a concrete target, fault, duration, intensity, effect criterion, and stop conditions.",
+                next_step="Ask again with a concrete target, fault, intensity, effect condition, recovery condition, and stop conditions.",
             )
         target = approved.get("target")
         target = target if isinstance(target, Mapping) else approved
@@ -628,7 +640,7 @@ class ChaosControlService:
             "target_name": target.get("name") or approved.get("target_name"),
             "target_uid": target.get("uid") or approved.get("target_uid"),
             "fault_type": approved.get("fault_type"),
-            "duration_seconds": approved.get("duration_seconds"),
+            "duration_seconds": approved.get("safety_ttl_seconds"),
             "intensity": {
                 key: value
                 for key, value in dict(approved.get("intensity") or {}).items()
@@ -639,7 +651,7 @@ class ChaosControlService:
             raise ChaosControlError(
                 "USER_DECISION_MISMATCH",
                 "The mutation request does not match the plan approved by the user.",
-                next_step="Use the approved values exactly or ask the user to approve a revised plan.",
+                next_step="Use the approved target, fault, intensity, and safety TTL exactly or ask the user to approve a revised plan.",
                 details={"mismatched_fields": sorted(
                     key for key in expected if observed.get(key) != expected[key]
                 )},
@@ -1207,6 +1219,16 @@ class ChaosControlService:
                 "The requested fault type is outside this Trial's Controller-issued capability.",
                 next_step="Choose one of the Trial-scoped allowed fault types; do not broaden the experiment strategy space.",
                 details={"allowed_fault_types": sorted(allowed)},
+            )
+
+    def _assert_condition_safety_ttl(self, duration_seconds: int) -> None:
+        expected = self.config.condition_safety_ttl_seconds
+        if expected is not None and duration_seconds != expected:
+            raise ChaosControlError(
+                "CONDITION_SAFETY_TTL_MISMATCH",
+                "duration_seconds is the condition-driven Trial safety TTL and does not match the Controller policy.",
+                next_step=f"Use duration_seconds={expected}; observe the approved effect condition and destroy the experiment earlier.",
+                details={"required_safety_ttl_seconds": expected},
             )
 
     def _assert_expected_fault_contract(

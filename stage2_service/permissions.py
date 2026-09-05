@@ -49,6 +49,7 @@ class Stage2PermissionManager:
         "k8s_list_events",
         "k8s_pod_logs",
         "telemetry_prom_metric_range",
+        "telemetry_workload_current",
         "telemetry_jaeger_find_traces",
         "telemetry_loki_logs_range",
         "chaos_validate_plan",

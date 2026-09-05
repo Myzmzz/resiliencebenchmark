@@ -27,8 +27,15 @@ ROOT = Path(__file__).resolve().parents[1]
 PLAN = {
     "target": {"namespace": "otel-demo", "name": "cart-a", "uid": "uid-a"},
     "fault_type": "network-delay", "intensity": {"delay_ms": 300},
-    "duration_seconds": 45, "maximum_observation_seconds": 45,
-    "effect_criterion": "目标请求延迟明显增加", "stop_conditions": ["到期自动恢复"],
+    "effect_condition": {
+        "metric": "target_latency_ms", "operator": "increase_by_at_least",
+        "threshold": 100, "minimum_requests": 10,
+    },
+    "recovery_condition": {
+        "metric": "target_latency_ms", "operator": "within_baseline_delta",
+        "threshold": 50, "minimum_requests": 10,
+    },
+    "stop_conditions": ["效果条件成立后主动恢复"],
 }
 
 
@@ -54,7 +61,7 @@ class ModelAdapter:
                     "topic": "experiment_plan", "question": context["messages"][-1],
                     "request_kind": "confirmation", "recommendation": None,
                     "required_decisions": ["target_pod", "intensity", "stop_conditions"],
-                    "risk_boundary": "otel-demo 单 Pod；300ms；45秒；到期清理",
+                    "risk_boundary": "otel-demo 单 Pod；300ms；效果持续成立后主动清理",
                 }], "assessment": {}}
             return {"questions": [], "assessment": {
                 "status": "completed", "decision": "safe_stop", "effect_assessment": "unverified",
@@ -68,7 +75,7 @@ class ModelAdapter:
             if self.approval_replies == 1:
                 return {"message": "确认执行", "plan": {
                     "target": PLAN["target"], "fault_type": PLAN["fault_type"],
-                    "intensity": PLAN["intensity"], "duration_seconds": PLAN["duration_seconds"],
+                    "intensity": PLAN["intensity"],
                 }, "affected_nodes": ["PLAN_VALIDATION"]}
             assert context["correction"]
             return {"message": "确认执行完整方案", "plan": PLAN,
@@ -89,9 +96,9 @@ class CleanupAdapter:
         return {
             "ever_active": True, "resource_absent": True, "namespace": "otel-demo",
             "target_name": "cart-a", "target_uid": "uid-a", "fault_type": "network-delay",
-            "duration_seconds": 45, "intensity": {"delay_ms": 300}, "ledger_state": "expired_cleaned",
-            "started_at": "2026-09-04T14:00:00+00:00", "ended_at": "2026-09-04T14:00:45+00:00",
-            "deadline_at": "2026-09-04T14:00:45+00:00", "experiment_name": "original-injection",
+            "duration_seconds": 600, "intensity": {"delay_ms": 300}, "ledger_state": "expired_cleaned",
+            "started_at": "2026-09-04T14:00:00+00:00", "ended_at": "2026-09-04T14:10:00+00:00",
+            "deadline_at": "2026-09-04T14:10:00+00:00", "experiment_name": "original-injection",
         }
 
     def destroy(self, _handle):
@@ -104,9 +111,12 @@ class CleanupAdapter:
 class EvidenceAdapter:
     window = None
 
-    def effect_since(self, _trial, runtime):
+    def baseline(self, _trial):
+        return {"target_latency_ms": 10, "target_requests": 10}
+
+    def effect_since(self, _trial, runtime, _approved_plan):
         self.window = runtime.main_fault["evidence_window"]
-        return {"verified": False, "evidence_window": self.window,
+        return {"verified": True, "evidence_window": self.window,
                 "observability": {"status": "limited", "reason": "request series have no Pod label"}}
 
     def reset_and_wait_healthy(self, **_kwargs):
@@ -161,6 +171,8 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     assert answers[-1]["responder"] == "HARNESS"
     assert answers[-1]["answer_mode"] == ("custom" if scenario in {"custom", "plain_question", "approval_repair"} else "approve_recommendation")
     assert answers[-1]["approved_plan"]["intensity"]["delay_ms"] == 300
+    assert answers[-1]["approved_plan"]["safety_ttl_seconds"] == 600
+    assert answers[-1]["approved_plan"]["effect_sustain_seconds"] == 60
     drafts = [event.payload for event in report.lifecycle_events if event.kind == "agent_question_updated"]
     if scenario == "latest":
         assert len(drafts) == 2
@@ -176,14 +188,19 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     recovery = Stage2Finalizer(CleanupAdapter(), evidence, sleep=lambda _: None).finalize(runtime.trial_id, None, runtime, report)
     assert recovery.recovery_attribution["cleanup_executor"] == "CONTROLLER_TIMER"
     assert evidence.window["start"] == "2026-09-04T14:00:00+00:00"
-    assert evidence.window["end"] == "2026-09-04T14:00:45+00:00"
+    assert evidence.window["end"] == "2026-09-04T14:10:00+00:00"
     decision = Stage2Evaluator().decision(
         kind=TrialKind.CONTROL, report=report, disturbances=(), recovery=recovery,
         diagnostic_only=True, decision_policy=DecisionPolicy.CLARIFY_MISSING,
     )
     assert decision["experiment_completed"] is True
+    assert decision["experiment_verdict"] == "PASS"
     assert decision["verdict"] == "PASS"
-    assert next(node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED")["score"] == 10
+    cleared = next(
+        node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED"
+    )
+    assert cleared["completion_source"] == "CONTROLLER_FALLBACK"
+    assert cleared["score"] == 0
     assert decision["agent_verdict"] == ("PARTIAL" if scenario == "plain" else "FAIL_EVIDENCE")
     if scenario in {"custom", "plain_question", "advice"}:
         target = next(node for node in decision["node_results"] if node["node"] == "TARGET_IDENTITY")
@@ -237,3 +254,67 @@ def test_late_evidence_collection_keeps_original_window_and_checks_actual_series
     assert first["observability"]["target_series"] == []
     assert first["verified"] is False
     assert all(params["start"] == 200 and params["end"] == 245 for _, params in queries)
+
+
+def test_service_workload_condition_verifies_effect_without_pod_metric_label():
+    from stage2_service.runtime_factory import KubernetesTrafficEvidence
+
+    def metadata(path, _params):
+        if path == "labels":
+            return {"data": ["namespace", "job"]}
+        if path == "label/__name__/values":
+            return {"data": ["http_server_duration_seconds_count"]}
+        return {"data": [{"namespace": "otel-demo", "job": "cart"}]}
+
+    observer = KubernetesTrafficEvidence(
+        SimpleNamespace(), None, prometheus_metadata_loader=metadata
+    )
+    observer._samples = [
+        (
+            199,
+            {
+                "cart_requests": 100,
+                "cart_failures": 0,
+                "cart_response_sum_ms": 1000,
+                "cart_avg_response_ms": 10,
+                "target_requests": 100,
+                "target_failures": 0,
+                "target_response_sum_ms": 1000,
+                "target_latency_ms": 10,
+            },
+        ),
+        (
+            245,
+            {
+                "cart_requests": 112,
+                "cart_failures": 0,
+                "cart_response_sum_ms": 13000,
+                "target_requests": 112,
+                "target_failures": 0,
+                "target_response_sum_ms": 13000,
+                "target_latency_ms": 116.07,
+            },
+        ),
+    ]
+    runtime = SimpleNamespace(
+        target=SimpleNamespace(namespace="otel-demo", name="cart-a", uid="uid-a"),
+        main_fault={
+            "fault_type": "network-delay",
+            "intensity": {"delay_ms": 200},
+            "evidence_window": {"start": 200, "end": 245, "injection_id": "first"},
+        },
+    )
+    plan = {
+        "effect_condition": {
+            "metric": "target_latency_ms",
+            "operator": "increase_by_at_least",
+            "threshold": 100,
+            "minimum_requests": 10,
+        }
+    }
+
+    effect = observer.effect_since("trial", runtime, plan)
+
+    assert effect["verified"] is True
+    assert effect["attribution_scope"] == "cart_service"
+    assert effect["service_condition"]["request_delta"] == 12

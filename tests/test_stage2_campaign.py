@@ -573,6 +573,17 @@ class Resetter:
         return {"verified": self.verified}
 
 
+class ConditionMonitor:
+    def arm(self, **_kwargs):
+        return None
+
+    def agent_cleanup_requested(self, _occurred_at):
+        return None
+
+    def finish(self):
+        return {"armed": False}
+
+
 def _engine(tmp_path: Path, *, gate=True, reset=True):
     request = _request()
     episode = load_fixed_episode(request.episode, root=REPO_ROOT)
@@ -590,6 +601,7 @@ def _engine(tmp_path: Path, *, gate=True, reset=True):
         finalizer=Finalizer(),
         evaluator=Evaluator(),
         resetter=resetter,
+        condition_monitor_factory=ConditionMonitor,
         artifacts=ArtifactStore(tmp_path),
     )
     return engine, request, permissions, disturbances, resetter
@@ -719,8 +731,11 @@ def test_campaign_stops_after_reset_failure(tmp_path: Path):
     engine, request, _permissions, _disturbances, resetter = _engine(tmp_path, reset=False)
     result = engine.run(request)
 
-    assert result.platform_status is PlatformStatus.RESET_FAILED
+    assert result.platform_status is PlatformStatus.BLOCKED
     assert len(result.trials) == 1
+    assert result.trials[0].platform_valid is True
+    assert result.trials[0].agent_verdict is AgentVerdict.PASS
+    assert result.trials[0].next_trial_readiness.value == "BLOCKED"
     assert len(resetter.calls) == 1
 
 

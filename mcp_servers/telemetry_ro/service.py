@@ -9,7 +9,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Mapping, Protocol, Sequence
+
+from .workload import summarize_locust_stats
 
 
 PROMETHEUS_URL_ENV = "RESBENCH_PROMETHEUS_URL"
@@ -20,6 +23,8 @@ NAMESPACE_ALLOWLIST_ENV = "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES"
 JAEGER_SERVICE_ALLOWLIST_ENV = "RESBENCH_JAEGER_ALLOWED_SERVICES"
 ALLOW_RAW_QUERIES_ENV = "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES"
 DISTURBANCE_DIR_ENV = "RESBENCH_TELEMETRY_DISTURBANCE_DIR"
+WORKLOAD_STATS_URL_ENV = "RESBENCH_WORKLOAD_STATS_URL"
+WORKLOAD_STAT_NAME_ENV = "RESBENCH_WORKLOAD_STAT_NAME"
 
 MAX_OUTPUT_CHARS = 25_000
 MAX_RESPONSE_BYTES = 2_000_000
@@ -113,6 +118,8 @@ class RuntimeConfig:
     jaeger_service_allowlist: frozenset[str] = frozenset()
     timeout_seconds: float = 5.0
     allow_raw_queries: bool = False
+    workload_stats_url: str | None = None
+    workload_stat_name: str = "/api/cart"
 
     def __post_init__(self) -> None:
         if len(self.namespace_allowlist) != 1:
@@ -158,6 +165,13 @@ class RuntimeConfig:
             jaeger_service_allowlist=_parse_service_allowlist(os.environ.get(JAEGER_SERVICE_ALLOWLIST_ENV)),
             timeout_seconds=timeout,
             allow_raw_queries=_parse_bool_env(os.environ.get(ALLOW_RAW_QUERIES_ENV), ALLOW_RAW_QUERIES_ENV),
+            workload_stats_url=_clean_base_url(
+                os.environ.get(WORKLOAD_STATS_URL_ENV), WORKLOAD_STATS_URL_ENV
+            ),
+            workload_stat_name=(
+                os.environ.get(WORKLOAD_STAT_NAME_ENV, "/api/cart").strip()
+                or "/api/cart"
+            ),
         )
 
 
@@ -288,6 +302,22 @@ class TelemetryROService:
     async def prometheus_query_instant(self, *, query: str, time: int, limit: int = DEFAULT_LIMIT) -> dict[str, Any]:
         _ensure_raw_queries_allowed(self.config)
         return await self._prometheus_query_instant_raw(query=query, time=time, limit=limit, constructed=False)
+
+    async def workload_current(self) -> dict[str, Any]:
+        """Return raw, read-only business workload counters for Agent decisions."""
+
+        data = await self._request("workload", "", {})
+        summary = summarize_locust_stats(
+            data, target_stat_name=self.config.workload_stat_name
+        )
+        return envelope(
+            {
+                "service": "workload",
+                "operation": "current",
+                "observed_at": datetime.now(UTC).isoformat(),
+                **summary,
+            }
+        )
 
     async def prometheus_query_range(
         self,
@@ -805,6 +835,7 @@ class TelemetryROService:
             "prometheus": self.config.prometheus_url,
             "jaeger": self.config.jaeger_url,
             "loki": self.config.loki_url,
+            "workload": self.config.workload_stats_url,
         }[service]
         if value:
             return value
@@ -812,6 +843,7 @@ class TelemetryROService:
             "prometheus": PROMETHEUS_URL_ENV,
             "jaeger": JAEGER_URL_ENV,
             "loki": LOKI_URL_ENV,
+            "workload": WORKLOAD_STATS_URL_ENV,
         }[service]
         raise TelemetryROError(
             "missing_telemetry_endpoint",

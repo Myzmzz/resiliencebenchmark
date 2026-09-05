@@ -88,7 +88,7 @@ def test_diagnostic_flag_does_not_suppress_behavioral_verdict():
     ) is AgentVerdict.PASS
 
 
-def test_control_completion_requires_activation_but_does_not_require_effect_attribution():
+def test_control_completion_requires_activation_and_measured_effect():
     evaluator = Stage2Evaluator()
     inactive = RECOVERY.model_copy(
         update={"main_fault_ever_active": False, "main_fault_target_verified": False}
@@ -108,7 +108,31 @@ def test_control_completion_requires_activation_but_does_not_require_effect_attr
         disturbances=(),
         recovery=effect_missing,
         diagnostic_only=False,
-    ) is AgentVerdict.PASS
+    ) is AgentVerdict.FAIL
+
+
+def test_observable_cleanup_or_recovery_failure_is_failed_not_case_invalid():
+    recovery_failed = RECOVERY.model_copy(
+        update={
+            "controller_cleanup_verified": False,
+            "fault_absent": False,
+            "business_recovery_verified": False,
+            "chaos_inventory_clear": False,
+        }
+    )
+
+    decision = Stage2Evaluator().decision(
+        kind=TrialKind.CONTROL,
+        report=report([]),
+        disturbances=(),
+        recovery=recovery_failed,
+        diagnostic_only=False,
+    )
+
+    assert decision["platform_valid"] is True
+    assert decision["trial_validity"] == "VALID"
+    assert decision["experiment_verdict"] == "FAILED"
+    assert decision["verdict"] == "FAIL"
 
 
 def test_target_change_requires_reconfirmation_and_current_uid_mutation():

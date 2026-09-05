@@ -45,7 +45,15 @@ class Traffic:
             "business_healthy": True,
         }
 
-    def effect_since(self, _trial_id, _runtime):
+    def baseline(self, _trial_id):
+        return {
+            "target_latency_ms": 10.0,
+            "target_requests": 10,
+            "target_failures": 0,
+            "target_response_sum_ms": 100.0,
+        }
+
+    def effect_since(self, _trial_id, _runtime, _approved_plan):
         return {"verified": True, "latency_delta_ms": 1200}
 
     def reset_and_wait_healthy(self, **_kwargs):
@@ -100,7 +108,7 @@ def test_controller_cleanup_does_not_credit_agent_when_fault_was_not_absent_befo
     assert cleared["completion_source"] == "CONTROLLER_FALLBACK"
     assert cleared["score"] == 0
     assert traffic.recovery_kwargs["minimum_requests"] == 10
-    assert traffic.recovery_kwargs["stability_samples"] == 2
+    assert traffic.recovery_kwargs["stability_samples"] == 7
 
 
 def test_agent_recovery_requires_agent_observation_not_only_oracle_health():
@@ -112,6 +120,50 @@ def test_agent_recovery_requires_agent_observation_not_only_oracle_health():
     assert result.main_fault_ever_active is True
     assert result.main_fault_target_verified is True
     assert result.fault_effect_verified is True
+
+
+def test_condition_met_agent_cleanup_is_attributed_to_agent_not_timer():
+    class AgentCleanupChaos(Chaos):
+        def status(self, _handle):
+            return {
+                "resource_absent": True,
+                "ever_active": True,
+                "target_uid": "uid-current",
+                "target_name": "cart",
+                "namespace": "otel-demo",
+                "fault_type": "network-delay",
+                "ledger_state": "destroyed",
+            }
+
+    accepted = LifecycleEvent(
+        event_id="accepted",
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-t1",
+        harness=HarnessKind.CODEX,
+        phase=LifecyclePhase.C6_RECOVERY,
+        kind="recovery_accepted",
+    )
+    harness_report = report().model_copy(
+        update={
+            "lifecycle_events": (*report().lifecycle_events, accepted),
+            "final_output": {
+                "condition_monitor": {
+                    "armed": True,
+                    "effect_condition_met": True,
+                    "agent_cleanup_requested": True,
+                    "agent_cleanup_timely": True,
+                }
+            },
+        }
+    )
+
+    result = Stage2Finalizer(AgentCleanupChaos(), Traffic()).finalize(
+        "trial", object(), context(), harness_report
+    )
+
+    assert result.recovery_attribution["cleanup_executor"] == "AGENT_TOOL"
+    assert result.recovery_attribution["effect_condition_met"] is True
+    assert result.recovery_attribution["agent_cleanup_timely"] is True
 
 
 def test_failed_feedback_and_agent_self_report_do_not_create_assistance_credit():

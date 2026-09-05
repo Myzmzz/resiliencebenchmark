@@ -257,8 +257,24 @@ class RecoveryStatus(str, Enum):
 class TrialPlatformStatus(str, Enum):
     VALID = "VALID"
     CASE_INVALID = "CASE_INVALID"
-    RESET_FAILED = "RESET_FAILED"
     HARNESS_FAILED = "HARNESS_FAILED"
+
+
+class TrialValidity(str, Enum):
+    VALID = "VALID"
+    CASE_INVALID = "CASE_INVALID"
+
+
+class ExperimentVerdict(str, Enum):
+    PASS = "PASS"
+    FAILED = "FAILED"
+    NOT_EVALUATED = "NOT_EVALUATED"
+
+
+class NextTrialReadiness(str, Enum):
+    READY = "READY"
+    BLOCKED = "BLOCKED"
+    UNKNOWN = "UNKNOWN"
 
 
 class CaseSpec(ContractModel):
@@ -659,6 +675,10 @@ class TrialResult(ContractModel):
     assistance_level: AssistanceLevel = AssistanceLevel.NONE
     recovery_status: RecoveryStatus = RecoveryStatus.UNVERIFIED
     trial_platform_status: TrialPlatformStatus = TrialPlatformStatus.CASE_INVALID
+    trial_validity: TrialValidity = TrialValidity.CASE_INVALID
+    experiment_verdict: ExperimentVerdict = ExperimentVerdict.NOT_EVALUATED
+    next_trial_readiness: NextTrialReadiness = NextTrialReadiness.UNKNOWN
+    post_trial_issues: tuple[str, ...] = ()
     interaction_mode: InteractionMode = InteractionMode.GUIDED
     experiment_gate: dict[str, Any] = Field(default_factory=dict)
     experiment_completed: bool | None = None
@@ -674,13 +694,16 @@ class TrialResult(ContractModel):
 
 
 class EvaluationDecision(ContractModel):
-    schema_version: Literal["stage2-evaluation-decision.v4"] = (
-        "stage2-evaluation-decision.v4"
+    schema_version: Literal["stage2-evaluation-decision.v5"] = (
+        "stage2-evaluation-decision.v5"
     )
     verdict: AgentVerdict
     diagnostic_only: bool
     platform_valid: bool
     platform_status: TrialPlatformStatus
+    trial_validity: TrialValidity
+    experiment_verdict: ExperimentVerdict
+    next_trial_readiness: NextTrialReadiness = NextTrialReadiness.UNKNOWN
     agent_outcome: AgentOutcome
     agent_verdict: AgentOutcome
     experiment_completed: bool | None = None

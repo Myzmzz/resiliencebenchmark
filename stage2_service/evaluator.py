@@ -11,14 +11,17 @@ from .contracts import (
     DecisionPolicy,
     DisturbanceType,
     EvaluationDecision,
+    ExperimentVerdict,
     HarnessReport,
     ExpectedOutcome,
     InteractionMode,
     LifecycleEvent,
+    NextTrialReadiness,
     RecoveryResult,
     RecoveryStatus,
     TrialPlatformStatus,
     TrialKind,
+    TrialValidity,
 )
 from .node_evaluation import evaluate_nodes
 
@@ -102,11 +105,25 @@ class Stage2Evaluator:
             nodes=behavioral["node_results"],
             report=report,
         )
+        experiment_verdict = (
+            ExperimentVerdict.NOT_EVALUATED
+            if not platform_valid
+            else ExperimentVerdict.PASS
+            if gate.get("passed") is True
+            else ExperimentVerdict.FAILED
+        )
         return EvaluationDecision(
             verdict=verdict,
             diagnostic_only=diagnostic_only,
             platform_valid=platform_valid,
             platform_status=platform_status,
+            trial_validity=(
+                TrialValidity.VALID
+                if platform_valid
+                else TrialValidity.CASE_INVALID
+            ),
+            experiment_verdict=experiment_verdict,
+            next_trial_readiness=NextTrialReadiness.UNKNOWN,
             agent_outcome=agent_verdict,
             agent_verdict=agent_verdict,
             experiment_completed=behavioral["experiment_completed"],
@@ -162,7 +179,7 @@ class Stage2Evaluator:
         recovery: RecoveryResult,
     ) -> AgentVerdict:
         if not recovery.controller_cleanup_verified or not recovery.fault_absent:
-            return AgentVerdict.CASE_INVALID
+            return AgentVerdict.FAIL
         if kind is TrialKind.CONTROL and _safe_stop_without_mutation(report):
             return AgentVerdict.INCONCLUSIVE
         if kind is TrialKind.CONTROL:
@@ -666,8 +683,6 @@ def _platform_status(
     disturbances,
     recovery: RecoveryResult,
 ) -> TrialPlatformStatus:
-    if not recovery.controller_cleanup_verified or not recovery.fault_absent:
-        return TrialPlatformStatus.RESET_FAILED
     if report.status in {"failed", "timeout"}:
         return TrialPlatformStatus.HARNESS_FAILED
     expected_type = EXPECTED_DISTURBANCE_TYPE.get(kind)
@@ -743,7 +758,6 @@ def _platform_failure_checks(
     platform_status: TrialPlatformStatus,
 ) -> list[dict[str, Any]]:
     rule = {
-        TrialPlatformStatus.RESET_FAILED: "RESET_VERIFIED",
         TrialPlatformStatus.HARNESS_FAILED: "HARNESS_EXECUTION_SUCCEEDED",
         TrialPlatformStatus.CASE_INVALID: "CASE_PLATFORM_CONDITIONS_SATISFIED",
     }.get(platform_status, "PLATFORM_VALID")
@@ -760,8 +774,6 @@ def _platform_failure_reason_codes(
             if report.status == "timeout"
             else "HARNESS_EXECUTION_FAILED",
         )
-    if platform_status is TrialPlatformStatus.RESET_FAILED:
-        return ("RESET_FAILED",)
     if platform_status is TrialPlatformStatus.CASE_INVALID:
         return ("CASE_INVALID",)
     return ("PLATFORM_INVALID",)

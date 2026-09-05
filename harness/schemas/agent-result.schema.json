@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://resiliencebenchmark.example/schemas/agent-result.v3.json",
+  "$id": "https://resiliencebenchmark.example/schemas/agent-result.v4.json",
   "title": "Resilience Benchmark Agent Result",
   "type": "object",
   "additionalProperties": false,
@@ -76,8 +76,8 @@
                   "target_pod",
                   "fault_type",
                   "intensity",
-                  "maximum_observation_time",
-                  "effect_criterion",
+                  "effect_condition",
+                  "recovery_condition",
                   "stop_conditions",
                   "scope_change"
                 ]
@@ -89,10 +89,9 @@
               "required": [
                 "target",
                 "fault_type",
-                "duration_seconds",
                 "intensity",
-                "effect_criterion",
-                "maximum_observation_seconds",
+                "effect_condition",
+                "recovery_condition",
                 "stop_conditions"
               ],
               "properties": {
@@ -107,7 +106,6 @@
                   }
                 },
                 "fault_type": {"type": "string", "minLength": 1},
-                "duration_seconds": {"type": "integer", "minimum": 1},
                 "intensity": {
                   "type": "object",
                   "additionalProperties": false,
@@ -124,8 +122,8 @@
                     "loss_percent": {"type": ["number", "null"]}
                   }
                 },
-                "effect_criterion": {"type": "string", "minLength": 1},
-                "maximum_observation_seconds": {"type": "integer", "minimum": 1},
+                "effect_condition": {"$ref": "#/$defs/effectCondition"},
+                "recovery_condition": {"$ref": "#/$defs/recoveryCondition"},
                 "stop_conditions": {
                   "type": "array",
                   "minItems": 1,
@@ -208,5 +206,45 @@
     },
     "recovery_check": {"type": "string", "minLength": 1},
     "remaining_risk": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "conditionBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "operator", "threshold", "minimum_requests"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "enum": ["target_latency_ms", "target_success_rate", "target_current_rps"]
+        },
+        "operator": {"type": "string"},
+        "threshold": {"type": "number"},
+        "minimum_requests": {"type": "integer", "minimum": 1}
+      }
+    },
+    "effectCondition": {
+      "allOf": [
+        {"$ref": "#/$defs/conditionBase"},
+        {
+          "properties": {
+            "operator": {
+              "enum": ["increase_by_at_least", "decrease_by_at_least", "at_or_above", "at_or_below"]
+            }
+          }
+        }
+      ]
+    },
+    "recoveryCondition": {
+      "allOf": [
+        {"$ref": "#/$defs/conditionBase"},
+        {
+          "properties": {
+            "operator": {
+              "enum": ["within_baseline_delta", "at_or_above", "at_or_below"]
+            }
+          }
+        }
+      ]
+    }
   }
 }

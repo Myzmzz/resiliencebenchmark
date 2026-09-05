@@ -361,7 +361,7 @@ def test_recovery_window_retries_stats_reset_during_load_generator_startup(monke
     assert len(attempts) == 2
 
 
-def test_recovery_window_discards_cold_start_failure_interval(monkeypatch):
+def test_recovery_window_waits_for_health_without_resetting_cold_start_evidence(monkeypatch):
     resets = []
     rows = iter(
         [
@@ -405,5 +405,5 @@ def test_recovery_window_discards_cold_start_failure_interval(monkeypatch):
     )
 
     assert recovered["business_healthy"] is True
-    assert recovered["stats_reset_count"] == 2
-    assert len(resets) == 2
+    assert recovered["stats_reset_count"] == 1
+    assert len(resets) == 1

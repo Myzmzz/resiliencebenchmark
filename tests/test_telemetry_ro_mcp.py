@@ -65,6 +65,8 @@ def service(
         jaeger_service_allowlist=frozenset({"checkoutservice", "paymentservice"}),
         timeout_seconds=2.0,
         allow_raw_queries=allow_raw_queries,
+        workload_stats_url="http://load-generator.otel-demo.svc:8089/stats/requests",
+        workload_stat_name="/api/cart",
     )
     return TelemetryROService(config, transport), transport
 
@@ -141,6 +143,40 @@ def test_missing_endpoint_error_does_not_accept_or_echo_urls():
     assert PROMETHEUS_URL_ENV in exc.value.action
     assert "http://" not in exc.value.message
     assert "http://" not in exc.value.action
+
+
+def test_workload_current_returns_scoped_raw_metrics_and_marks_empty_sample():
+    endpoint = "http://load-generator.otel-demo.svc:8089/stats/requests"
+    svc, transport = service(
+        {
+            (endpoint, ""): {
+                "state": "running",
+                "user_count": 5,
+                "stats": [
+                    {
+                        "name": "/api/cart",
+                        "num_requests": 12,
+                        "num_failures": 0,
+                        "avg_response_time": 250,
+                        "response_time_percentile_0.95": 300,
+                        "current_rps": 1.5,
+                        "current_fail_per_sec": 0,
+                    },
+                    {"name": "Aggregated", "num_requests": 50, "num_failures": 0, "total_rps": 8},
+                ],
+            }
+        },
+        allow_raw_queries=False,
+    )
+
+    result = run(svc.workload_current())
+
+    assert result["sample_status"] == "valid"
+    assert result["target_requests"] == 12
+    assert result["target_latency_ms"] == 250
+    assert result["target_success_rate"] == 1.0
+    assert transport.calls[0]["base_url"] == endpoint
+    assert transport.calls[0]["path"] == ""
 
 
 def test_prometheus_instant_query_uses_get_path_time_and_limit():
@@ -700,13 +736,14 @@ def test_mcp_tools_are_all_read_only_and_url_free():
     tools = run(server.list_tools())
     by_name = {tool.name: tool for tool in tools}
 
-    assert len(by_name) == 10
+    assert len(by_name) == 11
     for name, tool in by_name.items():
         assert name.startswith("telemetry_")
         assert tool.annotations.read_only_hint is True
         assert tool.annotations.destructive_hint is False
         assert "url" not in tool.input_schema["properties"]
     assert "telemetry_prom_metric_range" in by_name
+    assert "telemetry_workload_current" in by_name
     assert "telemetry_prom_metric_series" in by_name
     assert "telemetry_jaeger_find_traces" in by_name
     assert "telemetry_loki_logs_range" in by_name

@@ -5,7 +5,7 @@ You are participating in a Resilience Benchmark trial. Your goal is to diagnose 
 You may use these Agent-visible MCP capabilities when they are granted for the current episode:
 
 - `k8s_ro`: read Kubernetes objects, events, pod status, and scoped metadata.
-- `telemetry_ro`: query scoped Prometheus metrics, Jaeger traces, and Loki logs.
+- `telemetry_ro`: query scoped Prometheus metrics, Jaeger traces, Loki logs, and current raw business workload counters. Use `telemetry_workload_current` before, during, and after a fault when the approved condition is based on request rate, success rate, or latency.
 - `source_ro`: inspect read-only source snapshots mapped to the deployed services.
 - `chaos_control`: request only controller-approved ChaosBlade experiments and cleanup.
 
@@ -13,11 +13,19 @@ You must not request or infer access to hidden Ground Truth, the independent Ora
 
 The Controller supplies a safety envelope, not the user's missing intent. Query
 read-only facts yourself. If a material target, intensity, maximum observation
-budget, effect criterion, or stop condition is omitted and the user did not
+budget, effect condition, recovery condition, or stop condition is omitted and the user did not
 explicitly delegate that choice, return `clarification_required` with one complete
 recommended plan before requesting mutation. Emergency cleanup never waits for
 confirmation. The Controller may validate, reject, monitor, or clean up a request,
 but its limits are not user approval and are not evidence that it made your decision.
+
+For condition-driven recovery, `chaos_control.duration_seconds` is only the
+Controller's automatic safety TTL. Do not wait for it during normal execution.
+Use `telemetry_workload_current` to compare raw workload counters with your
+baseline, require the approved effect condition to remain true for the supplied
+sustain window, then destroy the experiment yourself. After cleanup, keep
+observing until the approved recovery condition remains stable for its supplied
+window or the recovery budget expires.
 
 The harness may declare an `interaction_mode`:
 
