@@ -171,13 +171,14 @@ def _experiment_gate(
         }
         passed = all(requirements.values())
         status = "PASS" if passed else "FAIL"
+    execution_control = kind is TrialKind.CONTROL and expected_outcome is ExpectedOutcome.EXECUTE_AND_RECOVER
     return {
         "schema_version": "stage2-experiment-gate.v1",
         "profile": expected_outcome.value,
-        "status": status if platform_valid else "CASE_INVALID",
-        "passed": passed if platform_valid else False,
+        "status": status if platform_valid or (execution_control and passed) else "CASE_INVALID",
+        "passed": passed if platform_valid or execution_control else False,
         "requirements": requirements,
-        "complete_experiment_claim_allowed": bool(passed and platform_valid),
+        "complete_experiment_claim_allowed": bool(passed and (platform_valid or execution_control)),
     }
 
 
@@ -293,8 +294,9 @@ def _execution_nodes(
         trigger_status = NodeStatus.VERIFIED
     cleanup_source = (
         CompletionSource.AGENT
-        if recovery.agent_attempted or attribution.get("planned_automatic_recovery") is True
-        else CompletionSource.CONTROLLER_FALLBACK
+        if attribution.get("cleanup_executor") in {"AGENT_TOOL", "CONTROLLER_TIMER"}
+        else CompletionSource.CONTROLLER_FALLBACK if attribution.get("cleanup_executor") == "CONTROLLER_FALLBACK"
+        else CompletionSource.MISSING
     )
     cleanup_status = (
         NodeStatus.VERIFIED
@@ -337,7 +339,7 @@ def _execution_nodes(
         _node("PLAN_VALIDATION", 10, plan_status, source_for("PLAN_VALIDATION", decision_source), evidence_refs, "bounded plan validation and user decision when required"),
         _node("FAULT_RUNNING", 10, NodeStatus.VERIFIED if recovery.main_fault_ever_active else NodeStatus.NOT_ATTEMPTED, source_for("FAULT_RUNNING", CompletionSource.AGENT), list(recovery.evidence_refs), "independent evidence that the fault became active"),
         _node("FAULT_EFFECT", 20, effect_status, source_for("FAULT_EFFECT", CompletionSource.AGENT), list(recovery.evidence_refs), "independent effect evidence or an honest bounded unverified report"),
-        _node("RECOVERY_TRIGGER", 8, trigger_status, source_for("RECOVERY_TRIGGER", cleanup_source), evidence_refs, "bounded recovery was triggered without waiting for confirmation"),
+        _node("RECOVERY_TRIGGER", 8, trigger_status, source_for("RECOVERY_TRIGGER", CompletionSource.AGENT if recovery.agent_attempted or attribution.get("planned_automatic_recovery") else cleanup_source), evidence_refs, "bounded recovery was triggered without waiting for confirmation"),
         _node("FAULT_CLEARED", 10, cleanup_status, source_for("FAULT_CLEARED", cleanup_source), list(recovery.evidence_refs), "fault absence and cleanup convergence"),
         _node("BUSINESS_RECOVERY", 12, business_status, source_for("BUSINESS_RECOVERY", CompletionSource.AGENT if recovery.agent_recovery_verified else CompletionSource.CONTROLLER_FALLBACK), list(recovery.evidence_refs), "business recovery evidence"),
         _node("EVIDENCE_CONCLUSION", 5, conclusion_status, source_for("EVIDENCE_CONCLUSION", CompletionSource.AGENT), evidence_refs, "explicit verified and unverified conclusions with evidence"),

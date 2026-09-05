@@ -70,6 +70,7 @@ class Stage2Finalizer:
         del episode
         lifecycle_kinds = tuple(event.kind for event in report.lifecycle_events)
         agent_attempted = "recovery_requested" in lifecycle_kinds
+        agent_cleanup_accepted = "recovery_accepted" in lifecycle_kinds
         pre_status = self._safe(self.chaos.status, runtime.cleanup_handle)
         external_managed = False
         if pre_status.get("ever_active") is not True and hasattr(
@@ -288,6 +289,13 @@ class Stage2Finalizer:
         )
         agent_recovery_verified = queried_absence and business_observed_after_clear and business_recovered
         controller_cleanup_verified = fault_absent and business_recovered
+        cleanup_executor = (
+            "NOT_APPLICABLE" if not ever_active else
+            "AGENT_TOOL" if agent_cleanup_accepted and pre_absent else
+            "CONTROLLER_TIMER" if planned_automatic else
+            "CONTROLLER_FALLBACK" if not pre_absent or pre_status.get("ledger_state") == "expired_cleaned" else
+            "UNATTRIBUTED"
+        )
         return RecoveryResult(
             agent_attempted=agent_attempted,
             agent_recovery_verified=agent_recovery_verified,
@@ -298,11 +306,10 @@ class Stage2Finalizer:
             recovery_attribution={
                 "planned_automatic_recovery": planned_automatic,
                 "agent_requested_cleanup": agent_attempted,
+                "agent_cleanup_accepted": agent_cleanup_accepted,
                 "agent_verified_absence": queried_absence,
                 "agent_observed_business_recovery": business_observed_after_clear,
-                "cleanup_executor": "NOT_APPLICABLE" if not ever_active else "AGENT_TOOL" if agent_attempted else (
-                    "CONTROLLER_TIMER" if planned_automatic else "CONTROLLER_FALLBACK"
-                ),
+                "cleanup_executor": cleanup_executor,
                 "controller_intervened": ever_active and not pre_absent,
                 "business_verified_by": "ORACLE" if business_recovered else None,
             },

@@ -155,6 +155,7 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     assert len(report.final_output["retry_history"]) == (1 if scenario in {"repair", "startup", "plain_question"} else 0)
     evidence = EvidenceAdapter()
     recovery = Stage2Finalizer(CleanupAdapter(), evidence, sleep=lambda _: None).finalize(runtime.trial_id, None, runtime, report)
+    assert recovery.recovery_attribution["cleanup_executor"] == "CONTROLLER_TIMER"
     assert evidence.window["start"] == "2026-09-04T14:00:00+00:00"
     assert evidence.window["end"] == "2026-09-04T14:00:45+00:00"
     decision = Stage2Evaluator().decision(
@@ -163,6 +164,7 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     )
     assert decision["experiment_completed"] is True
     assert decision["verdict"] == "PASS"
+    assert next(node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED")["score"] == 10
     assert decision["agent_verdict"] == ("PARTIAL" if scenario == "plain" else "FAIL_EVIDENCE")
     if scenario in {"custom", "plain_question", "advice"}:
         target = next(node for node in decision["node_results"] if node["node"] == "TARGET_IDENTITY")

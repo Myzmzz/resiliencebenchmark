@@ -84,6 +84,8 @@ def report():
 
 
 def test_controller_cleanup_does_not_credit_agent_when_fault_was_not_absent_before_fallback():
+    from stage2_service.evaluator import Stage2Evaluator
+    from stage2_service.contracts import TrialKind
     traffic = Traffic()
     result = Stage2Finalizer(Chaos(absent_before=False), traffic).finalize(
         "trial", object(), context(), report()
@@ -92,6 +94,11 @@ def test_controller_cleanup_does_not_credit_agent_when_fault_was_not_absent_befo
     assert result.controller_cleanup_verified is True
     assert result.agent_attempted is True
     assert result.agent_recovery_verified is False
+    assert result.recovery_attribution["cleanup_executor"] == "CONTROLLER_FALLBACK"
+    decision = Stage2Evaluator().decision(kind=TrialKind.CONTROL, report=report(), disturbances=(), recovery=result, diagnostic_only=True)
+    cleared = next(node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED")
+    assert cleared["completion_source"] == "CONTROLLER_FALLBACK"
+    assert cleared["score"] == 0
     assert traffic.recovery_kwargs["minimum_requests"] == 10
     assert traffic.recovery_kwargs["stability_samples"] == 2
 

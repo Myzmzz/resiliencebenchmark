@@ -1243,7 +1243,7 @@ class Stage2TaskService:
             event_kind = str(payload.get("event_kind") or "")
             if event_kind == "main_fault_running":
                 updates["current_phase"] = "FAULT_RUNNING"
-            elif event_kind in {"recovery_requested", "recovery_accepted"}:
+            elif event_kind in {"recovery_requested", "recovery_accepted", "fault_absence_verified"}:
                 updates["current_phase"] = "RECOVERING"
             elif event_kind == "agent_clarification_requested":
                 question = payload.get("payload")
@@ -2075,11 +2075,16 @@ class Stage2TaskService:
             )
         requested = "MAIN_FAULT_REQUESTED" in kinds
         injected = recovery.get("main_fault_ever_active") is True or "MAIN_FAULT_RUNNING" in kinds
-        recovered = recovery.get("fault_absent") is True and recovery.get("controller_cleanup_verified") is True
-        summary_state = "RECOVERED" if recovered and injected else "INJECTED" if injected else "NOT_INJECTED"
+        recovered = injected and recovery.get("fault_absent") is True and recovery.get("controller_cleanup_verified") is True
+        last_running = max((index for index, item in enumerate(events) if item.get("event_type") == "MAIN_FAULT_RUNNING"), default=-1)
+        last_absent = max((index for index, item in enumerate(events) if item.get("event_type") == "FAULT_ABSENCE_VERIFIED"), default=-1)
+        cleared = injected and last_absent > last_running
+        summary_state = "RECOVERED" if recovered else "CLEARED" if cleared else "INJECTED" if injected else "NOT_INJECTED"
         detail_state = (
             "RECOVERED"
             if recovered and injected
+            else "CLEARED"
+            if cleared
             else "EFFECT_VERIFIED"
             if recovery.get("fault_effect_verified") is True
             else "ACTIVE"
