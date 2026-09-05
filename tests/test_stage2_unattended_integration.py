@@ -51,6 +51,7 @@ class ModelAdapter:
             return {"questions": [], "assessment": {
                 "status": "completed", "decision": "safe_stop", "effect_assessment": "unverified",
                 "recovery_assessment": "unverified", "remaining_risk": "请求级效果未验证",
+                "recovery_trigger": "到期自动恢复",
             }}
         if context["question"]["question"] == "请提供一个目标 Pod，其他参数我来定。":
             return {"message": "选择已发现的 cart-a，UID为uid-a。", "plan": {"target": PLAN["target"]}, "affected_nodes": ["TARGET_IDENTITY"]}

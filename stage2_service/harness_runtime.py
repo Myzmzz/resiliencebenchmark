@@ -1416,13 +1416,20 @@ def _agent_checkpoint_from_item(item: Mapping[str, Any]) -> dict[str, Any] | Non
         "recovery_assessment",
     }.issubset(parsed):
         return None
+    recovery_trigger = parsed.get("recovery_trigger")
     return {
         "status": parsed.get("status"),
         "decision": parsed.get("decision"),
         "effect_assessment": parsed.get("effect_assessment"),
         "recovery_assessment": parsed.get("recovery_assessment"),
         "missing_conditions": list(parsed.get("missing_conditions") or ()),
-        "recovery_trigger": dict(parsed.get("recovery_trigger") or {}),
+        "recovery_trigger": (
+            dict(recovery_trigger)
+            if isinstance(recovery_trigger, Mapping)
+            else recovery_trigger
+            if isinstance(recovery_trigger, str)
+            else None
+        ),
     }
 
 

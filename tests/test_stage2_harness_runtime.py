@@ -95,11 +95,7 @@ def test_extracts_structured_agent_question_and_checkpoint():
         "effect_assessment": "not_attempted",
         "recovery_assessment": "not_applicable",
         "missing_conditions": ["user decision"],
-        "recovery_trigger": {
-            "condition": "after effect or deadline",
-            "observed": False,
-            "triggered_by_agent": False,
-        },
+        "recovery_trigger": "after effect or deadline",
         "clarification_request": {
             "question": "是否批准建议方案？",
             "required_decisions": ["target_pod", "intensity"],

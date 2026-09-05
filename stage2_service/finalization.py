@@ -262,7 +262,9 @@ class Stage2Finalizer:
             event.kind == "fault_absence_verified" for event in report.lifecycle_events
         )
         declared_recovery = report.final_output.get("agent_result") or report.agent_assessment
-        trigger = declared_recovery.get("recovery_trigger") or {}
+        if not isinstance(declared_recovery, Mapping):
+            declared_recovery = {}
+        trigger = declared_recovery.get("recovery_trigger")
         planned_automatic = bool(
             ever_active and pre_absent and pre_status.get("ledger_state") == "expired_cleaned"
             and (approved_plan.get("duration_seconds") or any(
@@ -271,7 +273,11 @@ class Stage2Finalizer:
             ))
         )
         # Event-driven recovery must not receive timely-trigger credit merely for hitting its emergency TTL.
-        condition = str(trigger.get("condition") or "").lower()
+        condition = str(
+            trigger.get("condition")
+            if isinstance(trigger, Mapping)
+            else trigger or ""
+        ).lower()
         condition += " " + str(report.final_output.get("original_prompt") or "").lower()
         if any(word in condition for word in ("效果确认后立即", "确认效果后", "after effect", "as soon as")):
             planned_automatic = False
