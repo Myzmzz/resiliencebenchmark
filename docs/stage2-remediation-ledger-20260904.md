@@ -49,9 +49,11 @@
 
 本次指标与归因整改代码提交为 `1e24a17`，已部署不可变镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-1e24a17@sha256:1b9e59f7a57b10e2bfe0177924be99f009fc1a3df25bd22077de786c6057c2c9`。容器内实算确认100ms阈值的容差下界为40ms，任务选项输出 `effect_threshold_tolerance_ratio=0.6` 与 `recovery_metric_policy=final_metric_without_request_count_gate`，错误的“类型已给定”标签可自动纠正并保留原值。Deployment 1/1 Ready、1/1 Available，部署后活动任务0、ChaosBlade对象0、cart 3/3 Ready、load-generator 1/1 Ready；未执行新的真实故障实验。
 
-最终现场检查：ChaosBlade 数量0；cart 保持3/3副本，load-generator 为1/1。没有启动新的第六、七轮真实故障实验。实际应答客户端检查验证了custom与确认两类回复，代码与最终部署的应答模块一致。
+本次被测 Codex 超时整改代码提交为 `b5c34ba`，已部署不可变镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-b5c34ba@sha256:be0519d4453aa51fe87f1f92fad4f40aca65d8d4e90d7d8a2dd89201e4de0372`。在线容器中的 Codex 提供方配置为 `stream_idle_timeout_ms=180000`。部署后的真实 C0 重测任务 `stage2-task-ef7be83819724e89` 完成，平台状态 `COMPLETED`、整轮 `PASS`、实验门槛 `PASS`；100ms `network-delay` 对指定 cart Pod 真实运行，Agent 请求销毁并确认故障消失，Controller 未接管清理，最终 ChaosBlade 库存为0且 cart 3/3 Ready。该轮没有 `turn.failed`、`request timed out` 或任何 Task issue；最后一次工具结果到 Agent 最终消息间隔约77秒，已超过上轮约32秒的失败位置并成功完成。该实测证明旧的约30秒提前断开没有复现，但没有让连接空闲满180秒，因此不能据此声称精确触发并验证了180秒上限。
 
-当前相关检查共190项通过，其中11个为会话/窗口集成场景。新增的 `model_timeout` 场景使用立即超时的本地适配器，只验证请求诊断、三次上限和错误码传播，不等于真实模型的180秒超时已被触发。真实第六、七轮故障实验及最终验收仍待用户手动进行；请求和结果查看方式见 `docs/stage2-manual-check-20260904.md`。
+上一版交付时的现场检查为：ChaosBlade 数量0，cart 保持3/3副本，load-generator 为1/1；当时尚未启动新的第六、七轮真实故障实验。随后已执行上述 `stage2-task-ef7be83819724e89` 真实 C0 重测，并在终态再次确认 ChaosBlade 数量0、cart 3/3 Ready。
+
+当前相关检查共190项通过，其中11个为会话/窗口集成场景。新增的 `model_timeout` 场景使用立即超时的本地适配器，只验证请求诊断、三次上限和错误码传播；随后真实 C0 重测确认旧的约30秒提前断开没有复现，但仍不等于精确触发了180秒超时。其余第六、七轮验收仍由用户按 `docs/stage2-manual-check-20260904.md` 手动执行。
 
 ## 交付核对范围
 
