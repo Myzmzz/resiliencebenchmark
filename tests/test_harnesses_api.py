@@ -95,3 +95,30 @@ def test_harnesses_parser_handles_missing_file(monkeypatch):
 
     # Should return None, not crash
     assert result is None
+
+
+def test_harnesses_api_model_choices_match_stage2_gateway(client):
+    """The management API must not advertise stale or unrouted model choices."""
+    from stage2_service.contracts import (
+        HarnessKind,
+        STAGE2_DEFAULT_MODEL,
+        STAGE2_SUPPORTED_MODELS,
+    )
+
+    response = client.get("/api/v1/harnesses")
+    assert response.status_code == 200
+    harnesses = response.json()["harnesses"]
+    assert {harness["id"] for harness in harnesses} == {
+        harness.value for harness in HarnessKind
+    }
+    for harness in harnesses:
+        models = harness["models"]
+        assert set(models["candidate_aliases_requiring_probe"]) == set(
+            STAGE2_SUPPORTED_MODELS
+        )
+        expected_default = (
+            "claude-opus-5"
+            if harness["id"] == HarnessKind.CLAUDE_CODE.value
+            else STAGE2_DEFAULT_MODEL
+        )
+        assert models["default_alias"] == expected_default

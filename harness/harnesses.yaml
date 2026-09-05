@@ -65,15 +65,14 @@ harnesses:
       chaos_control: disabled_in_bladeai_external_controller_only
     models:
       source: models.yaml
+      default_alias: gpt-5.5
       candidate_aliases_requiring_probe:
-        - gpt-5.6
-        - gpt-5.6-sol
-        - deepseek-v4-pro
-        - qwen3.8-max
+        - gpt-5.5
         - claude-opus-5
-        - MiniMax-M3
-        - glm-5.3
-        - kimi-k2.5
+        - deepseek-v4-pro-0813
+        - deepseek-v4-flash-0731
+        - qwen3.8-max
+        - qwen3.8-flash
     safety:
       require_controller_budget_token: true
       deny_direct_oracle_access: true
@@ -112,9 +111,13 @@ harnesses:
     models:
       source: models.yaml
       default_alias: claude-opus-5
-      matrix_aliases:
-        - gpt-5.6-sol
+      candidate_aliases_requiring_probe:
+        - gpt-5.5
         - claude-opus-5
+        - deepseek-v4-pro-0813
+        - deepseek-v4-flash-0731
+        - qwen3.8-max
+        - qwen3.8-flash
     safety:
       require_fresh_config_home_per_trial: true
       deny_direct_oracle_access: true
@@ -146,15 +149,14 @@ harnesses:
       codex_home: env:RESBENCH_CODEX_HOME
     models:
       source: models.yaml
+      default_alias: gpt-5.5
       candidate_aliases_requiring_probe:
-        - gpt-5.6
-        - gpt-5.6-sol
-        - deepseek-v4-pro
-        - qwen3.8-max
+        - gpt-5.5
         - claude-opus-5
-        - MiniMax-M3
-        - glm-5.3
-        - kimi-k2.5
+        - deepseek-v4-pro-0813
+        - deepseek-v4-flash-0731
+        - qwen3.8-max
+        - qwen3.8-flash
     safety:
       require_fresh_codex_home_per_trial: true
       deny_direct_oracle_access: true
@@ -194,10 +196,14 @@ harnesses:
       reason: shipped headless profile is one-shot and exposes no resume option; no TUI profile is installed
     models:
       source: models.yaml
-      default_alias: gpt-5.6-sol
-      matrix_aliases:
-        - gpt-5.6-sol
+      default_alias: gpt-5.5
+      candidate_aliases_requiring_probe:
+        - gpt-5.5
         - claude-opus-5
+        - deepseek-v4-pro-0813
+        - deepseek-v4-flash-0731
+        - qwen3.8-max
+        - qwen3.8-flash
     safety:
       require_controller_budget_token: true
       deny_direct_oracle_access: true
