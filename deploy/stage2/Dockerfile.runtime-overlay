@@ -23,6 +23,7 @@ COPY --chown=10001:10001 scripts/run_harness_trial.py /app/scripts/run_harness_t
 COPY --chown=10001:10001 scripts/run_otel_accounting_cpu_matrix.py /app/scripts/run_otel_accounting_cpu_matrix.py
 COPY --chown=10001:10001 scripts/run_stage2_matrix.py /app/scripts/run_stage2_matrix.py
 COPY --chown=10001:10001 scripts/build_stage2_qualification_matrix.py /app/scripts/build_stage2_qualification_matrix.py
+COPY --chown=10001:10001 scripts/probe_models.py /app/scripts/probe_models.py
 COPY --chown=10001:10001 --chmod=0755 deploy/stage2/codex-eval /app/runtime/bin/codex-eval
 COPY --chown=10001:10001 frontend/dist /app/frontend-dist
 
