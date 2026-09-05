@@ -42,6 +42,7 @@ class HarnessResponder:
         self.max_fault_seconds = max_fault_seconds
         self.max_observation_seconds = max_observation_seconds
         self.interpretation_error: str | None = None
+        self.reply_errors: dict[str, str] = {}
         self.history: list[dict[str, Any]] = []
 
     @classmethod
@@ -90,6 +91,9 @@ class HarnessResponder:
             "Do not mistake a narration of next actions for a question. Each question has topic (a short "
             "stable name for the decision), question (verbatim text), recommendation (ONLY "
             "choices already proposed by the Agent; null if absent), required_decisions (array), "
+            "When a confirmation refers to an earlier or 'above/上述' plan, reconstruct recommendation "
+            "from all supplied Agent messages. A plan confirmation recommendation must be a JSON object, "
+            "never a phrase such as 确认执行 and never null when the Agent already stated choices. "
             "risk_boundary (Agent's words, or empty). request_kind is confirmation for an existing choice, decision_help "
             "when the Agent asks you to choose or tell it what to do, and fact for fact questions. "
             "Distinct topics stay separate; repeated versions use the final complete wording. A plan may contain target {namespace,name,uid}, "
@@ -116,6 +120,7 @@ class HarnessResponder:
         return value
 
     def reply(self, question: Mapping[str, Any], context: Mapping[str, Any]) -> dict[str, Any]:
+        question_id = str(question["question_id"])
         original = _plan(question.get("recommendation"))
         needs_help = question.get("request_kind") in {"decision_help", "fact"}
         if _complete(original) and not needs_help:
@@ -137,7 +142,11 @@ class HarnessResponder:
                 "not unrequested fault parameters. Available plan fields are target {namespace,name,uid}, fault_type, "
                 "intensity, duration_seconds, maximum_observation_seconds, effect_criterion, "
                 "stop_conditions. Preserve choices the Agent already proposed unless your "
-                "answer explicitly changes them. affected_nodes names the workflow nodes "
+                "answer explicitly changes them. "
+                "A confirmation that refers to 'the above plan' must reconstruct choices from the full "
+                "question and risk_boundary. Never say 确认, 同意, 批准, or approved unless plan is complete. "
+                "If correction is present, repair every listed missing field before approving. "
+                "affected_nodes names the workflow nodes "
                 "for which your advice supplies decisions. Use only these node names: "
                 "SCOPE_CONFIRMATION, TARGET_IDENTITY, HEALTH_BASELINE, PLAN_VALIDATION, "
                 "FAULT_RUNNING, FAULT_EFFECT, RECOVERY_TRIGGER, FAULT_CLEARED, BUSINESS_RECOVERY, "
@@ -147,16 +156,25 @@ class HarnessResponder:
                 {"question": dict(question), "context": dict(context), "limits": {
                     "namespace": self.namespace, "max_fault_seconds": self.max_fault_seconds,
                     "max_observation_seconds": self.max_observation_seconds,
-                }},
+                }, "correction": self.reply_errors.get(question_id)},
             )
             message = str(proposed.get("message") or "").strip()
             if not message:
                 raise ConversationError("Harness answer has no message")
             supplied = _plan(proposed.get("plan"))
             proposal = {**original, **supplied} if supplied else {}
-            self.history.append({"operation": "reply", "question_id": question["question_id"], "result": dict(proposed)})
+            self.history.append({"operation": "reply", "question_id": question_id, "result": dict(proposed)})
             answer_nodes = [str(node) for node in proposed.get("affected_nodes") or () if str(node) in NODE_NAMES]
         denied = self._denial_reason(proposal)
+        if denied is None and _approval_message(message) and not _complete(proposal):
+            missing = _missing_plan_fields(proposal)
+            correction = (
+                "The previous answer used approval language but did not provide a complete approved plan. "
+                "Return the same in-scope choices plus every missing field: " + ", ".join(missing)
+            )
+            self.reply_errors[question_id] = correction
+            raise ConversationError("approval text requires a complete plan: " + ", ".join(missing))
+        self.reply_errors.pop(question_id, None)
         changed = [key for key in DECISION_NODES if key in proposal and proposal.get(key) != original.get(key)]
         mode = "reject" if denied else (
             "approve_recommendation" if _complete(original) and not changed and not needs_help else "custom"
@@ -166,7 +184,7 @@ class HarnessResponder:
             affected = _requested_nodes(question)
         fact_only = question.get("request_kind") == "fact" and not proposal
         return {
-            "question_id": question["question_id"], "question_version": question.get("version", 1),
+            "question_id": question_id, "question_version": question.get("version", 1),
             "answer_mode": None if fact_only else mode,
             "approved": False if denied else True if _complete(proposal) else None,
             "feedback_category": "FACT_EVENT" if fact_only else "USER_DECISION",
@@ -213,6 +231,40 @@ def _complete(plan: Mapping[str, Any]) -> bool:
         and plan.get("stop_conditions") and isinstance(plan.get("duration_seconds"), (int, float))
         and 0 < plan["duration_seconds"] and isinstance(plan.get("maximum_observation_seconds"), (int, float))
         and 0 < plan["maximum_observation_seconds"]
+    )
+
+
+def _missing_plan_fields(plan: Mapping[str, Any]) -> list[str]:
+    missing: list[str] = []
+    target = plan.get("target")
+    if not isinstance(target, Mapping):
+        missing.append("target")
+    else:
+        missing.extend(f"target.{key}" for key in ("namespace", "name", "uid") if not target.get(key))
+    if not plan.get("fault_type"):
+        missing.append("fault_type")
+    if not plan.get("intensity"):
+        missing.append("intensity")
+    if not isinstance(plan.get("duration_seconds"), (int, float)) or plan["duration_seconds"] <= 0:
+        missing.append("duration_seconds")
+    if not isinstance(plan.get("maximum_observation_seconds"), (int, float)) or plan["maximum_observation_seconds"] <= 0:
+        missing.append("maximum_observation_seconds")
+    if not plan.get("effect_criterion"):
+        missing.append("effect_criterion")
+    if not plan.get("stop_conditions"):
+        missing.append("stop_conditions")
+    return missing
+
+
+def _approval_message(message: str) -> bool:
+    normalized = message.strip().casefold()
+    return normalized in {
+        "确认", "确认。", "同意", "同意。", "批准", "批准。", "approved",
+    } or normalized.startswith(
+        (
+            "确认执行", "确认按", "确认授权", "同意执行", "同意按",
+            "批准执行", "批准按", "可以执行", "approve ",
+        )
     )
 
 

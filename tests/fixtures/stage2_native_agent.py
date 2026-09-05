@@ -46,6 +46,10 @@ if "resume" not in sys.argv:
         say("我还没选定具体的 cart Pod，请问下一步应该先做什么？")
         print(json.dumps({"type": "turn.completed"}), flush=True)
         sys.exit(0)
+    if scenario == "approval_repair":
+        say("请确认上述完整计划：仅对 otel-demo/cart-a 注入300ms网络延迟，持续45秒并到期清理。")
+        print(json.dumps({"type": "turn.completed"}), flush=True)
+        sys.exit(0)
     for delay in ([100, 300] if scenario == "latest" else [300]):
         plan["intensity"]["delay_ms"] = delay
         say({
