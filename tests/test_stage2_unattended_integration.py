@@ -32,11 +32,11 @@ PLAN = {
     "fault_type": "network-delay", "intensity": {"delay_ms": 300},
     "effect_condition": {
         "metric": "target_latency_ms", "operator": "increase_by_at_least",
-        "threshold": 100, "minimum_requests": 10,
+        "threshold": 100,
     },
     "recovery_condition": {
         "metric": "target_latency_ms", "operator": "within_baseline_delta",
-        "threshold": 50, "minimum_requests": 10,
+        "threshold": 50,
     },
     "stop_conditions": ["效果条件成立后主动恢复"],
 }
@@ -223,6 +223,9 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     assert answers[-1]["approved_plan"]["intensity"]["delay_ms"] == 300
     assert answers[-1]["approved_plan"]["safety_ttl_seconds"] == 600
     assert answers[-1]["approved_plan"]["effect_sustain_seconds"] == 60
+    assert answers[-1]["approved_plan"]["effect_condition"]["threshold_tolerance_ratio"] == 0.6
+    assert "minimum_requests" not in answers[-1]["approved_plan"]["effect_condition"]
+    assert "minimum_requests" not in answers[-1]["approved_plan"]["recovery_condition"]
     drafts = [event.payload for event in report.lifecycle_events if event.kind == "agent_question_updated"]
     if scenario == "latest":
         assert len(drafts) == 2
@@ -269,6 +272,53 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
         repair_turn = next(row for row in session if row["event"] == "TURN_STARTED"
                            and any("mcp_servers.chaos_control.enabled=false" == arg for arg in row["payload"].get("argv", [])))
         assert repair_turn
+
+
+def test_custom_answer_attributes_only_fields_supplied_by_harness():
+    partial = {
+        "target": PLAN["target"],
+        "fault_type": PLAN["fault_type"],
+        "intensity": PLAN["intensity"],
+        "stop_conditions": PLAN["stop_conditions"],
+    }
+    responder = HarnessResponder(
+        model_call=lambda _instructions, _context: {
+            "message": "确认并补齐效果与恢复条件。",
+            "plan": PLAN,
+            "affected_nodes": [
+                "SCOPE_CONFIRMATION",
+                "TARGET_IDENTITY",
+                "HEALTH_BASELINE",
+                "PLAN_VALIDATION",
+                "FAULT_RUNNING",
+                "FAULT_EFFECT",
+                "RECOVERY_TRIGGER",
+                "FAULT_CLEARED",
+                "BUSINESS_RECOVERY",
+                "EVIDENCE_CONCLUSION",
+            ],
+        },
+        namespace="otel-demo",
+        max_fault_seconds=1200,
+        max_observation_seconds=1200,
+    )
+
+    answer = responder.reply(
+        {
+            "question_id": "question-partial-plan",
+            "version": 1,
+            "request_kind": "confirmation",
+            "recommendation": partial,
+        },
+        {},
+    )
+
+    assert answer["answer_mode"] == "custom"
+    assert answer["affected_nodes"] == [
+        "BUSINESS_RECOVERY",
+        "FAULT_EFFECT",
+        "RECOVERY_TRIGGER",
+    ]
 
 
 def test_late_evidence_collection_keeps_original_window_and_checks_actual_series():
@@ -359,7 +409,6 @@ def test_service_workload_condition_verifies_effect_without_pod_metric_label():
             "metric": "target_latency_ms",
             "operator": "increase_by_at_least",
             "threshold": 100,
-            "minimum_requests": 10,
         }
     }
 

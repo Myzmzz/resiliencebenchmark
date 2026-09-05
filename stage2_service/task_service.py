@@ -102,6 +102,48 @@ SENSITIVE_KEY_PARTS = (
     "secret",
     "token",
 )
+FAULT_TYPE_PROMPT_MARKERS = (
+    "cpu",
+    "memory-stress",
+    "memory stress",
+    "内存压力",
+    "内存故障",
+    "network-delay",
+    "network delay",
+    "网络延迟",
+    "network-loss",
+    "network loss",
+    "网络丢包",
+    "pod-kill",
+    "pod kill",
+    "pod 删除",
+)
+
+
+def _prompt_declares_fault_type(prompt: str) -> bool:
+    lowered = prompt.lower()
+    return any(marker in lowered for marker in FAULT_TYPE_PROMPT_MARKERS)
+
+
+def _label_claims_fault_type_is_given(label: str) -> bool:
+    lowered = label.lower()
+    return "类型已给定" in lowered or "fault type given" in lowered
+
+
+def _derived_prompt_level_label(prompt: str, decision_policy: str) -> str:
+    fault_type_given = _prompt_declares_fault_type(prompt)
+    delegated = decision_policy == DecisionPolicy.AGENT_DELEGATED.value
+    if delegated:
+        return (
+            "故障类型已给定，其他关键选择已委托 Agent"
+            if fault_type_given
+            else "故障类型与参数已委托 Agent 在授权范围内选择"
+        )
+    return (
+        "故障类型已给定，参数与恢复条件待确认"
+        if fault_type_given
+        else "故障类型、参数与恢复条件待确认"
+    )
 
 
 class Stage2TaskCreateRequest(ContractModel):
@@ -109,7 +151,14 @@ class Stage2TaskCreateRequest(ContractModel):
     application: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
     prompt: str = Field(min_length=1, max_length=12000)
     prompt_level_label: str = Field(default="UNSPECIFIED", min_length=1, max_length=120,
-                                    description="Report-only label for prompt information/risk level; never changes execution")
+                                    description="Server-checked report-only label; never changes execution")
+    submitted_prompt_level_label: str | None = Field(
+        default=None,
+        description="Original caller-supplied label retained for audit",
+    )
+    prompt_level_label_source: Literal[
+        "submitted", "server_derived", "server_corrected"
+    ] = "server_derived"
     prompt_mode: PromptMode = Field(
         default=PromptMode.VERBATIM,
         description="verbatim sends the user prompt unchanged; compiled adds the managed benchmark envelope",
@@ -150,6 +199,38 @@ class Stage2TaskCreateRequest(ContractModel):
         if not isinstance(value, Mapping):
             return value
         data = dict(value)
+        prior_label_source = str(data.get("prompt_level_label_source") or "")
+        submitted_label = (
+            data.get("submitted_prompt_level_label")
+            if prior_label_source in {"server_derived", "server_corrected"}
+            and "submitted_prompt_level_label" in data
+            else data.get("prompt_level_label")
+        )
+        raw_decision_policy = data.get("decision_policy")
+        decision_policy = (
+            raw_decision_policy.value
+            if isinstance(raw_decision_policy, DecisionPolicy)
+            else str(
+                raw_decision_policy or DecisionPolicy.CLARIFY_MISSING.value
+            )
+        )
+        derived_label = _derived_prompt_level_label(
+            str(data.get("prompt") or ""),
+            decision_policy,
+        )
+        data["submitted_prompt_level_label"] = (
+            str(submitted_label) if submitted_label is not None else None
+        )
+        if submitted_label is None or submitted_label == "UNSPECIFIED":
+            data["prompt_level_label"] = derived_label
+            data["prompt_level_label_source"] = "server_derived"
+        elif _label_claims_fault_type_is_given(str(submitted_label)) and not (
+            _prompt_declares_fault_type(str(data.get("prompt") or ""))
+        ):
+            data["prompt_level_label"] = derived_label
+            data["prompt_level_label_source"] = "server_corrected"
+        else:
+            data["prompt_level_label_source"] = "submitted"
         disturbance = data.get("disturbance")
         expected_variant = DISTURBANCE_TO_D6_VARIANT.get(str(disturbance))
         if expected_variant is not None:
@@ -776,6 +857,12 @@ class Stage2TaskService:
                 "application": request["application"],
                 "prompt": request["prompt"],
                 "prompt_level_label": request.get("prompt_level_label", "UNSPECIFIED"),
+                "submitted_prompt_level_label": request.get(
+                    "submitted_prompt_level_label"
+                ),
+                "prompt_level_label_source": request.get(
+                    "prompt_level_label_source", "server_derived"
+                ),
                 "prompt_mode": request.get(
                     "prompt_mode", PromptMode.COMPILED.value
                 ),
@@ -1945,6 +2032,12 @@ class Stage2TaskService:
             "agent_input": {
                 "user_prompt": request["prompt"],
                 "prompt_level_label": request.get("prompt_level_label", "UNSPECIFIED"),
+                "submitted_prompt_level_label": request.get(
+                    "submitted_prompt_level_label"
+                ),
+                "prompt_level_label_source": request.get(
+                    "prompt_level_label_source", "server_derived"
+                ),
                 "decision_policy": request.get("decision_policy", "clarify_missing"),
                 "prompt_mode": request.get(
                     "prompt_mode", PromptMode.COMPILED.value

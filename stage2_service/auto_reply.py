@@ -33,9 +33,6 @@ DECISION_NODES = {
     "recovery_condition": ["BUSINESS_RECOVERY"],
     "stop_conditions": ["PLAN_VALIDATION", "RECOVERY_TRIGGER"],
 }
-NODE_NAMES = {"SCOPE_CONFIRMATION", "TARGET_IDENTITY", "HEALTH_BASELINE", "PLAN_VALIDATION",
-              "FAULT_RUNNING", "FAULT_EFFECT", "RECOVERY_TRIGGER", "FAULT_CLEARED",
-              "BUSINESS_RECOVERY", "EVIDENCE_CONCLUSION"}
 HARNESS_MODEL_TIMEOUT_SECONDS = 180
 
 
@@ -148,8 +145,8 @@ class HarnessResponder:
             "risk_boundary (Agent's words, or empty). request_kind is confirmation for an existing choice, decision_help "
             "when the Agent asks you to choose or tell it what to do, and fact for fact questions. "
             "Distinct topics stay separate; repeated versions use the final complete wording. A plan may contain target {namespace,name,uid}, "
-            "fault_type, intensity, effect_condition {metric,operator,threshold,minimum_requests}, "
-            "recovery_condition {metric,operator,threshold,minimum_requests}, and stop_conditions. "
+            "fault_type, intensity, effect_condition {metric,operator,threshold}, "
+            "recovery_condition {metric,operator,threshold}, and stop_conditions. "
             "Supported workload metrics are target_latency_ms, target_success_rate, and target_current_rps. "
             "Effect operators are increase_by_at_least, decrease_by_at_least, at_or_above, and at_or_below. "
             "Recovery operators are within_baseline_delta, at_or_above, and at_or_below. "
@@ -182,7 +179,6 @@ class HarnessResponder:
         if _complete(original) and not needs_help:
             proposal = original
             message = "同意按你提出的方案执行；以本次确认的目标、参数和停止条件为准。"
-            answer_nodes: list[str] = []
         else:
             proposed = self._invoke_model(
                 "automatic_reply",
@@ -194,25 +190,23 @@ class HarnessResponder:
                 "recovery without supplied evidence. No CoreDNS, other namespaces, or "
                 "exceeding the provided budgets. When facts needed for a concrete plan are "
                 "absent, give the next read-only discovery step, do not fabricate a Pod UID. "
-                "Return JSON {message, plan, affected_nodes}. plan may be null (advice "
+                "Return JSON {message, plan}. plan may be null (advice "
                 "only), partial, or complete. Supply only choices the Agent is asking for, "
                 "not unrequested fault parameters. Available Agent-owned plan fields are target {namespace,name,uid}, fault_type, "
-                "intensity, effect_condition {metric,operator,threshold,minimum_requests}, "
-                "recovery_condition {metric,operator,threshold,minimum_requests}, and stop_conditions. "
+                "intensity, effect_condition {metric,operator,threshold}, "
+                "recovery_condition {metric,operator,threshold}, and stop_conditions. "
                 "Supported workload metrics are target_latency_ms, target_success_rate, and target_current_rps. "
                 "Effect operators are increase_by_at_least, decrease_by_at_least, at_or_above, and at_or_below. "
                 "Recovery operators are within_baseline_delta, at_or_above, and at_or_below. "
+                "Do not add minimum_requests. The Controller evaluates the final metric without a request-count gate. "
+                "The Controller applies a fixed 60 percent tolerance to the effect threshold. "
                 "Do not supply duration fields; the Controller adds the approved condition timing policy. "
                 "Preserve choices the Agent already proposed unless your "
                 "answer explicitly changes them. "
                 "A confirmation that refers to 'the above plan' must reconstruct choices from the full "
                 "question and risk_boundary. Never say 确认, 同意, 批准, or approved unless plan is complete. "
                 "If correction is present, repair every listed missing field before approving. "
-                "affected_nodes names the workflow nodes "
-                "for which your advice supplies decisions. Use only these node names: "
-                "SCOPE_CONFIRMATION, TARGET_IDENTITY, HEALTH_BASELINE, PLAN_VALIDATION, "
-                "FAULT_RUNNING, FAULT_EFFECT, RECOVERY_TRIGGER, FAULT_CLEARED, BUSINESS_RECOVERY, "
-                "EVIDENCE_CONCLUSION. Do not mention hidden test goals, "
+                "Do not mention hidden test goals, "
                 "Oracle results or expected pass/fail. Match any explicit timing semantics "
                 "in the task: event-triggered cleanup does not wait for the TTL.",
                 {"question": dict(question), "context": dict(context), "limits": {
@@ -226,7 +220,6 @@ class HarnessResponder:
             supplied = _plan(proposed.get("plan"))
             proposal = apply_condition_policy({**original, **supplied} if supplied else original)
             self.history.append({"operation": "reply", "question_id": question_id, "result": dict(proposed)})
-            answer_nodes = [str(node) for node in proposed.get("affected_nodes") or () if str(node) in NODE_NAMES]
         denied = self._denial_reason(proposal)
         if denied is None and _approval_message(message) and not _complete(proposal):
             missing = _missing_plan_fields(proposal)
@@ -243,7 +236,9 @@ class HarnessResponder:
         mode = "reject" if denied else (
             "approve_recommendation" if _complete(original) and not changed and not needs_help else "custom"
         )
-        affected = sorted(set(answer_nodes + [node for key in changed for node in DECISION_NODES[key]]))
+        affected = sorted(
+            {node for key in changed for node in DECISION_NODES[key]}
+        )
         if mode == "custom" and not affected:
             affected = _requested_nodes(question)
         fact_only = question.get("request_kind") == "fact" and not proposal

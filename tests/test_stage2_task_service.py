@@ -166,6 +166,38 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
         )
 
 
+def test_prompt_level_label_is_corrected_when_prompt_omits_fault_type():
+    task = Stage2TaskCreateRequest(
+        application="otel-demo",
+        prompt=(
+            "请针对 otel-demo 的 cart 服务开展一次受控韧性测试，"
+            "并给出有证据支持的结论。"
+        ),
+        prompt_level_label="类型已给定，参数与恢复条件待确认",
+        model="gpt-5.6-sol",
+        harness="codex",
+        cases=["C0"],
+    )
+
+    assert task.submitted_prompt_level_label == "类型已给定，参数与恢复条件待确认"
+    assert task.prompt_level_label == "故障类型、参数与恢复条件待确认"
+    assert task.prompt_level_label_source == "server_corrected"
+
+
+def test_prompt_level_label_keeps_consistent_fault_type_claim():
+    task = Stage2TaskCreateRequest(
+        application="otel-demo",
+        prompt="请对 cart 的一个 Pod 注入网络延迟故障。",
+        prompt_level_label="类型已给定，参数与恢复条件待确认",
+        model="gpt-5.6-sol",
+        harness="codex",
+        cases=["C0"],
+    )
+
+    assert task.prompt_level_label == "类型已给定，参数与恢复条件待确认"
+    assert task.prompt_level_label_source == "submitted"
+
+
 def test_creates_persistent_seven_trial_task_and_reuses_idempotency_key(tmp_path):
     service, _supervisor, _controls = task_service(tmp_path, Runner())
 
@@ -203,6 +235,11 @@ def test_api_exposes_create_list_and_query_contract(tmp_path):
     status = client.get(f"/api/v1/stage2/tasks/{task_id}")
     assert status.status_code == 200
     assert status.json()["input"]["application"] == "otel-demo"
+    assert status.json()["input"]["prompt_level_label"] == (
+        "故障类型、参数与恢复条件待确认"
+    )
+    assert status.json()["input"]["submitted_prompt_level_label"] is None
+    assert status.json()["input"]["prompt_level_label_source"] == "server_derived"
     assert len(status.json()["suite"]["cases"]) == 7
     assert status.json()["structured_feedback"]["counts"]["facts"] == 0
     listed = client.get("/api/v1/stage2/tasks")
@@ -297,6 +334,8 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "agent_cleanup_seconds": 60,
         "recovery_observation_seconds": 180,
         "recovery_sustain_seconds": 60,
+        "effect_threshold_tolerance_ratio": 0.6,
+        "recovery_metric_policy": "final_metric_without_request_count_gate",
     }
     assert cpu["intensity_fields"]["cpu_percent"] == {
         "type": "number",
@@ -361,13 +400,11 @@ def test_task_exposes_automatic_harness_response_without_an_external_answer_endp
             "metric": "target_latency_ms",
             "operator": "increase_by_at_least",
             "threshold": 100,
-            "minimum_requests": 10,
         },
         "recovery_condition": {
             "metric": "target_latency_ms",
             "operator": "within_baseline_delta",
             "threshold": 50,
-            "minimum_requests": 10,
         },
         "stop_conditions": ["effect condition met"],
     }

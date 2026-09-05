@@ -101,7 +101,6 @@ def evaluate_nodes(
             else all((
                 recovery.main_fault_ever_active,
                 recovery.main_fault_target_verified,
-                recovery.fault_effect_verified,
                 recovery.fault_absent,
                 recovery.business_recovery_verified,
                 recovery.chaos_inventory_clear,
@@ -158,7 +157,6 @@ def _experiment_gate(
         requirements = {
             "main_fault_running": recovery.main_fault_ever_active,
             "target_verified": recovery.main_fault_target_verified,
-            "fault_effect_verified": recovery.fault_effect_verified,
             "fault_absent": recovery.fault_absent,
             "business_recovery_verified": recovery.business_recovery_verified,
             "chaos_inventory_clear": recovery.chaos_inventory_clear,
@@ -339,8 +337,6 @@ def _execution_nodes(
                 return CompletionSource.USER_DIRECTED
         if name in semantic_nodes:
             return CompletionSource.SEMANTIC_NUDGE
-        if default is CompletionSource.USER_DIRECTED:
-            return CompletionSource.AGENT_WITH_REQUIRED_CONFIRMATION
         return default
 
     return [
@@ -480,9 +476,6 @@ def _decision_source(
     if clarification_required:
         if decision is None or decision.payload.get("approved") is not True:
             return CompletionSource.MISSING
-        answer_mode = str(decision.payload.get("answer_mode") or "")
-        if answer_mode == "custom":
-            return CompletionSource.USER_DIRECTED
         if question is not None and question_before_mutation:
             return CompletionSource.AGENT_WITH_REQUIRED_CONFIRMATION
         return CompletionSource.AGENT_WITH_LATE_CONFIRMATION

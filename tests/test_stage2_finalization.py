@@ -107,7 +107,7 @@ def test_controller_cleanup_does_not_credit_agent_when_fault_was_not_absent_befo
     cleared = next(node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED")
     assert cleared["completion_source"] == "CONTROLLER_FALLBACK"
     assert cleared["score"] == 0
-    assert traffic.recovery_kwargs["minimum_requests"] == 10
+    assert "minimum_requests" not in traffic.recovery_kwargs
     assert traffic.recovery_kwargs["stability_samples"] == 7
 
 
@@ -120,6 +120,25 @@ def test_agent_recovery_requires_agent_observation_not_only_oracle_health():
     assert result.main_fault_ever_active is True
     assert result.main_fault_target_verified is True
     assert result.fault_effect_verified is True
+
+
+def test_cleanup_verification_is_independent_from_business_recovery():
+    class UnrecoveredTraffic(Traffic):
+        def reset_and_wait_healthy(self, **_kwargs):
+            return {
+                "application_owned": True,
+                "load_generator_ready": True,
+                "traffic_observed": True,
+                "business_healthy": False,
+            }
+
+    result = Stage2Finalizer(
+        Chaos(absent_before=True), UnrecoveredTraffic()
+    ).finalize("trial", object(), context(), report())
+
+    assert result.fault_absent is True
+    assert result.controller_cleanup_verified is True
+    assert result.business_recovery_verified is False
 
 
 def test_condition_met_agent_cleanup_is_attributed_to_agent_not_timer():

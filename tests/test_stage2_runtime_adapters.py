@@ -290,7 +290,7 @@ def test_cpu_effect_uses_fault_specific_prometheus_evidence():
     assert effect["physical_effect"]["peak_value"] == 0.78
 
 
-def test_recovery_window_resets_only_locust_statistics_and_waits_for_requests():
+def test_recovery_window_uses_final_metric_without_request_count_floor():
     reset_urls = []
     evidence = KubernetesTrafficEvidence(
         Gate(),
@@ -301,7 +301,7 @@ def test_recovery_window_resets_only_locust_statistics_and_waits_for_requests():
             "stats": [
                 {
                     "name": "Aggregated",
-                    "num_requests": 25,
+                    "num_requests": 7,
                     "num_failures": 0,
                     "total_rps": 1.0,
                     "current_rps": 1.0,
@@ -314,10 +314,20 @@ def test_recovery_window_resets_only_locust_statistics_and_waits_for_requests():
     )
 
     recovered = evidence.reset_and_wait_healthy(
-        timeout_seconds=1, minimum_requests=20, stability_samples=1
+        timeout_seconds=1,
+        stability_samples=1,
+        baseline={"target_success_rate": 1.0},
+        recovery_condition={
+            "metric": "target_success_rate",
+            "operator": "at_or_above",
+            "threshold": 0.99,
+        },
     )
 
     assert recovered["business_healthy"] is True
+    assert recovered["num_requests"] == 7
+    assert recovered["recovery_condition_evidence"]["matched"] is True
+    assert recovered["recovery_condition_evidence"]["request_delta"] == 7
     assert reset_urls == [
         "http://load-generator.otel-demo.svc.cluster.local:8089/stats/reset"
     ]
@@ -354,7 +364,7 @@ def test_recovery_window_retries_stats_reset_during_load_generator_startup(monke
     )
 
     recovered = evidence.reset_and_wait_healthy(
-        timeout_seconds=1, minimum_requests=20, stability_samples=1
+        timeout_seconds=1, stability_samples=1
     )
 
     assert recovered["business_healthy"] is True
@@ -401,7 +411,7 @@ def test_recovery_window_waits_for_health_without_resetting_cold_start_evidence(
     )
 
     recovered = evidence.reset_and_wait_healthy(
-        timeout_seconds=1, minimum_requests=20, stability_samples=1
+        timeout_seconds=1, stability_samples=1
     )
 
     assert recovered["business_healthy"] is True

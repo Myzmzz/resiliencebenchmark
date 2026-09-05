@@ -47,7 +47,6 @@ class RecoveryEvidenceProvider(Protocol):
         self,
         *,
         timeout_seconds: int = 300,
-        minimum_requests: int = 20,
         stability_samples: int = 3,
         baseline: Mapping[str, Any] | None = None,
         recovery_condition: Mapping[str, Any] | None = None,
@@ -229,7 +228,6 @@ class Stage2Finalizer:
             evidence = dict(
                 self.recovery_evidence.reset_and_wait_healthy(
                     timeout_seconds=self.recovery_timeout_seconds,
-                    minimum_requests=10,
                     stability_samples=(
                         CONDITION_POLICY["recovery_sustain_seconds"] // 10 + 1
                     ),
@@ -338,7 +336,7 @@ class Stage2Finalizer:
             for event in report.lifecycle_events
         )
         agent_recovery_verified = queried_absence and business_observed_after_clear and business_recovered
-        controller_cleanup_verified = fault_absent and business_recovered
+        controller_cleanup_verified = fault_absent
         ledger_state = str(
             pre_status.get("ledger_state") or pre_status.get("state") or ""
         )

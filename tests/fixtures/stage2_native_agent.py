@@ -30,11 +30,11 @@ plan = {
     "fault_type": "network-delay", "intensity": {"delay_ms": 300},
     "effect_condition": {
         "metric": "target_latency_ms", "operator": "increase_by_at_least",
-        "threshold": 100, "minimum_requests": 10,
+        "threshold": 100,
     },
     "recovery_condition": {
         "metric": "target_latency_ms", "operator": "within_baseline_delta",
-        "threshold": 50, "minimum_requests": 10,
+        "threshold": 50,
     },
     "stop_conditions": ["效果条件成立后主动恢复"],
 }

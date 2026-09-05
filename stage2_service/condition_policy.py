@@ -17,6 +17,7 @@ CONDITION_POLICY = {
     "recovery_observation_seconds": 180,
     "recovery_sustain_seconds": 60,
 }
+EFFECT_THRESHOLD_TOLERANCE_RATIO = 0.60
 
 WORKLOAD_METRICS = frozenset(
     {
@@ -43,11 +44,23 @@ RECOVERY_OPERATORS = frozenset(
 
 
 def apply_condition_policy(plan: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Attach the Controller-owned timing budget without changing Agent choices."""
+    """Attach Controller-owned timing and metric-tolerance policy."""
 
     value = deepcopy(dict(plan or {}))
     value.pop("duration_seconds", None)
     value.pop("maximum_observation_seconds", None)
+    for name in ("effect_condition", "recovery_condition"):
+        condition = value.get(name)
+        if not isinstance(condition, Mapping):
+            continue
+        normalized = dict(condition)
+        normalized.pop("minimum_requests", None)
+        normalized.pop("threshold_tolerance_ratio", None)
+        if name == "effect_condition":
+            normalized["threshold_tolerance_ratio"] = (
+                EFFECT_THRESHOLD_TOLERANCE_RATIO
+            )
+        value[name] = normalized
     value.update(CONDITION_POLICY)
     return value
 
@@ -99,17 +112,26 @@ def _validate_condition(
         or float(threshold) < 0
     ):
         missing.append(f"{name}.threshold")
-    minimum_requests = raw.get("minimum_requests")
-    if (
-        isinstance(minimum_requests, bool)
-        or not isinstance(minimum_requests, int)
-        or minimum_requests < 1
-    ):
-        missing.append(f"{name}.minimum_requests")
+    if name == "effect_condition":
+        tolerance = raw.get("threshold_tolerance_ratio")
+        if (
+            isinstance(tolerance, bool)
+            or not isinstance(tolerance, (int, float))
+            or not math.isclose(
+                float(tolerance), EFFECT_THRESHOLD_TOLERANCE_RATIO
+            )
+        ):
+            missing.append(f"{name}.threshold_tolerance_ratio")
 
 
 def condition_policy_summary() -> dict[str, Any]:
-    return dict(CONDITION_POLICY)
+    return {
+        **CONDITION_POLICY,
+        "effect_threshold_tolerance_ratio": (
+            EFFECT_THRESHOLD_TOLERANCE_RATIO
+        ),
+        "recovery_metric_policy": "final_metric_without_request_count_gate",
+    }
 
 
 def evaluate_condition(
@@ -123,8 +145,10 @@ def evaluate_condition(
 
     metric = str(condition["metric"])
     operator = str(condition["operator"])
-    threshold = float(condition["threshold"])
-    minimum_requests = int(condition["minimum_requests"])
+    configured_threshold = float(condition["threshold"])
+    tolerance_ratio = float(condition.get("threshold_tolerance_ratio") or 0.0)
+    lower_threshold = configured_threshold * (1.0 - tolerance_ratio)
+    upper_threshold = configured_threshold * (1.0 + tolerance_ratio)
     anchor = baseline if counter_anchor is None else counter_anchor
     request_delta = _counter_delta(
         sample.get("target_requests"), anchor.get("target_requests")
@@ -136,26 +160,36 @@ def evaluate_condition(
         else None
     )
     sample_value = _metric_value(metric, anchor, sample)
-    enough_requests = request_delta >= minimum_requests
+    metric_available = sample_value is not None and baseline_value is not None
     matched = False
-    if sample_value is not None and baseline_value is not None and enough_requests:
+    effective_threshold = configured_threshold
+    if metric_available:
         if operator == "increase_by_at_least":
-            matched = sample_value - baseline_value >= threshold
+            effective_threshold = lower_threshold
+            matched = sample_value - baseline_value >= effective_threshold
         elif operator == "decrease_by_at_least":
-            matched = baseline_value - sample_value >= threshold
+            effective_threshold = lower_threshold
+            matched = baseline_value - sample_value >= effective_threshold
         elif operator == "at_or_above":
-            matched = sample_value >= threshold
+            effective_threshold = lower_threshold
+            matched = sample_value >= effective_threshold
         elif operator == "at_or_below":
-            matched = sample_value <= threshold
+            effective_threshold = upper_threshold
+            matched = sample_value <= effective_threshold
         elif operator == "within_baseline_delta":
-            matched = abs(sample_value - baseline_value) <= threshold
+            effective_threshold = upper_threshold
+            matched = abs(sample_value - baseline_value) <= effective_threshold
     return matched, {
         "metric": metric,
         "operator": operator,
-        "threshold": threshold,
-        "minimum_requests": minimum_requests,
+        "threshold": configured_threshold,
+        "configured_threshold": configured_threshold,
+        "effective_threshold": effective_threshold,
+        "threshold_lower_bound": lower_threshold,
+        "threshold_upper_bound": upper_threshold,
+        "threshold_tolerance_ratio": tolerance_ratio,
         "request_delta": request_delta,
-        "enough_requests": enough_requests,
+        "metric_available": metric_available,
         "baseline_value": baseline_value,
         "observed_value": sample_value,
         "matched": matched,

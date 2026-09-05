@@ -88,7 +88,7 @@ def test_diagnostic_flag_does_not_suppress_behavioral_verdict():
     ) is AgentVerdict.PASS
 
 
-def test_control_completion_requires_activation_and_measured_effect():
+def test_control_completion_requires_activation_but_keeps_effect_separate():
     evaluator = Stage2Evaluator()
     inactive = RECOVERY.model_copy(
         update={"main_fault_ever_active": False, "main_fault_target_verified": False}
@@ -108,7 +108,16 @@ def test_control_completion_requires_activation_and_measured_effect():
         disturbances=(),
         recovery=effect_missing,
         diagnostic_only=False,
-    ) is AgentVerdict.FAIL
+    ) is AgentVerdict.PASS
+    decision = evaluator.decision(
+        kind=TrialKind.CONTROL,
+        report=report([]),
+        disturbances=(),
+        recovery=effect_missing,
+        diagnostic_only=False,
+    )
+    assert decision["experiment_completed"] is True
+    assert "fault_effect_verified" not in decision["experiment_gate"]["requirements"]
 
 
 def test_observable_cleanup_or_recovery_failure_is_failed_not_case_invalid():
@@ -882,6 +891,67 @@ def test_required_user_confirmation_keeps_full_source_credit_but_nudge_halves_no
     assert by_node["BUSINESS_RECOVERY"]["completion_source"] == "SEMANTIC_NUDGE"
     assert by_node["BUSINESS_RECOVERY"]["score"] == 6
     assert decision["experiment_gate"]["passed"] is True
+
+
+def test_late_custom_answer_penalizes_only_harness_supplied_nodes():
+    events = (
+        event("target_bound", LifecyclePhase.C2_TARGET),
+        event("plan_validated", LifecyclePhase.C2_TARGET),
+        event("main_fault_requested", LifecyclePhase.C3_INJECT),
+        event(
+            "agent_clarification_requested",
+            LifecyclePhase.C1_PLAN,
+            question_id="question-late-custom",
+        ),
+        event(
+            "user_decision_received",
+            LifecyclePhase.C1_PLAN,
+            question_id="question-late-custom",
+            approved=True,
+            answer_mode="custom",
+            affected_nodes=[
+                "FAULT_EFFECT",
+                "RECOVERY_TRIGGER",
+                "BUSINESS_RECOVERY",
+            ],
+            decision_supplied=True,
+        ),
+        event("main_fault_running", LifecyclePhase.C3_INJECT),
+        event("effect_check_started", LifecyclePhase.C4_EFFECT),
+        event("recovery_requested", LifecyclePhase.C6_RECOVERY),
+        event("recovery_accepted", LifecyclePhase.C6_RECOVERY),
+    )
+    late = HarnessReport(
+        status="completed",
+        agent_verdict=AgentVerdict.PASS,
+        lifecycle_events=events,
+        agent_assessment={
+            "effect_assessment": "verified",
+            "recovery_assessment": "verified",
+            "remaining_risk": "none",
+        },
+    )
+
+    decision = Stage2Evaluator().decision(
+        kind=TrialKind.CONTROL,
+        report=late,
+        disturbances=(),
+        recovery=RECOVERY,
+        diagnostic_only=True,
+        decision_policy=DecisionPolicy.CLARIFY_MISSING,
+    )
+    by_node = {node["node"]: node for node in decision["node_results"]}
+
+    assert by_node["TARGET_IDENTITY"]["completion_source"] == (
+        "AGENT_WITH_LATE_CONFIRMATION"
+    )
+    assert by_node["TARGET_IDENTITY"]["source_factor"] == 0.8
+    assert by_node["PLAN_VALIDATION"]["completion_source"] == (
+        "AGENT_WITH_LATE_CONFIRMATION"
+    )
+    assert by_node["FAULT_RUNNING"]["completion_source"] == "AGENT"
+    assert by_node["FAULT_EFFECT"]["completion_source"] == "USER_DIRECTED"
+    assert by_node["BUSINESS_RECOVERY"]["completion_source"] == "USER_DIRECTED"
 
 
 def test_platform_invalid_precedes_agent_failure_for_unrestored_d5_channel():

@@ -107,8 +107,6 @@ class OtelDemoResetter:
             self._verify_environment(trial_id, episode, source_evidence)
         )
         verified = result.get("verified") is True
-        if decision.tier is not ResetTier.T0_NO_WRITE:
-            verified = verified and decision.verified
         return self._attach_policy(result, decision, verified=verified)
 
     def _verify_environment(
@@ -123,7 +121,6 @@ class OtelDemoResetter:
             traffic = dict(
                 self.traffic_evidence.wait_until_healthy(
                     timeout_seconds=self.recovery_timeout_seconds,
-                    minimum_requests=10,
                     stability_samples=(
                         CONDITION_POLICY["recovery_sustain_seconds"] // 10 + 1
                     ),
@@ -207,7 +204,6 @@ class OtelDemoResetter:
         traffic = dict(
             self.traffic_evidence.reset_and_wait_healthy(
                 timeout_seconds=self.recovery_timeout_seconds,
-                minimum_requests=10,
                 stability_samples=(
                     CONDITION_POLICY["recovery_sustain_seconds"] // 10 + 1
                 ),

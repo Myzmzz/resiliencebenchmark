@@ -104,6 +104,43 @@ def test_verify_only_uses_fresh_snapshot_without_repeating_recovery_loop(tmp_pat
     assert runner.calls == []
 
 
+def test_fresh_environment_verification_supersedes_prior_insufficient_recovery(tmp_path: Path):
+    repo = Path(__file__).resolve().parents[1]
+    kubeconfig = tmp_path / "kubeconfig"
+    runtime = tmp_path / "runtime.env"
+    chart = tmp_path / "opentelemetry-demo-0.40.5.tgz"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runtime.write_text("HARBOR_REGISTRY=registry.example\n", encoding="utf-8")
+    chart.write_bytes(b"pinned chart fixture")
+
+    result = OtelDemoResetter(
+        repo_root=repo,
+        kubeconfig=kubeconfig,
+        runtime_env_file=runtime,
+        chart_file=chart,
+        environment_gate=Gate(),
+        traffic_evidence=Traffic(),
+        runner=Runner(),
+        verify_only=True,
+    ).reset(
+        "campaign-1234567890abcdef-codex-t2b",
+        object(),
+        {
+            "main_fault_ever_active": True,
+            "fault_absent": True,
+            "fault_cleanup_verified": True,
+            "business_recovery_verified": False,
+            "cleanup_attempted": True,
+            "cleanup_verified": True,
+        },
+    )
+
+    assert result["prior_trial_recovery_verified"] is False
+    assert result["traffic_recovery"]["business_healthy"] is True
+    assert result["verified"] is True
+    assert result["reset_policy"]["allows_next_trial"] is True
+
+
 def test_verify_only_retries_an_insufficient_zero_request_snapshot(tmp_path: Path):
     class InitiallyEmptyTraffic(Traffic):
         def current(self):

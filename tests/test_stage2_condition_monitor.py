@@ -4,7 +4,7 @@ import time
 from datetime import UTC, datetime
 
 from stage2_service.condition_monitor import ConditionRecoveryMonitor
-from stage2_service.condition_policy import evaluate_condition
+from stage2_service.condition_policy import apply_condition_policy, evaluate_condition
 
 
 PLAN = {
@@ -12,7 +12,6 @@ PLAN = {
         "metric": "target_latency_ms",
         "operator": "increase_by_at_least",
         "threshold": 100,
-        "minimum_requests": 10,
     },
     "effect_observation_seconds": 1,
     "effect_sustain_seconds": 0.01,
@@ -109,7 +108,6 @@ def test_recovery_condition_uses_new_requests_against_original_baseline():
             "metric": "target_latency_ms",
             "operator": "within_baseline_delta",
             "threshold": 50,
-            "minimum_requests": 10,
         },
         baseline={"target_latency_ms": 10},
         counter_anchor={
@@ -124,3 +122,68 @@ def test_recovery_condition_uses_new_requests_against_original_baseline():
 
     assert matched is True
     assert evidence["observed_value"] == 30
+    assert evidence["request_delta"] == 20
+    assert evidence["metric_available"] is True
+    assert "minimum_requests" not in evidence
+
+
+def test_effect_threshold_uses_sixty_percent_tolerance():
+    condition = apply_condition_policy(
+        {
+            "effect_condition": {
+                "metric": "target_latency_ms",
+                "operator": "increase_by_at_least",
+                "threshold": 100,
+            }
+        }
+    )["effect_condition"]
+
+    matched, evidence = evaluate_condition(
+        condition,
+        baseline={
+            "target_requests": 100,
+            "target_response_sum_ms": 1000,
+            "target_latency_ms": 10,
+        },
+        sample={
+            "target_requests": 110,
+            "target_response_sum_ms": 1500,
+        },
+    )
+
+    assert matched is True
+    assert evidence["observed_value"] == 50
+    assert evidence["configured_threshold"] == 100
+    assert evidence["effective_threshold"] == 40
+    assert evidence["threshold_lower_bound"] == 40
+    assert evidence["threshold_upper_bound"] == 160
+    assert evidence["threshold_tolerance_ratio"] == 0.6
+
+
+def test_effect_below_tolerated_threshold_stays_unverified():
+    condition = apply_condition_policy(
+        {
+            "effect_condition": {
+                "metric": "target_latency_ms",
+                "operator": "increase_by_at_least",
+                "threshold": 100,
+            }
+        }
+    )["effect_condition"]
+
+    matched, evidence = evaluate_condition(
+        condition,
+        baseline={
+            "target_requests": 100,
+            "target_response_sum_ms": 1000,
+            "target_latency_ms": 10,
+        },
+        sample={
+            "target_requests": 110,
+            "target_response_sum_ms": 1490,
+        },
+    )
+
+    assert matched is False
+    assert evidence["observed_value"] == 49
+    assert evidence["effective_threshold"] == 40

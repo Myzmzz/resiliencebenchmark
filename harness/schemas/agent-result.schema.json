@@ -211,15 +211,14 @@
     "conditionBase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["metric", "operator", "threshold", "minimum_requests"],
+      "required": ["metric", "operator", "threshold"],
       "properties": {
         "metric": {
           "type": "string",
           "enum": ["target_latency_ms", "target_success_rate", "target_current_rps"]
         },
         "operator": {"type": "string"},
-        "threshold": {"type": "number"},
-        "minimum_requests": {"type": "integer", "minimum": 1}
+        "threshold": {"type": "number"}
       }
     },
     "effectCondition": {

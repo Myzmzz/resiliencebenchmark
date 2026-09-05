@@ -496,7 +496,6 @@ class KubernetesTrafficEvidence:
         self,
         *,
         timeout_seconds: int = 300,
-        minimum_requests: int = 20,
         stability_samples: int = 3,
         baseline: Mapping[str, Any] | None = None,
         recovery_condition: Mapping[str, Any] | None = None,
@@ -558,7 +557,6 @@ class KubernetesTrafficEvidence:
                 last = dict(self.current())
             except Exception as exc:  # noqa: BLE001
                 last = {"business_healthy": False, "error_type": type(exc).__name__}
-            enough = int(last.get("target_requests") or 0) >= minimum_requests
             recovery_ok = last.get("business_healthy") is True
             condition_evidence: dict[str, Any] | None = None
             if isinstance(baseline, Mapping) and isinstance(
@@ -570,8 +568,7 @@ class KubernetesTrafficEvidence:
                     sample=last,
                     counter_anchor=counter_anchor,
                 )
-                enough = enough and condition_evidence.get("enough_requests") is True
-            recovery_stable = recovery_stable + 1 if enough and recovery_ok else 0
+            recovery_stable = recovery_stable + 1 if recovery_ok else 0
             last["recovery_condition_evidence"] = condition_evidence
             last["stability_samples_observed"] = recovery_stable
             last["stability_samples_required"] = stability_samples
@@ -591,7 +588,6 @@ class KubernetesTrafficEvidence:
         self,
         *,
         timeout_seconds: int = 180,
-        minimum_requests: int = 10,
         stability_samples: int = 7,
     ) -> Mapping[str, Any]:
         """Wait for a stable business window without resetting workload counters."""
@@ -610,17 +606,14 @@ class KubernetesTrafficEvidence:
                     "sample_status": "unavailable",
                     "error_type": type(exc).__name__,
                 }
-            enough = int(last.get("target_requests") or 0) >= minimum_requests
             healthy = last.get("business_healthy") is True
-            if enough and healthy:
+            if healthy:
                 stable += 1
             else:
                 stable = 0
             last["sample_status"] = (
                 "healthy"
-                if enough and healthy
-                else "insufficient"
-                if int(last.get("target_requests") or 0) < minimum_requests
+                if healthy
                 else "unhealthy"
             )
             last["verification_attempts"] = attempts

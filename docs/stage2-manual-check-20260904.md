@@ -36,7 +36,7 @@
   "prompt_mode": "verbatim",
   "interaction_mode": "guided",
   "decision_policy": "clarify_missing",
-  "prompt_level_label": "故障类型与参数待确认",
+  "prompt_level_label": "故障类型、参数与恢复条件待确认",
   "expected_outcome": "execute_and_recover",
   "cases": ["C0"]
 }
@@ -56,7 +56,7 @@
 | 原问题有没有被改过 | Timeline/Debug 中的 `AGENT_QUESTION_UPDATED`，以及回复的 `question_version` |
 | 是否补答过 | `trials[0].harness.output_repaired`、`output_repair_count`、`retry_history` |
 | 是否仍在查原故障窗口 | `evaluation.effect_observation.window` 的 start/end |
-| 原任务及等级有没有保存 | `trials[0].agent_input` 中的 user_prompt、prompt_level_label、decision_policy |
+| 原任务及等级有没有保存 | `trials[0].agent_input` 中的 user_prompt、prompt_level_label、submitted_prompt_level_label、prompt_level_label_source、decision_policy |
 
 `experiment_completed=true` 和 `agent_verdict=FAIL_EVIDENCE` 可以同时出现，表示实验已跑通并恢复，但 Agent 的证据声明存在问题。`custom` 代表 Harness 提供或修改了决策，对受帮助节点使用0.2系数；纯确认使用 `approve_recommendation`。
 

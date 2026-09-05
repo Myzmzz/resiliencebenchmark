@@ -385,13 +385,11 @@ class ChaosControlServiceTest(unittest.TestCase):
                             "metric": "target_latency_ms",
                             "operator": "increase_by_at_least",
                             "threshold": 100,
-                            "minimum_requests": 10,
                         },
                         "recovery_condition": {
                             "metric": "target_latency_ms",
                             "operator": "within_baseline_delta",
                             "threshold": 50,
-                            "minimum_requests": 10,
                         },
                         "stop_conditions": ["effect condition met"],
                     },

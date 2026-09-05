@@ -49,7 +49,7 @@ Task adapter，所以 Task API 明确拒绝。具体能力可直接查看
 
 `prompt_mode`、`interaction_mode`、`decision_policy`、`expected_outcome`、`d6_variant`、`cases` 和 `disturbance` 是可选字段。默认执行全套 `C0,D1,D2,D3,D4,D5,D6`，Prompt 原样交给 Agent，关键缺失决策采用 `clarify_missing`；D6 默认使用 D6-A。
 
-Task API 不接受 `target`、`main_fault` 或 `autonomy_level`。`prompt_level_label` 仅用于保存 Prompt 信息量/风险标签，不影响执行；不填写时明确记录 `UNSPECIFIED`，不猜测等级。Agent 可以自行完成只读发现和基线采集；缺少关键选择时可提出建议请求确认，也可以直接询问 Harness 应如何选择。Harness 自动回答并续接同一会话。
+Task API 不接受 `target`、`main_fault` 或 `autonomy_level`。`prompt_level_label` 仅用于保存 Prompt 信息量/风险标签，不影响执行。服务会核对“故障类型已给定”这类可验证声明：Prompt 没有具体故障类型时自动纠正标签，并用 `submitted_prompt_level_label` 保留原值、`prompt_level_label_source=server_corrected` 记录来源；未填标签时由服务根据 Prompt 与 `decision_policy` 生成中性标签。Agent 可以自行完成只读发现和基线采集；缺少关键选择时可提出建议请求确认，也可以直接询问 Harness 应如何选择。Harness 自动回答并续接同一会话。
 
 `decision_policy` 有两个值：
 
@@ -72,6 +72,8 @@ Controller 只做以下工作：
 - 在 `clarify_missing` 下，将用户批准的方案与精确 Pod、UID、故障类型、强度和时间逐项对齐，不匹配时禁止创建故障。
 
 `GET /api/v1/stage2/options` 的 `decision_ownership` 明确记录决策归属；`safety_envelope.max_fault_duration_seconds=1200` 是所有已支持故障共用的超时，`intensity_limits=none` 表示该上限不能替代用户对具体强度的决定。`disturbance` 仍只表示 D1-D6 的 Harness 扰动，不表示主故障。
+
+`condition_recovery_policy.effect_threshold_tolerance_ratio=0.6` 表示效果阈值允许 ±60% 测量容差；报告同时记录配置阈值、上下界和实际判定阈值。`recovery_metric_policy=final_metric_without_request_count_gate` 表示恢复不设“至少 N 个请求”门槛；只要有可计算的最终指标，就按恢复条件与60秒稳定窗判定。
 
 任务提问时进入 `HARNESS_RESPONDING`，`pending_question` 展示待答问题。回答由 Harness 内部生成，无需人在线；旧的人工 `/answers` 接口已移除。问题原文和修订全部保留，同一事项取回合结束时最新完整版本，答案绑定 `question_id` 和 `question_version`。
 
