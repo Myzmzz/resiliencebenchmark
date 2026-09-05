@@ -62,7 +62,11 @@ ENV_FILE="../.secrets/llm-providers.env"
 #    the same value as llm-api-key); only rotate both sides together.
 kubectl -n resiliencebenchmark-system get secret litellm-upstream \
     -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d
-#    ...and paste it into LITELLM_MASTER_KEY inside $ENV_FILE.
+#    ...and paste it into LITELLM_MASTER_KEY inside $ENV_FILE. The same applies
+#    to ACUCOMPUTE_API_KEY: the deployed value is not the one in a developer's
+#    ~/.bashrc, so copy it out of the cluster rather than assuming they match.
+#    To avoid moving either value through a laptop at all, keep them in-cluster:
+#    read the live Secret, add only the new provider keys, and re-apply.
 
 # 2. Check that every os.environ/ reference has a value (prints no secrets).
 uv run python scripts/render_litellm_gateway.py --env-file "$ENV_FILE" --check
@@ -88,10 +92,23 @@ kubectl -n resiliencebenchmark-system exec "$POD" -c stage2 -- python /app/scrip
     --model deepseek-v4-flash-0731 --model qwen3.8-max --model qwen3.8-flash
 ```
 
-If the Deployments in the cluster were patched by hand before this directory
-existed, re-apply `deploy/stage2/stage2-integration.yaml` (with
-`__STAGE2_IMAGE__` / `__SOURCE_HEAD__` substituted) so the sidecar definition
-matches the repository.
+### Deviations in the currently deployed cluster (2026-09-06)
+
+The gateway was deployed before this directory existed, so the live objects
+differ from these manifests in ways that are deliberate, not drift:
+
+- Secret `litellm-upstream` keeps two legacy kebab-case keys, `master-key` and
+  `upstream-api-key`, because the separate `litellm` Deployment references them
+  by name. `envFrom` skips them (they are not valid environment variable
+  names) and uses the upper-case entries. Drop them once that Deployment,
+  which nothing points at now that the runtime Secrets use loopback, is retired.
+- `resbench-stage2-integration` carries the proxy as an ordinary container
+  named `litellm` with volume `litellm-cfg`, not as the native sidecar these
+  manifests declare. Both mount ConfigMap `litellm-config` and read Secret
+  `litellm-upstream`, so both shapes work.
+- Every pod template in the cluster pins `nodeSelector` to `vm-0-10-ubuntu`.
+  These manifests carry no nodeSelector, so re-apply them only together with
+  that pin, or the workload moves off the node the benchmark is calibrated on.
 
 ## Adding a model
 
