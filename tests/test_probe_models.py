@@ -231,3 +231,77 @@ def test_cli_outputs_redacted_json(tmp_path, monkeypatch, capsys):
     assert "https://gateway.example/v1" not in captured.out
     report = json.loads(captured.out)
     assert report["models"][0]["alias"] == "gpt-5.6"
+
+
+class FencedJsonObjectTransport(FakeTransport):
+    """Gateway that only honours ``json_schema`` structured output.
+
+    Mirrors an Anthropic-backed upstream reached through a translating proxy:
+    ``json_object`` has no counterpart there, so the reply comes back wrapped in a
+    markdown fence, while ``json_schema`` is converted into a forced tool call and
+    yields a bare JSON object.
+    """
+
+    def __call__(self, method, url, headers, body, timeout):
+        payload = json.loads(body.decode("utf-8")) if body else {}
+        response_format = payload.get("response_format") or {}
+        if response_format.get("type") == "json_object":
+            self.calls.append({"method": method, "url": url, "responseFormat": "json_object"})
+            return response(
+                {
+                    "model": payload["model"],
+                    "choices": [{"message": {"content": '```json\n{"probe":"ok","supported":true}\n```'}}],
+                }
+            )
+        if response_format.get("type") == "json_schema":
+            self.calls.append({"method": method, "url": url, "responseFormat": "json_schema"})
+            return response(
+                {
+                    "model": payload["model"],
+                    "choices": [{"message": {"content": '{"probe":"ok","supported":true}'}}],
+                }
+            )
+        return super().__call__(method, url, headers, body, timeout)
+
+
+def structured_probe_of(report):
+    probes = report["models"][0]["probes"]
+    return next(probe for probe in probes if probe["check"] == "structured_json_output")
+
+
+def test_structured_json_falls_back_to_schema_when_json_object_is_fenced(tmp_path):
+    config = tmp_path / "models.yaml"
+    write_models_config(config)
+
+    report = probe_models.run_probe(
+        config,
+        {probe_models.BASE_URL_ENV: "https://gateway.example/v1", probe_models.API_KEY_ENV: "secret"},
+        aliases=["claude-opus-5"],
+        transport=FencedJsonObjectTransport(),
+    )
+
+    probe = structured_probe_of(report)
+    assert probe["status"] == "supported"
+    assert probe["detail"]["responseFormat"] == "json_schema"
+    assert [attempt["responseFormat"] for attempt in probe["detail"]["attempts"]] == [
+        "json_object",
+        "json_schema",
+    ]
+    assert report["models"][0]["capabilities"]["structuredJsonOutput"] is True
+
+
+def test_structured_json_does_not_retry_when_json_object_already_works(tmp_path):
+    config = tmp_path / "models.yaml"
+    write_models_config(config)
+
+    report = probe_models.run_probe(
+        config,
+        {probe_models.BASE_URL_ENV: "https://gateway.example/v1", probe_models.API_KEY_ENV: "secret"},
+        aliases=["gpt-5.6"],
+        transport=FakeTransport(),
+    )
+
+    probe = structured_probe_of(report)
+    assert probe["status"] == "supported"
+    assert probe["detail"]["responseFormat"] == "json_object"
+    assert len(probe["detail"]["attempts"]) == 1

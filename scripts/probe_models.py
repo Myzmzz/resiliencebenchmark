@@ -436,18 +436,87 @@ def basic_payload(model: str) -> dict[str, Any]:
     }
 
 
+STRUCTURED_JSON_PROMPT = 'Return only this JSON object: {"probe":"ok","supported":true}'
+
+STRUCTURED_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"probe": {"type": "string"}, "supported": {"type": "boolean"}},
+    "required": ["probe", "supported"],
+    "additionalProperties": False,
+}
+
+
 def structured_json_payload(model: str) -> dict[str, Any]:
+    """Request structured output using OpenAI's schema-less ``json_object`` mode."""
     return {
         "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": 'Return only this JSON object: {"probe":"ok","supported":true}',
-            }
-        ],
+        "messages": [{"role": "user", "content": STRUCTURED_JSON_PROMPT}],
         "temperature": 0,
         "response_format": {"type": "json_object"},
     }
+
+
+def structured_json_schema_payload(model: str) -> dict[str, Any]:
+    """Request structured output using OpenAI's ``json_schema`` mode.
+
+    Gateways differ in which structured-output mechanism they implement:
+    ``json_object`` relies on server-side constrained decoding, which has no
+    counterpart in the Anthropic Messages API and therefore cannot be emulated by
+    a translating proxy. ``json_schema`` carries a schema that a proxy can convert
+    into a forced tool call, so it stays reachable on Anthropic-backed upstreams.
+    Probing both records the capability that is actually available rather than
+    assuming every gateway implements the same one.
+    """
+    return {
+        "model": model,
+        "messages": [{"role": "user", "content": STRUCTURED_JSON_PROMPT}],
+        "temperature": 0,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "probe", "strict": True, "schema": STRUCTURED_JSON_SCHEMA},
+        },
+    }
+
+
+def structured_json_probe(
+    transport: Transport,
+    base_url: str,
+    api_key: str,
+    model: str,
+    timeout: float,
+) -> dict[str, Any]:
+    """Probe structured JSON output, trying ``json_object`` then ``json_schema``.
+
+    The check passes when either response-format variant yields a bare, parseable
+    JSON object. The variant that succeeded is recorded in ``detail.responseFormat``
+    and every attempt is kept in ``detail.attempts`` so the report shows which
+    mechanism the gateway actually implements for this model.
+    """
+    variants: tuple[tuple[str, dict[str, Any]], ...] = (
+        ("json_object", structured_json_payload(model)),
+        ("json_schema", structured_json_schema_payload(model)),
+    )
+    attempts: list[dict[str, Any]] = []
+    result: dict[str, Any] = {}
+    for response_format, payload in variants:
+        result = openai_chat_probe(
+            transport, base_url, api_key, model, "structured_json_output", payload, timeout
+        )
+        attempts.append(
+            {
+                "responseFormat": response_format,
+                "status": result.get("status"),
+                "message": result.get("message"),
+            }
+        )
+        if result.get("status") == "supported":
+            break
+    detail = dict(result.get("detail") or {})
+    succeeded = result.get("status") == "supported"
+    detail["responseFormat"] = attempts[-1]["responseFormat"] if succeeded else None
+    detail["attempts"] = attempts
+    result["detail"] = detail
+    return result
 
 
 def tool_payload(model: str, parallel: bool) -> dict[str, Any]:
@@ -536,15 +605,7 @@ def probe_model(
         openai_stream_probe(transport, base_url, api_key, upstream, timeout),
         openai_chat_probe(transport, base_url, api_key, upstream, "single_tool_call", tool_payload(upstream, False), timeout),
         openai_chat_probe(transport, base_url, api_key, upstream, "parallel_tool_calls", tool_payload(upstream, True), timeout),
-        openai_chat_probe(
-            transport,
-            base_url,
-            api_key,
-            upstream,
-            "structured_json_output",
-            structured_json_payload(upstream),
-            timeout,
-        ),
+        structured_json_probe(transport, base_url, api_key, upstream, timeout),
     ]
     if "anthropic_messages" in candidates:
         probes.append(anthropic_messages_probe(transport, base_url, api_key, upstream, timeout))
