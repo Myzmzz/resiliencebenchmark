@@ -410,7 +410,14 @@ spec:
             # `/sys/fs/cgroup/resbench-agent-exec/<pod-uid>` in code; evaluated
             # Agent children never receive this mount or CAP_SYS_ADMIN.
             - name: delegated-cgroup
-              mountPath: /sys/fs/cgroup
+              mountPath: /sys/fs/cgroup/resbench-agent-exec
+          readinessProbe:
+            exec:
+              command: ["/opt/agent/.venv/bin/python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect('/run/resbench/agent-exec.sock'); s.close()"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 1
           resources:
             requests:
               cpu: 250m
@@ -466,8 +473,8 @@ spec:
                         fieldPath: metadata.namespace
         - name: delegated-cgroup
           hostPath:
-            path: /sys/fs/cgroup
-            type: Directory
+            path: /sys/fs/cgroup/resbench-agent-exec
+            type: DirectoryOrCreate
         - name: litellm-config
           configMap:
             name: litellm-config

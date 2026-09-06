@@ -38,6 +38,14 @@ cleanup and Oracle recovery remain independent Controller responsibilities.
 
 ## Execution and cleanup identities
 
+The agent daemon mounts only `/sys/fs/cgroup/resbench-agent-exec`, using a
+`DirectoryOrCreate` hostPath so kubelet pre-creates this dedicated subtree.
+The old node's cgroup filesystem root is mode `0555`; the deliberately limited
+daemon must not gain `DAC_OVERRIDE` or change that global mode merely to create
+its prefix. Per-Pod children and resource limits remain daemon-owned. A Unix
+socket readiness check runs only against the daemon endpoint, which is opened
+after network and cgroup setup; an initial process start is not readiness.
+
 New Pods use `resbench-stage2-controller`; this avoids changing the ServiceAccount
 used by old deployments before they are rolled. Apply the base RBAC and
 `execution-identities.yaml` before starting a new image. The Controller creates

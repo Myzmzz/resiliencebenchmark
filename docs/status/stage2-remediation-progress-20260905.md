@@ -208,3 +208,5 @@ WP12代码已提交并推送 `ad07f4955f6eedbb9ee6182f1b27e1ca84c051c2`。配对
 UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integration各数据路径、原PVC和8080端口。切换前26个任务状态文件均为终态，未发现活动Agent；原采集器未记录精确采集时间，因此审计报告明确写未记录，不回填虚构时间。主服务/e2e仍为原版本。
 
 180秒rollout等待超时。新Pod的init成功，Controller和网关Ready，agent-runtime拒绝启动：镜像安装的iptables位于/usr/sbin，但受限PATH不包含该目录。实际容器已验证绝对路径可用；代码改为守护进程仅允许固定三个系统二进制路径，构建期也执行版本检查，不扩展Agent PATH、不禁用出网限制。补丁全量 `firewall-path-code-gate.xml` 为1407通过、9跳过、0失败/错误，50.830秒。当前等待修复镜像重新部署，不能称此次切换成功；真实模型和故障测试仍未开始。
+
+`0492363`路径修复已推送，配对镜像已构建并预拉至旧节点。第二轮启动通过网络设置，但创建cgroup前缀失败；实查节点根目录为root:root、0555，受限daemon未获DAC_OVERRIDE。没有AppArmor拒绝日志，不将其归因于AppArmor。部署改为Kubelet预建并只挂载专用子目录，不改全局cgroup权限、不增daemon能力。另补Unix socket就绪检查：旧模板没有Agent readiness，rollout曾捕捉短暂容器启动而退出0，但后续仍为CrashLoop；不能据此写成功。三模板、重启逻辑与不变量27项定向测试通过，真实部署验证另记。

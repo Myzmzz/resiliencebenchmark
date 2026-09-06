@@ -85,9 +85,14 @@ def test_agent_runtime_daemon_has_distinct_identities_mandatory_cgroups_and_uid_
         assert "8080" not in values["RESBENCH_AGENT_EXEC_ALLOWED_LOOPBACK_PORTS"]
         pod_uid = next(item for item in agent["env"] if item["name"] == "RESBENCH_AGENT_EXEC_POD_UID")
         assert pod_uid["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.uid"
-        assert any(item["name"] == "delegated-cgroup" and item["mountPath"] == "/sys/fs/cgroup" for item in agent["volumeMounts"])
+        assert any(item["name"] == "delegated-cgroup" and item["mountPath"] == "/sys/fs/cgroup/resbench-agent-exec" for item in agent["volumeMounts"])
         cgroup = next(item for item in spec["volumes"] if item["name"] == "delegated-cgroup")
-        assert cgroup["hostPath"] == {"path": "/sys/fs/cgroup", "type": "Directory"}
+        assert cgroup["hostPath"] == {"path": "/sys/fs/cgroup/resbench-agent-exec", "type": "DirectoryOrCreate"}
+        assert "DAC_OVERRIDE" not in agent["securityContext"]["capabilities"]["add"]
+        readiness = agent["readinessProbe"]
+        assert readiness["exec"]["command"][:2] == ["/opt/agent/.venv/bin/python", "-c"]
+        assert "s.connect('/run/resbench/agent-exec.sock')" in readiness["exec"]["command"][2]
+        assert readiness["initialDelaySeconds"] >= 3 and readiness["failureThreshold"] == 1
 
 
 def test_agent_image_has_only_runtime_assets_and_harness_package_is_side_effect_free():
