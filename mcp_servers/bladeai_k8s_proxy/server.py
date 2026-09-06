@@ -139,7 +139,13 @@ class KubernetesKubeconfigBackend(KubernetesReadBackend):
     def _request_sync(self, path: str, headers: dict[str, str]) -> tuple[int, bytes, Mapping[str, str]]:
         upstream_headers = dict(headers)
         if self._authorization:
-            upstream_headers["Authorization"] = self._authorization
+            try:
+                upstream_headers["Authorization"] = (
+                    _file_bearer_token(self._authorization)
+                    if isinstance(self._authorization, Path) else self._authorization
+                )
+            except ProxyRuntimeError as exc:
+                raise KubernetesBackendError("Controller Kubernetes credential is unavailable") from exc
         request = urllib.request.Request(
             self._server + path,
             headers=upstream_headers,
@@ -244,7 +250,35 @@ def _private_regular_file(path: Path, name: str) -> None:
         raise ProxyRuntimeError(f"{name} must not be group/world accessible")
 
 
-def _load_kubeconfig(path: Path, temp_root: Path) -> tuple[str, str, ssl.SSLContext]:
+def _file_bearer_token(path: Path) -> str:
+    """Follow kubelet's in-volume token rotation, never an out-of-volume link.
+
+    Projected credentials are root-owned 0640 with the Controller's primary
+    group. They are mounted only in the Controller container. Keep the logical
+    path and reopen it per request rather than retaining an expired token or
+    pinning the timestamped file selected by the kubelet's ``..data`` link.
+    """
+    try:
+        if not path.is_absolute():
+            raise ValueError()
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(path.parent.resolve(strict=True))
+        descriptor = os.open(resolved, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            info = os.fstat(handle.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid not in {0, os.geteuid()}
+                    or info.st_mode & 0o037
+                    or (info.st_mode & 0o040 and info.st_gid != os.getegid())):
+                raise ValueError()
+            value = handle.read(16385).strip()
+        if not value or len(value) > 16384 or any(char.isspace() for char in value):
+            raise ValueError()
+        return "Bearer " + value
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise ProxyRuntimeError("tokenFile must be a readable Controller-owned credential within its directory") from exc
+
+
+def _load_kubeconfig(path: Path, temp_root: Path) -> tuple[str, str | Path, ssl.SSLContext]:
     try:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
@@ -285,11 +319,9 @@ def _load_kubeconfig(path: Path, temp_root: Path) -> tuple[str, str, ssl.SSLCont
     if isinstance(token, str) and token.strip():
         return server, "Bearer " + token.strip(), context
     if isinstance(token_file, str) and token_file:
-        candidate = (path.parent / token_file).resolve() if not Path(token_file).is_absolute() else Path(token_file)
-        _private_regular_file(candidate, "tokenFile")
-        token_value = candidate.read_text(encoding="utf-8").strip()
-        if token_value:
-            return server, "Bearer " + token_value, context
+        candidate = path.parent / token_file if not Path(token_file).is_absolute() else Path(token_file)
+        _file_bearer_token(candidate)
+        return server, candidate, context
     certificate = user_data.get("client-certificate-data")
     key = user_data.get("client-key-data")
     if isinstance(certificate, str) and isinstance(key, str):

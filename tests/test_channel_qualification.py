@@ -30,11 +30,19 @@ from stage2_service.contracts import (
     PromptMode,
     Stage2CaseId,
 )
+from stage2_service.episode import load_fixed_episode
+from stage2_service.matrix import fixed_otel_episode_ref
+from stage2_service.permissions import Stage2PermissionManager
 from stage2_service.platform_ledger import PlatformLedger
+from stage2_service.runtime_adapters import McpTokenStateRegistry, RuntimeAdapterError
 
 
 TRIAL_ID = "trial-channel-qualification"
 NOW = "2026-09-05T12:00:00+00:00"
+
+
+def _episode_fixture(episode_id: str = "EPI-TEST-CHANNEL-0001") -> SimpleNamespace:
+    return SimpleNamespace(ref=SimpleNamespace(episode_id=episode_id))
 
 
 def _fake_gateway_fields(model: str = "gpt-5.5") -> dict:
@@ -682,14 +690,16 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
         platform_ledger = ledger
 
         def policy_registry(self, trial_id):
-            assert trial_id.startswith("channel-qualification-codex-")
+            assert trial_id.startswith("campaign-")
+            assert trial_id.endswith("-codex-d0-1")
             return PolicyRegistry()
 
     class Permissions:
         token_registry = TokenRegistry()
 
         def provision(self, campaign_id, trial_id, harness, episode, runtime):
-            assert campaign_id == "channel-qualification"
+            assert campaign_id.startswith("campaign-")
+            assert trial_id.startswith(campaign_id + "-")
             assert runtime.tool_substitution_variant == "A"
             return CapabilityProfile(
                 harness=harness,
@@ -781,7 +791,7 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
             return components
 
     record = ChannelQualificationRunner(System()).run_one(
-        episode=SimpleNamespace(episode_id="episode-1"),
+        episode=_episode_fixture(),
         harness=HarnessKind.CODEX,
         model="gpt-5.5",
         output_dir=tmp_path / "out",
@@ -802,6 +812,103 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
     ]
     assert len(restored) == 1
     assert (tmp_path / "out" / "channel-qualification-codex.json").is_file()
+
+
+def test_runner_provisions_real_token_registry_with_campaign_trial_identity(tmp_path: Path) -> None:
+    token_registry = McpTokenStateRegistry(tmp_path / "tokens")
+    permissions = Stage2PermissionManager(
+        private_root=tmp_path / "private",
+        token_registry=token_registry,
+    )
+
+    class Supervisor:
+        def __init__(self):
+            self.base_environment = {}
+
+        def stop(self):
+            pass
+
+    class HarnessRunner:
+        def __init__(self):
+            self.mcp_supervisor = None
+            self.base_environment = {}
+
+        def run(self, **kwargs):
+            assert kwargs["campaign_id"].startswith("campaign-")
+            assert kwargs["trial_id"].startswith(kwargs["campaign_id"] + "-")
+            assert kwargs["trial_id"].endswith("-codex-d0-1")
+            _append_success_events(
+                token_registry.platform_ledger,
+                trial_id=kwargs["trial_id"],
+            )
+            return HarnessReport(
+                status="completed",
+                agent_verdict=AgentVerdict.INCONCLUSIVE,
+                lifecycle_events=(),
+                final_output=_fake_gateway_output(),
+            )
+
+    components = SimpleNamespace(
+        permissions=permissions,
+        token_registry=token_registry,
+        supervisor=Supervisor(),
+        harness_runner=HarnessRunner(),
+    )
+
+    class System:
+        def build_runtime(self, episode, request_model_by_harness, *, namespace):
+            return components
+
+    repo_root = Path(__file__).resolve().parents[1]
+    episode = load_fixed_episode(fixed_otel_episode_ref(repo_root), root=repo_root)
+
+    record = ChannelQualificationRunner(System()).run_one(
+        episode=episode,
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+    )
+
+    assert record.passed is True
+    assert record.status == "passed"
+    assert record.trial_id.startswith("campaign-")
+    assert record.trial_id.endswith("-codex-d0-1")
+    assert not (tmp_path / "tokens" / record.trial_id).exists()
+
+
+def test_token_registry_trial_identity_allows_nested_campaign_trial_path(tmp_path: Path) -> None:
+    registry = McpTokenStateRegistry(tmp_path / "tokens")
+
+    paths = registry.initialize(
+        "campaign-x/trial-y",
+        {"telemetry_ro": "x" * 32},
+    )
+
+    token_path = Path(paths["telemetry_ro"])
+    assert token_path == tmp_path / "tokens" / "campaign-x" / "trial-y" / "telemetry_ro.token"
+    assert token_path.is_file()
+
+
+@pytest.mark.parametrize(
+    "trial_id",
+    [
+        "/campaign-x/trial-y",
+        "campaign-x/../trial-y",
+        "campaign-x/./trial-y",
+        "campaign-x//trial-y",
+        "campaign-x\\trial-y",
+        "campaign-x/trial_y",
+        "campaign-x/trial-é",
+        "trial-y",
+    ],
+)
+def test_token_registry_trial_identity_rejects_unsafe_path_components(
+    tmp_path: Path,
+    trial_id: str,
+) -> None:
+    registry = McpTokenStateRegistry(tmp_path / "tokens")
+
+    with pytest.raises(RuntimeAdapterError, match="invalid token-state identity"):
+        registry.initialize(trial_id, {"telemetry_ro": "x" * 32})
 
 
 def test_runner_records_cleanup_failure_without_dropping_result(tmp_path: Path) -> None:
@@ -883,7 +990,7 @@ def test_runner_records_cleanup_failure_without_dropping_result(tmp_path: Path) 
             return components
 
     record = ChannelQualificationRunner(System()).run_one(
-        episode=SimpleNamespace(episode_id="episode-1"),
+        episode=_episode_fixture(),
         harness=HarnessKind.CODEX,
         model="gpt-5.5",
         output_dir=tmp_path / "out",
@@ -1020,7 +1127,7 @@ def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatc
 
     monkeypatch.setattr(cli.Stage2RuntimeConfig, "from_env", lambda: Config())
     monkeypatch.setattr(cli, "fixed_otel_episode_ref", lambda repo_root: "episode-ref")
-    monkeypatch.setattr(cli, "load_fixed_episode", lambda ref, root: SimpleNamespace(episode_id="episode-1"))
+    monkeypatch.setattr(cli, "load_fixed_episode", lambda ref, root: _episode_fixture())
     monkeypatch.setattr(cli, "Stage2System", lambda config: SimpleNamespace(config=config))
     monkeypatch.setattr(cli, "ChannelQualificationRunner", FakeRunner)
 

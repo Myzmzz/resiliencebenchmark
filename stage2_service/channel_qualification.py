@@ -249,18 +249,19 @@ class ChannelQualificationRunner:
             {harness: model},
             namespace=self.namespace,
         )
-        trial_id = f"channel-qualification-{harness.value}-{uuid.uuid4().hex[:12]}"
+        campaign_id = f"campaign-{uuid.uuid4().hex[:16]}"
+        trial_id = f"{campaign_id}-{harness.value}-d0-1"
         report: HarnessReport | None = None
         record: ChannelQualificationRecord | None = None
         try:
             self._prepare_no_fault_components(components)
             runtime = qualification_runtime_context(
                 trial_id=trial_id,
-                episode_id=str(getattr(episode, "episode_id", "channel-qualification")),
+                episode_id=episode.ref.episode_id,
                 namespace=self.namespace,
             )
             capability = components.permissions.provision(
-                "channel-qualification",
+                campaign_id,
                 trial_id,
                 harness,
                 episode,
@@ -270,7 +271,7 @@ class ChannelQualificationRunner:
             _apply_no_fault_policy(components, trial_id)
             event_observer = _QualificationEventObserver(components, trial_id)
             report = components.harness_runner.run(
-                campaign_id="channel-qualification",
+                campaign_id=campaign_id,
                 trial_id=trial_id,
                 harness=harness,
                 model_alias=model,

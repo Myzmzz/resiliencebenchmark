@@ -743,7 +743,15 @@ def _validate_token(token: str) -> None:
 
 
 def _validate_trial_id(trial_id: str) -> None:
-    if not trial_id.startswith("campaign-"):
+    if not isinstance(trial_id, str) or not trial_id.startswith("campaign-"):
+        raise RuntimeAdapterError("invalid token-state identity")
+    if trial_id.startswith("/") or "\\" in trial_id:
+        raise RuntimeAdapterError("invalid token-state identity")
+    components = trial_id.split("/")
+    if any(component in {"", ".", ".."} for component in components):
+        raise RuntimeAdapterError("invalid token-state identity")
+    safe = set("abcdefghijklmnopqrstuvwxyz0123456789-")
+    if any(any(character not in safe for character in component) for component in components):
         raise RuntimeAdapterError("invalid token-state identity")
 
 
