@@ -9,6 +9,7 @@ import pytest
 
 from harness.d0.common import write_manifest
 from stage2_service.contracts import D0QualificationRef, HarnessKind
+from stage2_service.gateway_config import GatewayConfigSnapshot
 from stage2_service.qualification import D0QualificationGate
 
 
@@ -20,6 +21,7 @@ GATEWAY_ROUTE = {
     "api_base_host": "gateway.example",
     "api_base_scheme": "https",
     "api_base_path": "/v1",
+    "credential_env_ref": "UPSTREAM_API_KEY",
 }
 
 
@@ -31,9 +33,13 @@ def _write_qualified_campaign(
     model_alias: str = "gpt-5.5",
     gateway_trial_id: str = "d0-trial-codex",
     gateway_request_ids: tuple[str, ...] = ("req-1",),
+    gateway_route: dict[str, str] | None = None,
+    gateway_config_sha256: str = GATEWAY_CONFIG_SHA256,
+    finished_at: str = "2026-09-06T10:00:00Z",
 ) -> tuple[D0QualificationRef, Path]:
     root = tmp_path / campaign_id
-    receipt_ref = "native/d0-campaign/d0-trial-codex/gateway-requests.json"
+    route = gateway_route or GATEWAY_ROUTE
+    receipt_ref = f"native/d0-campaign/{gateway_trial_id}/gateway-requests.json"
     receipt_path = root / agent / receipt_ref
     receipt_path.parent.mkdir(parents=True)
     receipt_path.write_text(
@@ -44,7 +50,7 @@ def _write_qualified_campaign(
                     "harness": agent,
                     "model_alias": model_alias,
                     "request_id": request_id,
-                    "gateway_config_sha256": GATEWAY_CONFIG_SHA256,
+                    "gateway_config_sha256": gateway_config_sha256,
                     "outcome": "received",
                 }
                 for request_id in gateway_request_ids
@@ -57,6 +63,7 @@ def _write_qualified_campaign(
             {
                 "campaign_id": campaign_id,
                 "status": "QUALIFIED",
+                "finished_at": finished_at,
                 "host": {"verified": True},
                 "models": {agent: model_alias},
                 "results": [
@@ -64,8 +71,8 @@ def _write_qualified_campaign(
                         "agent": agent,
                         "status": "PASS",
                         "model_alias": model_alias,
-                        "gateway_route": GATEWAY_ROUTE,
-                        "gateway_config_sha256": GATEWAY_CONFIG_SHA256,
+                        "gateway_route": route,
+                        "gateway_config_sha256": gateway_config_sha256,
                         "gateway_evidence_verified": True,
                         "gateway_request_ids": list(gateway_request_ids),
                         "gateway_evidence_ref": receipt_ref,
@@ -88,8 +95,8 @@ def _write_qualified_campaign(
             manifest_sha256=digest,
             agent_status="PASS",
             model_alias=model_alias,
-            gateway_route=GATEWAY_ROUTE,
-            gateway_config_sha256=GATEWAY_CONFIG_SHA256,
+            gateway_route=route,
+            gateway_config_sha256=gateway_config_sha256,
             gateway_evidence_verified=True,
             gateway_request_ids=gateway_request_ids,
             gateway_evidence_ref=receipt_ref,
@@ -107,6 +114,22 @@ def _request_for(ref: D0QualificationRef, *, model_alias: str = "gpt-5.5"):
         model_by_harness={HarnessKind.CODEX: model_alias},
     )
     return request
+
+
+def _gateway_snapshot(tmp_path: Path) -> GatewayConfigSnapshot:
+    path = tmp_path / "litellm.yaml"
+    path.write_text(
+        """
+model_list:
+  - model_name: gpt-5.5
+    litellm_params:
+      model: openai/gpt-5.5
+      api_base: https://gateway.example/v1
+      api_key: os.environ/UPSTREAM_API_KEY
+""".strip(),
+        encoding="utf-8",
+    )
+    return GatewayConfigSnapshot.from_file(path, required_aliases=("gpt-5.5",))
 
 
 def test_required_gate_verifies_manifest_files_gateway_receipts_and_agent_pass(tmp_path):
@@ -223,6 +246,145 @@ def test_required_gate_rejects_bound_evidence_mutations(
     assert result["scored"] is False
     assert result["agents"]["codex"]["verified"] is False
     assert result["agents"]["codex"]["reason"] == expected_reason
+
+
+def test_select_verified_d0_ref_needs_only_current_harness_model(tmp_path):
+    snapshot = _gateway_snapshot(tmp_path)
+    ref, _root = _write_qualified_campaign(
+        tmp_path,
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+    )
+
+    selected, reason = D0QualificationGate(tmp_path).select_verified_ref(
+        harness=HarnessKind.CODEX,
+        model_alias="gpt-5.5",
+        gateway=snapshot,
+    )
+
+    assert selected == ref
+    assert reason == "qualified"
+
+
+def test_select_verified_d0_ref_skips_other_combination_gaps(tmp_path):
+    snapshot = _gateway_snapshot(tmp_path)
+    ref, _root = _write_qualified_campaign(
+        tmp_path,
+        agent="codex",
+        model_alias="gpt-5.5",
+        gateway_trial_id="d0-trial-codex-only",
+        gateway_request_ids=("codex-req-1",),
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+    )
+
+    selected, reason = D0QualificationGate(tmp_path).select_verified_ref(
+        harness=HarnessKind.CODEX,
+        model_alias="gpt-5.5",
+        gateway=snapshot,
+    )
+
+    assert selected == ref
+    assert reason == "qualified"
+
+
+def test_select_verified_d0_ref_ignores_stale_route_and_bad_records(tmp_path):
+    snapshot = _gateway_snapshot(tmp_path)
+    stale_route = {**snapshot.route("gpt-5.5"), "api_base_host": "old.example"}
+    _write_qualified_campaign(
+        tmp_path,
+        campaign_id="d0-otel-accounting-20260906-stale-route",
+        gateway_trial_id="d0-trial-stale",
+        gateway_request_ids=("stale-req-1",),
+        gateway_route=stale_route,
+        gateway_config_sha256=snapshot.config_sha256,
+        finished_at="2026-09-06T12:00:00Z",
+    )
+    bad_ref, bad_root = _write_qualified_campaign(
+        tmp_path,
+        campaign_id="d0-otel-accounting-20260906-bad-receipt",
+        gateway_trial_id="d0-trial-bad",
+        gateway_request_ids=("bad-req-1",),
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+        finished_at="2026-09-06T13:00:00Z",
+    )
+    receipt_path = bad_root / "codex" / bad_ref.gateway_evidence_ref
+    rows = json.loads(receipt_path.read_text(encoding="utf-8"))
+    rows[0]["request_id"] = "tampered"
+    receipt_path.write_text(json.dumps(rows), encoding="utf-8")
+    good_ref, _good_root = _write_qualified_campaign(
+        tmp_path,
+        campaign_id="d0-otel-accounting-20260906-good",
+        gateway_trial_id="d0-trial-good",
+        gateway_request_ids=("good-req-1",),
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+        finished_at="2026-09-06T11:00:00Z",
+    )
+
+    selected, reason = D0QualificationGate(tmp_path).select_verified_ref(
+        harness=HarnessKind.CODEX,
+        model_alias="gpt-5.5",
+        gateway=snapshot,
+    )
+
+    assert selected == good_ref
+    assert reason == "qualified"
+
+
+def test_select_verified_d0_ref_picks_latest_verified_candidate(tmp_path):
+    snapshot = _gateway_snapshot(tmp_path)
+    _write_qualified_campaign(
+        tmp_path,
+        campaign_id="d0-otel-accounting-20260906-older",
+        gateway_trial_id="d0-trial-older",
+        gateway_request_ids=("older-req-1",),
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+        finished_at="2026-09-06T09:00:00Z",
+    )
+    newer, _root = _write_qualified_campaign(
+        tmp_path,
+        campaign_id="d0-otel-accounting-20260906-newer",
+        gateway_trial_id="d0-trial-newer",
+        gateway_request_ids=("newer-req-1",),
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+        finished_at="2026-09-06T12:00:00Z",
+    )
+
+    selected, reason = D0QualificationGate(tmp_path).select_verified_ref(
+        harness=HarnessKind.CODEX,
+        model_alias="gpt-5.5",
+        gateway=snapshot,
+    )
+
+    assert selected == newer
+    assert reason == "qualified"
+
+
+def test_select_verified_d0_ref_returns_none_when_no_current_verified_record(tmp_path):
+    snapshot = _gateway_snapshot(tmp_path)
+    stale_route = {**snapshot.route("gpt-5.5"), "api_base_host": "old.example"}
+    _write_qualified_campaign(
+        tmp_path,
+        campaign_id="d0-otel-accounting-20260906-stale-only",
+        gateway_trial_id="d0-trial-stale-only",
+        gateway_request_ids=("stale-only-req-1",),
+        gateway_route=stale_route,
+        gateway_config_sha256=snapshot.config_sha256,
+        finished_at="2026-09-06T12:00:00Z",
+    )
+
+    selected, reason = D0QualificationGate(tmp_path).select_verified_ref(
+        harness=HarnessKind.CODEX,
+        model_alias="gpt-5.5",
+        gateway=snapshot,
+    )
+
+    assert selected is None
+    assert reason == "no verified D0 qualification matches current gateway route"
 
 
 def test_diagnostic_gate_allows_execution_but_never_scores_missing_d0():

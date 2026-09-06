@@ -1143,6 +1143,11 @@ class Stage2System:
         harnesses = {
             name: any(model_matrix[name].values()) for name in runtimes
         }
+        d0_inventory = self.d0_gate.inventory()
+        d0_selection = self._d0_selection_by_harness_model(
+            snapshot=snapshot,
+            model_matrix=model_matrix,
+        )
         return {
             "schema_version": "stage2-preflight.v3",
             "status": "READY" if any(harnesses.values()) else "ERROR",
@@ -1170,9 +1175,53 @@ class Stage2System:
             },
             "harness_capabilities": harness_capabilities,
             "harness_capability_qualification": capability_qualification,
-            "d0": self.d0_gate.inventory(),
+            "d0": {
+                **dict(d0_inventory),
+                "selection_by_harness_model": d0_selection,
+            },
             "reset_mode": "mutation_evidence_tiered",
         }
+
+    def _d0_selection_by_harness_model(
+        self,
+        *,
+        snapshot: GatewayConfigSnapshot | None,
+        model_matrix: Mapping[str, Mapping[str, bool]],
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        result: dict[str, dict[str, dict[str, Any]]] = {}
+        for harness in HarnessKind:
+            harness_rows: dict[str, dict[str, Any]] = {}
+            for model in STAGE2_SUPPORTED_MODELS:
+                if model_matrix.get(harness.value, {}).get(model) is not True:
+                    continue
+                if snapshot is None:
+                    harness_rows[model] = {
+                        "verified": False,
+                        "reason": "current gateway config snapshot is unavailable",
+                    }
+                    continue
+                try:
+                    ref, reason = self.d0_gate.select_verified_ref(
+                        harness=harness,
+                        model_alias=model,
+                        gateway=snapshot,
+                    )
+                except Exception as exc:  # noqa: BLE001 - preflight reports selector failures.
+                    harness_rows[model] = {
+                        "verified": False,
+                        "reason": f"D0 selector failed: {type(exc).__name__}",
+                    }
+                    continue
+                row: dict[str, Any] = {
+                    "verified": ref is not None,
+                    "reason": reason,
+                }
+                if ref is not None:
+                    row["qualification_ref"] = ref.model_dump(mode="json")
+                harness_rows[model] = row
+            if harness_rows:
+                result[harness.value] = harness_rows
+        return result
 
     def _gateway_snapshot(self) -> tuple[GatewayConfigSnapshot | None, str | None]:
         snapshot = getattr(self.config, "gateway_snapshot", None)

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import yaml
 
-from stage2_service.contracts import STAGE2_SUPPORTED_MODELS
+from stage2_service.contracts import D0QualificationRef, STAGE2_SUPPORTED_MODELS
 from stage2_service.capability_preflight import (
     CAPABILITY_QUALIFICATION_SCHEMA,
     harness_capabilities_from_qualification,
@@ -28,6 +28,34 @@ def _capability(kind: str) -> dict:
         "feedback_channels": ["in_band_mcp"],
         "code_execution": "platform_sandbox",
     }
+
+
+def _d0_ref(snapshot: GatewayConfigSnapshot) -> D0QualificationRef:
+    return D0QualificationRef(
+        campaign_id="d0-otel-accounting-gpt-5-5-codex",
+        manifest_sha256="a" * 64,
+        agent_status="PASS",
+        model_alias="gpt-5.5",
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+        gateway_evidence_verified=True,
+        gateway_request_ids=("codex-req-1",),
+        gateway_evidence_ref="native/d0-preflight/codex/gateway-requests.json",
+        gateway_trial_id="codex-trial",
+    )
+
+
+class D0Gate:
+    def __init__(self, ref: D0QualificationRef):
+        self.ref = ref
+
+    def inventory(self) -> dict:
+        return {"artifact_root_configured": True, "campaigns": []}
+
+    def select_verified_ref(self, *, harness, model_alias, gateway):
+        if harness.value == "codex" and model_alias == "gpt-5.5":
+            return self.ref, "qualified"
+        return None, "no verified D0 qualification matches current gateway route"
 
 
 def _qualification_payload(*, include_all: bool = True) -> dict:
@@ -109,7 +137,7 @@ def test_runtime_preflight_uses_only_qualification_record_for_readiness(
         gateway_config_file=snapshot.config_path,
         gateway_snapshot=snapshot,
     )
-    system.d0_gate = SimpleNamespace(inventory=lambda: {"campaigns": []})
+    system.d0_gate = D0Gate(_d0_ref(snapshot))
     system._gateway_models = lambda: (set(STAGE2_SUPPORTED_MODELS), None)
     system._model_probe_runner = lambda _snapshot, _aliases: {
         "schemaVersion": "resiliencebenchmark.model_probe/v1",
@@ -143,6 +171,12 @@ def test_runtime_preflight_uses_only_qualification_record_for_readiness(
         for item in result["harness_capabilities"].values()
     )
     assert all(all(models[model] is True for model in STAGE2_SUPPORTED_MODELS) for models in result["model_matrix"].values())
+    d0_selection = result["d0"]["selection_by_harness_model"]
+    assert d0_selection["codex"]["gpt-5.5"]["verified"] is True
+    assert d0_selection["codex"]["gpt-5.5"]["qualification_ref"][
+        "campaign_id"
+    ] == "d0-otel-accounting-gpt-5-5-codex"
+    assert d0_selection["bladeai"]["gpt-5.5"]["verified"] is False
 
 
 def test_failed_qualification_cannot_be_overridden_by_capability_claim(tmp_path: Path):

@@ -8,7 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from stage2_service.api import CampaignSupervisor, create_app
-from stage2_service.contracts import CampaignResult, PlatformStatus, Stage2CaseId
+from stage2_service.contracts import (
+    CampaignResult,
+    D0QualificationRef,
+    PlatformStatus,
+    Stage2CaseId,
+)
 from stage2_service.task_service import (
     AbortTaskRequest,
     Stage2TaskCreateRequest,
@@ -18,6 +23,16 @@ from stage2_service.task_service import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+GATEWAY_HASH = "c" * 64
+GATEWAY_ROUTE = {
+    "model_alias": "gpt-5.5",
+    "provider": "openai",
+    "upstream_model": "gpt-5.5",
+    "api_base_host": "gateway.example",
+    "api_base_scheme": "https",
+    "api_base_path": "/v1",
+    "credential_env_ref": "UPSTREAM_API_KEY",
+}
 
 
 class Runner:
@@ -88,7 +103,23 @@ class Controls:
         return {"verified": True, "target_state": target_state}
 
 
-def preflight():
+def _qualification_ref(*, model: str = "gpt-5.5") -> dict:
+    route = {**GATEWAY_ROUTE, "model_alias": model, "upstream_model": model}
+    return D0QualificationRef(
+        campaign_id=f"d0-otel-accounting-{model.replace('.', '-')}-codex",
+        manifest_sha256="a" * 64,
+        agent_status="PASS",
+        model_alias=model,
+        gateway_route=route,
+        gateway_config_sha256=GATEWAY_HASH,
+        gateway_evidence_verified=True,
+        gateway_request_ids=(f"{model}-codex-req-1",),
+        gateway_evidence_ref=f"native/d0-task/{model}-codex/gateway-requests.json",
+        gateway_trial_id=f"{model}-codex-trial",
+    ).model_dump(mode="json")
+
+
+def preflight(d0: dict | None = None):
     return {
         "model_matrix": {
             "codex": {"gpt-5.5": True, "claude-opus-5": True},
@@ -113,17 +144,33 @@ def preflight():
             }
             for harness in ("codex", "claude-code", "deepseek-harness", "bladeai")
         },
+        "gateway_config": {
+            "config_sha256": GATEWAY_HASH,
+            "routes": {
+                "gpt-5.5": GATEWAY_ROUTE,
+                "claude-opus-5": {
+                    **GATEWAY_ROUTE,
+                    "model_alias": "claude-opus-5",
+                    "upstream_model": "claude-opus-5",
+                },
+            },
+        },
+        "d0": d0
+        if d0 is not None
+        else {
+            "selection_by_harness_model": {},
+        },
     }
 
 
-def task_service(tmp_path, runner):
+def task_service(tmp_path, runner, *, preflight_provider=preflight):
     supervisor = CampaignSupervisor(runner)
     controls = Controls()
     service = Stage2TaskService(
         supervisor=supervisor,
         artifact_root=tmp_path,
         repo_root=REPO_ROOT,
-        preflight_provider=preflight,
+        preflight_provider=preflight_provider,
         control_backend=controls,
     )
     return service, supervisor, controls
@@ -213,6 +260,149 @@ def test_creates_persistent_seven_trial_task_and_reuses_idempotency_key(tmp_path
     timeline = service.get(created["task_id"], mode=TaskDetailMode.TIMELINE)
     assert timeline["events"][0]["actor"] == "HARNESS"
     assert (tmp_path / "tasks" / created["task_id"] / "request.json").is_file()
+
+
+def test_task_create_auto_uses_current_verified_d0_ref_for_formal_mode(tmp_path):
+    ref = _qualification_ref()
+    service, _supervisor, _controls = task_service(
+        tmp_path,
+        Runner(),
+        preflight_provider=lambda: preflight(
+            {
+                "selection_by_harness_model": {
+                    "codex": {
+                        "gpt-5.5": {
+                            "verified": True,
+                            "reason": "qualified",
+                            "qualification_ref": ref,
+                        }
+                    }
+                }
+            }
+        ),
+    )
+
+    created = service.create(request())
+    campaign = service.store.campaign_request(created["task_id"])
+    status = service.get(created["task_id"])
+
+    assert campaign["qualification_mode"] == "required"
+    assert set(campaign["qualification_refs"]) == {"codex"}
+    assert campaign["qualification_refs"]["codex"] == ref
+    assert created["qualification"] == {
+        "mode": "required",
+        "reason": "qualified",
+        "campaign_id": ref["campaign_id"],
+    }
+    assert status["input"]["qualification"]["mode"] == "required"
+
+
+def test_task_create_only_needs_current_harness_model_d0_selection(tmp_path):
+    ref = _qualification_ref()
+    service, _supervisor, _controls = task_service(
+        tmp_path,
+        Runner(),
+        preflight_provider=lambda: preflight(
+            {
+                "selection_by_harness_model": {
+                    "codex": {
+                        "gpt-5.5": {
+                            "verified": True,
+                            "reason": "qualified",
+                            "qualification_ref": ref,
+                        }
+                    }
+                }
+            }
+        ),
+    )
+
+    created = service.create(request())
+    campaign = service.store.campaign_request(created["task_id"])
+
+    assert campaign["qualification_mode"] == "required"
+    assert campaign["qualification_refs"]["codex"]["campaign_id"] == ref["campaign_id"]
+
+
+def test_task_create_marks_diagnostic_when_no_verified_d0_ref(tmp_path):
+    service, _supervisor, _controls = task_service(tmp_path, Runner())
+
+    created = service.create(request())
+    campaign = service.store.campaign_request(created["task_id"])
+
+    assert campaign["qualification_mode"] == "diagnostic"
+    assert campaign["qualification_refs"] == {}
+    assert created["qualification"] == {
+        "mode": "diagnostic",
+        "reason": "no D0 selector result for current Harness/model",
+        "campaign_id": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        {
+            "verified": True,
+            "reason": "qualified",
+            "qualification_ref": {**_qualification_ref(), "model_alias": "claude-opus-5"},
+        },
+        {
+            "verified": True,
+            "reason": "qualified",
+            "qualification_ref": {
+                **_qualification_ref(),
+                "gateway_config_sha256": "b" * 64,
+            },
+        },
+        {
+            "verified": False,
+            "reason": "D0 gateway receipt artifact did not revalidate",
+            "qualification_ref": _qualification_ref(),
+        },
+        {
+            "verified": True,
+            "reason": "qualified",
+            "qualification_ref": {"campaign_id": "d0-bad-record"},
+        },
+    ],
+)
+def test_task_create_never_promotes_bad_or_cross_model_d0_ref(selection, tmp_path):
+    service, _supervisor, _controls = task_service(
+        tmp_path,
+        Runner(),
+        preflight_provider=lambda: preflight(
+            {
+                "selection_by_harness_model": {
+                    "codex": {"gpt-5.5": selection}
+                }
+            }
+        ),
+    )
+
+    created = service.create(request())
+    campaign = service.store.campaign_request(created["task_id"])
+
+    assert campaign["qualification_mode"] == "diagnostic"
+    assert campaign["qualification_refs"] == {}
+    assert created["qualification"]["mode"] == "diagnostic"
+
+
+def test_task_create_request_schema_has_no_user_d0_fields():
+    assert "qualification_refs" not in Stage2TaskCreateRequest.model_fields
+    assert "qualification_mode" not in Stage2TaskCreateRequest.model_fields
+
+
+def test_api_rejects_user_supplied_d0_qualification_fields(tmp_path):
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    client = TestClient(create_app(supervisor, task_service=service))
+    payload = request().model_dump(mode="json")
+    payload["qualification_mode"] = "required"
+    payload["qualification_refs"] = {"codex": _qualification_ref()}
+
+    response = client.post("/api/v1/stage2/tasks", json=payload)
+
+    assert response.status_code == 422
 
 
 def test_api_exposes_create_list_and_query_contract(tmp_path):

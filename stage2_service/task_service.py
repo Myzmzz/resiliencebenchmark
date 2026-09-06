@@ -23,6 +23,7 @@ from .contracts import (
     CampaignResult,
     CaseBundle,
     ContractModel,
+    D0QualificationRef,
     DecisionPolicy,
     DisturbanceType,
     ExpectedOutcome,
@@ -614,6 +615,13 @@ class Stage2TaskService:
         )
         if runnable_reason is not None:
             raise TaskValidationError(runnable_reason)
+        qualification_mode, qualification_refs, qualification_metadata = (
+            self._qualification_for_task(
+                preflight=preflight,
+                harness=request.harness,
+                model=request.model,
+            )
+        )
         task_id = f"stage2-task-{uuid4().hex[:16]}"
         specs = default_case_specs(selected_cases)
         campaign_request = CampaignRequest(
@@ -621,7 +629,8 @@ class Stage2TaskService:
             episode=fixed_otel_episode_ref(self.repo_root),
             harnesses=(request.harness,),
             model_by_harness={request.harness: request.model},
-            qualification_mode="diagnostic",
+            qualification_mode=qualification_mode,
+            qualification_refs=qualification_refs,
             prompt_mode=request.prompt_mode,
             interaction_mode=request.interaction_mode,
             decision_policy=request.decision_policy,
@@ -638,9 +647,11 @@ class Stage2TaskService:
             ),
             cases=selected_cases,
         )
+        stored_request = request.model_dump(mode="json")
+        stored_request["qualification"] = qualification_metadata
         self.store.create(
             task_id,
-            request.model_dump(mode="json"),
+            stored_request,
             campaign_request.model_dump(mode="json"),
             idempotency_key=idempotency_key,
         )
@@ -662,6 +673,7 @@ class Stage2TaskService:
                     "tool_substitution_variant": request.tool_substitution_variant,
                     "disturbance": request.disturbance,
                     "cases": [item.value for item in selected_cases],
+                    "qualification": qualification_metadata,
                 },
             ),
         )
@@ -707,6 +719,7 @@ class Stage2TaskService:
             "tool_substitution_variant": request.get("tool_substitution_variant"),
             "disturbance": request.get("disturbance"),
             "cases": [item.value for item in self._request_cases(request)],
+            "qualification": self._stored_qualification(request),
             "created_at": state["created_at"],
             "poll_after_ms": 2000,
             "links": {
@@ -821,6 +834,100 @@ class Stage2TaskService:
                 )
             return f"Harness capability probe does not support requested cases: {values}"
         return None
+
+    @classmethod
+    def _qualification_for_task(
+        cls,
+        *,
+        preflight: Mapping[str, Any],
+        harness: HarnessKind,
+        model: str,
+    ) -> tuple[
+        Literal["required", "diagnostic"],
+        dict[HarnessKind, D0QualificationRef],
+        dict[str, Any],
+    ]:
+        d0 = preflight.get("d0")
+        selections = (
+            d0.get("selection_by_harness_model") if isinstance(d0, Mapping) else None
+        )
+        harness_selections = (
+            selections.get(harness.value) if isinstance(selections, Mapping) else None
+        )
+        selection = (
+            harness_selections.get(model)
+            if isinstance(harness_selections, Mapping)
+            else None
+        )
+        if not isinstance(selection, Mapping):
+            return cls._diagnostic_qualification(
+                "no D0 selector result for current Harness/model"
+            )
+        reason = str(selection.get("reason") or "D0 qualification is not verified")
+        raw_ref = selection.get("qualification_ref")
+        if selection.get("verified") is not True:
+            return cls._diagnostic_qualification(reason)
+        if not isinstance(raw_ref, Mapping):
+            return cls._diagnostic_qualification(
+                "D0 selector did not provide a qualification ref"
+            )
+        try:
+            ref = D0QualificationRef.model_validate(dict(raw_ref))
+        except ValueError:
+            return cls._diagnostic_qualification(
+                "D0 selector provided an invalid qualification ref"
+            )
+        if ref.model_alias != model:
+            return cls._diagnostic_qualification(
+                "D0 qualification ref model does not match current task"
+            )
+        gateway = preflight.get("gateway_config")
+        if not isinstance(gateway, Mapping):
+            return cls._diagnostic_qualification(
+                "current gateway metadata is missing from preflight"
+            )
+        config_sha256 = gateway.get("config_sha256")
+        routes = gateway.get("routes")
+        route = routes.get(model) if isinstance(routes, Mapping) else None
+        if ref.gateway_config_sha256 != config_sha256 or ref.gateway_route != route:
+            return cls._diagnostic_qualification(
+                "D0 qualification ref does not match current gateway route"
+            )
+        metadata = {
+            "mode": "required",
+            "reason": "qualified",
+            "campaign_id": ref.campaign_id,
+        }
+        return "required", {harness: ref}, metadata
+
+    @staticmethod
+    def _diagnostic_qualification(
+        reason: str,
+    ) -> tuple[
+        Literal["diagnostic"],
+        dict[HarnessKind, D0QualificationRef],
+        dict[str, Any],
+    ]:
+        return (
+            "diagnostic",
+            {},
+            {
+                "mode": "diagnostic",
+                "reason": reason,
+                "campaign_id": None,
+            },
+        )
+
+    @staticmethod
+    def _stored_qualification(request: Mapping[str, Any]) -> dict[str, Any]:
+        value = request.get("qualification")
+        if isinstance(value, Mapping):
+            return dict(value)
+        return {
+            "mode": "diagnostic",
+            "reason": "qualification metadata unavailable",
+            "campaign_id": None,
+        }
 
     def options(self) -> dict[str, Any]:
         preflight = dict(self.preflight_provider())
@@ -977,6 +1084,7 @@ class Stage2TaskService:
                 "tool_substitution_variant": request.get("tool_substitution_variant"),
                 "disturbance": request.get("disturbance"),
                 "cases": [item.value for item in selected_cases],
+                "qualification": self._stored_qualification(request),
             },
             "suite": self._suite(state, all_events, selected_cases),
             "structured_feedback": self._structured_feedback(all_events),
@@ -1212,6 +1320,7 @@ class Stage2TaskService:
             ),
             "tool_substitution_variant": request.get("tool_substitution_variant"),
             "disturbance": request.get("disturbance"),
+            "qualification": self._stored_qualification(request),
             "created_at": state.get("created_at"),
             "updated_at": state.get("updated_at"),
             "finished_at": state.get("finished_at"),
