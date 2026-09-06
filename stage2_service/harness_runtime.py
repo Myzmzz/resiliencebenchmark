@@ -486,6 +486,7 @@ class NativeHarnessRunner:
         tool_evidence: list[dict[str, Any]] = []
         assessment_history: list[dict[str, Any]] = []
         last_assessment: dict[str, Any] = {}
+        submitted_result_loaded = False
         output_repair_count = 0
         output_repaired = False
         report_only = False
@@ -806,9 +807,37 @@ class NativeHarnessRunner:
                         payload=dict(payload.get("payload") or {}),
                     ), {**payload, "status": status_value, "occurred_at": at})
 
+        def load_valid_submitted_result() -> dict[str, Any] | None:
+            submitted = channel_root / "result.json"
+            if not submitted.is_file():
+                return None
+            try:
+                value = load_json(submitted)
+                result_validator.validate(value)
+            except (ValueError, jsonschema.ValidationError):
+                return None
+            return dict(value)
+
+        def accept_valid_submitted_result() -> bool:
+            nonlocal last_assessment, submitted_result_loaded
+            validated_result = load_valid_submitted_result()
+            if validated_result is None:
+                return False
+            last_assessment = validated_result
+            if not submitted_result_loaded:
+                assessment_history.append({
+                    "assessment": validated_result, "source": "harness_submit_result",
+                })
+                submitted_result_loaded = True
+            return True
+
         def observe_turn_complete(summary: Mapping[str, Any]) -> list[StructuredFeedback]:
             nonlocal last_assessment, output_repair_count, output_repaired, report_only, confirmed_plan
             if summary.get("timed_out") or summary.get("cancelled") or summary.get("returncode"):
+                return []
+            if accept_valid_submitted_result():
+                turn_messages.clear()
+                pending_questions.clear()
                 return []
             if not turn_messages:
                 return []
@@ -996,9 +1025,11 @@ class NativeHarnessRunner:
                 harness_failure = {"error_code": "RESULT_STORAGE_CONTRACT_INVALID"}
             else:
                 last_assessment = validated_result
-                assessment_history.append({
-                    "assessment": validated_result, "source": "harness_submit_result",
-                })
+                if not submitted_result_loaded:
+                    assessment_history.append({
+                        "assessment": validated_result, "source": "harness_submit_result",
+                    })
+                    submitted_result_loaded = True
         live_unclosed_calls = sorted(set(mapper.calls) - set(mapper.results))
         native_unclosed_calls = [call.call_id for call in adapter.open_calls()]
         unclosed_calls = sorted(set(live_unclosed_calls + native_unclosed_calls))

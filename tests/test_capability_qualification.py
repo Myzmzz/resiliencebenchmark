@@ -169,6 +169,21 @@ def test_record_exchange_must_match_controller_artifact(tmp_path):
         publish_capabilities([record], artifact_root=tmp_path / "artifacts", output=tmp_path / "caps.json", gateway=gateway(tmp_path))
 
 
+def test_existing_scoped_workload_tool_is_valid_base_telemetry(tmp_path):
+    # This is the production tool observed in the first real base-channel run.
+    record = qualification(tmp_path)
+    value = json.loads(record.read_text())
+    for exchange in value["ordered_exchanges"]:
+        if exchange["tool"] == "telemetry_ro.telemetry_prom_metric_range":
+            exchange["tool"] = "telemetry_ro.telemetry_workload_current"
+    record.write_text(json.dumps(value))
+    canonical = tmp_path / "artifacts/codex/canonical-events.jsonl"
+    canonical.write_text(canonical.read_text().replace("telemetry_ro.telemetry_prom_metric_range", "telemetry_ro.telemetry_workload_current"))
+    output = tmp_path / "caps.json"
+    publish_capabilities([record], artifact_root=tmp_path / "artifacts", output=output, gateway=gateway(tmp_path))
+    assert harness_capabilities_from_qualification(output)[0]["codex"]["qualification_passed"] is True
+
+
 @pytest.mark.parametrize("valid_config", [True, False])
 def test_real_publish_cli_reports_success_or_structured_rejection(tmp_path, valid_config):
     record = qualification(tmp_path)

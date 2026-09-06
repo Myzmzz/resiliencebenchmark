@@ -54,6 +54,7 @@ tools:
     mode: read_only
     purpose: Query scoped Prometheus metrics, Jaeger traces, and Loki logs for baseline, fault effect, diagnosis, and recovery evidence.
     allowed_operations:
+      - telemetry_workload_current
       - telemetry_prom_metric_instant
       - telemetry_prom_metric_range
       - telemetry_prom_metric_series

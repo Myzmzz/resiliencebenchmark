@@ -157,6 +157,7 @@ ALLOWED_MCP_TOOLS = {
         "k8s_cluster_inventory",
     },
     "telemetry_ro": {
+        "telemetry_workload_current",
         "telemetry_prom_metric_instant",
         "telemetry_prom_metric_range",
         "telemetry_prom_metric_series",

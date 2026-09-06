@@ -77,3 +77,31 @@ Postman 请求字段。先确认旧集群无活动任务、无故障残留；每
 当前单任务 POST 内部仍使用 `qualification_mode=diagnostic`。基础发布不会
 把它自动变成正式矩阵计分；正式计分还需服务器内部绑定有效 D0 证据。不能
 把“任务能启动”“实验执行完成”和“正式计分资格通过”混为一谈。
+
+## 第一次真实基础资格：失败记录
+
+`d102518` 已部署至旧集成服务
+`resbench-stage2-integration-77bc76b9b7-2h5xg`，Controller 与 Agent 镜像成对更新；
+main/e2e 的 Controller/Agent 此时仍为 `e6fd44a`，三者均使用已验证的新网关。
+集成服务在线七项检查通过。未访问新集群。
+
+Codex / `gpt-5.5` 的 `base-codex-20260906-a1` 于 08:02:57 UTC 开始，Trial 为
+`campaign-7dd003f7b0584c14-codex-d0-1`。真实 MCP 记录中有目标/基线读取、一次
+确认拒绝、一次中性求助回复、通知回执，以及三次结果提交：前两次无效，第三次
+有效。最后有效提交的账本序号为 326，但之后 Harness 又派发了 11 条反馈。
+Agent 已反复表示接受安全拒绝、不创建方案，工具调用没有继续增加。
+
+根因为 NativeHarnessRunner 只在整个会话结束后读取有效的 `result.json`；
+每轮结束却仍先解释自然语言、重新生成确认问题。这是 Harness 终态处理缺陷，
+不是模型 Key 错误，也不是 Agent 注入失败。修复应在原生回合结束时优先接受
+Controller 已保存的合规终态，不再解释文本产生额外问题；无有效提交仍沿原逻辑。
+
+本次未记通过、未发布能力文件。停止时先暂停该资格驱动进程，确认无活动 Agent
+子进程后中断驱动，使清理逻辑执行；没有中断常驻服务。随后确认资格进程、Agent
+子进程、临时工作目录和令牌文件均已清除。运行前后四类故障资源清单均为空。
+这是本轮基础资格第 1 次 Harness 原因失败，不能因后续换镜像或目录而重置预算。
+
+证据在 `artifacts/remediation/20260905/`：`base-codex-a1-adjudication.json` 保存
+原平台事件和失败归因；`base-codex-a1-native.tar.gz` 保留原生记录；
+`base-codex-a1.stderr.log` 保留中断结果；`base-codex-a1-before/after-*` 为独立
+故障清单。该失败不因后续修复而追改为通过。
