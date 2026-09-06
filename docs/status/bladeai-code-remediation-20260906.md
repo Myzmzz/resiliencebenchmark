@@ -1,8 +1,33 @@
 # BladeAI 代码整改交付
 
-状态：代码整改；用户已要求暂停测试与部署。本轮只做源码核对、代码和测试代码
-修改、静态差异检查。没有运行 pytest、编译、镜像构建、模型调用或集群故障。
-以下不代表 BladeAI 已通过真实资格，不更新现网能力文件。
+最新状态（2026-09-06）：`7d89693` 已部署到旧 integration；`a8d0ba1`
+日志增强已推送但尚未部署。当前全量测试结果为 1689 pass / 10 skip；
+SDK 镜像本地 stdio 探针通过，6 模型 gateway probe 支持已具备。三次
+BladeAI BASE 均失败在 MCP 启动阶段，未产生 Agent 工具调用；没有发生故障注入，
+不能声明 BASE 或 WP8 通过。
+
+后续纯组件诊断未发起第四次 BASE：`prod-mcp` group 的五个服务可启动，
+`production-mcp-component-kernel-wait.log` 捕获到 `harness_channel/proxy`
+处于 State D（disk sleep），内核等待点为 `wait_on_page_bit_common` /
+`__wait_on_buffer`，Python 栈指向依赖加载。节点 `MemAvailable` 为
+758120 kB；Jaeger 单 Pod 约 36688 Mi，`SPAN_STORAGE_TYPE=memory`，且没有
+resource limits。当前已证实存在 I/O 等待；Jaeger 内存占用与页面压力的因果
+关系仍需释放资源后复验，不能写成已修复。详细证据位于
+`artifacts/remediation/20260906-bladeai-deploy/`。
+
+Jaeger 处置边界已核对：旧集群 `observability/jaeger` 使用 1.57 的内存存储，
+未配置 `MEMORY_MAX_TRACES`，也没有数据卷或容器资源限制。该版本默认 Trace
+数量无上限（[1.57 源码](https://github.com/jaegertracing/jaeger/blob/v1.57.0/plugin/storage/memory/options.go)）；
+内存数据会随进程退出丢失（[官方部署说明](https://www.jaegertracing.io/docs/1.76/deployment/#memory)）。
+若要整改，需要先确认现有内存 Trace 的保留/丢弃要求，再结合评测所需历史窗口
+确定存储上限；不能只加一个内存 limit，任由 OOM 触发非计划重启。
+
+保留边界：L0–L4、默认案例与权限限制未被放宽；30 秒 MCP 启动期限未修改。
+尚未获得重启 Jaeger 或丢弃其内存 Trace 的授权，因此 Jaeger 保持原状。
+
+以下旧正文为历史源码整改阶段记录：当时只做源码核对、代码和测试代码修改、
+静态差异检查，尚未运行 pytest、编译、镜像构建、模型调用或集群故障；也不代表
+BladeAI 已通过真实资格或已更新现网能力文件。
 
 静态交叉复核补充：Agent 镜像显式补入事件桥、MCP 守卫、时长边界模块和工具
 目录，避免部署后缺文件。确认只接受当前协议的 `allowed=true`，旧别名不能
