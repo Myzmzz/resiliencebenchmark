@@ -146,6 +146,7 @@ AGENT_SHARED_RUNTIME_ENV = {
     "RESBENCH_COROOT_MCP_URL",
     "RESBENCH_CHAOS_MESH_CONTROL_MCP_URL",
     "RESBENCH_CODE_SANDBOX_MCP_URL",
+    "RESBENCH_BLADEAI_CHANNEL_ONLY",
 }
 ALLOWED_MCP_TOOLS = {
     "harness_channel": {"harness_consult", "harness_confirm", "harness_submit_result", "harness_poll_notices"},

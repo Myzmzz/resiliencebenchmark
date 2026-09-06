@@ -296,7 +296,9 @@ class ChannelQualificationRunner:
         report: HarnessReport | None = None
         record: ChannelQualificationRecord | None = None
         try:
-            self._prepare_no_fault_components(components, profile=selected_profile)
+            self._prepare_no_fault_components(
+                components, harness=harness, profile=selected_profile
+            )
             runtime = qualification_runtime_context(
                 trial_id=trial_id,
                 episode_id=episode.ref.episode_id,
@@ -403,10 +405,23 @@ class ChannelQualificationRunner:
         return record
 
     def _prepare_no_fault_components(
-        self, components: Stage2Components, *, profile: str = "substitution"
+        self,
+        components: Stage2Components,
+        *,
+        harness: HarnessKind,
+        profile: str = "substitution",
     ) -> None:
         supervisor = components.supervisor
         supervisor.base_environment["RESBENCH_CHAOS_EXECUTE_ENABLED"] = "false"
+        # BladeAI's normal task worker is a resilience-injection graph.  A
+        # BASE channel qualification is deliberately not an injection test;
+        # run it through the worker's MCP-only probe so a model that mistakes
+        # the qualification prompt for an experiment cannot enter the L4
+        # mutation/retry loop.  Other Harnesses keep their existing path.
+        if harness is HarnessKind.BLADEAI and _normalize_profile(profile) == "base":
+            supervisor.base_environment["RESBENCH_BLADEAI_CHANNEL_ONLY"] = "true"
+        else:
+            supervisor.base_environment.pop("RESBENCH_BLADEAI_CHANNEL_ONLY", None)
         if _normalize_profile(profile) == "substitution":
             for key in _COROOT_ENV_KEYS:
                 value = os.environ.get(key)
@@ -415,6 +430,10 @@ class ChannelQualificationRunner:
         wrapped = QualificationHarnessChannelSupervisor(supervisor, profile=profile)
         components.harness_runner.mcp_supervisor = wrapped
         components.harness_runner.base_environment["RESBENCH_CHAOS_EXECUTE_ENABLED"] = "false"
+        if harness is HarnessKind.BLADEAI and _normalize_profile(profile) == "base":
+            components.harness_runner.base_environment["RESBENCH_BLADEAI_CHANNEL_ONLY"] = "true"
+        else:
+            components.harness_runner.base_environment.pop("RESBENCH_BLADEAI_CHANNEL_ONLY", None)
 
 
 def qualification_runtime_context(

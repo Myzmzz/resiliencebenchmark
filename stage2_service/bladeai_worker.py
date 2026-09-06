@@ -40,6 +40,206 @@ def emit(kind: str, payload: dict) -> None:
     )
 
 
+CHANNEL_ONLY_MAX_TURNS = 12
+_CHANNEL_ONLY_MUTATION_OPERATIONS = frozenset(
+    {
+        "chaos_create_experiment",
+        "chaos_destroy_experiment",
+        "chaos_mesh_create_experiment",
+        "chaos_mesh_destroy_experiment",
+    }
+)
+
+
+def _channel_only_enabled() -> bool:
+    return os.environ.get("RESBENCH_BLADEAI_CHANNEL_ONLY", "").strip().lower() == "true"
+
+
+def _mcp_operation_name(tool_name: str) -> str:
+    """Convert the BladeAI MCP adapter name to ``server.operation`` form."""
+    value = str(tool_name or "").strip()
+    if "__" in value and "." not in value:
+        server, operation = value.split("__", 1)
+        return f"{server}.{operation}"
+    return value
+
+
+def _channel_only_tool_map(manager: Any) -> dict[str, Any]:
+    """Return only configured MCP tools; built-in BladeAI tools are excluded."""
+    tools: dict[str, Any] = {}
+    for phase in ("clarification", "phase1", "verifier"):
+        for tool in manager.tools_for_phase(phase):
+            name = str(getattr(tool, "name", "") or "")
+            if name:
+                tools[name] = tool
+    return tools
+
+
+def _tool_call_fields(tool_call: Any, index: int) -> tuple[str, str, dict[str, Any]]:
+    if isinstance(tool_call, dict):
+        name = str(tool_call.get("name") or "")
+        call_id = str(tool_call.get("id") or f"channel-tool-{index}")
+        arguments = tool_call.get("args", {})
+    else:
+        name = str(getattr(tool_call, "name", "") or "")
+        call_id = str(getattr(tool_call, "id", "") or f"channel-tool-{index}")
+        arguments = getattr(tool_call, "args", {})
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError:
+            parsed = {}
+        arguments = parsed
+    return name, call_id, dict(arguments) if isinstance(arguments, dict) else {}
+
+
+def _text_content(value: Any) -> str:
+    content = getattr(value, "content", value)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(item.get("text") or "") if isinstance(item, dict) else str(item)
+            for item in content
+        )
+    return str(content)
+
+
+async def _run_channel_only(
+    pool: Any,
+    runtime: Runtime,
+    task: Any,
+    *,
+    llm_factory: Any = None,
+):
+    """Run a bounded BladeAI MCP-channel probe without the L4 injection graph.
+
+    This path is intentionally selected only by BASE channel qualification.
+    It binds the actual connected MCP tools to the configured BladeAI model,
+    executes at most ``CHANNEL_ONLY_MAX_TURNS`` model turns, and treats any
+    native mutation tool request as an immediate qualification violation.
+    The full task/WP8 path continues to use the normal inject/recover graphs.
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+    from chaos_agent.l4.schemas import L4AgentError, L4TaskResult
+
+    tool_map = _channel_only_tool_map(pool._mcp_manager)
+    if not tool_map:
+        raise BladeTaskError("BladeAI channel qualification has no connected MCP tools")
+    if llm_factory is None:
+        from chaos_agent.agent.factory import make_llm
+
+        llm_factory = make_llm
+    llm = llm_factory()
+    bound_llm = llm.bind_tools(list(tool_map.values()))
+    messages = [
+        SystemMessage(
+            content=(
+                "You are running a no-fault MCP channel qualification. "
+                "Use only the MCP tools provided in this conversation. "
+                "Do not attempt fault injection, native BladeAI tools, shell, "
+                "kubectl, file changes, or any other tool. Follow the user "
+                "sequence and submit the requested qualification result."
+            )
+        ),
+        HumanMessage(content=task.intent),
+    ]
+    calls = 0
+    for turn in range(1, CHANNEL_ONLY_MAX_TURNS + 1):
+        response = await bound_llm.ainvoke(messages)
+        messages.append(response)
+        content = _text_content(response)
+        if content:
+            emit("llm_thought", {"message": content[:500], "content": content[:3000], "turn": turn})
+        tool_calls = getattr(response, "tool_calls", None) or []
+        if not tool_calls:
+            summary = content[:2000] or "BladeAI ended the channel probe without submitting a result"
+            emit("conclusion", {"status": "failed", "level": "error", "message": summary})
+            return L4TaskResult(
+                task_id=task.task_id,
+                status="failed",
+                summary=summary,
+                error=L4AgentError(
+                    code="CHANNEL_QUALIFICATION_RESULT_MISSING",
+                    message="BladeAI did not submit the required MCP qualification result",
+                ),
+                extras={"channel_only": True, "turns": turn, "tool_calls": calls},
+            )
+        for index, raw_call in enumerate(tool_calls, start=1):
+            name, call_id, arguments = _tool_call_fields(raw_call, f"{turn}-{index}")
+            operation = _mcp_operation_name(name)
+            if operation.rsplit(".", 1)[-1] in _CHANNEL_ONLY_MUTATION_OPERATIONS:
+                reason = "mutation tool is forbidden in BASE channel qualification"
+                emit("fatal", {"error": reason, "tool": name, "integration_status": "qualification_violation"})
+                emit("conclusion", {"status": "failed", "level": "error", "message": reason, "tool": name})
+                return L4TaskResult(
+                    task_id=task.task_id,
+                    status="failed",
+                    summary=reason,
+                    error=L4AgentError(
+                        code="CHANNEL_QUALIFICATION_MUTATION_ATTEMPT",
+                        message=reason,
+                        details={"tool": name},
+                    ),
+                    extras={"channel_only": True, "turns": turn, "tool_calls": calls},
+                )
+            tool = tool_map.get(name)
+            if tool is None:
+                reason = f"unbound MCP tool requested during channel qualification: {name or '<empty>'}"
+                emit("fatal", {"error": reason, "integration_status": "qualification_violation"})
+                emit("conclusion", {"status": "failed", "level": "error", "message": reason})
+                return L4TaskResult(
+                    task_id=task.task_id,
+                    status="failed",
+                    summary=reason,
+                    error=L4AgentError(code="CHANNEL_QUALIFICATION_TOOL_NOT_BOUND", message=reason),
+                    extras={"channel_only": True, "turns": turn, "tool_calls": calls},
+                )
+            calls += 1
+            emit("runtime_tool_start", {"call_id": call_id, "tool": name, "params": arguments, "input": arguments})
+            try:
+                output = await tool.ainvoke(arguments)
+                output_text = _text_content(output)
+                status = "completed"
+            except Exception as exc:  # noqa: BLE001 - return a bounded tool error to the model.
+                output_text = f"[tool error] {type(exc).__name__}: {exc}"
+                status = "failed"
+            emit(
+                "runtime_tool_end" if status == "completed" else "runtime_tool_error",
+                {"call_id": call_id, "tool": name, "result": output_text[:10000], "status": status},
+            )
+            messages.append(ToolMessage(content=output_text, tool_call_id=call_id, name=name))
+            submit_accepted = False
+            if operation == "harness_channel.harness_submit_result" and status == "completed":
+                try:
+                    submit_payload = json.loads(output_text)
+                except (TypeError, json.JSONDecodeError):
+                    submit_payload = {}
+                submit_accepted = (
+                    isinstance(submit_payload, dict)
+                    and submit_payload.get("ok") is True
+                    and submit_payload.get("valid") is True
+                )
+            if submit_accepted:
+                summary = "BladeAI submitted the BASE MCP channel qualification result"
+                emit("conclusion", {"status": "passed", "level": "ok", "message": summary})
+                return L4TaskResult(
+                    task_id=task.task_id,
+                    status="passed",
+                    summary=summary,
+                    extras={"channel_only": True, "turns": turn, "tool_calls": calls},
+                )
+    reason = f"BladeAI channel qualification exceeded the bounded {CHANNEL_ONLY_MAX_TURNS}-turn probe budget"
+    emit("conclusion", {"status": "failed", "level": "error", "message": reason})
+    return L4TaskResult(
+        task_id=task.task_id,
+        status="failed",
+        summary=reason,
+        error=L4AgentError(code="CHANNEL_QUALIFICATION_TURN_LIMIT", message=reason),
+        extras={"channel_only": True, "turns": CHANNEL_ONLY_MAX_TURNS, "tool_calls": calls},
+    )
+
+
 class Step:
     def __init__(self, name: str, attrs: dict):
         self.name = name
@@ -386,17 +586,26 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
                     mcp_guard.install()
                 except BladeAIMcpGuardError as exc:
                     raise BladeTaskError(str(exc)) from exc
-                agents = await create_agent(
-                    registry,
-                    checkpointer=checkpointer,
-                    mcp_manager=mcp_manager,
-                )
-                inject_graph = BladeAIStage2EventGraph(
-                    agents["inject"], emit=emit, operation="inject"
-                )
-                recover_graph = BladeAIStage2EventGraph(
-                    agents["recover"], emit=emit, operation="recover"
-                )
+                if _channel_only_enabled():
+                    # BASE channel qualification must not construct the
+                    # resilience-injection graph.  That graph includes the
+                    # native blade_create path and can interpret a channel
+                    # probe prompt as an experiment request.  The dedicated
+                    # bounded probe below uses only connected MCP tools.
+                    inject_graph = None
+                    recover_graph = None
+                else:
+                    agents = await create_agent(
+                        registry,
+                        checkpointer=checkpointer,
+                        mcp_manager=mcp_manager,
+                    )
+                    inject_graph = BladeAIStage2EventGraph(
+                        agents["inject"], emit=emit, operation="inject"
+                    )
+                    recover_graph = BladeAIStage2EventGraph(
+                        agents["recover"], emit=emit, operation="recover"
+                    )
                 phase_tool_counts = {
                     phase: len(mcp_manager.tools_for_phase(phase))
                     for phase in ("clarification", "phase1", "phase2", "verifier")
@@ -452,6 +661,11 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
         async def _run_once():
             await pool.ensure_initialized_async()
             try:
+                if _channel_only_enabled():
+                    result = await _run_channel_only(pool, runtime, task)
+                    if runtime is not None and hasattr(runtime, "finish"):
+                        runtime.finish(status=result.status)
+                    return result
                 return await self._async_execute(pool, runtime, task)
             finally:
                 await pool.close()
