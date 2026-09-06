@@ -134,3 +134,25 @@ notice_id、notice_type、真实显式回执输入输出和平台送达事件。
 `base-codex-a2-native.tar.gz`、`base-codex-a2-cleanup.json` 及独立故障清单，均在
 `artifacts/remediation/20260905/`。本轮修复全量回归为 1575 通过、10 跳过、
 0 失败，56.484 秒，见 `notice-task-selection-full.xml`。
+
+## 第三次真实基础资格：通过并发布
+
+`1630ac4` 部署到旧集成 Pod `resbench-stage2-integration-7d6557f4dc-vqtl6` 后，
+`base-codex-20260906-a3`（`campaign-3d2ace253dd947ea-codex-d0-1`）通过全部
+七项检查：10 个真实模型请求，Harness 正常完成、无失败原因、无清理错误。
+故障资源清单前后为空；临时工作目录和令牌文件均已清理。
+
+发布器已对实际原生归档和网关请求记录复验，并真实生成
+`/var/lib/resbench-stage2/integration/private/harness-capabilities.json`。
+现有消费端读到 Codex 的 `qualification_passed=true`、`in_band_mcp`；未将其
+升级为沙箱能力，也未把其余三家标成通过。旧失败记录原样保留。
+
+通过原服务 HTTP 接口核对：`/api/v1/stage2/options` 中 Codex 可运行且包含 C0；
+`/api/v1/preflight` 的 `codex/gpt-5.5=true`。D0 selector 明确返回无当前网关
+匹配的正式资格，因此只能先做真实单任务诊断，不是正式矩阵成绩。
+第一项人工参数见[Codex / C0 手测说明](../manual-tests/codex-c0-first-20260906.md)。
+
+证据在 `artifacts/remediation/20260905/`：`base-codex-a3.stdout.json`、
+`base-codex-a3-publication.json`、`base-codex-a3-consumer.json`、
+`base-codex-a3-cleanup.json`、`base-codex-a3-native.tar.gz`、
+`options-after-codex-base.json`、`codex-c0-readiness.json` 及独立故障清单。
