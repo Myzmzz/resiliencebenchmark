@@ -153,11 +153,16 @@ class BladeShim:
         )
         self._append_evidence(evidence)
         if unknown_outcome:
+            error_payload = _unknown_outcome_error_payload(created)
             return 1, json.dumps(
                 {
                     "code": 54000,
                     "success": False,
-                    "error": _unknown_outcome_error_payload(created),
+                    # BladeAI's pinned UID extractor calls ``.lower()`` on this
+                    # field for code 54000.  Keep the SDK-facing error scalar
+                    # while preserving Controller details below.
+                    "error": error_payload["message"],
+                    "error_details": error_payload,
                     "result": {"uid": blade_uid, "operation_id": handle},
                     "_resbench": evidence,
                 },
@@ -176,16 +181,28 @@ class BladeShim:
         record = self._record_for_uid(blade_uid)
         destroyed = self.client.call("chaos_destroy_experiment", {"cleanup_handle": record.cleanup_handle})
         _require_ok(destroyed, "chaos_destroy_experiment")
-        self._update_status(blade_uid, "Destroyed")
+        status_result = self.client.call("chaos_operation_status", {"operation_id": record.cleanup_handle})
+        _require_ok(status_result, "chaos_operation_status")
+        status = _blade_status_from_operation(status_result)
+        self._update_status(blade_uid, status)
         evidence = self._evidence(
             "destroy",
             blade_uid=blade_uid,
             record=self._record_for_uid(blade_uid),
-            responses=[("chaos_destroy_experiment", destroyed)],
+            responses=[
+                ("chaos_destroy_experiment", destroyed),
+                ("chaos_operation_status", status_result),
+            ],
         )
         self._append_evidence(evidence)
+        operation = _operation_result_metadata(status_result)
         return 0, json.dumps(
-            {"code": 200, "success": True, "result": blade_uid, "_resbench": evidence},
+            {
+                "code": 200,
+                "success": True,
+                "result": {"uid": blade_uid, "Status": status, "status": status, **operation},
+                "_resbench": evidence,
+            },
             ensure_ascii=False,
         ) + "\n", ""
 
@@ -232,6 +249,7 @@ class BladeShim:
         operation = _operation_result_metadata(result)
         statuses = [] if not target_name else [{
             "state": status,
+            "success": status == "Success",
             "kind": "pod",
             "identifier": f"{namespace}/{target_name}",
             "uid": target_uid,
@@ -531,8 +549,14 @@ def _unknown_outcome_cleanup_handle(result: Mapping[str, Any]) -> str | None:
 def _unknown_outcome_error_payload(result: Mapping[str, Any]) -> dict[str, Any]:
     error = result.get("error")
     if not isinstance(error, Mapping):
-        return {"code": "OPERATION_OUTCOME_UNKNOWN"}
-    payload: dict[str, Any] = {"code": "OPERATION_OUTCOME_UNKNOWN"}
+        return {
+            "code": "OPERATION_OUTCOME_UNKNOWN",
+            "message": "Operation outcome is unknown; query operation_id before retrying.",
+        }
+    payload: dict[str, Any] = {
+        "code": "OPERATION_OUTCOME_UNKNOWN",
+        "message": "Operation outcome is unknown; query operation_id before retrying.",
+    }
     message = error.get("message")
     next_step = error.get("next_step")
     if isinstance(message, str) and message:
@@ -636,18 +660,29 @@ def _only_kubeconfig_flags(values: Sequence[str], expected_kubeconfig: str | Non
 
 
 def _blade_status_from_operation(value: Mapping[str, Any]) -> str:
-    state = str(value.get("state") or "").lower()
-    outcome = str(value.get("operation_outcome") or "").lower()
+    state = _lower_text(value.get("state"))
+    outcome = _lower_text(value.get("operation_outcome"))
+    ledger_outcome = _lower_text(value.get("ledger_operation_outcome"))
     live = value.get("live")
-    if state in {"destroyed", "expired_cleaned"}:
-        return "Destroyed"
+    live_found = isinstance(live, Mapping) and live.get("found") is True
+    live_matches = isinstance(live, Mapping) and live.get("matches_ledger") is True
+    live_phase = _lower_text(live.get("phase") if isinstance(live, Mapping) else None)
     if outcome == "absent":
+        if state in {"destroyed", "expired_cleaned"} and ledger_outcome == "applied":
+            return "Destroyed"
         return "Absent"
-    if outcome == "applied" or (isinstance(live, Mapping) and live.get("found") is True):
+    if outcome == "applied" and live_found and live_matches and live_phase == "running":
         return "Success"
-    if state in {"created", "pending", "initializing"}:
-        return "Created"
+    if outcome == "applied":
+        if live_found and live_matches and live_phase in {"pending", "creating", "initialized"}:
+            return "Created"
+        if state in {"created", "pending", "initializing", "pending_apply"}:
+            return "Created"
     return "Error"
+
+
+def _lower_text(value: Any) -> str:
+    return str(value or "").lower()
 
 
 class McpToolClient:

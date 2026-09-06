@@ -117,6 +117,10 @@ def test_agent_image_has_only_runtime_assets_and_harness_package_is_side_effect_
     for required in (
         "COPY harness/schemas/agent-result.schema.json /app/harness/schemas/agent-result.schema.json",
         "COPY stage2_service/bladeai_worker.py /app/stage2_service/bladeai_worker.py",
+        "COPY stage2_service/bladeai_events.py /app/stage2_service/bladeai_events.py",
+        "COPY stage2_service/bladeai_mcp_guard.py /app/stage2_service/bladeai_mcp_guard.py",
+        "COPY stage2_service/bladeai_duration.py /app/stage2_service/bladeai_duration.py",
+        "COPY harness/mcp-tools.yaml /app/harness/mcp-tools.yaml",
         "COPY stage2_service/bladeai_task.py /app/stage2_service/bladeai_task.py",
         "COPY stage2_service/bladeai_shim.py /app/stage2_service/bladeai_shim.py",
         "COPY stage2_service/bladeai_read_cli.py /app/stage2_service/bladeai_read_cli.py",

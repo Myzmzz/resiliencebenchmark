@@ -135,7 +135,7 @@ def _real_channel(tmp_path, *, prompt_level=AutonomyLevel.L0_COMPLETE_TASK, mode
 def test_rejected_harness_confirmation_returns_false_and_emits_rejection(monkeypatch):
     emitted = []
     monkeypatch.setattr("stage2_service.bladeai_worker.emit", lambda kind, payload: emitted.append((kind, payload)))
-    client = _Confirm({"ok": True, "approved": False, "reason": "scope mismatch"})
+    client = _Confirm({"ok": True, "allowed": False, "reason": "scope mismatch"})
     capture = NativeProposalCapture()
     capture.record(_current_native_proposal())
 
@@ -150,7 +150,7 @@ def test_rejected_harness_confirmation_returns_false_and_emits_rejection(monkeyp
 def test_sdk_confirmation_event_chain_carries_sdk_and_controller_call_ids(monkeypatch):
     emitted = []
     monkeypatch.setattr("stage2_service.bladeai_worker.emit", lambda kind, payload: emitted.append((kind, payload)))
-    client = _Confirm({"ok": True, "approved": True, "controller_call_id": "controller-confirm-1"})
+    client = _Confirm({"ok": True, "allowed": True, "controller_call_id": "controller-confirm-1"})
     capture = NativeProposalCapture()
     capture.record(_current_native_proposal())
 
@@ -296,10 +296,25 @@ def test_native_proposal_capture_is_consumed_between_confirmation_gates():
     assert "duration_seconds" not in second
 
 
-def test_only_explicit_harness_approval_is_granted():
-    assert confirmation_granted({"ok": True, "approved": True}) is True
+def test_resumed_gate_cannot_leak_duration_into_the_next_incomplete_plan():
+    capture = NativeProposalCapture()
+    capture.record_state({"fault_spec": {"duration_seconds": 60}})
+    capture.record(_current_native_proposal())
+    capture.take()
+    # Resumption replays the gate but does not call take a second time.
+    capture.record_state({"fault_spec": {"duration_seconds": 60}})
+    capture.record(_current_native_proposal())
+    capture.record_state({"fault_spec": {}})
+    capture.record({"params": {"time": "300"}})
+    assert "duration_seconds" not in capture.take()
+
+
+def test_only_current_harness_allowed_field_grants_approval():
+    assert confirmation_granted({"ok": True, "approved": True}) is False
     assert confirmation_granted({"ok": True, "allowed": True}) is True
-    assert confirmation_granted({"ok": True, "decision": "approved"}) is True
+    assert confirmation_granted({"ok": True, "decision": "approved"}) is False
+    assert confirmation_granted({"ok": True, "allowed": False, "approved": True}) is False
+    assert confirmation_granted({"ok": True, "allowed": False, "decision": "approved"}) is False
     assert confirmation_granted({"ok": True}) is False
     assert confirmation_granted({"ok": False, "approved": True}) is False
 

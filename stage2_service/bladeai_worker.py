@@ -11,7 +11,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from .bladeai_events import BladeAIStage2EventGraph
 from .bladeai_mcp_guard import (
     BladeAIMcpGuardError,
     BladeAIMcpGuardPatch,
@@ -319,8 +318,9 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
 
     try:
         import chaos_agent.l4.agent as l4_module
+        from .bladeai_events import BladeAIStage2EventGraph
     except ImportError as exc:  # pragma: no cover - guarded by caller import.
-        raise BladeTaskError("BladeAI L4 module is unavailable") from exc
+        raise BladeTaskError("BladeAI L4 runtime or its event dependencies are unavailable") from exc
 
     class _WorkerMcpChaosAgentPool:
         inject_graph = None

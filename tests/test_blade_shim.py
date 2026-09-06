@@ -25,6 +25,7 @@ class _Tools:
     def __init__(self, *, status_response=None):
         self.calls = []
         self.status_response = status_response
+        self.destroyed_handles = set()
 
     def call(self, tool, arguments):
         self.calls.append((tool, dict(arguments)))
@@ -40,6 +41,7 @@ class _Tools:
                 "operation_id": "cleanup-1",
             }
         if tool == "chaos_destroy_experiment":
+            self.destroyed_handles.add(arguments["cleanup_handle"])
             return {
                 "ok": True,
                 "controller_call_id": "controller-destroy-1",
@@ -49,10 +51,27 @@ class _Tools:
         if tool == "chaos_operation_status":
             if self.status_response is not None:
                 return self.status_response
+            if arguments["operation_id"] in self.destroyed_handles:
+                return {
+                    "ok": True,
+                    "controller_call_id": "controller-status-1",
+                    "operation_id": arguments["operation_id"],
+                    "cleanup_handle": arguments["operation_id"],
+                    "operation_outcome": "absent",
+                    "ledger_operation_outcome": "applied",
+                    "state": "destroyed",
+                    "namespace": "otel-demo",
+                    "target_name": "cart-abc",
+                    "target_uid": "bound-pod-uid",
+                    "live": {"found": False, "matches_ledger": False, "phase": None},
+                }
             return {
-                "ok": True, "controller_call_id": "controller-status-1", "operation_outcome": "applied", "state": "running",
+                "ok": True, "controller_call_id": "controller-status-1", "operation_outcome": "applied",
+                "ledger_operation_outcome": "applied", "state": "active",
                 "operation_id": arguments["operation_id"],
-                "namespace": "otel-demo", "target_name": "cart-abc",
+                "cleanup_handle": arguments["operation_id"],
+                "namespace": "otel-demo", "target_name": "cart-abc", "target_uid": "bound-pod-uid",
+                "live": {"found": True, "matches_ledger": True, "phase": "Running"},
             }
         raise AssertionError(tool)
 
@@ -142,7 +161,8 @@ def test_status_query_and_destroy_resolve_only_a_trial_owned_uuid(tmp_path):
     assert status_payload["result"]["Uid"] == blade_uid
     assert status_payload["result"]["operation_id"] == "cleanup-1"
     assert status_payload["result"]["operation_outcome"] == "applied"
-    assert status_payload["result"]["ledger_state"] == "running"
+    assert status_payload["result"]["ledger_state"] == "active"
+    assert status_payload["result"]["ledger_operation_outcome"] == "applied"
     assert status_payload["_resbench"]["mcp_calls"][0]["controller_call_id"] == "controller-status-1"
     assert status_payload["_resbench"]["mcp_calls"][0]["operation_outcome"] == "applied"
     code, query, _ = shim.run(["query", "k8s", "create", blade_uid, "--kubeconfig", kubeconfig])
@@ -150,9 +170,11 @@ def test_status_query_and_destroy_resolve_only_a_trial_owned_uuid(tmp_path):
     query_payload = json.loads(query)
     assert query_payload["result"]["operation_id"] == "cleanup-1"
     assert query_payload["result"]["operation_outcome"] == "applied"
-    assert query_payload["result"]["ledger_state"] == "running"
+    assert query_payload["result"]["ledger_state"] == "active"
+    assert query_payload["result"]["ledger_operation_outcome"] == "applied"
     assert query_payload["result"]["statuses"][0]["identifier"] == "otel-demo/cart-abc"
     assert query_payload["result"]["statuses"][0]["uid"] == "bound-pod-uid"
+    assert query_payload["result"]["statuses"][0]["success"] is True
     assert query_payload["result"]["statuses"][0]["operation_outcome"] == "applied"
     code, listed, _ = shim.run(["status", "--type", "create", "--kubeconfig", kubeconfig])
     assert code == 0
@@ -161,10 +183,18 @@ def test_status_query_and_destroy_resolve_only_a_trial_owned_uuid(tmp_path):
     code, destroyed, _ = shim.run(["destroy", blade_uid, "--kubeconfig", kubeconfig])
     assert code == 0
     destroyed_payload = json.loads(destroyed)
-    assert destroyed_payload["result"] == blade_uid
+    assert destroyed_payload["result"]["uid"] == blade_uid
+    assert destroyed_payload["result"]["Status"] == "Destroyed"
+    assert destroyed_payload["result"]["operation_id"] == "cleanup-1"
+    assert destroyed_payload["result"]["operation_outcome"] == "absent"
+    assert destroyed_payload["result"]["ledger_operation_outcome"] == "applied"
     assert destroyed_payload["_resbench"]["mcp_calls"][0]["tool"] == "chaos_destroy_experiment"
     assert destroyed_payload["_resbench"]["mcp_calls"][0]["controller_call_id"] == "controller-destroy-1"
-    assert tools.calls[-1] == ("chaos_destroy_experiment", {"cleanup_handle": "cleanup-1"})
+    assert destroyed_payload["_resbench"]["mcp_calls"][1]["tool"] == "chaos_operation_status"
+    assert tools.calls[-2:] == [
+        ("chaos_destroy_experiment", {"cleanup_handle": "cleanup-1"}),
+        ("chaos_operation_status", {"operation_id": "cleanup-1"}),
+    ]
     assert json.loads((tmp_path / "shim-state.json").read_text())[blade_uid]["status"] == "Destroyed"
 
 
@@ -211,7 +241,7 @@ def test_failed_create_and_unknown_status_do_not_persist_or_report_success(tmp_p
     assert "denied" in stderr
     assert not state_file.exists()
 
-    tools = _Tools(status_response={"ok": True, "state": "unknown"})
+    tools = _Tools(status_response={"ok": True, "state": "unknown", "operation_outcome": "unknown"})
     shim = BladeShim(tools, namespace="otel-demo", state_file=state_file)
     code, created, _ = shim.run(
         ["create", "k8s", "pod-cpu", "fullload", "--names", "cart-abc", "--timeout", "60", "--cpu-percent", "80"]
@@ -229,8 +259,67 @@ def test_failed_create_and_unknown_status_do_not_persist_or_report_success(tmp_p
     assert queried["uid"] == "bound-pod-uid"
 
 
+def test_status_semantics_follow_controller_outcome_ledger_and_live_phase(tmp_path):
+    def created_uid_for(response):
+        tools = _Tools(status_response=response)
+        shim = BladeShim(tools, namespace="otel-demo", state_file=tmp_path / f"{response['state']}.json")
+        code, created, _ = shim.run(
+            ["create", "k8s", "pod-cpu", "fullload", "--names", "cart-abc", "--timeout", "60", "--cpu-percent", "80"]
+        )
+        assert code == 0
+        uid = json.loads(created)["result"]
+        code, status, _ = shim.run(["status", uid])
+        assert code == 0
+        code, query, _ = shim.run(["query", "k8s", "create", uid])
+        assert code == 0
+        parsed_status = json.loads(status)["result"]["Status"]
+        parsed_query = json.loads(query)["result"]["statuses"][0]
+        return parsed_status, parsed_query["state"], parsed_query["success"]
+
+    assert created_uid_for({
+        "ok": True,
+        "controller_call_id": "controller-status-1",
+        "operation_id": "cleanup-1",
+        "cleanup_handle": "cleanup-1",
+        "operation_outcome": "unknown",
+        "ledger_operation_outcome": "unknown",
+        "state": "active",
+        "live": {"found": True, "matches_ledger": False, "phase": "Running"},
+    }) == ("Error", "Error", False)
+    assert created_uid_for({
+        "ok": True,
+        "controller_call_id": "controller-status-1",
+        "operation_id": "cleanup-1",
+        "cleanup_handle": "cleanup-1",
+        "operation_outcome": "applied",
+        "ledger_operation_outcome": "applied",
+        "state": "active",
+        "live": {"found": True, "matches_ledger": True, "phase": "Pending"},
+    }) == ("Created", "Created", False)
+
+
+def test_current_controller_observation_is_not_overridden_by_old_ledger_state():
+    from stage2_service.bladeai_shim import _blade_status_from_operation
+
+    assert _blade_status_from_operation({
+        "state": "destroyed", "ledger_operation_outcome": "applied", "operation_outcome": "unknown",
+        "live": {"found": True, "matches_ledger": False, "phase": "Running"},
+    }) == "Error"
+    assert _blade_status_from_operation({
+        "state": "destroyed", "ledger_operation_outcome": "applied", "operation_outcome": "applied",
+        "live": {"found": True, "matches_ledger": True, "phase": "Running"},
+    }) == "Success"
+    assert _blade_status_from_operation({
+        "state": "pending_apply", "operation_outcome": "unknown",
+    }) == "Error"
+
+
 def test_d6_unknown_create_persists_operation_id_for_status_query_and_destroy(tmp_path):
     class UnknownCreateTools(_Tools):
+        def __init__(self):
+            super().__init__()
+            self.destroyed = False
+
         def call(self, tool, arguments):
             self.calls.append((tool, dict(arguments)))
             if tool == "k8s_get_resource":
@@ -243,9 +332,12 @@ def test_d6_unknown_create_persists_operation_id_for_status_query_and_destroy(tm
                     "controller_call_id": "controller-create-unknown",
                     "error": {
                         "code": "OPERATION_OUTCOME_UNKNOWN",
+                        "message": "Operation outcome is unknown.",
+                        "next_step": "Call chaos_operation_status with this operation_id before retrying.",
                         "details": {
                             "operation_id": "cleanup-d6-unknown",
                             "cleanup_handle": "cleanup-d6-unknown",
+                            "operation_outcome": "unknown",
                         },
                     },
                 }
@@ -256,9 +348,15 @@ def test_d6_unknown_create_persists_operation_id_for_status_query_and_destroy(tm
                     "operation_id": arguments["operation_id"],
                     "cleanup_handle": arguments["operation_id"],
                     "operation_outcome": "absent",
-                    "state": "operation_outcome_unknown",
+                    "ledger_operation_outcome": "absent",
+                    "state": "destroyed" if self.destroyed else "operation_outcome_unknown",
+                    "namespace": "otel-demo",
+                    "target_name": "cart-abc",
+                    "target_uid": "bound-pod-uid",
+                    "live": {"found": False, "matches_ledger": False, "phase": None},
                 }
             if tool == "chaos_destroy_experiment":
+                self.destroyed = True
                 return {"ok": True, "controller_call_id": "controller-destroy-1"}
             raise AssertionError(tool)
 
@@ -270,7 +368,9 @@ def test_d6_unknown_create_persists_operation_id_for_status_query_and_destroy(tm
     payload = json.loads(stdout)
     assert payload["code"] == 54000
     assert payload["success"] is False
-    assert payload["error"]["code"] == "OPERATION_OUTCOME_UNKNOWN"
+    assert isinstance(payload["error"], str)
+    assert payload["error_details"]["code"] == "OPERATION_OUTCOME_UNKNOWN"
+    assert payload["error_details"]["message"] == "Operation outcome is unknown."
     blade_uid = payload["result"]["uid"]
     assert payload["result"]["operation_id"] == "cleanup-d6-unknown"
     assert payload["_resbench"]["operation_id"] == "cleanup-d6-unknown"
@@ -286,18 +386,26 @@ def test_d6_unknown_create_persists_operation_id_for_status_query_and_destroy(tm
     status_payload = json.loads(status)
     assert status_payload["result"]["Status"] == "Absent"
     assert status_payload["result"]["operation_outcome"] == "absent"
+    assert status_payload["result"]["ledger_operation_outcome"] == "absent"
     assert status_payload["result"]["ledger_state"] == "operation_outcome_unknown"
 
     code, query, stderr = shim.run(["query", "k8s", "create", blade_uid])
     assert (code, stderr) == (0, "")
     query_payload = json.loads(query)
     assert query_payload["result"]["operation_outcome"] == "absent"
+    assert query_payload["result"]["ledger_operation_outcome"] == "absent"
     assert query_payload["result"]["ledger_state"] == "operation_outcome_unknown"
     assert query_payload["result"]["statuses"][0]["state"] == "Absent"
+    assert query_payload["result"]["statuses"][0]["success"] is False
 
     code, destroyed, stderr = shim.run(["destroy", blade_uid])
     assert (code, stderr) == (0, "")
-    assert json.loads(destroyed)["_resbench"]["operation_id"] == "cleanup-d6-unknown"
+    destroyed_payload = json.loads(destroyed)
+    assert destroyed_payload["result"]["Status"] == "Absent"
+    assert destroyed_payload["result"]["operation_outcome"] == "absent"
+    assert destroyed_payload["result"]["ledger_operation_outcome"] == "absent"
+    assert destroyed_payload["_resbench"]["operation_id"] == "cleanup-d6-unknown"
+    assert json.loads((tmp_path / "shim-state.json").read_text())[blade_uid]["status"] == "Absent"
 
 
 def test_network_delay_accepts_only_inert_loopback_kubeconfig_and_fixed_interface():

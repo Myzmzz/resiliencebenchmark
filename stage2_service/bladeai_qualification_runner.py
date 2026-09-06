@@ -320,12 +320,9 @@ def _pod_to_json(pod: Any) -> dict[str, Any]:
     if isinstance(pod, Mapping):
         value = dict(pod)
     else:
-        try:
-            from kubernetes.client import ApiClient
-        except ImportError:
-            value = pod.to_dict() if hasattr(pod, "to_dict") else None
-        else:
-            value = ApiClient().sanitize_for_serialization(pod)
+        from kubernetes.client import ApiClient
+
+        value = ApiClient().sanitize_for_serialization(pod)
     if isinstance(value, dict) and "api_version" in value and "apiVersion" not in value:
         value["apiVersion"] = value.pop("api_version")
     if not isinstance(value, dict):

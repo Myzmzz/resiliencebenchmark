@@ -54,15 +54,17 @@ class NativeProposalCapture:
 
     def record_state(self, state: Mapping[str, Any]) -> None:
         """Retain only the Agent-owned duration from FaultSpec state."""
-
+        # LangGraph re-enters this node while resuming an approved interrupt.
+        # That resumed capture is not consumed by require_approval again, so
+        # every node entry must discard it before inspecting the next plan.
+        self._state_fields = {}
+        self._proposal = None
         fault_spec = state.get("fault_spec")
         if not isinstance(fault_spec, Mapping):
             return
         duration = fault_spec.get("duration_seconds")
         if isinstance(duration, int) and not isinstance(duration, bool) and duration > 0:
             self._state_fields["duration_seconds"] = duration
-            if self._proposal is not None:
-                self._proposal["duration_seconds"] = duration
 
     def take(self) -> dict[str, Any]:
         if self._proposal is None:
@@ -313,13 +315,7 @@ def _strict_agent_seconds(value: object) -> int:
 def confirmation_granted(response: Mapping[str, Any]) -> bool:
     """Accept only an explicit successful Harness confirmation."""
 
-    if response.get("ok") is not True:
-        return False
-    return (
-        response.get("allowed") is True
-        or response.get("approved") is True
-        or response.get("decision") == "approved"
-    )
+    return response.get("ok") is True and response.get("allowed") is True
 
 
 async def _mcp_json_call(
