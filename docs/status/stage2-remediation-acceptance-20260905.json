@@ -6,19 +6,21 @@
   "matrix_cell_count": 68,
   "execution_order": ["code_remediation", "old_cluster_preparation", "qualification_and_single_trials"],
   "new_cluster_deployment_or_tests": false,
+  "published_implementation_commit": "e522e55bc77e974fc19ddf362af24c8e8fa5e3dc",
+  "published_implementation_branch": "codex/stage2-d0-integration",
   "latest_code_snapshot": {
-    "report": "artifacts/remediation/20260905/code-gate-final.xml",
-    "passed": 1294,
+    "report": "artifacts/remediation/20260905/build-input-final.xml",
+    "passed": 1301,
     "skipped": 9,
     "failed": 0,
-    "seconds": 48.37,
+    "seconds": 47.23,
     "scope": "local Python suite at snapshot time; later edits require rerun",
     "frontend_build_exit": 0,
     "frontend_lint_exit": 0,
     "warnings_present": true,
     "live_qualification": "not_executed",
     "code_gate": "passed_local_checks",
-    "remaining": ["commit and publish", "old cluster preparation", "live qualification and complete acceptance matrix"],
+    "remaining": ["old cluster paired image build and preparation", "live qualification and complete acceptance matrix"],
     "requirement_audit": "docs/status/stage2-code-gate-audit-20260905.md"
   },
   "matrix_count_note": "源方案正文称56格，附录实际列出4家x17项=68格；保持完整范围。",
@@ -893,7 +895,7 @@
       "evidence": []
     },
     {
-      "requirement": "两套环境六模型网关探针与四家请求过网关证据",
+      "requirement": "旧集群六模型网关探针与四家请求过网关证据；新集群不部署、不测试",
       "status": "not_verified",
       "evidence": []
     },

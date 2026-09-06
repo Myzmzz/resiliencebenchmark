@@ -7,7 +7,15 @@ FROM python:3.12.13-slim-bookworm
 
 ARG UV_VERSION=0.10.9
 ARG SOURCE_HEAD=unknown
+ARG BLADEAI_RELEASE_TAG=blade-ai-v0.6.2
+ARG BLADEAI_RELEASE_COMMIT=d8c5473ccda329a3841f114f83a43881a2205ab5
+ARG BLADEAI_PACKAGE_VERSION=0.3.0
+ARG BLADEAI_MCP_VERSION=1.27.0
 LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
+LABEL resiliencebenchmark.io/bladeai-release-tag=${BLADEAI_RELEASE_TAG}
+LABEL resiliencebenchmark.io/bladeai-release-commit=${BLADEAI_RELEASE_COMMIT}
+LABEL resiliencebenchmark.io/bladeai-package-version=${BLADEAI_PACKAGE_VERSION}
+LABEL resiliencebenchmark.io/bladeai-mcp-version=${BLADEAI_MCP_VERSION}
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -46,10 +54,12 @@ RUN npm ci --prefix /opt/resiliencebenchmark/deepseek-harness --omit=dev --ignor
 
 COPY --from=bladeai_source / /opt/blade-ai
 RUN python -m venv /opt/bladeai-venv \
-    && grep -Eq 'version[[:space:]]*=[[:space:]]*["'"']0\.6\.2["'"']' /opt/blade-ai/pyproject.toml \
-    && /opt/bladeai-venv/bin/pip install --no-cache-dir "mcp[cli]==2.0.0" --editable /opt/blade-ai \
-    && rm -rf /opt/blade-ai/vendor/chaosblade \
+    && grep -Eq 'version[[:space:]]*=[[:space:]]*["'"']'"${BLADEAI_PACKAGE_VERSION}"'["'"']' /opt/blade-ai/pyproject.toml \
+    && grep -F '"mcp>=1.0,<2.0"' /opt/blade-ai/pyproject.toml \
+    && test ! -e /opt/blade-ai/vendor/chaosblade \
     && ! find /opt/blade-ai -type f -name blade -print -quit | grep .
+RUN /opt/bladeai-venv/bin/pip install --no-cache-dir "mcp[cli]==${BLADEAI_MCP_VERSION}" --editable /opt/blade-ai \
+    && /opt/bladeai-venv/bin/python -c "import importlib.metadata as m; assert m.version('blade-ai') == '${BLADEAI_PACKAGE_VERSION}'; assert m.version('mcp').split('.')[0] == '1'"
 
 # Only the execution daemon and the minimal Blade client modules are copied.
 COPY harness/__init__.py /app/harness/__init__.py

@@ -5,16 +5,28 @@ the isolated agent-runtime image as a pair, then renders the old-cluster
 workload templates (`stage2.yaml`, `stage2-integration.yaml`, and
 `stage2-matrix-job.yaml`) plus `execution-identities.yaml`. It never applies manifests.
 
-The command requires an explicit BladeAI SDK source directory; it is passed to
-Buildx as the named `bladeai-src` context used by `Dockerfile.agent`.
+The command requires the upstream ChaosBlade Git worktree that contains
+`blade-ai/`. The build script does not use that working tree as a Docker
+context. It verifies the fixed `blade-ai-v0.6.2` tag resolves to
+`d8c5473ccda329a3841f114f83a43881a2205ab5`, reads the tagged `blade-ai`
+subtree with `git archive`, and materializes a clean temporary Buildx
+`bladeai-src` context. Dirty or untracked files in the local upstream checkout
+are ignored.
 
 ```text
-python scripts/build_stage2_image.py --bladeai-context /absolute/path/to/bladeai-sdk
+python scripts/build_stage2_image.py --bladeai-repo /absolute/path/to/chaosblade-upstream
 ```
 
+The tagged release name is `blade-ai-v0.6.2`; the Python package version inside
+that tag is `0.3.0`. `Dockerfile.agent` validates this real package version and
+the upstream `mcp>=1.0,<2.0` dependency before installing BladeAI into its own
+venv with a pinned MCP 1.x dependency. The agent-exec daemon venv remains
+separate and may use MCP 2.x.
+
 The metadata contains both immutable image references and the rendered output
-paths. Review those files and perform deployment separately in the approved old
-cluster workflow.
+paths, plus the BladeAI release tag, commit, subtree, package version and MCP
+pin used for the agent image. Review those files and perform deployment
+separately in the approved old cluster workflow.
 
 ## Kubernetes 1.28 compatibility
 

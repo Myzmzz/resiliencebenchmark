@@ -94,7 +94,10 @@ def test_agent_image_has_only_runtime_assets_and_harness_package_is_side_effect_
     image = (DEPLOY / "Dockerfile.agent").read_text(encoding="utf-8")
     assert "! command -v kubectl" in image
     assert "! command -v helm" in image
-    assert "rm -rf /opt/blade-ai/vendor/chaosblade" in image
+    assert "test ! -e /opt/blade-ai/vendor/chaosblade" in image
+    assert '"mcp>=1.0,<2.0"' in image
+    assert '"mcp[cli]==${BLADEAI_MCP_VERSION}"' in image
+    assert "mcp').split('.')[0] == '1'" in image
     assert "COPY controller" not in image
     assert "COPY stage2_service /" not in image
     for required in (
