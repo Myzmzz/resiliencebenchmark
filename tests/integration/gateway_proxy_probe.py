@@ -14,10 +14,13 @@ from urllib.error import HTTPError, URLError
 
 
 class Provider(BaseHTTPRequestHandler):
+    request_count = 0
+
     def log_message(self, *args):
         pass
 
     def do_POST(self):
+        type(self).request_count += 1
         data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         model = data.get("model", "gpt-4o")
         if self.path.endswith("/responses"):
@@ -92,6 +95,32 @@ general_settings:
                         time.sleep(0.1)
                 else:
                     raise RuntimeError("proxy readiness timeout")
+                authentication = []
+                for path, key, payload, expected in (
+                    ("/v1/models", None, None, 401),
+                    # With no virtual-key database, the pinned upstream raises
+                    # ProxyException(400, "No connected db.") for a non-master
+                    # key. This is distinct from an anonymous request's 401.
+                    ("/v1/models", "wrong-test-key", None, 400),
+                    ("/v1/chat/completions", None, {"model": "probe-alias", "messages": []}, 401),
+                    ("/v1/responses", None, {"model": "probe-alias", "input": "not authorized"}, 401),
+                    ("/v1/messages", None, {"model": "probe-alias", "messages": [], "max_tokens": 1}, 401),
+                ):
+                    headers = {"Content-Type": "application/json"}
+                    if key is not None:
+                        headers["Authorization"] = "Bearer " + key
+                    request = Request("http://127.0.0.1:18732" + path,
+                                      data=json.dumps(payload).encode() if payload is not None else None,
+                                      headers=headers)
+                    try:
+                        with urlopen(request, timeout=10) as response:
+                            status_code = response.status
+                    except HTTPError as error:
+                        status_code = error.code
+                    authentication.append({"path": path, "key_present": key is not None, "status": status_code, "expected": expected})
+                print(json.dumps({"authentication": authentication, "unauthorized_provider_requests": Provider.request_count}), flush=True)
+                assert all(item["status"] == item["expected"] for item in authentication), "authentication did not return the documented rejection"
+                assert Provider.request_count == 0, "unauthorized requests reached the provider"
                 routes = [
                     ("/v1/chat/completions", {"messages": [{"role": "user", "content": "DO_NOT_LOG_PROMPT"}]}),
                     ("/v1/chat/completions", {"stream": True, "messages": [{"role": "user", "content": "DO_NOT_LOG_PROMPT"}]}),
@@ -122,7 +151,7 @@ general_settings:
                           and all(row["gateway_config_sha256"] == expected_version and row["outcome"] == "received" for row in rows)
                           and "DO_NOT_LOG_PROMPT" not in raw and "placeholder" not in raw)
                 print(json.dumps({"mode": "offline_proxy_fake_provider", "statuses": statuses, "receipts": rows,
-                                  "passed": passed, "live_model_called": False}))
+                                  "authentication": authentication, "passed": passed, "live_model_called": False}))
                 if not passed:
                     print(log.read_text(errors="replace")[:6000])
                     print(log.read_text(errors="replace")[-8000:])

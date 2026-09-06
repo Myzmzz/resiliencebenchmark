@@ -19,6 +19,7 @@ from harness.agent_exec.environment import AGENT_ENV_ALLOWLIST
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "deploy/stage2"
 TRIAL_ROOT = "/var/lib/resbench-stage2/agent-trials"
+LITELLM_IMAGE = "1.94.151.57:85/observe/resbench-litellm:1.92.0@sha256:237ed94c2b4bd821d44f4abd4b57b2ae7b3108a7b4a768d1d8cd7c1b3884c604"
 
 
 def _pod_specs(path: Path):
@@ -188,6 +189,35 @@ def test_gateway_config_is_fixed_and_audit_volume_excludes_the_agent():
         callback = next(m for m in gateway["volumeMounts"] if m["mountPath"] == "/etc/litellm/gateway_audit.py")
         assert callback["subPath"] == "gateway_audit.py" and callback["readOnly"] is True
         assert "chmod 0700 /gateway-audit" in spec["initContainers"][0]["args"][0]
+
+
+def test_litellm_gateway_is_loopback_only_with_container_local_exec_probes():
+    probe_urls = {
+        "startupProbe": "http://127.0.0.1:4000/health/liveliness",
+        "readinessProbe": "http://127.0.0.1:4000/health/readiness",
+    }
+    for filename in ("stage2.yaml", "stage2-integration.yaml", "stage2-matrix-job.yaml"):
+        spec = _pod_specs(DEPLOY / filename)[0]
+        gateway = _container(spec, "litellm")
+        assert gateway["image"] == LITELLM_IMAGE
+        assert gateway["imagePullPolicy"] == "IfNotPresent"
+        assert gateway["ports"] == [{"name": "litellm", "containerPort": 4000}]
+        assert gateway["resources"] == {
+            "requests": {"cpu": "250m", "memory": "512Mi"},
+            "limits": {"cpu": "1", "memory": "2Gi"},
+        }
+        rendered_command = " ".join(str(item) for item in [*gateway.get("command", []), *gateway.get("args", [])])
+        assert "--host 127.0.0.1" in rendered_command
+        assert "--port 4000" in rendered_command
+        assert "0.0.0.0" not in rendered_command
+        assert "/app/.venv/bin/litellm" in rendered_command
+        for probe_name, url in probe_urls.items():
+            probe = gateway[probe_name]
+            assert "httpGet" not in probe
+            command = probe["exec"]["command"]
+            assert command[:2] == ["/app/.venv/bin/python", "-c"]
+            assert url in command[2]
+            assert "urlopen" in command[2]
 
 
 def test_projected_namespace_file_uses_a_valid_field_reference():

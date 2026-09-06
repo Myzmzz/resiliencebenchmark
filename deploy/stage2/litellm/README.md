@@ -7,6 +7,13 @@ supported by the old cluster's Kubernetes 1.28. The trusted Controller uses
 Evaluated Harnesses instead receive a per-Trial inference-only relay address
 and token; they cannot access gateway administration or its master key.
 This directory decides which upstream provider serves each public alias.
+The fixed gateway image is the official LiteLLM 1.92.0 release mirrored as
+`1.94.151.57:85/observe/resbench-litellm:1.92.0`. Templates pin its published
+image and use the actual `/app/.venv/bin/litellm` CLI with `--host 127.0.0.1`.
+Health probes execute inside the container because Pod-IP HTTP probes cannot
+reach a loopback-only listener. `python -m litellm` is not a valid entrypoint
+in this release. The former `aiobs-litellm:v1` image lacked Prisma and raised
+an internal error while processing anonymous authentication failures.
 `scripts/probe_models.py` insists on loopback for plain
 `http://` gateways, which is why the proxy is a sidecar rather than a Service.
 
@@ -155,5 +162,12 @@ docker run --rm --network none --platform linux/amd64 \
     --user 10001:10001 --read-only --tmpfs /tmp:rw,nosuid,size=256m \
     --mount "type=bind,source=$PWD/stage2_service/gateway_audit_callback.py,target=/probe-mod/gateway_audit.py,readonly" \
     --mount "type=bind,source=$PWD/tests/integration/gateway_proxy_probe.py,target=/probe.py,readonly" \
-    --entrypoint python 1.94.151.57:85/observe/aiobs-litellm:v1 /probe.py
+    --entrypoint /app/.venv/bin/python \
+    1.94.151.57:85/observe/resbench-litellm:1.92.0@sha256:237ed94c2b4bd821d44f4abd4b57b2ae7b3108a7b4a768d1d8cd7c1b3884c604 /probe.py
 ```
+
+The probe also checks anonymous requests return 401 and never reach the fake
+provider. With no virtual-key database, this pinned release rejects a non-master
+key with 400 (`No connected db.`); that rejection is distinct from anonymous 401.
+Neither case may return 500. The 16 authorized protocol/audit requests remain
+separate from these negative authentication checks.

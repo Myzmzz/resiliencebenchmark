@@ -220,11 +220,14 @@ spec:
       containers:
         # Ordinary sidecars work on the old Kubernetes 1.28 cluster.
         - name: litellm
-          image: 1.94.151.57:85/observe/aiobs-litellm:v1
+          image: 1.94.151.57:85/observe/resbench-litellm:1.92.0@sha256:237ed94c2b4bd821d44f4abd4b57b2ae7b3108a7b4a768d1d8cd7c1b3884c604
           imagePullPolicy: IfNotPresent
+          command: ["/app/.venv/bin/litellm"]
           args:
             - --config
             - /etc/litellm/config.yaml
+            - --host
+            - 127.0.0.1
             - --port
             - "4000"
           env:
@@ -248,15 +251,13 @@ spec:
             - name: gateway-audit
               mountPath: /var/lib/resbench-stage2/gateway-audit
           startupProbe:
-            httpGet:
-              path: /health/liveliness
-              port: litellm
+            exec:
+              command: ["/app/.venv/bin/python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:4000/health/liveliness', timeout=2).close()"]
             periodSeconds: 5
             failureThreshold: 24
           readinessProbe:
-            httpGet:
-              path: /health/readiness
-              port: litellm
+            exec:
+              command: ["/app/.venv/bin/python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:4000/health/readiness', timeout=2).close()"]
             periodSeconds: 15
             timeoutSeconds: 5
           resources:
