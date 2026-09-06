@@ -59,10 +59,20 @@ def native_tool(harness, call_id, tool, arguments, payload):
     return []
 
 
-def final_line(harness):
-    text = json.dumps({"status": "blocked", "decision": "safe_stop",
-                       "effect_assessment": "unverified", "recovery_assessment": "unverified",
-                       "missing_conditions": ["fixture"], "remaining_risk": "fixture"})
+def final_line(harness, full_contract=False):
+    assessment = {"status": "blocked", "decision": "safe_stop",
+                  "effect_assessment": "unverified", "recovery_assessment": "unverified",
+                  "missing_conditions": ["fixture"], "remaining_risk": "fixture"}
+    if full_contract:
+        assessment.update({
+            "interaction_mode": "guided", "assisted": False, "assistance_events": [],
+            "clarification_request": None,
+            "retry_summary": {"operation_id": None, "attempts": 0, "bounded": True, "outcome_reconciled": False},
+            "recovery_trigger": {"condition": "not_applicable", "observed": False, "triggered_by_agent": False},
+            "strategy_selection": {"fault_type": "network-delay", "rationale": "fixture", "evidence_summary": "fixture"},
+            "suspected_defect": "fixture", "evidence": [], "actions_taken": [], "recovery_check": "unverified",
+        })
+    text = json.dumps(assessment)
     if harness is HarnessKind.CODEX:
         return {"type": "item.completed", "item": {"id": "final", "type": "agent_message", "text": text}}
     if harness is HarnessKind.CLAUDE_CODE:
@@ -125,7 +135,8 @@ def test_exec_rejection_remains_primary_failure_when_no_model_request_was_sent(t
 
 
 @pytest.mark.parametrize("harness", list(HarnessKind))
-def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tmp_path, monkeypatch, harness):
+@pytest.mark.parametrize("full_contract", [False, True])
+def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tmp_path, monkeypatch, harness, full_contract):
     trial_id = f"campaign-1234567890abcdef-{harness.value}-d5-1"
     ledger = PlatformLedger(tmp_path / "ledger")
     supervisor = Supervisor()
@@ -212,7 +223,7 @@ def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tm
             emit(value)
         receipts = [event for event in ledger.query(trial_id=trial_id) if event.event_type == "NOTICE_DELIVERED"]
         assert len(receipts) == (1 if harness in {HarnessKind.CODEX, HarnessKind.CLAUDE_CODE} else 0)
-        emit(final_line(harness))
+        emit(final_line(harness, full_contract))
         return CommandResult(returncode=0, stdout=b"".join(output), stderr=b"")
 
     monkeypatch.setattr("stage2_service.harness_runtime.subprocess_streaming_runner", fake_process)
@@ -235,5 +246,14 @@ def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tm
     assert kinds.count("main_fault_running") == 1
     assert kinds.count("effect_check_started") == 1
     assert report.final_output["adapter_integrity"]["call_count"] == 2
+    if full_contract:
+        assert report.final_output["validation_error"] is None
+        assert report.final_output["agent_result_ref"] == "agent-result.json"
+    else:
+        assert report.final_output["validation_error"] == "RESULT_CONTRACT_INVALID"
+        assert "agent_result_ref" not in report.final_output
+        assert "agent_result" not in report.final_output
+        assert report.agent_assessment["effect_assessment"] == "unverified"
+        assert not (tmp_path / "artifacts" / "campaign-1234567890abcdef" / trial_id / "agent-result.json").exists()
     assert supervisor.stopped
     assert not Path(supervisor.environment["RESBENCH_MCP_AUDIT_SOCKET"]).exists()

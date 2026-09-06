@@ -19,6 +19,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
+import jsonschema
+
 from controller.safety import default_policy
 from harness.agent_exec.client import AgentExecClientError
 from mcp_servers.audit_bridge import AuditBridgeConfig, AuditBridgeListener
@@ -328,6 +330,7 @@ class NativeHarnessRunner:
         )
         artifact_dir = self.artifact_root / campaign_id / trial_id
         artifact_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        result_validator = jsonschema.Draft202012Validator(load_json(self.repo_root / DEFAULT_OUTPUT_SCHEMA))
         session_events_jsonl = artifact_dir / "session-events.jsonl"
         codex_home = trial_root / "codex-home"
         claude_home = trial_root / "claude-home"
@@ -827,7 +830,7 @@ class NativeHarnessRunner:
                                LifecyclePhase.C1_PLAN, "agent_checkpoint", last_assessment)
             else:
                 last_assessment = latest_structured
-            if output_repair_count and last_assessment:
+            if output_repair_count and result_validator.is_valid(last_assessment):
                 output_repaired = True
                 self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
                            LifecyclePhase.C5_SAFETY, "output_repaired", {
@@ -986,11 +989,9 @@ class NativeHarnessRunner:
             native_session_refs.append("dsh-native-events.json")
         submitted_result = channel_root / "result.json"
         if submitted_result.is_file():
-            import jsonschema
-
             try:
                 validated_result = load_json(submitted_result)
-                jsonschema.validate(validated_result, load_json(self.repo_root / DEFAULT_OUTPUT_SCHEMA))
+                result_validator.validate(validated_result)
             except (ValueError, jsonschema.ValidationError):
                 harness_failure = {"error_code": "RESULT_STORAGE_CONTRACT_INVALID"}
             else:
@@ -1054,10 +1055,14 @@ class NativeHarnessRunner:
         (artifact_dir / "stderr.txt").write_text(
             redact_text(result.stderr, env), encoding="utf-8"
         )
-        ref = "agent-result.json" if last_assessment else ""
+        # An interpreted claim or checkpoint is evidence, not necessarily a
+        # terminal result. Both stdout and MCP submissions obey the same schema.
+        ref = "agent-result.json" if result_validator.is_valid(last_assessment) else ""
         validation_error = (
             None
             if ref or harness_failure
+            else "RESULT_CONTRACT_INVALID"
+            if last_assessment
             else "OUTPUT_UNSTRUCTURED"
         )
         if ref:
@@ -1169,6 +1174,7 @@ class NativeHarnessRunner:
                 *(f"{campaign_id}/{trial_id}/{name}" for name in native_session_refs),
             ),
             final_output=final_output,
+            agent_assessment=redact_json(last_assessment, env),
         )
 
     def _resolve_executable(self, harness: HarnessKind, declared: str) -> str:
