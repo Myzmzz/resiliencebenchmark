@@ -72,4 +72,4 @@ Claude 的首次任务 `campaign-native-readonly-claude-code-e0e9514d` 在模型
 
 原任务 API 的 C0 仍要求 Harness 的真实资格记录。只读 smoke 明确不写资格文件，不能手工把 `qualification_passed` 改成 true。现有完整 WP11 检查还包含 Coroot、沙箱、带内通知与结果提交，尚未通过。
 
-后续需完成：BladeAI 新版本的原生模型复验；四家完整资格及其证据接入；Coroot 独立 Viewer 准备；旧服务剩余部署；八个 D0 与 68 格验收。缓存与回收修复已经在上述通过的只读运行中验证，但不能据此替代完整资格。正式任务仍按单智能体、单扰动通过原接口逐项执行，不以这些诊断记录代替。
+后续需完成：BladeAI 新版本的原生模型复验；四家完整资格及其证据接入；Coroot 独立 Viewer 准备；八个 D0 与 68 格验收。旧集群 main/integration/e2e 已同步 Controller/Agent 运行镜像；网关更新及六别名真实复验见[网关部署记录](stage2-gateway-rollout-20260906.md)。缓存与回收修复已经在上述通过的只读运行中验证，但不能据此替代完整资格。正式任务仍按单智能体、单扰动通过原接口逐项执行，不以这些诊断记录代替。
