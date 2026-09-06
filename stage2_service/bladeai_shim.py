@@ -1,10 +1,10 @@
 """Controlled replacement for the ``blade`` binary used by BladeAI.
 
-It supports only the two CLI operations that the L4 path needs.  It never
-executes a native binary, invokes kubectl, or accepts a kubeconfig/endpoint
-from command-line arguments.  Discovery and mutations are MCP calls made with
-the Trial token, so the existing policy gate, ledger, baseline and cleanup
-contracts remain authoritative.
+It supports only the BladeAI CLI forms that can be bound to the Controller's
+Trial-scoped MCP tools.  It never executes a native binary, invokes kubectl, or
+accepts a kubeconfig/endpoint from command-line arguments.  Discovery and
+mutations are MCP calls made with the Trial token, so the existing policy gate,
+ledger, baseline and cleanup contracts remain authoritative.
 """
 
 from __future__ import annotations
@@ -39,6 +39,18 @@ class BladeCreate:
     intensity: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class BladeRecord:
+    cleanup_handle: str
+    namespace: str
+    target_name: str
+    target_uid: str
+    fault_type: str
+    duration_seconds: int
+    intensity: dict[str, Any]
+    status: str = "Created"
+
+
 _FAULT_TYPES = {
     ("pod", "cpu", "fullload"): "cpu-load",
     ("pod", "cpu", "load"): "cpu-load",
@@ -61,12 +73,14 @@ class BladeShim:
         state_file: Path | None = None,
         max_duration_seconds: int = 1200,
         kubeconfig_path: str | None = None,
+        evidence_file: Path | None = None,
     ) -> None:
         self.client = client
         self.namespace = namespace
         self.state_file = state_file
         self.max_duration_seconds = max_duration_seconds
         self.kubeconfig_path = kubeconfig_path
+        self.evidence_file = evidence_file or _default_evidence_file(state_file)
 
     def run(self, argv: Sequence[str]) -> tuple[int, str, str]:
         try:
@@ -76,8 +90,8 @@ class BladeShim:
                 return 0, _help_text(), ""
             if len(argv) >= 4 and tuple(argv[:2]) == ("create", "k8s"):
                 return self._create(argv)
-            if len(argv) == 2 and argv[0] == "destroy":
-                return self._destroy(argv[1])
+            if argv and argv[0] == "destroy":
+                return self._destroy(argv[1:])
             if argv and argv[0] == "status":
                 return self._status(argv[1:])
             if len(argv) >= 3 and tuple(argv[:3]) == ("query", "k8s", "create"):
@@ -105,54 +119,242 @@ class BladeShim:
         validation = self.client.call("chaos_validate_plan", plan)
         _require_ok(validation, "chaos_validate_plan")
         created = self.client.call("chaos_create_experiment", plan)
-        _require_ok(created, "chaos_create_experiment")
-        handle = _cleanup_handle(created)
+        unknown_handle = _unknown_outcome_cleanup_handle(created)
+        unknown_outcome = bool(unknown_handle)
+        if unknown_outcome:
+            handle = unknown_handle
+        else:
+            _require_ok(created, "chaos_create_experiment")
+            handle = _cleanup_handle(created)
         blade_uid = str(uuid.uuid4())
-        self._remember(blade_uid, handle)
+        self._remember(
+            blade_uid,
+            BladeRecord(
+                cleanup_handle=handle,
+                namespace=create.namespace,
+                target_name=create.target_name,
+                target_uid=target_uid,
+                fault_type=create.fault_type,
+                duration_seconds=create.duration_seconds,
+                intensity=create.intensity,
+            ),
+        )
         # The SDK parser requires a UUID-shaped result.  This is a shim-local
         # opaque alias; it maps back to the Controller cleanup handle below.
-        return 0, json.dumps({"code": 200, "success": True, "result": blade_uid}, ensure_ascii=False) + "\n", ""
+        evidence = self._evidence(
+            "create",
+            blade_uid=blade_uid,
+            record=self._record_for_uid(blade_uid),
+            responses=[
+                ("k8s_get_resource", discovered),
+                ("chaos_validate_plan", validation),
+                ("chaos_create_experiment", created),
+            ],
+        )
+        self._append_evidence(evidence)
+        if unknown_outcome:
+            return 1, json.dumps(
+                {
+                    "code": 54000,
+                    "success": False,
+                    "error": _unknown_outcome_error_payload(created),
+                    "result": {"uid": blade_uid, "operation_id": handle},
+                    "_resbench": evidence,
+                },
+                ensure_ascii=False,
+            ) + "\n", ""
+        return 0, json.dumps(
+            {"code": 200, "success": True, "result": blade_uid, "_resbench": evidence},
+            ensure_ascii=False,
+        ) + "\n", ""
 
-    def _destroy(self, blade_uid: str) -> tuple[int, str, str]:
-        cleanup_handle = self._cleanup_handle_for_uid(blade_uid)
-        destroyed = self.client.call("chaos_destroy_experiment", {"cleanup_handle": cleanup_handle})
+    def _destroy(self, values: Sequence[str]) -> tuple[int, str, str]:
+        if not values:
+            raise BladeShimError("blade destroy requires the experiment UID")
+        blade_uid = values[0]
+        _only_kubeconfig_flags(values[1:], self.kubeconfig_path)
+        record = self._record_for_uid(blade_uid)
+        destroyed = self.client.call("chaos_destroy_experiment", {"cleanup_handle": record.cleanup_handle})
         _require_ok(destroyed, "chaos_destroy_experiment")
-        return 0, json.dumps({"success": True, "result": cleanup_handle}, ensure_ascii=False) + "\n", ""
+        self._update_status(blade_uid, "Destroyed")
+        evidence = self._evidence(
+            "destroy",
+            blade_uid=blade_uid,
+            record=self._record_for_uid(blade_uid),
+            responses=[("chaos_destroy_experiment", destroyed)],
+        )
+        self._append_evidence(evidence)
+        return 0, json.dumps(
+            {"code": 200, "success": True, "result": blade_uid, "_resbench": evidence},
+            ensure_ascii=False,
+        ) + "\n", ""
 
     def _status(self, values: Sequence[str]) -> tuple[int, str, str]:
-        blade_uid = _status_uid(values)
+        blade_uid = _status_uid(values, self.kubeconfig_path)
         if not blade_uid:
-            return 0, json.dumps({"code": 200, "success": True, "result": []}) + "\n", ""
-        result = self.client.call("chaos_operation_status", {"operation_id": self._cleanup_handle_for_uid(blade_uid)})
+            return self._status_all()
+        record = self._record_for_uid(blade_uid)
+        result = self.client.call("chaos_operation_status", {"operation_id": record.cleanup_handle})
         _require_ok(result, "chaos_operation_status")
         status = _blade_status_from_operation(result)
-        return 0, json.dumps({"code": 200, "success": True, "result": {"Uid": blade_uid, "Status": status, "status": status}}, ensure_ascii=False) + "\n", ""
+        self._update_status(blade_uid, status)
+        evidence = self._evidence(
+            "status",
+            blade_uid=blade_uid,
+            record=self._record_for_uid(blade_uid),
+            responses=[("chaos_operation_status", result)],
+        )
+        self._append_evidence(evidence)
+        operation = _operation_result_metadata(result)
+        return 0, json.dumps(
+            {
+                "code": 200,
+                "success": True,
+                "result": {"Uid": blade_uid, "Status": status, "status": status, **operation},
+                "_resbench": evidence,
+            },
+            ensure_ascii=False,
+        ) + "\n", ""
 
     def _query(self, values: Sequence[str]) -> tuple[int, str, str]:
         if not values:
             raise BladeShimError("blade query k8s create requires the experiment UID")
         blade_uid = values[0]
-        _only_kubeconfig_flags(values[1:])
-        result = self.client.call("chaos_operation_status", {"operation_id": self._cleanup_handle_for_uid(blade_uid)})
+        _only_kubeconfig_flags(values[1:], self.kubeconfig_path)
+        record = self._record_for_uid(blade_uid)
+        result = self.client.call("chaos_operation_status", {"operation_id": record.cleanup_handle})
         _require_ok(result, "chaos_operation_status")
         status = _blade_status_from_operation(result)
-        target_name = str(result.get("target_name") or "")
-        namespace = str(result.get("namespace") or self.namespace)
-        statuses = [] if not target_name else [{"state": status, "kind": "pod", "identifier": f"{namespace}/{target_name}"}]
-        return 0, json.dumps({"code": 200, "success": True, "result": {"uid": blade_uid, "statuses": statuses}}, ensure_ascii=False) + "\n", ""
+        self._update_status(blade_uid, status)
+        target_name = str(result.get("target_name") or record.target_name)
+        namespace = str(result.get("namespace") or record.namespace)
+        target_uid = str(result.get("target_uid") or record.target_uid)
+        operation = _operation_result_metadata(result)
+        statuses = [] if not target_name else [{
+            "state": status,
+            "kind": "pod",
+            "identifier": f"{namespace}/{target_name}",
+            "uid": target_uid,
+            **operation,
+        }]
+        evidence = self._evidence(
+            "query",
+            blade_uid=blade_uid,
+            record=self._record_for_uid(blade_uid),
+            responses=[("chaos_operation_status", result)],
+        )
+        self._append_evidence(evidence)
+        return 0, json.dumps(
+            {
+                "code": 200,
+                "success": True,
+                "result": {"uid": blade_uid, "statuses": statuses, **operation},
+                "_resbench": evidence,
+            },
+            ensure_ascii=False,
+        ) + "\n", ""
 
-    def _remember(self, blade_uid: str, cleanup_handle: str) -> None:
+    def _status_all(self) -> tuple[int, str, str]:
+        results: list[dict[str, str]] = []
+        for blade_uid, record in sorted(self._read_state().items()):
+            response = self.client.call("chaos_operation_status", {"operation_id": record.cleanup_handle})
+            _require_ok(response, "chaos_operation_status")
+            status = _blade_status_from_operation(response)
+            self._update_status(blade_uid, status)
+            operation = _operation_result_metadata(response)
+            evidence = self._evidence(
+                "status",
+                blade_uid=blade_uid,
+                record=self._record_for_uid(blade_uid),
+                responses=[("chaos_operation_status", response)],
+            )
+            self._append_evidence(evidence)
+            results.append({"Uid": blade_uid, "Status": status, "status": status, **operation})
+        return 0, json.dumps({"code": 200, "success": True, "result": results}) + "\n", ""
+
+    def _remember(self, blade_uid: str, record: BladeRecord) -> None:
         if self.state_file is None:
             raise BladeShimError("controlled blade shim state file is required")
         self.state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         state = self._read_state()
-        state[blade_uid] = cleanup_handle
+        state[blade_uid] = record
+        self._write_state(state)
+
+    def _update_status(self, blade_uid: str, status: str) -> None:
+        state = self._read_state()
+        record = state.get(blade_uid)
+        if record is None:
+            raise BladeShimError("experiment UID is not owned by this Trial")
+        state[blade_uid] = BladeRecord(
+            cleanup_handle=record.cleanup_handle,
+            namespace=record.namespace,
+            target_name=record.target_name,
+            target_uid=record.target_uid,
+            fault_type=record.fault_type,
+            duration_seconds=record.duration_seconds,
+            intensity=record.intensity,
+            status=status,
+        )
+        self._write_state(state)
+
+    def _write_state(self, state: Mapping[str, BladeRecord]) -> None:
+        if self.state_file is None:
+            raise BladeShimError("controlled blade shim state file is required")
+        payload = {
+            uid: {
+                "cleanup_handle": record.cleanup_handle,
+                "namespace": record.namespace,
+                "target_name": record.target_name,
+                "target_uid": record.target_uid,
+                "fault_type": record.fault_type,
+                "duration_seconds": record.duration_seconds,
+                "intensity": record.intensity,
+                "status": record.status,
+            }
+            for uid, record in state.items()
+        }
         temporary = self.state_file.with_suffix(".tmp")
-        temporary.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+        temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
         temporary.chmod(0o600)
         temporary.replace(self.state_file)
 
-    def _cleanup_handle_for_uid(self, blade_uid: str) -> str:
+    def _evidence(
+        self,
+        operation: str,
+        *,
+        blade_uid: str,
+        record: BladeRecord,
+        responses: Sequence[tuple[str, Mapping[str, Any]]],
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": "resbench.blade_shim_evidence.v1",
+            "shim_operation": operation,
+            "blade_uid": blade_uid,
+            "operation_id": record.cleanup_handle,
+            "cleanup_handle": record.cleanup_handle,
+            "namespace": record.namespace,
+            "target_name": record.target_name,
+            "target_uid": record.target_uid,
+            "fault_type": record.fault_type,
+            "mcp_calls": [
+                evidence
+                for tool, response in responses
+                if (evidence := _mcp_response_evidence(tool, response))
+            ],
+        }
+
+    def _append_evidence(self, evidence: Mapping[str, Any]) -> None:
+        if self.evidence_file is None:
+            return
+        try:
+            self.evidence_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with self.evidence_file.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(evidence, ensure_ascii=False, separators=(",", ":")) + "\n")
+            self.evidence_file.chmod(0o600)
+        except OSError as exc:
+            raise BladeShimError("controlled blade shim evidence is unwritable") from exc
+
+    def _record_for_uid(self, blade_uid: str) -> BladeRecord:
         if not _UUID.fullmatch(blade_uid):
             raise BladeShimError("experiment UID is invalid")
         try:
@@ -160,16 +362,54 @@ class BladeShim:
         except KeyError as exc:
             raise BladeShimError("experiment UID is not owned by this Trial") from exc
 
-    def _read_state(self) -> dict[str, str]:
+    def _read_state(self) -> dict[str, BladeRecord]:
         if self.state_file is None or not self.state_file.is_file():
             return {}
         try:
             raw = json.loads(self.state_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise BladeShimError("controlled blade shim state is unreadable") from exc
-        if not isinstance(raw, Mapping) or not all(_UUID.fullmatch(str(key)) and isinstance(value, str) for key, value in raw.items()):
+        if not isinstance(raw, Mapping):
             raise BladeShimError("controlled blade shim state is invalid")
-        return dict(raw)
+        parsed: dict[str, BladeRecord] = {}
+        for key, value in raw.items():
+            if not _UUID.fullmatch(str(key)) or not isinstance(value, Mapping):
+                raise BladeShimError("controlled blade shim state is invalid")
+            cleanup_handle = value.get("cleanup_handle")
+            namespace = value.get("namespace")
+            target_name = value.get("target_name")
+            target_uid = value.get("target_uid")
+            fault_type = value.get("fault_type")
+            duration_seconds = value.get("duration_seconds")
+            intensity = value.get("intensity")
+            status = value.get("status", "Created")
+            if (
+                not isinstance(cleanup_handle, str)
+                or not cleanup_handle
+                or not isinstance(namespace, str)
+                or namespace != self.namespace
+                or not isinstance(target_name, str)
+                or not target_name
+                or not isinstance(target_uid, str)
+                or not target_uid
+                or not isinstance(fault_type, str)
+                or fault_type not in {"network-delay", "network-loss", "cpu-load", "memory-stress"}
+                or not isinstance(duration_seconds, int)
+                or not isinstance(intensity, Mapping)
+                or not isinstance(status, str)
+            ):
+                raise BladeShimError("controlled blade shim state is invalid")
+            parsed[str(key)] = BladeRecord(
+                cleanup_handle=cleanup_handle,
+                namespace=namespace,
+                target_name=target_name,
+                target_uid=target_uid,
+                fault_type=fault_type,
+                duration_seconds=duration_seconds,
+                intensity=dict(intensity),
+                status=status,
+            )
+        return parsed
 
 
 def parse_create(argv: Sequence[str], *, namespace: str, max_duration_seconds: int,
@@ -208,11 +448,11 @@ def parse_create(argv: Sequence[str], *, namespace: str, max_duration_seconds: i
         target_name=target_name,
         fault_type=fault_type,
         duration_seconds=duration_seconds,
-        intensity=canonical_native_intensity(fault_type, flags),
+        intensity=canonical_native_intensity(fault_type, flags, action=argv[3]),
     )
 
 
-def canonical_native_intensity(fault_type: str, flags: Mapping[str, Any]) -> dict[str, int]:
+def canonical_native_intensity(fault_type: str, flags: Mapping[str, Any], *, action: str) -> dict[str, int]:
     """Map only documented native numeric knobs to Controller canonical fields."""
     rules = {
         "network-delay": ("--time", "delay_ms"),
@@ -228,6 +468,10 @@ def canonical_native_intensity(fault_type: str, flags: Mapping[str, Any]) -> dic
         interface = flags.pop("--interface", "eth0")
         if interface != "eth0":
             raise BladeShimError("network interface must be Controller-fixed eth0")
+    if fault_type == "network-loss" and action == "drop":
+        if flags:
+            raise BladeShimError("network drop maps only to Controller 100 percent loss")
+        return {"loss_percent": 100}
     if set(flags) != {native_key}:
         raise BladeShimError("native fault parameters are not exactly representable by Controller policy")
     value = flags[native_key]
@@ -271,6 +515,88 @@ def _cleanup_handle(result: Mapping[str, Any]) -> str:
     return value
 
 
+def _unknown_outcome_cleanup_handle(result: Mapping[str, Any]) -> str | None:
+    error = result.get("error")
+    if not isinstance(error, Mapping) or error.get("code") != "OPERATION_OUTCOME_UNKNOWN":
+        return None
+    details = error.get("details")
+    if not isinstance(details, Mapping):
+        raise BladeShimError("operation outcome is unknown but no operation_id was returned")
+    value = details.get("cleanup_handle") or details.get("operation_id")
+    if not isinstance(value, str) or not value:
+        raise BladeShimError("operation outcome is unknown but no cleanup handle was returned")
+    return value
+
+
+def _unknown_outcome_error_payload(result: Mapping[str, Any]) -> dict[str, Any]:
+    error = result.get("error")
+    if not isinstance(error, Mapping):
+        return {"code": "OPERATION_OUTCOME_UNKNOWN"}
+    payload: dict[str, Any] = {"code": "OPERATION_OUTCOME_UNKNOWN"}
+    message = error.get("message")
+    next_step = error.get("next_step")
+    if isinstance(message, str) and message:
+        payload["message"] = message
+    if isinstance(next_step, str) and next_step:
+        payload["next_step"] = next_step
+    return payload
+
+
+def _default_evidence_file(state_file: Path | None) -> Path | None:
+    if state_file is None:
+        return None
+    return state_file.with_name(f"{state_file.stem}.evidence.jsonl")
+
+
+def _evidence_file_from_env() -> Path | None:
+    value = os.environ.get("RESBENCH_BLADE_SHIM_EVIDENCE_FILE")
+    if value:
+        return Path(value)
+    return None
+
+
+def _mcp_response_evidence(tool: str, response: Mapping[str, Any]) -> dict[str, Any]:
+    evidence: dict[str, Any] = {"tool": tool}
+    error = response.get("error")
+    details = error.get("details") if isinstance(error, Mapping) else None
+    for source_key, output_key in (
+        ("controller_call_id", "controller_call_id"),
+        ("call_id", "call_id"),
+        ("server_call_id", "server_call_id"),
+        ("request_id", "request_id"),
+        ("cleanup_handle", "cleanup_handle"),
+        ("operation_id", "operation_id"),
+        ("operation_outcome", "operation_outcome"),
+        ("ledger_operation_outcome", "ledger_operation_outcome"),
+        ("state", "ledger_state"),
+    ):
+        value = response.get(source_key)
+        if not value and isinstance(details, Mapping):
+            value = details.get(source_key)
+        if isinstance(value, str) and value:
+            evidence[output_key] = value
+    ok = response.get("ok")
+    if isinstance(ok, bool):
+        evidence["ok"] = ok
+    if isinstance(error, Mapping) and isinstance(error.get("code"), str):
+        evidence["error"] = {"code": error["code"]}
+    return evidence
+
+
+def _operation_result_metadata(value: Mapping[str, Any]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for source_key, output_key in (
+        ("operation_id", "operation_id"),
+        ("operation_outcome", "operation_outcome"),
+        ("ledger_operation_outcome", "ledger_operation_outcome"),
+        ("state", "ledger_state"),
+    ):
+        field = value.get(source_key)
+        if isinstance(field, str) and field:
+            result[output_key] = field
+    return result
+
+
 def _require_ok(result: Mapping[str, Any], tool: str) -> None:
     if result.get("ok") is not True:
         raise BladeShimError(f"{tool} was denied by the controlled MCP service")
@@ -280,30 +606,47 @@ def _help_text() -> str:
     return "controlled blade shim: create k8s, destroy, status, and query k8s create only\n"
 
 
-def _status_uid(values: Sequence[str]) -> str:
+def _status_uid(values: Sequence[str], expected_kubeconfig: str | None) -> str:
     if not values:
         return ""
     if len(values) in {2, 4} and values[0] == "--uid":
         blade_uid = values[1]
-        _only_kubeconfig_flags(values[2:])
+        _only_kubeconfig_flags(values[2:], expected_kubeconfig)
+        return blade_uid
+    if len(values) in {2, 4} and values[0] == "--type" and values[1] == "create":
+        _only_kubeconfig_flags(values[2:], expected_kubeconfig)
+        return ""
+    if len(values) in {1, 3}:
+        blade_uid = values[0]
+        _only_kubeconfig_flags(values[1:], expected_kubeconfig)
         return blade_uid
     raise BladeShimError("blade status only accepts optional --uid and --kubeconfig")
 
 
-def _only_kubeconfig_flags(values: Sequence[str]) -> None:
+def _only_kubeconfig_flags(values: Sequence[str], expected_kubeconfig: str | None) -> None:
     if not values:
         return
-    if len(values) != 2 or values[0] != "--kubeconfig" or not values[1].startswith("/"):
+    if (
+        len(values) != 2
+        or values[0] != "--kubeconfig"
+        or not expected_kubeconfig
+        or values[1] != expected_kubeconfig
+    ):
         raise BladeShimError("only the SDK-injected --kubeconfig flag is permitted")
 
 
 def _blade_status_from_operation(value: Mapping[str, Any]) -> str:
     state = str(value.get("state") or "").lower()
+    outcome = str(value.get("operation_outcome") or "").lower()
     live = value.get("live")
-    if state == "destroyed" or value.get("operation_outcome") == "absent":
+    if state in {"destroyed", "expired_cleaned"}:
         return "Destroyed"
-    if value.get("operation_outcome") == "applied" or (isinstance(live, Mapping) and live.get("found") is True):
+    if outcome == "absent":
+        return "Absent"
+    if outcome == "applied" or (isinstance(live, Mapping) and live.get("found") is True):
         return "Success"
+    if state in {"created", "pending", "initializing"}:
+        return "Created"
     return "Error"
 
 
@@ -329,7 +672,12 @@ class McpToolClient:
 
     def call(self, tool: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         url = self.k8s_url if tool.startswith("k8s_") else self.chaos_url
-        return asyncio.run(self._call(url, tool, dict(arguments)))
+        try:
+            return asyncio.run(self._call(url, tool, dict(arguments)))
+        except BladeShimError:
+            raise
+        except Exception as exc:
+            raise BladeShimError(f"{tool} MCP call failed") from exc
 
     async def _call(self, url: str, tool: str, arguments: dict[str, Any]) -> Mapping[str, Any]:
         from mcp import ClientSession
@@ -356,11 +704,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     namespace = os.environ.get("RESBENCH_TRIAL_NAMESPACE", "")
     state_file = os.environ.get("RESBENCH_BLADE_SHIM_STATE_FILE", "")
     try:
-        if not state_file:
-            raise BladeShimError("RESBENCH_BLADE_SHIM_STATE_FILE is required")
-        shim = BladeShim(McpToolClient.from_env(), namespace=namespace, state_file=Path(state_file),
-                         kubeconfig_path=os.environ.get("BLADE_AI_KUBECONFIG_PATH"))
-        code, stdout, stderr = shim.run(values)
+        if tuple(values) in {("version",), ("--version",), ("-v",)}:
+            code, stdout, stderr = 0, "ChaosBlade controlled shim\n", ""
+        elif any(value in {"-h", "--help"} for value in values):
+            code, stdout, stderr = 0, _help_text(), ""
+        else:
+            if not namespace:
+                raise BladeShimError("RESBENCH_TRIAL_NAMESPACE is required")
+            if not state_file:
+                raise BladeShimError("RESBENCH_BLADE_SHIM_STATE_FILE is required")
+            shim = BladeShim(McpToolClient.from_env(), namespace=namespace, state_file=Path(state_file),
+                             kubeconfig_path=os.environ.get("BLADE_AI_KUBECONFIG_PATH"),
+                             evidence_file=_evidence_file_from_env())
+            code, stdout, stderr = shim.run(values)
     except BladeShimError as exc:
         code, stdout, stderr = 1, "", f"Error: {exc}\n"
     sys.stdout.write(stdout)

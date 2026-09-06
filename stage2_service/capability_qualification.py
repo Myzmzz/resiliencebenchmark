@@ -5,6 +5,7 @@ BladeAI basic channel evidence is retained but cannot replace its WP8 full chain
 """
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 import json
 import os
@@ -12,6 +13,7 @@ from pathlib import Path
 import stat
 import tempfile
 from typing import Any
+import jsonschema
 import yaml
 
 from .capability_preflight import CAPABILITY_QUALIFICATION_SCHEMA
@@ -148,6 +150,8 @@ def _entry(path: Path, artifact_root: Path, gateway: GatewayConfigSnapshot) -> t
         raise ValueError("invalid channel qualification record") from error
     if not isinstance(record, dict):
         raise ValueError("channel qualification record must be an object")
+    if record.get("qualification_type") == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION":
+        return _wp8_entry(path, record, artifact_root, gateway)
     if (record.get("schema_version") != "stage2-channel-qualification.v1"
             or record.get("qualification_type") != BASE_QUALIFICATION_TYPE
             or record.get("qualification_profile") != BASE_QUALIFICATION_TYPE):
@@ -208,6 +212,168 @@ def _entry(path: Path, artifact_root: Path, gateway: GatewayConfigSnapshot) -> t
         "qualification": {"status": "passed" if qualified else "platform_integration_incomplete",
                           "evidence_ref": str(path.resolve()), "qualification_type": BASE_QUALIFICATION_TYPE,
                           "reason": None if qualified else "bladeai_full_chain_qualification_required"},
+        "capability": descriptor.model_dump(mode="json"),
+    }
+
+
+def evaluate_wp8_artifacts(
+    artifact_refs: Sequence[str], *, artifact_root: Path, gateway: GatewayConfigSnapshot
+) -> dict[str, Any]:
+    """Recompute WP8 from protected production artifacts, not a checks table.
+
+    This reads an already-finished canary run. It never launches an Agent,
+    creates a canary, or grants capabilities by itself.
+    """
+    from .bladeai_qualification import evaluate_bladeai_full_chain
+    from .contracts import HarnessReport, RecoveryResult, RuntimeTarget, TrialRuntimeContext
+    from .platform_ledger import PlatformEvent
+
+    root = _no_links(artifact_root)
+    refs = {"artifact_refs": list(artifact_refs)}
+
+    def document(name: str) -> Any:
+        return json.loads(_read(_artifact(refs, root, name)))
+
+    report = HarnessReport.model_validate(document("harness-report.json"))
+    recovery = RecoveryResult.model_validate(document("recovery.json"))
+    runtime = TrialRuntimeContext.model_validate(document("runtime-context.json"))
+    canary = document("canary-evidence.json")
+    if not isinstance(canary, dict) or canary.get("trial_id") != runtime.trial_id:
+        raise ValueError("canary evidence does not belong to this Trial")
+    pod = canary.get("pod")
+    metadata = pod.get("metadata") if isinstance(pod, dict) else None
+    if (not isinstance(metadata, dict) or pod.get("kind") != "Pod"
+            or (metadata.get("labels") or {}).get("resiliencebenchmark.io/qualification") != "bladeai-wp8"):
+        raise ValueError("an explicitly labelled BladeAI canary Pod record is required")
+    if any(not isinstance(metadata.get(key), str) or not metadata[key] for key in ("namespace", "name", "uid")):
+        raise ValueError("canary Pod identity is incomplete")
+    expected = RuntimeTarget(namespace=metadata["namespace"], name=metadata["name"],
+                             uid=metadata["uid"], component="bladeai-canary")
+    if report.final_output.get("trial_id") != runtime.trial_id:
+        raise ValueError("Harness report does not belong to the runtime Trial")
+    if recovery.recovery_attribution.get("trial_id") != runtime.trial_id:
+        raise ValueError("recovery evidence does not belong to the runtime Trial")
+    for name in ("harness-report.json", "recovery.json"):
+        if _artifact(refs, root, name).parent != _artifact(refs, root, "runtime-context.json").parent:
+            raise ValueError("runtime and recovery evidence must belong to one Trial directory")
+    if document("bladeai-launch.json") != report.final_output.get("bladeai_launch"):
+        raise ValueError("BladeAI launch facts differ from the Controller artifact")
+    if document("bladeai-shim-evidence.json") != report.final_output.get("bladeai_shim_evidence"):
+        raise ValueError("BladeAI shim receipts differ from their captured artifact")
+
+    event_rows = report.final_output.get("platform_events")
+    if not isinstance(event_rows, list) or not event_rows:
+        raise ValueError("Controller platform events are missing")
+    if any(not isinstance(row, dict) or not isinstance(row.get("payload"), dict)
+           or not isinstance(row.get("event_type"), str) for row in event_rows):
+        raise ValueError("Controller platform event structure is invalid")
+    try:
+        events = [PlatformEvent(**row) for row in event_rows]
+    except TypeError as error:
+        raise ValueError("Controller platform event fields are invalid") from error
+    canonical_path = _artifact(refs, root, "canonical-events.jsonl")
+    canonical = [json.loads(line) for line in _read(canonical_path).splitlines() if line.strip()]
+    _verify_wp8_canonical_events(canonical, event_rows)
+    native_parent = canonical_path.parent
+    for name in ("gateway-requests.json", "bladeai-launch.json", "bladeai-shim-evidence.json",
+                 "harness-report.json", "runtime-context.json", "recovery.json", "canary-evidence.json"):
+        if _artifact(refs, root, name).parent != native_parent:
+            raise ValueError("all BladeAI WP8 evidence must belong to one Trial archive")
+    reported_refs = {"artifact_refs": list(report.artifact_refs)}
+    for name in ("canonical-events.jsonl", "gateway-requests.json", "bladeai-launch.json", "bladeai-shim-evidence.json"):
+        if _artifact(reported_refs, root, name) != _artifact(refs, root, name):
+            raise ValueError("WP8 references differ from the actual Harness archive references")
+    model = report.final_output.get("model_alias")
+    route = report.final_output.get("gateway_route")
+    version = report.final_output.get("gateway_config_sha256")
+    ids = report.final_output.get("gateway_request_ids")
+    if (not isinstance(model, str) or not model or version != gateway.config_sha256
+            or route != gateway.route(model) or report.final_output.get("gateway_evidence_verified") is not True
+            or not isinstance(ids, list) or not ids or not all(isinstance(item, str) and item for item in ids)
+            or len(ids) != len(set(ids))):
+        raise ValueError("WP8 model route evidence is missing or does not match the current gateway")
+    receipt_path = _artifact(refs, root, "gateway-requests.json")
+    if read_gateway_artifact(receipt_path, trial_id=runtime.trial_id, harness="bladeai",
+                             model_alias=model, config_sha256=version, request_ids=set(ids)) is None:
+        raise ValueError("WP8 gateway receipt does not verify this Trial")
+    evaluated = evaluate_bladeai_full_chain(
+        trial_id=runtime.trial_id, model=model, report=report, recovery=recovery,
+        runtime_target=runtime.target, events=events, expected_canary=expected,
+    )
+    if evaluated.get("passed") is True:
+        result = report.final_output.get("agent_result")
+        schema_path = Path(__file__).resolve().parents[1] / "harness/schemas/agent-result.schema.json"
+        try:
+            jsonschema.Draft202012Validator(json.loads(schema_path.read_text())).validate(result)
+        except jsonschema.ValidationError as error:
+            raise ValueError("WP8 terminal Agent result does not satisfy the current contract") from error
+        submit_id = evaluated["evidence"]["result_submit_call_id"]
+        submitted = [event.payload.get("arguments", {}).get("result") for event in events
+                     if event.event_type == "ToolCall" and event.payload.get("source") == "mcp_server"
+                     and event.payload.get("call_id") == submit_id]
+        if submitted != [result]:
+            raise ValueError("WP8 terminal result differs from the actual submitted result")
+    return {
+        **evaluated, "artifact_refs": list(artifact_refs), "gateway_config_sha256": version,
+        "gateway_route": route,
+        "gateway_sidecar_evidence": {"verified": True, "request_ids": ids,
+                                     "artifact_ref": "gateway-requests.json"},
+    }
+
+
+def _verify_wp8_canonical_events(rows: list[Any], platform: list[dict[str, Any]]) -> None:
+    fields = {
+        "ToolCall": ("call_id", "tool", "arguments"),
+        "ToolResult": ("call_id", "status", "payload"),
+        "Checkpoint": ("values",),
+    }
+
+    def identity(kind: str, source: str, value: dict[str, Any]) -> str:
+        return json.dumps([kind, source, {key: value.get(key) for key in fields[kind]}], sort_keys=True)
+
+    recorded = Counter()
+    streamed = False
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("invalid BladeAI canonical event")
+        kind, source = row.get("event_type"), row.get("source")
+        if not isinstance(kind, str) or not isinstance(source, str):
+            raise ValueError("invalid BladeAI canonical event identity")
+        if kind in fields and source in {"native", "mcp_server"}:
+            if row.get("replayed") is not False:
+                raise ValueError("WP8 requires the live BladeAI stream, not replayed events")
+            recorded[identity(kind, source, row)] += 1
+            streamed |= source == "native" and kind == "ToolResult"
+    original = Counter(
+        identity(row["event_type"], row["payload"]["source"], row["payload"])
+        for row in platform if row.get("event_type") in fields
+        and row.get("payload", {}).get("source") in {"native", "mcp_server"}
+    )
+    if not streamed or not recorded or recorded != original:
+        raise ValueError("BladeAI canonical stream does not match the Controller ledger")
+
+
+def _wp8_entry(path: Path, record: dict[str, Any], root: Path,
+               gateway: GatewayConfigSnapshot) -> tuple[str, dict[str, Any]]:
+    refs = record.get("artifact_refs")
+    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+        raise ValueError("WP8 artifact references are required")
+    derived = evaluate_wp8_artifacts(refs, artifact_root=root, gateway=gateway)
+    if record != derived or derived.get("passed") is not True or derived.get("status") != "passed":
+        raise ValueError("BladeAI full-chain qualification did not verify against its actual artifacts")
+    descriptor = HarnessCapability(
+        kind=HarnessKind.BLADEAI, execution_model="stream", streams_tool_results=True,
+        post_hoc_trace=False, supports_resume=False, supports_mid_turn_feedback=True,
+        feedback_channels=("in_band_mcp",), code_execution="none", qualification_passed=True,
+        probe={"qualification_profile": derived["qualification_type"],
+               "channel_trial_id": derived["trial_id"], "model_alias": derived["model"],
+               "gateway_config_sha256": derived["gateway_config_sha256"],
+               "gateway_request_ids": derived["gateway_sidecar_evidence"]["request_ids"],
+               "full_chain_checks": derived["checks"]},
+    )
+    return "bladeai", {
+        "qualification": {"status": "passed", "evidence_ref": str(path.resolve()),
+                          "qualification_type": derived["qualification_type"], "reason": None},
         "capability": descriptor.model_dump(mode="json"),
     }
 

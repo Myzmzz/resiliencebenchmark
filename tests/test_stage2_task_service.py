@@ -203,6 +203,42 @@ def request():
     )
 
 
+@pytest.mark.parametrize("harness", ["codex", "claude-code", "deepseek-harness", "bladeai"])
+def test_qualified_task_enters_agent_owned_campaign_for_every_harness(tmp_path, harness):
+    class CaptureRunner(Runner):
+        received = None
+
+        def run(self, campaign, **kwargs):
+            self.received = campaign
+            return super().run(campaign, **kwargs)
+
+    runner = CaptureRunner()
+    service, supervisor, _ = task_service(tmp_path, runner)
+    payload = request().model_dump(mode="json")
+    payload["harness"] = harness
+    created = service.create(Stage2TaskCreateRequest.model_validate(payload))
+    supervisor.wait_result(created["task_id"], timeout=5)
+
+    assert runner.received.harnesses[0].value == harness
+    assert runner.received.target is None
+    assert runner.received.main_fault is None
+
+
+def test_unqualified_bladeai_is_still_blocked_before_task_execution(tmp_path):
+    snapshot = preflight()
+    snapshot["harness_capabilities"]["bladeai"]["qualification_passed"] = False
+    runner = CountingRunner()
+    service, supervisor, _ = task_service(tmp_path, runner, preflight_provider=lambda: snapshot)
+    client = TestClient(create_app(supervisor, task_service=service))
+    payload = request().model_dump(mode="json")
+    payload["harness"] = "bladeai"
+
+    response = client.post("/api/v1/stage2/tasks", json=payload)
+
+    assert response.status_code == 422
+    assert runner.calls == 0
+
+
 def test_request_contract_defers_harness_capability_gating_to_live_preflight():
     codex = Stage2TaskCreateRequest(
         application="otel-demo",

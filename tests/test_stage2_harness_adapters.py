@@ -8,6 +8,7 @@ import pytest
 from stage2_service.contracts import HarnessKind
 from stage2_service.harness_adapters import (
     AgentMessage,
+    Checkpoint,
     HarnessAdapterError,
     ToolCall,
     ToolResult,
@@ -565,7 +566,7 @@ def test_deepseek_result_without_tool_call_remains_unclosed_evidence(tmp_path: P
     assert events[0].call_id == "missing-call"
 
 
-def test_bladeai_pairs_step_start_and_end():
+def test_bladeai_preserves_steps_without_inventing_tool_calls():
     adapter = create_adapter(HarnessKind.BLADEAI)
 
     calls = adapter.on_stream_line(
@@ -588,8 +589,9 @@ def test_bladeai_pairs_step_start_and_end():
     )
 
     assert len(calls) == 1
-    assert calls[0].tool == "bladeai.planning"
+    assert isinstance(calls[0], Checkpoint)
+    assert calls[0].values["event"] == "step_start"
     assert len(results) == 1
-    assert results[0].call_id == calls[0].call_id
-    assert results[0].status == "completed"
+    assert isinstance(results[0], Checkpoint)
+    assert results[0].values["event"] == "step_end"
     assert adapter.open_calls() == []

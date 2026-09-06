@@ -45,11 +45,12 @@ class NativeProposalCapture:
 
     def __init__(self) -> None:
         self._proposal: dict[str, Any] | None = None
+        self._state_fields: dict[str, Any] = {}
 
     def record(self, proposal: Mapping[str, Any]) -> None:
-        prior = dict(self._proposal or {})
-        prior.update(dict(proposal))
-        self._proposal = prior
+        current = dict(self._state_fields)
+        current.update(dict(proposal))
+        self._proposal = current
 
     def record_state(self, state: Mapping[str, Any]) -> None:
         """Retain only the Agent-owned duration from FaultSpec state."""
@@ -59,14 +60,17 @@ class NativeProposalCapture:
             return
         duration = fault_spec.get("duration_seconds")
         if isinstance(duration, int) and not isinstance(duration, bool) and duration > 0:
-            if self._proposal is None:
-                self._proposal = {}
-            self._proposal["duration_seconds"] = duration
+            self._state_fields["duration_seconds"] = duration
+            if self._proposal is not None:
+                self._proposal["duration_seconds"] = duration
 
     def take(self) -> dict[str, Any]:
         if self._proposal is None:
             raise BladeTaskError("BladeAI did not expose a confirmation proposal to the Runtime")
-        return dict(self._proposal)
+        proposal = dict(self._proposal)
+        self._proposal = None
+        self._state_fields = {}
+        return proposal
 
 
 @dataclass(frozen=True)
@@ -104,12 +108,14 @@ class BladeTaskRequest:
                 raise BladeTaskError("task mode must not inject managed_fault")
         elif self.managed_fault is None:
             raise BladeTaskError("managed mode requires managed_fault")
+        elif self.target is None:
+            raise BladeTaskError("managed mode requires target")
 
     def l4_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "namespace": self.namespace,
             "kubeconfig": self.kubeconfig,
-            "direct": False,
+            "direct": self.mode == MANAGED_MODE,
             "auto_recover": True,
         }
         if self.mode == MANAGED_MODE:

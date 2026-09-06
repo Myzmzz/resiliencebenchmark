@@ -276,10 +276,107 @@ def test_top_node_without_name_derives_namespace_nodes(kubeconfig_path: Path, ca
 def test_rejects_unknown_flags_mutating_commands_and_kubeconfig_mismatch(kubeconfig_path: Path, tmp_path: Path):
     with pytest.raises(ReadCliError, match="unsupported"):
         main(["get", "pods", "--watch"], transport=FakeTransport({}))
-    with pytest.raises(ReadCliError, match="read-only"):
+    with pytest.raises(ReadCliError, match="controlled blade"):
         main(["exec", "cart-abc", "--", "sh"], transport=FakeTransport({}))
+    with pytest.raises(ReadCliError, match="tool namespace"):
+        main(["exec", "cart-abc", "-n", "otel-demo", "--", "blade", "status", "00000000-0000-0000-0000-000000000000"], transport=FakeTransport({}))
     with pytest.raises(ReadCliError, match="does not match"):
         main(["--kubeconfig", str(tmp_path / "other.json"), "get", "pods"], transport=FakeTransport({}))
+
+
+def test_kubectl_exec_blade_is_routed_to_controlled_blade_shim(kubeconfig_path: Path, capsys: pytest.CaptureFixture[str]):
+    calls = []
+
+    def blade_runner(argv):
+        calls.append(argv)
+        return 0, json.dumps({"code": 200, "success": True, "result": {"Status": "Success"}}) + "\n", ""
+
+    code = main(
+        [
+            "--kubeconfig",
+            str(kubeconfig_path),
+            "exec",
+            "otel-c-tool-abc",
+            "-n=chaosblade",
+            "--",
+            "blade",
+            "query",
+            "k8s",
+            "create",
+            "00000000-0000-0000-0000-000000000001",
+        ],
+        transport=FakeTransport({}),
+        blade_runner=blade_runner,
+    )
+
+    assert code == 0
+    assert calls == [["query", "k8s", "create", "00000000-0000-0000-0000-000000000001"]]
+    assert json.loads(capsys.readouterr().out)["success"] is True
+
+
+def test_kubectl_exec_blade_failure_is_not_rewritten_as_success(kubeconfig_path: Path):
+    def blade_runner(argv):
+        return 1, "", "Error: experiment UID is not owned by this Trial\n"
+
+    with pytest.raises(ReadCliError, match="not owned by this Trial"):
+        main(
+            [
+                "exec",
+                "otel-c-tool-abc",
+                "-n",
+                "chaosblade",
+                "--",
+                "blade",
+                "destroy",
+                "00000000-0000-0000-0000-000000000001",
+            ],
+            transport=FakeTransport({}),
+            blade_runner=blade_runner,
+        )
+
+
+def test_kubectl_exec_blade_requires_trial_bound_shim_environment(
+    kubeconfig_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("RESBENCH_TRIAL_NAMESPACE", raising=False)
+    monkeypatch.delenv("RESBENCH_BLADE_SHIM_STATE_FILE", raising=False)
+
+    with pytest.raises(ReadCliError, match="RESBENCH_TRIAL_NAMESPACE"):
+        main(
+            [
+                "exec",
+                "otel-c-tool-abc",
+                "-n",
+                "chaosblade",
+                "--",
+                "blade",
+                "status",
+                "00000000-0000-0000-0000-000000000001",
+            ],
+            transport=FakeTransport({}),
+        )
+
+    monkeypatch.setenv("RESBENCH_TRIAL_NAMESPACE", "otel-demo")
+    monkeypatch.setenv("RESBENCH_BLADE_SHIM_STATE_FILE", str(tmp_path / "shim-state.json"))
+    monkeypatch.delenv("RESBENCH_BLADEAI_K8S_MCP_SSE_URL", raising=False)
+    monkeypatch.delenv("RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL", raising=False)
+    monkeypatch.delenv("RESBENCH_MCP_TOKEN", raising=False)
+    with pytest.raises(ReadCliError, match="required loopback MCP endpoint"):
+        main(
+            [
+                "exec",
+                "otel-c-tool-abc",
+                "-n",
+                "chaosblade",
+                "--",
+                "blade",
+                "status",
+                "00000000-0000-0000-0000-000000000001",
+            ],
+            transport=FakeTransport({}),
+        )
 
 
 def test_rejects_raw_prefix_address_escape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

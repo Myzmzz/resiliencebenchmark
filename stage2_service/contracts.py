@@ -641,15 +641,6 @@ class CampaignRequest(ContractModel):
                 "target and main_fault must either both be omitted for Agent-owned "
                 "selection or both be present for a controller-explicit Campaign"
             )
-        if (
-            HarnessKind.BLADEAI in self.harnesses
-            and self.target is None
-            and self.main_fault is None
-        ):
-            raise ValueError(
-                "BladeAI does not support Agent-owned target and fault selection in "
-                "the current Stage2 adapter"
-            )
         if self.qualification_mode == "required":
             missing_qualification = set(self.harnesses) - set(
                 self.qualification_refs

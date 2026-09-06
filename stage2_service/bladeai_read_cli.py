@@ -96,15 +96,27 @@ class Command:
     resource: str | None = None
     name: str | None = None
     options: CommonOptions = field(default_factory=CommonOptions)
+    exec_namespace: str | None = None
+    inner_command: tuple[str, ...] = ()
 
 
-def main(argv: Sequence[str] | None = None, *, transport: ReadTransport | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    transport: ReadTransport | None = None,
+    blade_runner: Any | None = None,
+) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     command = _parse(args)
     kubeconfig = _load_kubeconfig(command.options.kubeconfig)
 
     if command.verb == "config":
         print(kubeconfig.current_context)
+        return 0
+    if command.verb == "exec":
+        stdout, stderr = _run_controlled_blade_exec(command, kubeconfig, blade_runner)
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
         return 0
 
     client = transport or HTTPProxyTransport()
@@ -119,15 +131,15 @@ def main(argv: Sequence[str] | None = None, *, transport: ReadTransport | None =
         body = client.get(_logs_path(command, kubeconfig), kubeconfig.token)
         print(body.decode("utf-8", errors="replace"))
         return 0
-    raise ReadCliError("only read-only get, top, logs, and config current-context are supported")
+    raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
 
 
 def _parse(argv: list[str]) -> Command:
     if not argv:
-        raise ReadCliError("only read-only get, top, logs, and config current-context are supported")
+        raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
     verb_index = _find_verb(argv)
     if verb_index is None:
-        raise ReadCliError("only read-only get, top, logs, and config current-context are supported")
+        raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
     verb = argv[verb_index]
     rest = argv[:verb_index] + argv[verb_index + 1 :]
     if verb == "config":
@@ -138,12 +150,14 @@ def _parse(argv: list[str]) -> Command:
         return _parse_top(rest)
     if verb == "logs":
         return _parse_logs(rest)
-    raise ReadCliError("only read-only get, top, logs, and config current-context are supported")
+    if verb == "exec":
+        return _parse_exec(rest)
+    raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
 
 
 def _find_verb(argv: list[str]) -> int | None:
     value_flags = {"--kubeconfig", "--namespace", "-n", "-o", "--output"}
-    verbs = {"get", "top", "logs", "config"}
+    verbs = {"get", "top", "logs", "exec", "config"}
     i = 0
     while i < len(argv):
         token = argv[i]
@@ -265,6 +279,100 @@ def _parse_config(tokens: list[str]) -> Command:
     if ns.config_command != "current-context":
         raise ReadCliError("only config current-context is supported")
     return Command("config", options=CommonOptions(kubeconfig=ns.kubeconfig, namespace=ns.namespace))
+
+
+def _parse_exec(tokens: list[str]) -> Command:
+    try:
+        separator = tokens.index("--")
+    except ValueError as exc:
+        raise ReadCliError("kubectl exec is supported only for '-- blade ...' commands") from exc
+    prefix = tokens[:separator]
+    inner = tokens[separator + 1:]
+    if not inner or Path(inner[0]).name != "blade":
+        raise ReadCliError("kubectl exec is supported only for controlled blade commands")
+    pod_name: str | None = None
+    kubeconfig: str | None = None
+    namespace: str | None = None
+    index = 0
+    while index < len(prefix):
+        token = prefix[index]
+        if token == "--kubeconfig":
+            if index + 1 >= len(prefix):
+                raise ReadCliError("--kubeconfig requires a value")
+            kubeconfig = prefix[index + 1]
+            index += 2
+            continue
+        if token.startswith("--kubeconfig="):
+            kubeconfig = token.split("=", 1)[1]
+            index += 1
+            continue
+        if token in {"-n", "--namespace"}:
+            if index + 1 >= len(prefix):
+                raise ReadCliError("namespace flag requires a value")
+            namespace = prefix[index + 1]
+            index += 2
+            continue
+        if token.startswith("--namespace="):
+            namespace = token.split("=", 1)[1]
+            index += 1
+            continue
+        if token.startswith("-n") and token != "-n":
+            namespace = token[2:].removeprefix("=")
+            index += 1
+            continue
+        if token.startswith("-"):
+            raise ReadCliError(f"unsupported exec argument: {token}")
+        if pod_name is not None:
+            raise ReadCliError("kubectl exec accepts exactly one tool Pod name")
+        _validate_resource_name(token)
+        pod_name = token
+        index += 1
+    if not pod_name:
+        raise ReadCliError("kubectl exec requires a tool Pod name")
+    tool_namespace = os.environ.get("RESBENCH_BLADEAI_TOOL_NAMESPACE", "chaosblade")
+    if namespace != tool_namespace:
+        raise ReadCliError("kubectl exec is supported only for the controlled BladeAI tool namespace")
+    return Command(
+        "exec",
+        name=pod_name,
+        options=CommonOptions(kubeconfig=kubeconfig, namespace=namespace),
+        exec_namespace=namespace,
+        inner_command=tuple(inner),
+    )
+
+
+def _run_controlled_blade_exec(
+    command: Command,
+    kubeconfig: KubeConfig,
+    blade_runner: Any | None,
+) -> tuple[str, str]:
+    if not command.inner_command or Path(command.inner_command[0]).name != "blade":
+        raise ReadCliError("kubectl exec is supported only for controlled blade commands")
+    if blade_runner is None:
+        from .bladeai_shim import BladeShim, BladeShimError, McpToolClient
+
+        namespace = os.environ.get("RESBENCH_TRIAL_NAMESPACE", "")
+        state_file = os.environ.get("RESBENCH_BLADE_SHIM_STATE_FILE", "")
+        evidence_file = os.environ.get("RESBENCH_BLADE_SHIM_EVIDENCE_FILE", "")
+        if not namespace:
+            raise ReadCliError("RESBENCH_TRIAL_NAMESPACE is required for controlled blade exec")
+        if not state_file:
+            raise ReadCliError("RESBENCH_BLADE_SHIM_STATE_FILE is required for controlled blade exec")
+        try:
+            blade_runner = BladeShim(
+                McpToolClient.from_env(),
+                namespace=namespace,
+                state_file=Path(state_file),
+                kubeconfig_path=str(kubeconfig.path),
+                evidence_file=Path(evidence_file) if evidence_file else None,
+            ).run
+        except BladeShimError as exc:
+            raise ReadCliError(str(exc)) from exc
+    code, stdout, stderr = blade_runner(list(command.inner_command[1:]))
+    if code != 0:
+        message = (stderr or stdout or "controlled blade command failed").strip()
+        raise ReadCliError(message.removeprefix("Error: ").strip())
+    return stdout, stderr
 
 
 def _load_kubeconfig(provided: str | None) -> KubeConfig:

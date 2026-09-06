@@ -187,3 +187,24 @@ def test_worker_uses_real_bladeai_sdk_mcp_lifecycle_without_model_or_cluster(
             },
         }
     ]
+
+    import chaos_agent.mcp.manager as manager_module
+
+    original_disconnect_all = manager_module.McpManager.disconnect_all
+    disconnect_calls = {"count": 0}
+
+    async def tracked_disconnect_all(self):
+        disconnect_calls["count"] += 1
+        await original_disconnect_all(self)
+
+    async def missing_recover_graph(_registry, checkpointer=None, *, mcp_manager=None):
+        assert [client.name for client in mcp_manager._clients] == ["fake_ro"]
+        return {"inject": object()}
+
+    monkeypatch.setattr(manager_module.McpManager, "disconnect_all", tracked_disconnect_all)
+    monkeypatch.setattr(factory, "create_agent", missing_recover_graph)
+    broken_agent = L4ResilienceAgent()
+    with pytest.raises(KeyError):
+        broken_agent.prepare(None, task)
+        broken_agent.execute(None, SimpleNamespace(task_id="image-sdk-mcp-broken-graphs"))
+    assert disconnect_calls["count"] == 1

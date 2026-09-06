@@ -246,6 +246,15 @@ def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tm
     assert kinds.count("main_fault_running") == 1
     assert kinds.count("effect_check_started") == 1
     assert report.final_output["adapter_integrity"]["call_count"] == 2
+    if harness is HarnessKind.BLADEAI:
+        launch = report.final_output["bladeai_launch"]
+        assert launch["trial_id"] == trial_id
+        assert launch["mode"] == "task"
+        assert launch["target"] is None and launch["managed_fault"] is None
+        assert launch["decision_ownership"] == "agent"
+        assert "chaos_control" not in launch["mcp_servers"]
+        assert "chaos_mesh_control" not in launch["mcp_servers"]
+        assert any(ref.endswith("/bladeai-launch.json") for ref in report.artifact_refs)
     if full_contract:
         assert report.final_output["validation_error"] is None
         assert report.final_output["agent_result_ref"] == "agent-result.json"

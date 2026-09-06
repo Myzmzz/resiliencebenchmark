@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish verified base-channel evidence for the existing task/D0 preflight."""
+"""Publish verified base channels or BladeAI WP8 evidence for task preflight."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,7 @@ from stage2_service.gateway_config import GatewayConfigSnapshot
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--record", type=Path, action="append", required=True,
-                        help="Base qualification record; repeat for every Harness to include.")
+                        help="Base or BladeAI WP8 qualification record; repeat for every Harness to include.")
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--gateway-config", type=Path, required=True,
                         help="Current Controller-mounted LiteLLM route configuration.")

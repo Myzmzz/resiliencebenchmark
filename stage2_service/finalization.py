@@ -341,6 +341,11 @@ class Stage2Finalizer:
             business_recovery_verified=business_recovered,
             chaos_inventory_clear=inventory_clear,
             recovery_attribution={
+                "trial_id": runtime.trial_id,
+                "cleanup_handle": runtime.cleanup_handle,
+                "target_uid": pre_status.get("target_uid") if target_verified else None,
+                "target_name": pre_status.get("target_name") if target_verified else None,
+                "namespace": pre_status.get("namespace") if target_verified else None,
                 "planned_automatic_recovery": planned_automatic and timer_cleaned,
                 "effect_condition_met": condition_monitor.get("effect_condition_met") is True,
                 "effect_condition_met_at": condition_monitor.get("effect_condition_met_at"),

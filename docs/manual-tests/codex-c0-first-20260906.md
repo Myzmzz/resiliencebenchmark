@@ -1,5 +1,8 @@
 # 第一项手测：Codex / C0
 
+当前按用户要求暂停测试；此前临时的本机 18080 转发已关闭。以下参数留作
+恢复测试时使用，不代表现在应启动任务。
+
 状态：旧集群 integration 服务的 Codex 基础资格已通过并发布；`/options` 已实际
 返回 `codex.runnable=true`、`C0` 位于 `runnable_cases`、`gpt-5.5=true`。
 本项故障任务尚未提交或执行，由用户手动发起。

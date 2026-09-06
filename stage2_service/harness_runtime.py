@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 import uuid
@@ -434,6 +435,7 @@ class NativeHarnessRunner:
         definition = registry.get(harness.value)
         if not isinstance(definition, Mapping):
             raise HarnessRuntimeError(f"Harness is not registered: {harness.value}")
+        bladeai_launch_evidence: dict[str, Any] | None = None
         if harness is HarnessKind.BLADEAI:
             from .bladeai_launch import prepare_bladeai_launch
 
@@ -444,6 +446,25 @@ class NativeHarnessRunner:
                 environment=agent_env, proxy_config=proxy_config,
                 python_executable=self.base_environment.get("STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"),
             )
+            # Controller-authored launch facts are distinct from SDK stdout.
+            # WP8 must compare these with actual MCP calls and independent
+            # recovery evidence; this record alone never grants qualification.
+            task_input = load_json(Path(argv[-1]))
+            visible_mcp = load_json(Path(child_env["BLADE_AI_MCP_CONFIG_PATH"]))
+            bladeai_launch_evidence = {
+                "schema_version": "stage2-bladeai-launch.v1",
+                "trial_id": trial_id,
+                "mode": task_input["mode"],
+                "namespace": task_input["namespace"],
+                "target": task_input.get("target"),
+                "managed_fault": task_input.get("managed_fault"),
+                "worker_module": "stage2_service.bladeai_worker",
+                "mcp_servers": sorted(visible_mcp["mcpServers"]),
+                "blade_path": child_env["BLADE_AI_BLADE_PATH"],
+                "kubectl_path": child_env["BLADE_AI_KUBECTL_PATH"],
+                "decision_ownership": "agent",
+            }
+            write_json(artifact_dir / "bladeai-launch.json", bladeai_launch_evidence)
         else:
             argv, stdin, fail_closed = build_argv(
                 harness.value, definition, model_alias, prompt, paths
@@ -464,17 +485,12 @@ class NativeHarnessRunner:
             {
                 "capabilities": self._planned_capabilities(harness, capability),
                 "source": "controller_request_and_capability_profile",
-                "decision_ownership": (
-                    {
-                        "read_only_discovery": "agent",
-                        "material_choices": decision_policy.value,
-                        "emergency_cleanup": "agent",
-                        "recovery_verification": "agent",
-                    }
-                    if runtime_context.main_fault.get("selection_mode")
-                    == "agent_strategy"
-                    else "controller_legacy_adapter"
-                ),
+                "decision_ownership": {
+                    "read_only_discovery": "agent",
+                    "material_choices": decision_policy.value,
+                    "emergency_cleanup": "controller",
+                    "recovery_verification": "agent",
+                },
                 "safety_envelope": runtime_context.main_fault,
             },
         )
@@ -1016,6 +1032,21 @@ class NativeHarnessRunner:
         if native_events:
             write_json(artifact_dir / "dsh-native-events.json", native_events)
             native_session_refs.append("dsh-native-events.json")
+        bladeai_shim_evidence: list[dict[str, Any]] = []
+        if bladeai_launch_evidence is not None:
+            try:
+                bladeai_shim_evidence, captured = _collect_bladeai_shim_evidence(
+                    Path(child_env["RESBENCH_BLADE_SHIM_STATE_FILE"]), trial_root
+                )
+                if captured:
+                    write_json(
+                        artifact_dir / "bladeai-shim-evidence.json",
+                        redact_json(bladeai_shim_evidence, env),
+                    )
+                    native_session_refs.append("bladeai-shim-evidence.json")
+            except (OSError, ValueError):
+                if not harness_failure:
+                    harness_failure = {"error_code": "BLADEAI_SHIM_EVIDENCE_INVALID"}
         submitted_result = channel_root / "result.json"
         if submitted_result.is_file():
             try:
@@ -1170,6 +1201,9 @@ class NativeHarnessRunner:
             },
             "platform_events": redact_json(all_trial_events(platform_ledger, trial_id), env),
         }
+        if bladeai_launch_evidence is not None:
+            final_output["bladeai_launch"] = bladeai_launch_evidence
+            final_output["bladeai_shim_evidence"] = redact_json(bladeai_shim_evidence, env)
         if ref:
             final_output["agent_result_ref"] = ref
             final_output["agent_result"] = json.loads(
@@ -1200,6 +1234,7 @@ class NativeHarnessRunner:
                 f"{campaign_id}/{trial_id}/assessment-history.json",
                 f"{campaign_id}/{trial_id}/harness-conversation.json",
                 f"{campaign_id}/{trial_id}/canonical-events.jsonl",
+                *((f"{campaign_id}/{trial_id}/bladeai-launch.json",) if bladeai_launch_evidence is not None else ()),
                 *((f"{campaign_id}/{trial_id}/gateway-requests.json",) if gateway_rows is not None else ()),
                 *((f"{campaign_id}/{trial_id}/{ref}",) if ref else ()),
                 *(f"{campaign_id}/{trial_id}/{name}" for name in native_session_refs),
@@ -1789,6 +1824,39 @@ def _append_redacted_runtime_capability_prompt(
         + json.dumps(redacted_capability, ensure_ascii=False, indent=2, sort_keys=True)
         + "\n```\n"
     )
+
+
+def _collect_bladeai_shim_evidence(
+    state_path: Path, trial_root: Path
+) -> tuple[list[dict[str, Any]], bool]:
+    """Copy bounded supplementary shim receipts; never promote them to facts.
+
+    The Agent can write its own workspace.  Call IDs in this file therefore
+    require independent comparison with Controller MCP records in WP8.
+    """
+    candidate = state_path.with_name(f"{state_path.stem}.evidence.jsonl").absolute()
+    root = trial_root.absolute()
+    candidate.relative_to(root)
+    current = candidate
+    while current != root:
+        if current.is_symlink():
+            raise ValueError("linked BladeAI evidence is not accepted")
+        current = current.parent
+    if not candidate.exists():
+        return [], False
+    limit = 16 * 1024 * 1024
+    descriptor = os.open(candidate, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as source:
+        metadata = os.fstat(source.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > limit:
+            raise ValueError("BladeAI evidence must be a bounded regular file")
+        raw = source.read(limit + 1)
+    if len(raw) > limit:
+        raise ValueError("BladeAI evidence exceeds its size limit")
+    rows = [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
+    if any(not isinstance(row, dict) for row in rows):
+        raise ValueError("BladeAI evidence must contain JSON objects")
+    return rows, True
 
 
 def _events_from_agent_result(

@@ -211,6 +211,31 @@ def main() -> int:
 
         assert disconnect_calls["count"] == 1
 
+        graph_error_disconnects = {"count": 0}
+
+        async def tracked_graph_disconnect_all(self):
+            graph_error_disconnects["count"] += 1
+            await original_disconnect_all(self)
+
+        async def missing_recover_graph(_registry, checkpointer=None, *, mcp_manager=None):
+            assert [client.name for client in mcp_manager._clients] == ["fake_ro"]
+            return {"inject": object()}
+
+        manager_module.McpManager.disconnect_all = tracked_graph_disconnect_all
+        factory.create_agent = missing_recover_graph
+        broken_graph_agent = L4ResilienceAgent()
+        try:
+            broken_graph_agent.prepare(None, task)
+            broken_graph_agent.execute(None, SimpleNamespace(task_id="image-sdk-mcp-broken-graphs"))
+        except KeyError:
+            pass
+        else:
+            raise AssertionError("missing compiled graph did not fail")
+        finally:
+            manager_module.McpManager.disconnect_all = original_disconnect_all
+
+        assert graph_error_disconnects["count"] == 1
+
         bad_config_path = root / ".blade-ai" / "mcp-bad.json"
         bad_config_path.write_text(
             json.dumps(
@@ -266,6 +291,7 @@ def main() -> int:
                     "chaos_agent_origin": chaos_spec.origin,
                     "phase1_tool_names": observed["phase1_tool_names"],
                     "disconnect_on_factory_failure": disconnect_calls["count"],
+                    "disconnect_on_graph_failure": graph_error_disconnects["count"],
                     "missing_server_error": missing_server_error,
                     "events": lifecycle,
                 },

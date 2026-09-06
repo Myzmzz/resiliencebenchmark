@@ -68,6 +68,14 @@ def test_missing_required_shim_endpoint_fails_even_when_agent_mcp_is_read_only(t
         _launch(tmp_path, environment)
 
 
+def test_sandbox_is_only_exposed_when_provisioned_for_the_case(tmp_path: Path) -> None:
+    environment = _env(RESBENCH_BLADEAI_CODE_SANDBOX_MCP_SSE_URL="http://127.0.0.1:18188/sse")
+    _argv, _stdin, child_env = _launch(tmp_path, environment)
+    mcp = json.loads(Path(child_env["BLADE_AI_MCP_CONFIG_PATH"]).read_text())["mcpServers"]
+    assert mcp["code_sandbox"]["url"] == environment["RESBENCH_BLADEAI_CODE_SANDBOX_MCP_SSE_URL"]
+    assert "chaos_control" not in mcp and "chaos_mesh_control" not in mcp
+
+
 def test_missing_optional_bladeai_endpoints_do_not_render_placeholders(tmp_path: Path) -> None:
     environment = _env(
         RESBENCH_BLADEAI_COROOT_MCP_SSE_URL="",

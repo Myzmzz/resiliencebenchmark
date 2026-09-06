@@ -11,6 +11,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from .bladeai_events import BladeAIStage2EventGraph
+from .bladeai_mcp_guard import (
+    BladeAIMcpGuardError,
+    BladeAIMcpGuardPatch,
+    build_allowed_mcp_guard_tool_names,
+)
 from .bladeai_task import (
     NativeProposalCapture,
     BladeTaskError,
@@ -65,6 +71,7 @@ class Runtime:
         self.confirmation_client = confirmation_client
         self.proposal_capture = proposal_capture
         self.target_uid_resolver = target_uid_resolver
+        self._approval_sequence = 0
 
     @contextmanager
     def step(self, name: str, attrs: dict | None = None):
@@ -84,21 +91,34 @@ class Runtime:
         if self.confirmation_client is None:
             emit("approval", {"risk_level": risk_level, "decision": "rejected", "reason": "harness_channel_unavailable"})
             return False
+        sdk_confirmation_id = self._next_sdk_confirmation_id()
         try:
             if self.proposal_capture is None or self.target_uid_resolver is None:
                 raise BladeTaskError("BladeAI proposal capture or controlled target discovery is unavailable")
+            proposal = self.proposal_capture.take()
+            emit(
+                "sdk_confirmation_proposed",
+                {
+                    "sdk_confirmation_id": sdk_confirmation_id,
+                    "risk_level": risk_level,
+                    "proposal_fields": sorted(str(key) for key in proposal),
+                },
+            )
             plan = partial_plan_from_native_proposal(
-                self.proposal_capture.take(),
+                proposal,
                 target_uid_resolver=self.target_uid_resolver,
             )
             response = self.confirmation_client.confirm(plan)
             granted = confirmation_granted(response)
+            confirm_call_id = response.get("controller_call_id")
             emit(
                 "approval",
                 {
+                    "sdk_confirmation_id": sdk_confirmation_id,
                     "risk_level": risk_level,
                     "decision": "approved" if granted else "rejected",
                     "harness_response": dict(response),
+                    "confirm_call_id": confirm_call_id if isinstance(confirm_call_id, str) and confirm_call_id else None,
                     "plan_fields": sorted(plan),
                     "assisted": response.get("assisted"),
                     "affected_nodes": response.get("affected_nodes"),
@@ -106,8 +126,23 @@ class Runtime:
             )
             return granted
         except BladeTaskError as exc:
-            emit("approval", {"risk_level": risk_level, "decision": "rejected", "reason": str(exc)})
+            emit("approval", {"sdk_confirmation_id": sdk_confirmation_id, "risk_level": risk_level, "decision": "rejected", "reason": str(exc)})
             return False
+        except Exception as exc:
+            emit(
+                "approval",
+                {
+                    "sdk_confirmation_id": sdk_confirmation_id,
+                    "risk_level": risk_level,
+                    "decision": "rejected",
+                    "reason": f"harness_confirmation_error:{type(exc).__name__}",
+                },
+            )
+            return False
+
+    def _next_sdk_confirmation_id(self) -> str:
+        self._approval_sequence += 1
+        return f"bladeai-sdk-confirm-{self._approval_sequence}"
 
     def finish(self, status: str):
         emit("finish", {"status": status})
@@ -163,12 +198,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     agent = L4ResilienceAgent()
     try:
-        with _capture_native_confirmation_proposal(runtime):
-            agent.prepare(runtime, task)
-            result = agent.execute(runtime, task)
-        agent.cleanup(runtime, task)
+        result = _run_agent_lifecycle(agent, runtime, task)
     except BladeTaskError as exc:
         emit("fatal", {"error": str(exc), "integration_status": "incomplete"})
+        return 2
+    except KeyboardInterrupt:
+        emit("fatal", {"error": "BladeAI SDK interrupted: KeyboardInterrupt", "integration_status": "incomplete"})
+        return 130
+    except Exception as exc:
+        emit("fatal", {"error": f"BladeAI SDK failed: {type(exc).__name__}", "integration_status": "incomplete"})
         return 2
     print(
         json.dumps(
@@ -198,6 +236,47 @@ def main(argv: list[str] | None = None) -> int:
     # run the benchmark adapter. Fatal setup/import/uncaught errors still exit
     # nonzero above; preserve the SDK status/error in the emitted result.
     return 0
+
+
+def _run_agent_lifecycle(agent, runtime: Runtime, task):
+    """Run the SDK lifecycle and always invoke cleanup after startup.
+
+    The fixed upstream L4 adapter treats most graph errors as ``L4TaskResult``
+    values, but process-level integration defects can still escape from
+    prepare/execute.  Cleanup is part of the worker's safety boundary, so it is
+    attempted exactly once on every prepared task path before the worker emits
+    its terminal result or fatal status.
+    """
+
+    result = None
+    primary_error: BaseException | None = None
+    cleanup_error: BaseException | None = None
+    try:
+        with _capture_native_confirmation_proposal(runtime):
+            agent.prepare(runtime, task)
+            result = agent.execute(runtime, task)
+    except BaseException as exc:
+        primary_error = exc
+    try:
+        agent.cleanup(runtime, task)
+    except BaseException as exc:
+        cleanup_error = exc
+
+    if primary_error is not None:
+        if cleanup_error is not None:
+            emit(
+                "cleanup_error",
+                {
+                    "error": f"BladeAI SDK cleanup failed: {type(cleanup_error).__name__}",
+                    "after_error": type(primary_error).__name__,
+                },
+            )
+        raise primary_error
+    if cleanup_error is not None:
+        raise BladeTaskError(f"BladeAI SDK cleanup failed: {type(cleanup_error).__name__}") from cleanup_error
+    if result is None:
+        raise BladeTaskError("BladeAI SDK returned no result")
+    return result
 
 
 def _assert_controlled_blade_shim() -> None:
@@ -251,6 +330,7 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
         def __init__(self) -> None:
             self._initialized = False
             self._mcp_manager = None
+            self._mcp_guard = None
 
         async def ensure_initialized_async(self) -> None:
             if self._initialized:
@@ -269,6 +349,7 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
 
             checkpointer = MemorySaver()
             mcp_manager = None
+            mcp_guard = None
             configured_servers: list[str] = []
             connected_servers: list[str] = []
             try:
@@ -293,20 +374,45 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
                         "BladeAI MCP failed to connect configured servers: "
                         + ", ".join(missing)
                     )
-                agents = await create_agent(registry, checkpointer=checkpointer, mcp_manager=mcp_manager)
+                policy_path = (
+                    Path(__file__).resolve().parents[1] / "harness/mcp-tools.yaml"
+                )
+                try:
+                    allowed_guard_tools = build_allowed_mcp_guard_tool_names(
+                        mcp_manager,
+                        policy_path,
+                    )
+                    mcp_guard = BladeAIMcpGuardPatch(allowed_guard_tools)
+                    mcp_guard.install()
+                except BladeAIMcpGuardError as exc:
+                    raise BladeTaskError(str(exc)) from exc
+                agents = await create_agent(
+                    registry,
+                    checkpointer=checkpointer,
+                    mcp_manager=mcp_manager,
+                )
+                inject_graph = BladeAIStage2EventGraph(
+                    agents["inject"], emit=emit, operation="inject"
+                )
+                recover_graph = BladeAIStage2EventGraph(
+                    agents["recover"], emit=emit, operation="recover"
+                )
+                phase_tool_counts = {
+                    phase: len(mcp_manager.tools_for_phase(phase))
+                    for phase in ("clarification", "phase1", "phase2", "verifier")
+                }
             except BaseException:
+                if mcp_guard is not None:
+                    mcp_guard.restore()
                 if mcp_manager is not None:
                     await mcp_manager.disconnect_all()
                 raise
-            self.inject_graph = agents["inject"]
-            self.recover_graph = agents["recover"]
+            self.inject_graph = inject_graph
+            self.recover_graph = recover_graph
             self.skill_registry = registry
             self._mcp_manager = mcp_manager
+            self._mcp_guard = mcp_guard
             self._initialized = True
-            phase_tool_counts = {
-                phase: len(mcp_manager.tools_for_phase(phase))
-                for phase in ("clarification", "phase1", "phase2", "verifier")
-            }
             emit(
                 "mcp_lifecycle",
                 {
@@ -317,6 +423,9 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
             )
 
         async def close(self) -> None:
+            if self._mcp_guard is not None:
+                self._mcp_guard.restore()
+                self._mcp_guard = None
             if self._mcp_manager is not None:
                 await self._mcp_manager.disconnect_all()
                 self._mcp_manager = None
@@ -347,7 +456,10 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
             finally:
                 await pool.close()
 
-        result = asyncio.run(_run_once())
+        from .bladeai_duration import preserve_explicit_fault_duration
+
+        with preserve_explicit_fault_duration():
+            result = asyncio.run(_run_once())
         if result.status in ("passed", "failed", "cancelled", "degraded"):
             self._completed[task.task_id] = result
             if len(self._completed) > 100:

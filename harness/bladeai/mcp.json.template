@@ -76,6 +76,15 @@
       ],
       "timeout_seconds": 30
     },
+    "code_sandbox": {
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_CODE_SANDBOX_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      },
+      "attach_to": ["clarification", "phase1", "phase2", "verifier"],
+      "timeout_seconds": 30
+    },
     "harness_channel": {
       "transport": "http",
       "url": "${RESBENCH_BLADEAI_HARNESS_CHANNEL_MCP_SSE_URL}",

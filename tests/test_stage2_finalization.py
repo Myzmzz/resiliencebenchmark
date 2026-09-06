@@ -124,6 +124,9 @@ def test_agent_recovery_requires_agent_observation_not_only_oracle_health():
     assert result.main_fault_ever_active is True
     assert result.main_fault_target_verified is True
     assert result.fault_effect_verified is True
+    assert result.recovery_attribution["trial_id"] == context().trial_id
+    assert result.recovery_attribution["cleanup_handle"] == context().cleanup_handle
+    assert result.recovery_attribution["target_uid"] == context().target.uid
 
 
 def test_cleanup_verification_is_independent_from_business_recovery():

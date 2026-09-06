@@ -1,6 +1,12 @@
 version: resiliencebenchmark.harness.bladeai.qualification/v1
 bladeai:
   version: 0.6.2
+  code_remediation:
+    status: implemented_pending_validation
+    tests: paused_by_user
+    deployment: not_performed
+    evidence_requirements: unchanged_full_wp8_chain
+    report: docs/status/bladeai-code-remediation-20260906.md
   capability_source: local_source_and_tests
   source_contract:
     mcp_role: client

@@ -69,6 +69,14 @@ def test_managed_mode_remains_explicitly_available_only_with_a_fault():
 
     assert request.l4_target() == "cart-123"
     assert request.l4_payload()["fault_type"] == "network-delay"
+    assert request.l4_payload()["direct"] is True
+
+
+def test_managed_mode_requires_explicit_target_before_sdk_launch():
+    with pytest.raises(BladeTaskError, match="managed mode requires target"):
+        BladeTaskRequest.from_mapping(
+            _task_request(mode="managed", managed_fault={"fault_type": "network-delay"})
+        )
 
 
 class _Confirm:
@@ -137,6 +145,41 @@ def test_rejected_harness_confirmation_returns_false_and_emits_rejection(monkeyp
         "fault_type": "network-delay", "intensity": {"delay_ms": 300.0}, "safety_ttl_seconds": 600,
     }
     assert emitted[-1][1]["decision"] == "rejected"
+
+
+def test_sdk_confirmation_event_chain_carries_sdk_and_controller_call_ids(monkeypatch):
+    emitted = []
+    monkeypatch.setattr("stage2_service.bladeai_worker.emit", lambda kind, payload: emitted.append((kind, payload)))
+    client = _Confirm({"ok": True, "approved": True, "controller_call_id": "controller-confirm-1"})
+    capture = NativeProposalCapture()
+    capture.record(_current_native_proposal())
+
+    assert Runtime(client, proposal_capture=capture, target_uid_resolver=_UID()).require_approval("high") is True
+
+    proposed = [payload for kind, payload in emitted if kind == "sdk_confirmation_proposed"]
+    approvals = [payload for kind, payload in emitted if kind == "approval"]
+    assert len(proposed) == 1
+    assert len(approvals) == 1
+    assert proposed[0]["sdk_confirmation_id"] == approvals[0]["sdk_confirmation_id"]
+    assert approvals[0]["confirm_call_id"] == "controller-confirm-1"
+
+
+def test_confirmation_client_exception_is_a_safe_rejection(monkeypatch):
+    emitted = []
+    monkeypatch.setattr("stage2_service.bladeai_worker.emit", lambda kind, payload: emitted.append((kind, payload)))
+
+    class ExplodingConfirm:
+        def confirm(self, _plan):
+            raise RuntimeError("transport detail must not leak")
+
+    capture = NativeProposalCapture()
+    capture.record(_current_native_proposal())
+
+    assert Runtime(ExplodingConfirm(), proposal_capture=capture, target_uid_resolver=_UID()).require_approval("high") is False
+    assert emitted[-1][0] == "approval"
+    assert emitted[-1][1]["decision"] == "rejected"
+    assert emitted[-1][1]["reason"] == "harness_confirmation_error:RuntimeError"
+    assert "transport detail" not in json.dumps(emitted[-1][1])
 
 
 def test_current_sdk_partial_plan_flows_to_channel_and_assistance_is_visible(monkeypatch, tmp_path):
@@ -233,6 +276,26 @@ def test_captured_sdk_fault_spec_duration_is_preserved_without_conversion():
         raise AssertionError("conflicting source durations must not be silently resolved")
 
 
+def test_native_proposal_capture_is_consumed_between_confirmation_gates():
+    capture = NativeProposalCapture()
+    capture.record_state({"fault_spec": {"duration_seconds": 60}})
+    capture.record(_current_native_proposal())
+    first = capture.take()
+    assert first["duration_seconds"] == 60
+
+    with pytest.raises(BladeTaskError, match="did not expose"):
+        capture.take()
+
+    next_proposal = _current_native_proposal()
+    next_proposal["target"] = {"namespace": "otel-demo", "names": ["cart-b"]}
+    next_proposal["params"] = {"time": "400", "timeout": "120"}
+    capture.record(next_proposal)
+    second = capture.take()
+    assert second["target"]["names"] == ["cart-b"]
+    assert second["params"]["timeout"] == "120"
+    assert "duration_seconds" not in second
+
+
 def test_only_explicit_harness_approval_is_granted():
     assert confirmation_granted({"ok": True, "approved": True}) is True
     assert confirmation_granted({"ok": True, "allowed": True}) is True
@@ -293,3 +356,93 @@ def test_worker_constructs_targetless_l4_task_in_task_mode(tmp_path, monkeypatch
     output = capsys.readouterr().out
     assert '"type":"stage2_bladeai_result"' in output
     assert f'"status":"{sdk_status}"' in output
+
+
+def test_worker_cleans_up_after_sdk_execute_exception(tmp_path, monkeypatch, capsys):
+    captured = {"cleanup": 0}
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class FakeAgent:
+        def prepare(self, _runtime, _task):
+            captured["prepared"] = True
+
+        def execute(self, _runtime, _task):
+            raise RuntimeError("sdk exploded")
+
+        def cleanup(self, _runtime, _task):
+            captured["cleanup"] += 1
+
+    package = ModuleType("chaos_agent")
+    l4 = ModuleType("chaos_agent.l4")
+    agent_module = ModuleType("chaos_agent.l4.agent")
+    schema_module = ModuleType("chaos_agent.l4.schemas")
+    agent_module.L4ResilienceAgent = FakeAgent
+    schema_module.L4TestTask = FakeTask
+    monkeypatch.setitem(sys.modules, "chaos_agent", package)
+    monkeypatch.setitem(sys.modules, "chaos_agent.l4", l4)
+    monkeypatch.setitem(sys.modules, "chaos_agent.l4.agent", agent_module)
+    monkeypatch.setitem(sys.modules, "chaos_agent.l4.schemas", schema_module)
+    monkeypatch.setattr("stage2_service.bladeai_worker._assert_controlled_blade_shim", lambda: None)
+    monkeypatch.setattr("stage2_service.bladeai_worker._install_worker_sdk_runtime", lambda _agent_cls: None)
+    monkeypatch.setattr("stage2_service.bladeai_worker.McpHarnessConfirmationClient.from_env", lambda: _Confirm({"ok": True, "allowed": True}))
+    monkeypatch.setattr("stage2_service.bladeai_worker.McpTargetUIDResolver.from_env", lambda: _UID())
+    monkeypatch.setattr("stage2_service.bladeai_worker._capture_native_confirmation_proposal", lambda _runtime: nullcontext())
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(_task_request()), encoding="utf-8")
+
+    from stage2_service.bladeai_worker import main
+
+    assert main([str(path)]) == 2
+    assert captured["cleanup"] == 1
+    output = capsys.readouterr().out
+    assert '"kind":"fatal"' in output
+    assert "RuntimeError" in output
+    assert "sdk exploded" not in output
+
+
+def test_worker_reports_cleanup_failure_as_incomplete(tmp_path, monkeypatch, capsys):
+    class FakeTask:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class FakeAgent:
+        def prepare(self, _runtime, _task):
+            return None
+
+        def execute(self, _runtime, task):
+            return SimpleNamespace(
+                status="passed", task_id=task.task_id, trajectory_id=None,
+                summary="completed", error=None, extras={},
+            )
+
+        def cleanup(self, _runtime, _task):
+            raise RuntimeError("cleanup token detail")
+
+    package = ModuleType("chaos_agent")
+    l4 = ModuleType("chaos_agent.l4")
+    agent_module = ModuleType("chaos_agent.l4.agent")
+    schema_module = ModuleType("chaos_agent.l4.schemas")
+    agent_module.L4ResilienceAgent = FakeAgent
+    schema_module.L4TestTask = FakeTask
+    monkeypatch.setitem(sys.modules, "chaos_agent", package)
+    monkeypatch.setitem(sys.modules, "chaos_agent.l4", l4)
+    monkeypatch.setitem(sys.modules, "chaos_agent.l4.agent", agent_module)
+    monkeypatch.setitem(sys.modules, "chaos_agent.l4.schemas", schema_module)
+    monkeypatch.setattr("stage2_service.bladeai_worker._assert_controlled_blade_shim", lambda: None)
+    monkeypatch.setattr("stage2_service.bladeai_worker._install_worker_sdk_runtime", lambda _agent_cls: None)
+    monkeypatch.setattr("stage2_service.bladeai_worker.McpHarnessConfirmationClient.from_env", lambda: _Confirm({"ok": True, "allowed": True}))
+    monkeypatch.setattr("stage2_service.bladeai_worker.McpTargetUIDResolver.from_env", lambda: _UID())
+    monkeypatch.setattr("stage2_service.bladeai_worker._capture_native_confirmation_proposal", lambda _runtime: nullcontext())
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(_task_request()), encoding="utf-8")
+
+    from stage2_service.bladeai_worker import main
+
+    assert main([str(path)]) == 2
+    output = capsys.readouterr().out
+    assert '"kind":"fatal"' in output
+    assert "cleanup failed: RuntimeError" in output
+    assert "cleanup token detail" not in output
