@@ -119,13 +119,30 @@ ConfigMaps, node placement and active tasks from that cluster before changes.
 
 ## Local validation
 
-The cluster image can be exercised on a laptop with the same files:
+`gateway_audit.logger_instance` is a proxy ingress callback. LiteLLM loads
+`gateway_audit.py` from the **same directory as config.yaml**, not from an
+arbitrary Python module path. The renderer includes both files in one ConfigMap;
+Controller and gateway mount the same config file using read-only `subPath`
+mounts. Restart the reviewed workloads after a configuration update so their
+snapshots and the running router move together.
+
+The callback writes only Controller-owned request metadata to the private
+`gateway-audit` emptyDir shared with the Controller, never with the Agent.
+`received` means the request arrived at the proxy, **not** that the model or
+experiment succeeded. NativeRunner validates all expected request IDs and
+persists `gateway-requests.json`; D0 import revalidates this durable artifact.
+No prompt, response body, token or cookie belongs in this receipt. Missing or
+inconsistent receipts cannot qualify a trial. Model availability is checked
+separately per alias; one unavailable alias does not disable healthy aliases.
+
+Run the real proxy image against an in-container fake provider without network
+access or real credentials. This checks four request forms with four Harness
+identity labels (16 requests), not actual Harness execution or live models:
 
 ```bash
-docker run -d --name litellm-check --platform linux/amd64 -p 127.0.0.1:4017:4000 \
-    -v "$PWD/deploy/stage2/litellm:/etc/litellm:ro" --env-file "$GATEWAY_ENV_FILE" \
-    1.94.151.57:85/observe/aiobs-litellm:v1
-RESBENCH_LLM_BASE_URL=http://127.0.0.1:4017/v1 RESBENCH_LLM_API_KEY=<master key> \
-    uv run python scripts/probe_models.py --models-config harness/models.yaml --model gpt-5.5
-docker rm -f litellm-check
+docker run --rm --network none --platform linux/amd64 \
+    --user 10001:10001 --read-only --tmpfs /tmp:rw,nosuid,size=256m \
+    --mount "type=bind,source=$PWD/stage2_service/gateway_audit_callback.py,target=/probe-mod/gateway_audit.py,readonly" \
+    --mount "type=bind,source=$PWD/tests/integration/gateway_proxy_probe.py,target=/probe.py,readonly" \
+    --entrypoint python 1.94.151.57:85/observe/aiobs-litellm:v1 /probe.py
 ```

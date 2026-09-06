@@ -11,7 +11,7 @@ import secrets
 import socket
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import AsyncIterator, Callable
 
 import httpx
@@ -44,6 +44,9 @@ class TrialRelayConfig:
     upstream_base_url: str
     upstream_api_key: str
     relay_token: str
+    harness_name: str = "unknown"
+    gateway_config_sha256: str = ""
+    request_ids: list[str] = field(default_factory=list, compare=False)
     request_timeout_seconds: float = 180.0
     max_request_bytes: int = MAX_REQUEST_BYTES
     host: str = RELAY_HOST
@@ -58,6 +61,8 @@ class TrialRelayConfig:
         model_alias: str,
         upstream_base_url: str,
         upstream_api_key: str,
+        harness_name: str = "unknown",
+        gateway_config_sha256: str = "",
         relay_token: str | None = None,
         request_timeout_seconds: float = 180.0,
         max_request_bytes: int = MAX_REQUEST_BYTES,
@@ -74,6 +79,8 @@ class TrialRelayConfig:
             upstream_base_url=upstream_base_url.rstrip("/"),
             upstream_api_key=upstream_api_key,
             relay_token=relay_token or secrets.token_urlsafe(32),
+            harness_name=harness_name,
+            gateway_config_sha256=gateway_config_sha256,
             request_timeout_seconds=request_timeout_seconds,
             max_request_bytes=max_request_bytes,
         )
@@ -134,10 +141,17 @@ def create_trial_relay_app(
         if _has_forbidden_routing_field(payload):
             return _error(403, "request_routing_parameter_forbidden")
         upstream_url = _upstream_url(config.upstream_base_url, request.url.path)
+        request_id = secrets.token_hex(16)
+        config.request_ids.append(request_id)
         headers = {
             "authorization": f"Bearer {config.upstream_api_key}",
             "content-type": "application/json",
             "accept": request.headers.get("accept", "application/json"),
+            "x-resbench-trial-id": config.trial_id,
+            "x-resbench-harness": config.harness_name,
+            "x-resbench-model-alias": config.model_alias,
+            "x-resbench-request-id": request_id,
+            "x-resbench-gateway-config-sha256": config.gateway_config_sha256,
         }
         client = factory()
         try:

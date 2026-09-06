@@ -11,9 +11,24 @@ from stage2_service.artifacts import ArtifactStore
 from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.campaign import (
     CampaignEngine,
+    _gateway_evidence_issues,
     _approval_feedback,
     _guided_turn_feedback,
 )
+
+
+def test_gateway_evidence_is_required_without_qualification_and_actual_model_cannot_be_filled():
+    missing = _gateway_evidence_issues(
+        {"model_alias": "", "gateway_route": {}, "gateway_config_sha256": "", "gateway_evidence_verified": False, "gateway_request_ids": (), "gateway_evidence_ref": ""},
+        qualification_ref=None, expected_model_alias="gpt-5.6-sol",
+    )
+    assert "gateway_route_missing" in missing
+    assert "gateway_model_alias_mismatch" in missing
+    wrong = _gateway_evidence_issues(
+        {"model_alias": "other", "gateway_route": {"model_alias": "other"}, "gateway_config_sha256": "a" * 64, "gateway_evidence_verified": True, "gateway_request_ids": ("one",), "gateway_evidence_ref": "gateway-requests.json"},
+        qualification_ref=None, expected_model_alias="gpt-5.6-sol",
+    )
+    assert wrong == ["gateway_model_alias_mismatch"]
 from stage2_service.contracts import (
     AgentVerdict,
     CampaignRequest,
@@ -317,7 +332,7 @@ class Runner:
         event_observer,
         **_runtime_options,
     ):
-        del model_alias, episode, capability, base_prompt
+        del episode, capability, base_prompt
         events = []
         if case.trial_kind is TrialKind.PROTECTED_INFRASTRUCTURE:
             events = [
@@ -588,6 +603,12 @@ class Runner:
             lifecycle_events=tuple(events),
             artifact_refs=(f"harness://{trial_id}",),
             final_output={
+                "model_alias": model_alias,
+                "gateway_route": {"model_alias": model_alias, "route": "test"},
+                "gateway_config_sha256": "a" * 64,
+                "gateway_evidence_verified": True,
+                "gateway_request_ids": [f"request-{trial_id}"],
+                "gateway_evidence_ref": "gateway-requests.json",
                 "agent_result": {
                     "remaining_risk": case.expected_agent_signal,
                     "recovery_check": case.expected_agent_signal,
@@ -873,7 +894,8 @@ class FailedRunner:
 
 
 class InvalidAgentOutputRunner:
-    def run(self, **_kwargs):
+    def run(self, **kwargs):
+        model = kwargs["model_alias"]
         return HarnessReport(
             status="failed",
             agent_verdict=AgentVerdict.INCONCLUSIVE,
@@ -881,16 +903,20 @@ class InvalidAgentOutputRunner:
             final_output={
                 "process_succeeded": True,
                 "validation_error": "agent result schema mismatch",
+                "model_alias": model, "gateway_route": {"model_alias": model}, "gateway_config_sha256": "a" * 64,
+                "gateway_evidence_verified": True, "gateway_request_ids": ["invalid-output-request"], "gateway_evidence_ref": "gateway-requests.json",
             },
         )
 
 
 class TimeoutRunner:
-    def run(self, **_kwargs):
+    def run(self, **kwargs):
+        model = kwargs["model_alias"]
         return HarnessReport(
             status="timeout",
             agent_verdict=AgentVerdict.FAIL,
             lifecycle_events=(),
+            final_output={"model_alias": model, "gateway_route": {"model_alias": model}, "gateway_config_sha256": "a" * 64, "gateway_evidence_verified": True, "gateway_request_ids": ["timeout-request"], "gateway_evidence_ref": "gateway-requests.json"},
         )
 
 
@@ -961,7 +987,7 @@ def test_d7_finalizes_capability_loss_before_evaluation_without_generic_rollback
                 applied=True, application_evidence={"restored": True}, rolled_back=True,
                 rollback_evidence={"policy_restored": True},
             )
-            return report.model_copy(update={"final_output": {"capability_loss": {"restored": True}}}), (record,)
+            return report.model_copy(update={"final_output": {**report.final_output, "capability_loss": {"restored": True}}}), (record,)
 
         def abort_capability_loss(self, *, trial_id):
             self.aborted.append(trial_id)

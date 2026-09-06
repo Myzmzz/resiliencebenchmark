@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -87,6 +88,38 @@ def test_private_files_and_safe_database_scope(tmp_path: Path) -> None:
         PlatformLedger(tmp_path / "private", database_name="../escape.sqlite3")
     with pytest.raises(ValueError, match="sqlite/db suffix"):
         PlatformLedger(tmp_path / "private", database_name="ledger.txt")
+
+
+def test_wal_sidecar_disappearing_during_permission_fix_is_safe_but_main_db_is_not(tmp_path: Path, monkeypatch) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    calls = []
+    real_chmod = os.chmod
+
+    def disappearing_sidecar(path, mode):
+        calls.append(Path(path).name)
+        if str(path).endswith("-shm"):
+            raise FileNotFoundError(path)
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr("stage2_service.platform_ledger.os.chmod", disappearing_sidecar)
+    ledger._chmod_sqlite_files()
+    assert any(name.endswith("-shm") for name in calls)
+
+    def missing_main(path, mode):
+        if str(path) == str(ledger.path):
+            raise FileNotFoundError(path)
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr("stage2_service.platform_ledger.os.chmod", missing_main)
+    with pytest.raises(FileNotFoundError):
+        ledger._chmod_sqlite_files()
+
+    def permission_error(path, mode):
+        raise PermissionError(path)
+
+    monkeypatch.setattr("stage2_service.platform_ledger.os.chmod", permission_error)
+    with pytest.raises(PermissionError):
+        ledger._chmod_sqlite_files()
 
 
 def test_process_concurrent_appends_have_unique_monotonic_sequences(tmp_path: Path) -> None:

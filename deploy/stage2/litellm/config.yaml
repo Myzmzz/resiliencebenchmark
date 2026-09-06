@@ -99,6 +99,8 @@ model_list:
       api_key: os.environ/ACUCOMPUTE_API_KEY
 
 litellm_settings:
+  callbacks:
+    - gateway_audit.logger_instance
   # Drop request parameters an upstream does not understand instead of
   # failing the call (matches the previously deployed gateway).
   drop_params: true

@@ -88,10 +88,29 @@ def load_qualification_matrix(path: Path) -> dict[str, dict[HarnessKind, Qualifi
                 raise ValueError(
                     f"qualification model mismatch for {harness.value}/{model}"
                 )
+            if not ref.gateway_config_sha256 or not ref.gateway_route:
+                raise ValueError(
+                    f"qualification route evidence is missing for {harness.value}/{model}; legacy records are not formal qualifications"
+                )
+            if ref.gateway_evidence_verified is not True:
+                raise ValueError(
+                    f"qualification gateway request evidence is missing for {harness.value}/{model}"
+                )
+            _require_receipt_identity(ref, model=model)
             result[model][harness] = (
                 ref,
                 raw_ref.get("evaluation_ready") is True,
             )
+        hashes = {entry[0].gateway_config_sha256 for entry in result[model].values()}
+        if len(hashes) != 1:
+            raise ValueError(f"qualification matrix mixes gateway route versions for {model}")
+    all_hashes = {
+        entry[0].gateway_config_sha256
+        for by_harness in result.values()
+        for entry in by_harness.values()
+    }
+    if len(all_hashes) != 1:
+        raise ValueError("qualification matrix mixes gateway route versions across models")
     return result
 
 
@@ -111,9 +130,20 @@ def build_matrix_requests(
         refs = qualification_matrix.get(model)
         if refs is None or set(refs) != set(MATRIX_HARNESSES):
             raise ValueError(f"formal qualification refs are incomplete for {model}")
+    qualification_hashes = {
+        entry[0].gateway_config_sha256
+        for refs in qualification_matrix.values()
+        for entry in refs.values()
+    }
+    if len(qualification_hashes) != 1:
+        raise ValueError("formal qualification refs mix gateway route versions")
+    for model in STAGE2_MODEL_MATRIX:
+        refs = qualification_matrix.get(model)
+        assert refs is not None
         model_slug = model.replace(".", "-")
         for harness in MATRIX_HARNESSES:
             ref, evaluation_ready = refs[harness]
+            _require_receipt_identity(ref, model=model)
             pair_slug = f"{model_slug}-{harness.value}"
             requests.append(
                 CampaignRequest(
@@ -194,6 +224,7 @@ def run_matrix(
             {**dict(preflight), "matrix_unavailable": unavailable},
         )
         raise RuntimeError("Stage-2 model/Harness matrix preflight did not pass")
+    gateway_expectations = _gateway_expectations_from_requests(requests)
     _atomic_json(matrix_root / "preflight.json", dict(preflight))
     _atomic_json(
         matrix_root / "request.json",
@@ -209,6 +240,7 @@ def run_matrix(
             * len(CORE_STAGE2_CASE_IDS),
             "campaigns": [item.model_dump(mode="json") for item in requests],
             "resumed_campaigns": [item.campaign_id for item in prior_results],
+            "gateway_config_sha256": _single_gateway_hash(gateway_expectations),
         },
     )
     request_pairs = {
@@ -224,6 +256,8 @@ def run_matrix(
     }
     if len(prior_pairs) != len(prior_results) or not prior_pairs <= request_pairs:
         raise ValueError("prior matrix results contain duplicate or unexpected pairs")
+    for result in prior_results:
+        _validate_campaign_gateway_evidence(result, gateway_expectations)
     results: list[CampaignResult] = list(prior_results)
     event_path = matrix_root / "events.jsonl"
 
@@ -243,6 +277,7 @@ def run_matrix(
         if pair in prior_pairs:
             continue
         result = run_campaign(request, lambda event, model=model: observe(model, event))
+        _validate_campaign_gateway_evidence(result, gateway_expectations)
         results.append(result)
         _atomic_json(
             matrix_root / "checkpoint.json",
@@ -253,6 +288,7 @@ def run_matrix(
                     {
                         "harness": item.harnesses[0].value,
                         "model": next(iter(item.model_by_harness.values())),
+                        "gateway_config_sha256": _campaign_gateway_hash(item),
                     }
                     for item in results
                 ],
@@ -296,19 +332,36 @@ def build_matrix_report(
     prompt: str,
     campaigns: list[CampaignResult],
 ) -> dict[str, Any]:
+    report_gateway_hash = _single_gateway_hash_from_campaigns(campaigns)
     rows: dict[tuple[str, str], list[Any]] = defaultdict(list)
     campaign_refs = []
     for campaign in campaigns:
+        campaign_hash = _campaign_gateway_hash(campaign)
         campaign_refs.append(
             {
                 "campaign_id": campaign.campaign_id,
                 "request_id": campaign.request_id,
                 "platform_status": campaign.platform_status.value,
                 "formally_scored": campaign.qualification.get("scored") is True,
+                "gateway_config_sha256": campaign_hash,
             }
         )
         for trial in campaign.trials:
             model = campaign.model_by_harness[trial.harness]
+            if trial.model_alias and trial.model_alias != model:
+                raise ValueError(
+                    f"matrix result model alias mismatch for {campaign.campaign_id}/{trial.trial_id}"
+                )
+            if not trial.gateway_config_sha256 or not trial.gateway_route:
+                raise ValueError(
+                    f"matrix result route evidence is missing for {campaign.campaign_id}/{trial.trial_id}"
+                )
+            if trial.gateway_config_sha256 != report_gateway_hash:
+                raise ValueError("matrix report mixes gateway route versions")
+            if trial.gateway_evidence_verified is not True:
+                raise ValueError(
+                    f"matrix result gateway request evidence is unverified for {campaign.campaign_id}/{trial.trial_id}"
+                )
             rows[(trial.harness.value, model)].append(trial)
     score_rows = []
     performance: dict[str, Any] = {}
@@ -347,6 +400,10 @@ def build_matrix_report(
                         and not item.recovery.agent_recovery_verified
                         for item in trials
                     ),
+                    "gateway_config_sha256": (
+                        trials[0].gateway_config_sha256 if trials else ""
+                    ),
+                    "gateway_route": dict(trials[0].gateway_route) if trials else {},
                 }
             )
             performance[f"{harness.value}/{model}"] = {
@@ -361,6 +418,11 @@ def build_matrix_report(
                             "agent_recovery_verified": item.recovery.agent_recovery_verified,
                             "controller_cleanup_verified": item.recovery.controller_cleanup_verified,
                             "artifact_refs": list(item.artifact_refs),
+                            "gateway_config_sha256": item.gateway_config_sha256,
+                            "gateway_route": dict(item.gateway_route),
+                            "gateway_evidence_verified": item.gateway_evidence_verified,
+                            "gateway_request_ids": list(item.gateway_request_ids),
+                            "gateway_evidence_ref": item.gateway_evidence_ref,
                         }
                         for item in trials
                         if item.kind.value == case.value
@@ -405,6 +467,7 @@ def build_matrix_report(
         "cases": [item.value for item in CORE_STAGE2_CASE_IDS],
         "expected_trial_count": 56,
         "completed_trial_count": sum(len(item.trials) for item in campaigns),
+        "gateway_config_sha256": report_gateway_hash,
         "campaigns": campaign_refs,
         "score_definition": (
             "100 * PASS / (PASS + FAIL), only platform-valid, formally scored Trials; "
@@ -472,6 +535,129 @@ def render_matrix_report(report: Mapping[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+GatewayExpectation = dict[tuple[HarnessKind, str], D0QualificationRef]
+
+
+def _require_receipt_identity(record: D0QualificationRef | TrialResult, *, model: str) -> None:
+    """Do not let a standalone boolean stand in for a model-bound receipt."""
+    ids = record.gateway_request_ids
+    if (record.model_alias != model or record.gateway_route.get("model_alias") != model
+            or not record.gateway_config_sha256 or record.gateway_evidence_verified is not True
+            or not record.gateway_evidence_ref or not ids or any(not value for value in ids)
+            or len(ids) != len(set(ids))):
+        raise ValueError("gateway request evidence identity is incomplete or inconsistent")
+
+
+def _gateway_expectations_from_requests(
+    requests: tuple[CampaignRequest, ...],
+) -> GatewayExpectation:
+    expectations: GatewayExpectation = {}
+    for request in requests:
+        if len(request.harnesses) != 1:
+            raise ValueError("matrix requests must contain one Harness")
+        harness = request.harnesses[0]
+        model = request.model_by_harness[harness]
+        ref = request.qualification_refs.get(harness)
+        if ref is None:
+            raise ValueError(f"matrix request is missing D0 qualification ref for {harness.value}/{model}")
+        if ref.model_alias != model:
+            raise ValueError(f"matrix request model/ref mismatch for {harness.value}/{model}")
+        if not ref.gateway_config_sha256 or not ref.gateway_route:
+            raise ValueError(f"matrix request route evidence is missing for {harness.value}/{model}")
+        if ref.gateway_evidence_verified is not True:
+            raise ValueError(f"matrix request gateway request evidence is missing for {harness.value}/{model}")
+        _require_receipt_identity(ref, model=model)
+        key = (harness, model)
+        if key in expectations and expectations[key] != ref:
+            raise ValueError(f"matrix request has duplicate inconsistent qualification refs for {harness.value}/{model}")
+        expectations[key] = ref
+    if len({ref.gateway_config_sha256 for ref in expectations.values()}) != 1:
+        raise ValueError("matrix requests mix gateway route versions")
+    return expectations
+
+
+def _single_gateway_hash(expectations: GatewayExpectation) -> str:
+    hashes = {ref.gateway_config_sha256 for ref in expectations.values()}
+    if len(hashes) != 1:
+        raise ValueError("matrix requests mix gateway route versions")
+    return next(iter(hashes))
+
+
+def _single_gateway_hash_from_campaigns(campaigns: list[CampaignResult]) -> str:
+    hashes = {
+        trial.gateway_config_sha256
+        for campaign in campaigns
+        for trial in campaign.trials
+        if trial.gateway_config_sha256
+    }
+    if not campaigns:
+        return ""
+    if len(hashes) != 1:
+        raise ValueError("matrix report mixes gateway route versions")
+    return next(iter(hashes))
+
+
+def _campaign_pair(campaign: CampaignResult) -> tuple[HarnessKind, str]:
+    if len(campaign.harnesses) != 1:
+        raise ValueError(f"matrix campaign {campaign.campaign_id} must contain one Harness")
+    harness = campaign.harnesses[0]
+    model = campaign.model_by_harness.get(harness)
+    if not model:
+        raise ValueError(f"matrix campaign {campaign.campaign_id} is missing model alias")
+    return harness, model
+
+
+def _campaign_gateway_hash(campaign: CampaignResult) -> str:
+    hashes = {
+        trial.gateway_config_sha256
+        for trial in campaign.trials
+        if trial.gateway_config_sha256
+    }
+    if len(hashes) > 1:
+        raise ValueError(f"campaign {campaign.campaign_id} mixes gateway route versions")
+    if hashes:
+        return next(iter(hashes))
+    summary_hashes = {
+        value for value in campaign.gateway_config_sha256_by_harness.values() if value
+    }
+    if len(summary_hashes) > 1:
+        raise ValueError(f"campaign {campaign.campaign_id} mixes gateway route versions")
+    return next(iter(summary_hashes)) if summary_hashes else ""
+
+
+def _validate_campaign_gateway_evidence(
+    campaign: CampaignResult,
+    expectations: GatewayExpectation,
+) -> None:
+    harness, model = _campaign_pair(campaign)
+    ref = expectations.get((harness, model))
+    if ref is None:
+        raise ValueError(f"matrix campaign has unexpected pair {harness.value}/{model}")
+    summary_hash = campaign.gateway_config_sha256_by_harness.get(harness)
+    if summary_hash and summary_hash != ref.gateway_config_sha256:
+        raise ValueError(f"campaign {campaign.campaign_id} gateway route version does not match D0 qualification")
+    summary_route = campaign.gateway_routes_by_harness.get(harness)
+    if summary_route and dict(summary_route) != dict(ref.gateway_route):
+        raise ValueError(f"campaign {campaign.campaign_id} gateway route does not match D0 qualification")
+    summary_verified = campaign.gateway_evidence_verified_by_harness.get(harness)
+    if summary_verified is False:
+        raise ValueError(f"campaign {campaign.campaign_id} gateway request evidence is unverified")
+    if not campaign.trials:
+        raise ValueError(f"campaign {campaign.campaign_id} has no matrix trials")
+    for trial in campaign.trials:
+        if trial.harness is not harness:
+            raise ValueError(f"campaign {campaign.campaign_id} contains an unexpected Harness trial")
+        if trial.model_alias != model:
+            raise ValueError(f"trial {trial.trial_id} model alias does not match matrix request")
+        if trial.gateway_config_sha256 != ref.gateway_config_sha256:
+            raise ValueError(f"trial {trial.trial_id} gateway route version does not match D0 qualification")
+        if dict(trial.gateway_route) != dict(ref.gateway_route):
+            raise ValueError(f"trial {trial.trial_id} gateway route does not match D0 qualification")
+        if trial.gateway_evidence_verified is not True:
+            raise ValueError(f"trial {trial.trial_id} gateway request evidence is unverified")
+        _require_receipt_identity(trial, model=model)
 
 
 def _atomic_json(path: Path, payload: Any) -> None:

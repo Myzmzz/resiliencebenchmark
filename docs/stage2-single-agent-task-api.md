@@ -122,7 +122,7 @@ limit           默认 200，最大 1000
 - `interaction_ledger` Agent、用户与 Harness 的真实交互归因；
 - `harness.output_repaired/output_repair_count/retry_history` 补答与修正过程；
 - `harness.error_code/error/model_request_count/model_history_ref` Harness 模型失败的专用错误码、末次诊断、请求数和详细 artifact；
-- `agent_input` 和每轮 `input-metadata.json`、`report.md` 中的 Prompt 全文、等级标签与决策策略；
+- `agent_input` 和每轮 `runtime-request.redacted.json`、`report.md` 中的 Prompt 全文、等级标签与决策策略；输入记录同时保留实际模型别名与网关路由版本；
 - 权限恢复、环境重置和中止操作状态。
 
 Summary 会聚合结构化反馈，重点看五类信息：

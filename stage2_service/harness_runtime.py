@@ -31,6 +31,7 @@ from .lifecycle_mapper import LifecycleMapper, successful
 from .platform_ledger import PlatformLedger
 from .tool_event_pump import RealtimeToolEventPump
 from .llm_relay import TrialRelay, TrialRelayConfig
+from .gateway_evidence import read_gateway_requests
 from .notices import acknowledge_received_notices, all_trial_events
 
 from scripts.run_harness_trial import (
@@ -134,6 +135,8 @@ class NativeHarnessRunner:
         sandbox_work_root: Path | None = None,
         local_test_execution: bool = False,
         capability_loss_factory=None,
+        gateway_snapshot=None,
+        gateway_audit_dir: Path | None = None,
     ):
         self.repo_root = repo_root.resolve()
         self.private_root = private_root.resolve()
@@ -151,6 +154,8 @@ class NativeHarnessRunner:
         self.agent_work_root = Path(agent_work_root or (self.private_root / "local-test-work")).resolve()
         self.sandbox_work_root = Path(sandbox_work_root or (self.private_root / "local-test-sandbox")).resolve()
         self.capability_loss_factory = capability_loss_factory
+        self.gateway_snapshot = gateway_snapshot
+        self.gateway_audit_dir = gateway_audit_dir.resolve() if gateway_audit_dir else None
         self._capability_runs: dict[str, tuple[Any, str, CaseSpec]] = {}
         self.private_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -348,11 +353,19 @@ class NativeHarnessRunner:
             "RESBENCH_DECISION_POLICY": decision_policy.value,
         }
         agent_env = dict(env)
+        gateway_route = None
+        gateway_hash = ""
+        if self.gateway_snapshot is not None:
+            gateway_route = dict(self.gateway_snapshot.route(model_alias))
+            gateway_hash = str(self.gateway_snapshot.config_sha256)
+        elif not self.local_test_execution:
+            raise HarnessRuntimeError("gateway configuration snapshot is required", error_code="GATEWAY_SNAPSHOT_MISSING")
         if not self.local_test_execution:
             relay_config = TrialRelayConfig.issue(
                 trial_id=trial_id, model_alias=model_alias,
                 upstream_base_url=self.base_environment["RESBENCH_LLM_BASE_URL"],
                 upstream_api_key=self.base_environment["RESBENCH_LLM_API_KEY"],
+                harness_name=harness.value, gateway_config_sha256=gateway_hash,
             )
             relay = resources.enter_context(TrialRelay(relay_config))
             agent_env.update(relay.agent_environment())
@@ -493,11 +506,12 @@ class NativeHarnessRunner:
             policy=responder_policy,
             context={"original_prompt": base_prompt, "prompt_level_label": prompt_level_label},
         )
-        write_json(artifact_dir / "input-metadata.json", {
+        write_json(artifact_dir / "runtime-request.redacted.json", redact_json({
             "prompt": base_prompt, "executed_prompt": redact_text(prompt, env),
             "prompt_level_label": prompt_level_label, "decision_policy": decision_policy.value,
-            "model": model_alias, "harness": harness.value, "trial_id": trial_id,
-        })
+            "model": model_alias, "model_alias": model_alias, "harness": harness.value, "trial_id": trial_id,
+            "gateway_route": gateway_route, "gateway_config_sha256": gateway_hash,
+        }, env))
         interaction_mode_value = interaction_mode.value
 
         def bounded_reply_call(kind, action):
@@ -1041,6 +1055,24 @@ class NativeHarnessRunner:
             write_json(artifact_dir / ref, redact_json(last_assessment, env))
         write_json(artifact_dir / "assessment-history.json", redact_json(assessment_history, env))
         write_json(artifact_dir / "harness-conversation.json", redact_json(responder.history, env))
+        gateway_rows = None
+        gateway_request_ids: list[str] = []
+        if not self.local_test_execution:
+            gateway_request_ids = list(relay_config.request_ids)
+            if self.gateway_audit_dir is not None:
+                gateway_rows = read_gateway_requests(
+                    self.gateway_audit_dir, trial_id=trial_id, harness=harness.value,
+                    model_alias=model_alias, config_sha256=gateway_hash,
+                    request_ids=set(gateway_request_ids),
+                )
+            if gateway_rows is None:
+                harness_failure = {
+                    **harness_failure,
+                    "error_code": harness_failure.get("error_code") or "GATEWAY_EVIDENCE_MISSING",
+                    "gateway_evidence_missing": True,
+                }
+            else:
+                write_json(artifact_dir / "gateway-requests.json", gateway_rows)
         status = (
             "timeout"
             if result.timed_out
@@ -1054,6 +1086,7 @@ class NativeHarnessRunner:
             else AgentVerdict.FAIL
         )
         final_output: dict[str, Any] = {
+            "trial_id": trial_id,
             "returncode": result.returncode,
             "validation_error": validation_error,
             "process_succeeded": result.returncode == 0 and not result.timed_out and not result.output_truncated,
@@ -1076,6 +1109,12 @@ class NativeHarnessRunner:
             "prompt_level_label": prompt_level_label,
             "decision_policy": decision_policy.value,
             "original_prompt": base_prompt,
+            "model_alias": model_alias,
+            "gateway_route": gateway_route,
+            "gateway_config_sha256": gateway_hash,
+            "gateway_evidence_verified": gateway_rows is not None,
+            "gateway_request_ids": gateway_request_ids,
+            "gateway_evidence_ref": "gateway-requests.json" if gateway_rows is not None else None,
             "approved_plan": executed_plan or confirmed_plan,
             "adapter_integrity": {
                 "call_count": len(mapper.calls), "result_count": len(mapper.results),
@@ -1112,10 +1151,11 @@ class NativeHarnessRunner:
             artifact_refs=(
                 f"{campaign_id}/{trial_id}/stdout.txt",
                 f"{campaign_id}/{trial_id}/stderr.txt",
-                f"{campaign_id}/{trial_id}/input-metadata.json",
+                f"{campaign_id}/{trial_id}/runtime-request.redacted.json",
                 f"{campaign_id}/{trial_id}/assessment-history.json",
                 f"{campaign_id}/{trial_id}/harness-conversation.json",
                 f"{campaign_id}/{trial_id}/canonical-events.jsonl",
+                *((f"{campaign_id}/{trial_id}/gateway-requests.json",) if gateway_rows is not None else ()),
                 *((f"{campaign_id}/{trial_id}/{ref}",) if ref else ()),
                 *(f"{campaign_id}/{trial_id}/{name}" for name in native_session_refs),
             ),

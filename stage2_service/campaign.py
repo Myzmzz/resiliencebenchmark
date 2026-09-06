@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -26,6 +27,7 @@ from .contracts import (
     CampaignResult,
     CaseSpec,
     CapabilityProfile,
+    D0QualificationRef,
     DisturbanceRecord,
     DisturbanceType,
     ExperimentVerdict,
@@ -1064,6 +1066,51 @@ class CampaignEngine:
                                 "checks": [],
                                 "reason_codes": [],
                             }
+                        gateway_evidence = _trial_gateway_evidence(
+                            report,
+                        )
+                        gateway_issues = _gateway_evidence_issues(
+                            gateway_evidence,
+                            qualification_ref=request.qualification_refs.get(harness),
+                            expected_model_alias=request.model_by_harness[harness],
+                        )
+                        if gateway_issues:
+                            checks = list(evaluation_decision.get("checks") or [])
+                            checks.append(
+                                {
+                                    "rule_id": "GATEWAY_ROUTE_VERSION",
+                                    "expected": (
+                                        request.qualification_refs[harness].model_dump(
+                                            mode="json"
+                                        )
+                                        if harness in request.qualification_refs
+                                        else None
+                                    ),
+                                    "observed": gateway_evidence,
+                                    "passed": False,
+                                    "reason_codes": gateway_issues,
+                                }
+                            )
+                            evaluation_decision.update(
+                                {
+                                    "platform_valid": False,
+                                    "verdict": AgentVerdict.CASE_INVALID.value,
+                                    "platform_status": TrialPlatformStatus.CASE_INVALID.value,
+                                    "trial_validity": TrialValidity.CASE_INVALID.value,
+                                    "experiment_verdict": ExperimentVerdict.NOT_EVALUATED.value,
+                                    "agent_outcome": AgentOutcome.NOT_EVALUATED.value,
+                                    "checks": checks,
+                                    "reason_codes": [
+                                        *[
+                                            str(value)
+                                            for value in evaluation_decision.get(
+                                                "reason_codes", ()
+                                            )
+                                        ],
+                                        *gateway_issues,
+                                    ],
+                                }
+                            )
                         platform_valid = evaluation_decision.get("platform_valid") is True
                         verdict = AgentVerdict(
                             evaluation_decision.get(
@@ -1131,6 +1178,18 @@ class CampaignEngine:
                             trial_id=trial_id,
                             harness=harness,
                             kind=kind,
+                            model_alias=gateway_evidence["model_alias"],
+                            gateway_route=gateway_evidence["gateway_route"],
+                            gateway_config_sha256=gateway_evidence["gateway_config_sha256"],
+                            gateway_evidence_verified=gateway_evidence[
+                                "gateway_evidence_verified"
+                            ],
+                            gateway_request_ids=gateway_evidence[
+                                "gateway_request_ids"
+                            ],
+                            gateway_evidence_ref=gateway_evidence[
+                                "gateway_evidence_ref"
+                            ],
                             runtime_target=runtime.target,
                             platform_valid=platform_valid,
                             diagnostic_only=diagnostic_only,
@@ -1390,7 +1449,14 @@ class CampaignEngine:
                                 final_reason = "CASE_INVALID"
                             else:
                                 final_reason = "PLATFORM_INVALID"
-                            reason_codes = [final_reason]
+                            reason_codes = list(
+                                str(value)
+                                for value in evaluation_decision.get(
+                                    "reason_codes", ()
+                                )
+                            ) or [final_reason]
+                            if final_reason not in reason_codes:
+                                reason_codes.append(final_reason)
                         else:
                             reason_codes = list(
                                 evaluation_decision.get("reason_codes") or []
@@ -1624,6 +1690,10 @@ class CampaignEngine:
             request_id=request.request_id,
             harnesses=request.harnesses,
             model_by_harness=request.model_by_harness,
+            gateway_routes_by_harness=_campaign_gateway_routes(results),
+            gateway_config_sha256_by_harness=_campaign_gateway_hashes(results),
+            gateway_evidence_verified_by_harness=_campaign_gateway_verified(results),
+            gateway_evidence_ref_by_harness=_campaign_gateway_refs(results),
             platform_status=status,
             trials=tuple(results),
             started_at=started_at,
@@ -1643,6 +1713,94 @@ class CampaignEngine:
         )
         self.artifacts.seal(campaign_id)
         return result
+
+
+def _trial_gateway_evidence(
+    report: HarnessReport,
+) -> dict[str, Any]:
+    final = report.final_output if isinstance(report.final_output, Mapping) else {}
+    route = final.get("gateway_route")
+    request_ids = final.get("gateway_request_ids")
+    return {
+        "model_alias": str(final.get("model_alias") or ""),
+        "gateway_route": dict(route) if isinstance(route, Mapping) else {},
+        "gateway_config_sha256": str(final.get("gateway_config_sha256") or ""),
+        "gateway_evidence_verified": (
+            final.get("gateway_evidence_verified") is True
+        ),
+        "gateway_request_ids": tuple(request_ids)
+        if isinstance(request_ids, (list, tuple)) and all(isinstance(item, str) and item for item in request_ids)
+        else (),
+        "gateway_evidence_ref": str(final.get("gateway_evidence_ref") or ""),
+    }
+
+
+def _gateway_evidence_issues(
+    observed: Mapping[str, Any],
+    *,
+    qualification_ref: D0QualificationRef | None,
+    expected_model_alias: str,
+) -> list[str]:
+    issues: list[str] = []
+    model_alias = observed.get("model_alias")
+    route = observed.get("gateway_route")
+    if model_alias != expected_model_alias:
+        issues.append("gateway_model_alias_mismatch")
+    if not isinstance(route, Mapping) or not route:
+        issues.append("gateway_route_missing")
+    elif route.get("model_alias") != model_alias:
+        issues.append("gateway_route_model_alias_mismatch")
+    if not isinstance(observed.get("gateway_config_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", str(observed.get("gateway_config_sha256"))):
+        issues.append("gateway_config_sha256_missing")
+    if observed.get("gateway_evidence_verified") is not True:
+        issues.append("gateway_evidence_unverified")
+    request_ids = observed.get("gateway_request_ids")
+    if not isinstance(request_ids, tuple) or not request_ids or len(set(request_ids)) != len(request_ids) or not all(isinstance(item, str) and item for item in request_ids):
+        issues.append("gateway_request_ids_invalid")
+    if not isinstance(observed.get("gateway_evidence_ref"), str) or not observed.get("gateway_evidence_ref"):
+        issues.append("gateway_evidence_ref_missing")
+    if qualification_ref is None:
+        return issues
+    if dict(route or {}) != dict(qualification_ref.gateway_route):
+        issues.append("gateway_route_mismatch")
+    if observed.get("gateway_config_sha256") != qualification_ref.gateway_config_sha256:
+        issues.append("gateway_config_sha256_mismatch")
+    if qualification_ref.gateway_evidence_verified is not True:
+        issues.append("qualification_gateway_evidence_unverified")
+    return issues
+
+
+def _campaign_gateway_routes(results: list[TrialResult]) -> dict[HarnessKind, dict[str, Any]]:
+    routes: dict[HarnessKind, dict[str, Any]] = {}
+    for result in results:
+        if result.gateway_route:
+            routes.setdefault(result.harness, dict(result.gateway_route))
+    return routes
+
+
+def _campaign_gateway_hashes(results: list[TrialResult]) -> dict[HarnessKind, str]:
+    hashes: dict[HarnessKind, str] = {}
+    for result in results:
+        if result.gateway_config_sha256:
+            hashes.setdefault(result.harness, result.gateway_config_sha256)
+    return hashes
+
+
+def _campaign_gateway_verified(results: list[TrialResult]) -> dict[HarnessKind, bool]:
+    values: dict[HarnessKind, bool] = {}
+    for result in results:
+        values[result.harness] = values.get(result.harness, True) and (
+            result.gateway_evidence_verified is True
+        )
+    return values
+
+
+def _campaign_gateway_refs(results: list[TrialResult]) -> dict[HarnessKind, str]:
+    refs: dict[HarnessKind, str] = {}
+    for result in results:
+        if result.gateway_evidence_ref:
+            refs.setdefault(result.harness, result.gateway_evidence_ref)
+    return refs
 
 
 def _initial_disturbance_attempt(

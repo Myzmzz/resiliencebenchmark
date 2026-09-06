@@ -13,7 +13,7 @@ import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Lock, Thread
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 import yaml
 
@@ -42,6 +42,7 @@ from .episode import load_fixed_episode
 from .evaluator import Stage2Evaluator
 from .finalization import Stage2Finalizer
 from .fault_inventory import resource_from_experiment, snapshot_for_trial
+from .gateway_config import GatewayConfigError, GatewayConfigSnapshot
 from .harness_runtime import NativeHarnessRunner
 from harness.agent_exec.client import AgentExecClient
 from .mcp_supervisor import McpSupervisor
@@ -62,6 +63,9 @@ class RuntimeConfigurationError(RuntimeError):
     pass
 
 
+GatewayProbeRunner = Callable[[GatewayConfigSnapshot, Sequence[str]], Mapping[str, Any]]
+
+
 @dataclass(frozen=True)
 class Stage2RuntimeConfig:
     repo_root: Path
@@ -77,6 +81,8 @@ class Stage2RuntimeConfig:
     llm_base_url: str
     llm_api_key: str
     d0_artifact_root: Path | None
+    gateway_config_file: Path = Path("/etc/litellm/config.yaml")
+    gateway_snapshot: GatewayConfigSnapshot | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None):
@@ -97,12 +103,23 @@ class Stage2RuntimeConfig:
             "STAGE2_POD_NAMESPACE": values.get("STAGE2_POD_NAMESPACE", "resiliencebenchmark-system"),
             "RESBENCH_LLM_BASE_URL": values.get("RESBENCH_LLM_BASE_URL", ""),
             "RESBENCH_LLM_API_KEY": values.get("RESBENCH_LLM_API_KEY", ""),
+            "STAGE2_LITELLM_CONFIG_FILE": values.get(
+                "STAGE2_LITELLM_CONFIG_FILE", "/etc/litellm/config.yaml"
+            ),
         }
         missing = [key for key, value in required.items() if not value]
         if missing:
             raise RuntimeConfigurationError(
                 "missing Stage-2 runtime values: " + ", ".join(sorted(missing))
             )
+        gateway_config_file = Path(required["STAGE2_LITELLM_CONFIG_FILE"]).resolve()
+        try:
+            gateway_snapshot = GatewayConfigSnapshot.from_file(
+                gateway_config_file,
+                required_aliases=STAGE2_SUPPORTED_MODELS,
+            )
+        except GatewayConfigError as exc:
+            raise RuntimeConfigurationError(str(exc)) from exc
         return cls(
             repo_root=Path(required["STAGE2_REPO_ROOT"]).resolve(),
             private_root=Path(required["STAGE2_PRIVATE_ROOT"]).resolve(),
@@ -121,6 +138,8 @@ class Stage2RuntimeConfig:
                 if values.get("STAGE2_D0_ARTIFACT_ROOT")
                 else None
             ),
+            gateway_config_file=gateway_config_file,
+            gateway_snapshot=gateway_snapshot,
         )
 
 
@@ -257,14 +276,14 @@ def _build_runtime(
     cleanup_backend = DirectChaosCleanup(
         chaos_service, chaos_mesh_service, identities.finalizer_kubeconfig
     )
-    harness_runner = NativeHarnessRunner(
-        repo_root=config.repo_root,
-        private_root=private / "harness",
-        artifact_root=config.artifact_root,
-        permissions=permissions,
-        mcp_supervisor=supervisor,
-        base_environment=harness_environment,
-        capability_loss_factory=CapabilityLossRuntimeFactory(
+    harness_runner_kwargs: dict[str, Any] = {
+        "repo_root": config.repo_root,
+        "private_root": private / "harness",
+        "artifact_root": config.artifact_root,
+        "permissions": permissions,
+        "mcp_supervisor": supervisor,
+        "base_environment": harness_environment,
+        "capability_loss_factory": CapabilityLossRuntimeFactory(
             cleanup_backend=cleanup_backend,
             qualification_path=Path(os.environ.get(
                 "STAGE2_SUBSTITUTION_QUALIFICATION_FILE",
@@ -272,17 +291,21 @@ def _build_runtime(
             )),
             evidence_root=private / "capability-loss",
         ),
-        agent_exec_client=AgentExecClient(
+        "agent_exec_client": AgentExecClient(
             Path(os.environ.get("RESBENCH_AGENT_EXEC_SOCKET", "/run/resbench/agent-exec.sock")),
             expected_server_uid=0,
         ),
-        agent_work_root=Path(os.environ.get(
+        "agent_work_root": Path(os.environ.get(
             "STAGE2_AGENT_WORK_ROOT", "/var/lib/resbench-stage2/agent-trials",
         )),
-        sandbox_work_root=Path(os.environ.get(
+        "sandbox_work_root": Path(os.environ.get(
             "STAGE2_SANDBOX_WORK_ROOT", "/var/lib/resbench-stage2/sandbox-trials",
         )),
-    )
+    }
+    if config.gateway_snapshot is not None:
+        harness_runner_kwargs["gateway_snapshot"] = config.gateway_snapshot
+        harness_runner_kwargs["gateway_audit_dir"] = Path("/var/lib/resbench-stage2/gateway-audit")
+    harness_runner = NativeHarnessRunner(**harness_runner_kwargs)
     finalizer = Stage2Finalizer(
         cleanup_backend,
         traffic,
@@ -1061,7 +1084,13 @@ class DirectChaosCleanup:
 
 
 class Stage2System:
-    def __init__(self, config: Stage2RuntimeConfig):
+    def __init__(
+        self,
+        config: Stage2RuntimeConfig,
+        *,
+        model_probe_runner: GatewayProbeRunner | None = None,
+        probe_cache_ttl_seconds: float = 300.0,
+    ):
         self.config = config
         for path in (config.private_root, config.artifact_root):
             path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -1073,9 +1102,23 @@ class Stage2System:
         self.d0_gate = D0QualificationGate(config.d0_artifact_root)
         self._active_lock = Lock()
         self._active_controls: dict[str, dict[str, Any]] = {}
+        self._model_probe_runner = model_probe_runner or self._default_model_probe_runner
+        self._probe_cache_ttl_seconds = probe_cache_ttl_seconds
+        self._probe_lock = Lock()
+        self._probe_cache: dict[tuple[str, str, tuple[str, ...]], tuple[float, dict[str, Any]]] = {}
 
     def preflight(self) -> dict[str, Any]:
         available_models, model_error = self._gateway_models()
+        snapshot, snapshot_error = self._gateway_snapshot()
+        probe_report = self._gateway_probe_report(snapshot) if snapshot is not None else {
+            "issues": [{"severity": "ERROR", "message": snapshot_error or "gateway config snapshot unavailable"}],
+            "models": [],
+        }
+        model_probes = self._model_probe_statuses(
+            snapshot=snapshot,
+            available_models=available_models,
+            probe_report=probe_report,
+        )
         qualification_path = os.environ.get("STAGE2_HARNESS_CAPABILITIES_FILE")
         harness_capabilities, capability_qualification = (
             harness_capabilities_from_qualification(
@@ -1092,13 +1135,13 @@ class Stage2System:
         }
         model_matrix = {
             name: {
-                model: ready and model in available_models
+                model: ready and bool(model_probes.get(model, {}).get("runnable"))
                 for model in STAGE2_SUPPORTED_MODELS
             }
             for name, ready in runtimes.items()
         }
         harnesses = {
-            name: all(model_matrix[name].values()) for name in runtimes
+            name: any(model_matrix[name].values()) for name in runtimes
         }
         return {
             "schema_version": "stage2-preflight.v3",
@@ -1108,6 +1151,13 @@ class Stage2System:
             "model_matrix": model_matrix,
             "available_models": sorted(available_models),
             "model_catalog_error": model_error,
+            "gateway_config": {
+                "config_sha256": snapshot.config_sha256 if snapshot else None,
+                "config_path": snapshot.config_path.as_posix() if snapshot else None,
+                "routes": snapshot.required_routes() if snapshot else {},
+                "error": snapshot_error,
+            },
+            "model_probes": model_probes,
             "cases": [item.model_dump(mode="json") for item in default_case_specs()],
             "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel"],
             "disturbance_mcp_servers": {
@@ -1123,6 +1173,109 @@ class Stage2System:
             "d0": self.d0_gate.inventory(),
             "reset_mode": "mutation_evidence_tiered",
         }
+
+    def _gateway_snapshot(self) -> tuple[GatewayConfigSnapshot | None, str | None]:
+        snapshot = getattr(self.config, "gateway_snapshot", None)
+        if snapshot is not None:
+            return snapshot, None
+        path = getattr(self.config, "gateway_config_file", None)
+        if path is None:
+            return None, "gateway config snapshot unavailable"
+        try:
+            return GatewayConfigSnapshot.from_file(
+                Path(path),
+                required_aliases=STAGE2_SUPPORTED_MODELS,
+            ), None
+        except GatewayConfigError as exc:
+            return None, str(exc)
+
+    def _gateway_probe_report(self, snapshot: GatewayConfigSnapshot) -> Mapping[str, Any]:
+        aliases = tuple(STAGE2_SUPPORTED_MODELS)
+        cache_key = (snapshot.config_sha256, self.config.llm_base_url, aliases)
+        now = time.monotonic()
+        with self._probe_lock:
+            cached = self._probe_cache.get(cache_key)
+            if cached is not None and now - cached[0] <= self._probe_cache_ttl_seconds:
+                return cached[1]
+            try:
+                report = dict(self._model_probe_runner(snapshot, aliases))
+            except Exception as exc:  # noqa: BLE001 - preflight reports bounded setup failures.
+                report = {
+                    "schemaVersion": "resiliencebenchmark.model_probe/v1",
+                    "issues": [
+                        {
+                            "severity": "ERROR",
+                            "message": "gateway model probe failed",
+                            "errorType": type(exc).__name__,
+                        }
+                    ],
+                    "models": [],
+                }
+            self._probe_cache[cache_key] = (now, report)
+            return report
+
+    def _default_model_probe_runner(
+        self,
+        snapshot: GatewayConfigSnapshot,
+        aliases: Sequence[str],
+    ) -> Mapping[str, Any]:
+        del snapshot
+        from scripts import probe_models
+
+        return probe_models.run_probe(
+            self.config.repo_root / "harness/models.yaml",
+            {
+                probe_models.BASE_URL_ENV: self.config.llm_base_url,
+                probe_models.API_KEY_ENV: self.config.llm_api_key,
+            },
+            aliases=list(aliases),
+            dry_run=False,
+        )
+
+    def _model_probe_statuses(
+        self,
+        *,
+        snapshot: GatewayConfigSnapshot | None,
+        available_models: set[str],
+        probe_report: Mapping[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        models = probe_report.get("models") if isinstance(probe_report, Mapping) else []
+        by_alias = {
+            str(item.get("alias")): item
+            for item in models
+            if isinstance(item, Mapping) and item.get("alias")
+        } if isinstance(models, list) else {}
+        issues = probe_report.get("issues") if isinstance(probe_report, Mapping) else []
+        has_error_issue = any(
+            isinstance(issue, Mapping) and issue.get("severity") == "ERROR"
+            for issue in issues if isinstance(issues, list)
+        )
+        result: dict[str, dict[str, Any]] = {}
+        for alias in STAGE2_SUPPORTED_MODELS:
+            model_probe = by_alias.get(alias)
+            probe_status = (
+                str(model_probe.get("overallStatus"))
+                if isinstance(model_probe, Mapping) and model_probe.get("overallStatus")
+                else "missing"
+            )
+            visible = alias in available_models
+            runnable = (
+                visible
+                and snapshot is not None
+                and not has_error_issue
+                and probe_status == "supported"
+            )
+            result[alias] = {
+                "runnable": runnable,
+                "visible_in_gateway_models": visible,
+                "probe_status": probe_status,
+                "route": snapshot.route(alias) if snapshot else None,
+                "probe": dict(model_probe) if isinstance(model_probe, Mapping) else None,
+            }
+        if has_error_issue:
+            for alias in result:
+                result[alias]["probe_error"] = True
+        return result
 
     def _gateway_models(self) -> tuple[set[str], str | None]:
         endpoint = self.config.llm_base_url.rstrip("/") + "/models"

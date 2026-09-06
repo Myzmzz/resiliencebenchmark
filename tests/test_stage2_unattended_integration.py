@@ -321,7 +321,8 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
             plan_node = next(node for node in decision["node_results"] if node["node"] == "PLAN_VALIDATION")
             assert plan_node["score"] == 10
     root = tmp_path / "artifacts/campaign-1234567890abcdef" / runtime.trial_id
-    metadata = json.loads((root / "input-metadata.json").read_text())
+    metadata = json.loads((root / "runtime-request.redacted.json").read_text())
+    assert {"model_alias", "gateway_route", "gateway_config_sha256"} <= set(metadata)
     assert metadata["prompt_level_label"] == level_label
     assert metadata["decision_policy"] == "clarify_missing"
     assert "关键选择请确认" in metadata["prompt"]

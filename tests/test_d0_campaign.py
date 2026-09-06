@@ -16,6 +16,17 @@ from harness.d0.inventory import collect_execution_inventory
 from harness.d0.observer import KubectlD0Observer
 from harness.d0.recompute import recompute_trial
 
+GATEWAY_HASH = "b" * 64
+GATEWAY_ROUTE = {
+    "model_alias": "gpt-5.5",
+    "provider": "openai",
+    "upstream_model": "gpt-5.5",
+    "api_base_host": "gateway.example",
+    "api_base_scheme": "https",
+    "api_base_path": "/v1",
+    "credential_env_ref": "UPSTREAM_API_KEY",
+}
+
 
 def remote_host(_expected: str):
     return {
@@ -92,6 +103,13 @@ class FakeAdapter:
             agent_recovery_requested=self.recovery,
             tool_calls=4 if self.recovery else 2,
             confirmations=1,
+            model_alias="gpt-5.5",
+            gateway_route=GATEWAY_ROUTE,
+            gateway_config_sha256=GATEWAY_HASH,
+            gateway_evidence_verified=True,
+            gateway_request_ids=(f"{trial_id}-req-1",),
+            gateway_evidence_ref=f"native/d0-test-campaign/{trial_id}/gateway-requests.json",
+            gateway_trial_id=trial_id,
         )
 
 
@@ -210,10 +228,38 @@ def test_campaign_runs_four_agents_and_builds_visualization(tmp_path, monkeypatc
     assert report["status"] == "QUALIFIED"
     assert [item["agent"] for item in report["results"]] == list(AGENTS)
     assert {item["status"] for item in report["results"]} == {"PASS"}
+    assert {
+        item["gateway_config_sha256"] for item in report["results"]
+    } == {GATEWAY_HASH}
+    assert all(item["gateway_route"] == GATEWAY_ROUTE for item in report["results"])
+    assert all(item["gateway_evidence_verified"] is True for item in report["results"])
+    assert all(item["gateway_request_ids"] for item in report["results"])
+    assert all(item["gateway_evidence_ref"].endswith("/gateway-requests.json") for item in report["results"])
+    assert all(item["gateway_trial_id"].startswith("d0-test-campaign-") for item in report["results"])
+    assert report["gateway_config_sha256_by_agent"] == {
+        name: GATEWAY_HASH for name in AGENTS
+    }
+    assert report["gateway_routes_by_agent"] == {
+        name: GATEWAY_ROUTE for name in AGENTS
+    }
+    assert report["gateway_evidence_verified_by_agent"] == {
+        name: True for name in AGENTS
+    }
+    assert all(
+        value.endswith("/gateway-requests.json")
+        for value in report["gateway_evidence_ref_by_agent"].values()
+    )
     artifact = Path(report["artifact_dir"])
     assert (artifact / "visualization" / "index.html").is_file()
     assert (artifact / "manifest.sha256").is_file()
-    assert json.loads((artifact / "campaign.json").read_text())["status"] == "QUALIFIED"
+    stored = json.loads((artifact / "campaign.json").read_text())
+    assert stored["status"] == "QUALIFIED"
+    assert stored["results"][0]["gateway_config_sha256"] == GATEWAY_HASH
+    trial = json.loads((artifact / AGENTS[0] / "trial.json").read_text())
+    assert trial["model_alias"] == "gpt-5.5"
+    assert trial["gateway_route"] == GATEWAY_ROUTE
+    assert trial["gateway_evidence_verified"] is True
+    assert trial["gateway_trial_id"].startswith("d0-test-campaign-")
 
 
 def test_campaign_rejects_wrong_execution_host(tmp_path, monkeypatch):

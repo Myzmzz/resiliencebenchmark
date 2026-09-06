@@ -33,9 +33,10 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - >-
-              mkdir -p /work /sandbox /ipc/controller &&
+              mkdir -p /work /sandbox /ipc/controller /gateway-audit &&
               chown 10001:10004 /work && chmod 2770 /work &&
               chown 10001:10003 /sandbox && chmod 2770 /sandbox &&
+              chown 10001:10001 /gateway-audit && chmod 0700 /gateway-audit &&
               chown 10001:10001 /ipc && chmod 2770 /ipc &&
               chown 10001:10001 /ipc/controller && chmod 0700 /ipc/controller
           securityContext:
@@ -53,16 +54,23 @@ spec:
               mountPath: /sandbox
             - name: agent-exec-ipc
               mountPath: /ipc
+            - name: gateway-audit
+              mountPath: /gateway-audit
       containers:
         - name: litellm
           image: 1.94.151.57:85/observe/aiobs-litellm:v1
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args: ["litellm --config /etc/litellm/config.yaml --port 4000 & child=$!; trap 'kill $child 2>/dev/null; wait $child' TERM INT; while [ ! -f /run/resbench/controller/job-complete ]; do kill -0 $child 2>/dev/null || exit 1; sleep 1; done; kill $child 2>/dev/null; wait $child"]
+          env:
+            - {name: STAGE2_LITELLM_CONFIG_FILE, value: /etc/litellm/config.yaml}
+            - {name: RESBENCH_GATEWAY_AUDIT_DIR, value: /var/lib/resbench-stage2/gateway-audit}
           envFrom: [{secretRef: {name: litellm-upstream}}]
           ports: [{name: litellm, containerPort: 4000}]
           volumeMounts:
-            - {name: litellm-config, mountPath: /etc/litellm, readOnly: true}
+            - {name: litellm-config, mountPath: /etc/litellm/config.yaml, subPath: config.yaml, readOnly: true}
+            - {name: litellm-config, mountPath: /etc/litellm/gateway_audit.py, subPath: gateway_audit.py, readOnly: true}
+            - {name: gateway-audit, mountPath: /var/lib/resbench-stage2/gateway-audit}
             - {name: agent-exec-ipc, mountPath: /run/resbench, readOnly: true}
           startupProbe: {httpGet: {path: /health/liveliness, port: litellm}, periodSeconds: 5, failureThreshold: 24}
           readinessProbe: {httpGet: {path: /health/readiness, port: litellm}, periodSeconds: 15, timeoutSeconds: 5}
@@ -93,6 +101,10 @@ spec:
               value: /var/lib/resbench-stage2/integration/d0
             - name: STAGE2_KUBECONFIG
               value: /var/lib/resbench-stage2/integration/matrix-private/service.kubeconfig
+            - name: STAGE2_LITELLM_CONFIG_FILE
+              value: /etc/litellm/config.yaml
+            - name: RESBENCH_GATEWAY_AUDIT_DIR
+              value: /var/lib/resbench-stage2/gateway-audit
             - name: RESBENCH_LLM_BASE_URL
               valueFrom:
                 secretKeyRef:
@@ -109,6 +121,12 @@ spec:
             - name: runtime
               mountPath: /etc/resbench-stage2
               readOnly: true
+            - name: litellm-config
+              mountPath: /etc/litellm/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: gateway-audit
+              mountPath: /var/lib/resbench-stage2/gateway-audit
             - name: tmp
               mountPath: /tmp
             - name: trial-work
@@ -171,6 +189,9 @@ spec:
               cpu: "1"
               memory: 1Gi
       volumes:
+        - name: gateway-audit
+          emptyDir:
+            sizeLimit: 64Mi
         - name: data
           persistentVolumeClaim:
             claimName: resbench-stage2-data
@@ -210,7 +231,7 @@ spec:
                   items:
                     - path: namespace
                       fieldRef:
-                      fieldPath: metadata.namespace
+                        fieldPath: metadata.namespace
         - name: delegated-cgroup
           hostPath:
             path: /sys/fs/cgroup

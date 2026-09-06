@@ -37,6 +37,27 @@ TRIAL_ID = "trial-channel-qualification"
 NOW = "2026-09-05T12:00:00+00:00"
 
 
+def _fake_gateway_fields(model: str = "gpt-5.5") -> dict:
+    """Explicit offline fixture, never an on-cluster qualification record."""
+    return {
+        "gateway_route": {"model_alias": model, "provider": "openai", "upstream_model": model},
+        "gateway_config_sha256": "a" * 64,
+        "gateway_sidecar_evidence": {
+            "verified": True, "request_ids": ["offline-request-1"],
+            "artifact_ref": "gateway-requests.json",
+        },
+    }
+
+
+def _fake_gateway_output(model: str = "gpt-5.5") -> dict:
+    fields = _fake_gateway_fields(model)
+    proof = fields.pop("gateway_sidecar_evidence")
+    return {
+        **fields, "model_alias": model, "gateway_evidence_verified": proof["verified"],
+        "gateway_request_ids": proof["request_ids"], "gateway_evidence_ref": proof["artifact_ref"],
+    }
+
+
 def test_channel_rejects_native_bypass_even_after_successful_mcp_sequence(tmp_path):
     ledger = PlatformLedger(tmp_path / "ledger")
     _append_success_events(ledger)
@@ -644,7 +665,8 @@ def test_supervisor_wrapper_patches_private_context_before_start(tmp_path: Path)
     assert captured["context"]["scored_as_d7"] is False
 
 
-def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_path: Path) -> None:
+@pytest.mark.parametrize("gateway_state", ["verified", "missing", "wrong_model", "unverified"])
+def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_path: Path, gateway_state: str) -> None:
     ledger = PlatformLedger(tmp_path / "ledger")
     policy_calls: list[tuple[str, str, str | None, str]] = []
     restored: list[str] = []
@@ -728,11 +750,19 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
             )
             assert pending[0].notice_type == QUALIFICATION_NOTICE_TYPE
             _append_success_events(ledger, trial_id=kwargs["trial_id"])
+            gateway_output = _fake_gateway_output()
+            if gateway_state == "missing":
+                gateway_output = {}
+            elif gateway_state == "wrong_model":
+                gateway_output = _fake_gateway_output("other-model")
+            elif gateway_state == "unverified":
+                gateway_output["gateway_evidence_verified"] = False
             return HarnessReport(
                 status="completed",
                 agent_verdict=AgentVerdict.INCONCLUSIVE,
                 lifecycle_events=(),
                 artifact_refs=("channel-qualification/trial/stdout.txt",),
+                final_output=gateway_output,
             )
 
     supervisor = Supervisor()
@@ -757,7 +787,12 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
         output_dir=tmp_path / "out",
     )
 
-    assert record.passed is True
+    assert record.passed is (gateway_state == "verified")
+    if gateway_state == "verified":
+        assert record.gateway_route["model_alias"] == "gpt-5.5"
+        assert record.gateway_sidecar_evidence["verified"] is True
+    else:
+        assert "gateway_route_evidence_missing" in record.failure_reasons
     assert supervisor.base_environment["RESBENCH_CHAOS_EXECUTE_ENABLED"] == "false"
     assert harness_runner.base_environment["RESBENCH_CHAOS_EXECUTE_ENABLED"] == "false"
     assert policy_calls == [
@@ -867,6 +902,7 @@ def test_runner_records_cleanup_failure_without_dropping_result(tmp_path: Path) 
 def test_collective_equality_requires_all_four_harnesses() -> None:
     records = [
         ChannelQualificationRecord(
+            **_fake_gateway_fields(),
             harness=harness.value,
             model="gpt-5.5",
             trial_id=f"trial-{harness.value}",
@@ -915,6 +951,24 @@ def test_collective_rejects_duplicate_harnesses_and_mixed_models() -> None:
     assert result["mixed_models"] is True
 
 
+@pytest.mark.parametrize("damage", ["missing_version", "mixed_version", "wrong_route", "missing_proof"])
+def test_collective_rejects_unqualified_gateway_even_with_a_complete_harness_set(damage):
+    records = [ChannelQualificationRecord(harness=h.value, model="gpt-5.5", passed=True,
+                                         **_fake_gateway_fields()).as_dict()
+               for h in ALL_CHANNEL_HARNESSES]
+    if damage == "missing_version":
+        records[0]["gateway_config_sha256"] = ""
+    elif damage == "mixed_version":
+        records[0]["gateway_config_sha256"] = "b" * 64
+    elif damage == "wrong_route":
+        records[0]["gateway_route"]["model_alias"] = "other-model"
+    else:
+        records[0]["gateway_sidecar_evidence"]["verified"] = False
+    result = collective_equality_check(records)
+    assert result["complete_harness_set"] is True
+    assert result["all_passed"] is False
+
+
 def test_write_record_fails_on_existing_file_and_symlink_parent(tmp_path: Path) -> None:
     record = ChannelQualificationRecord(harness="codex", model="gpt-5.5", trial_id="trial-1")
     output = tmp_path / "out"
@@ -949,6 +1003,7 @@ def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatc
             calls.append(tuple(harness.value for harness in harnesses))
             records = [
                 ChannelQualificationRecord(
+                    **_fake_gateway_fields(model),
                     harness=harness.value,
                     model=model,
                     trial_id=f"trial-{harness.value}",

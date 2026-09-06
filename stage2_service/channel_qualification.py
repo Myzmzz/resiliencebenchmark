@@ -10,6 +10,7 @@ is never accepted as proof of an MCP tool call.
 from __future__ import annotations
 
 import json
+import re
 import os
 import secrets
 import uuid
@@ -112,6 +113,9 @@ class ChannelQualificationRecord:
     qualification_type: str = CHANNEL_QUALIFICATION_MODE
     harness: str = ""
     model: str = ""
+    gateway_route: dict[str, Any] = field(default_factory=dict)
+    gateway_config_sha256: str = ""
+    gateway_sidecar_evidence: dict[str, Any] = field(default_factory=dict)
     trial_id: str = ""
     status: str = "failed"
     passed: bool = False
@@ -138,6 +142,9 @@ class ChannelQualificationRecord:
             "qualification_type": self.qualification_type,
             "harness": self.harness,
             "model": self.model,
+            "gateway_route": self.gateway_route,
+            "gateway_config_sha256": self.gateway_config_sha256,
+            "gateway_sidecar_evidence": self.gateway_sidecar_evidence,
             "trial_id": self.trial_id,
             "status": self.status,
             "passed": self.passed,
@@ -314,6 +321,24 @@ class ChannelQualificationRunner:
                     failure_reasons=(*record.failure_reasons, "cleanup_failed"),
                     cleanup_errors=tuple(cleanup_errors),
                 )
+        assert record is not None
+        output = report.final_output if report is not None else {}
+        route = output.get("gateway_route") if isinstance(output.get("gateway_route"), Mapping) else {}
+        config_hash = str(output.get("gateway_config_sha256") or "")
+        proof = {
+            "verified": output.get("gateway_evidence_verified") is True,
+            "request_ids": output.get("gateway_request_ids") or [],
+            "artifact_ref": output.get("gateway_evidence_ref"),
+        }
+        route_ok = _valid_gateway_record({
+            "model": model, "gateway_route": route,
+            "gateway_config_sha256": config_hash, "gateway_sidecar_evidence": proof,
+        })
+        reasons = tuple(record.failure_reasons) + (() if route_ok else ("gateway_route_evidence_missing",))
+        record = replace(record, gateway_route=dict(route), gateway_config_sha256=config_hash,
+                         gateway_sidecar_evidence=proof,
+                         passed=record.passed and not reasons, failure_reasons=reasons,
+                         status="passed" if record.passed and not reasons else "failed")
         if output_dir is not None:
             assert record is not None
             write_record(output_dir, record)
@@ -630,6 +655,23 @@ def evaluate_channel_qualification(
     )
 
 
+def _valid_gateway_record(record: Mapping[str, Any]) -> bool:
+    model = record.get("model")
+    route = record.get("gateway_route")
+    version = record.get("gateway_config_sha256")
+    proof = record.get("gateway_sidecar_evidence")
+    if (not isinstance(model, str) or not model
+            or not isinstance(route, Mapping) or route.get("model_alias") != model
+            or not isinstance(version, str) or not re.fullmatch(r"[a-f0-9]{64}", version)
+            or not isinstance(proof, Mapping) or proof.get("verified") is not True
+            or not isinstance(proof.get("artifact_ref"), str) or not proof["artifact_ref"]):
+        return False
+    ids = proof.get("request_ids")
+    return (isinstance(ids, list) and bool(ids)
+            and all(isinstance(item, str) and bool(item) for item in ids)
+            and len(set(ids)) == len(ids))
+
+
 def collective_equality_check(records: Sequence[ChannelQualificationRecord | Mapping[str, Any]]) -> dict[str, Any]:
     normalized = [
         record.as_dict() if isinstance(record, ChannelQualificationRecord) else dict(record)
@@ -641,10 +683,12 @@ def collective_equality_check(records: Sequence[ChannelQualificationRecord | Map
     )
     models = sorted({str(item.get("model")) for item in normalized if item.get("model")})
     mixed_models = len(models) > 1
+    hashes = {str(item.get("gateway_config_sha256")) for item in normalized if item.get("gateway_config_sha256")}
+    missing_route_evidence = any(not _valid_gateway_record(item) for item in normalized)
+    mixed_route_versions = len(hashes) > 1
     by_harness = {name: item for name, item in zip(harness_names, normalized, strict=False)}
     complete = (
         not duplicate_harnesses
-        and not mixed_models
         and len(normalized) == len(ALL_CHANNEL_HARNESSES)
         and all(harness.value in by_harness for harness in ALL_CHANNEL_HARNESSES)
     )
@@ -664,7 +708,10 @@ def collective_equality_check(records: Sequence[ChannelQualificationRecord | Map
         "duplicate_harnesses": duplicate_harnesses,
         "models": models,
         "mixed_models": mixed_models,
-        "all_passed": complete and all(item.get("passed") is True for item in normalized),
+        "missing_route_evidence": missing_route_evidence,
+        "mixed_route_versions": mixed_route_versions,
+        "all_passed": (complete and not mixed_models and not missing_route_evidence
+                       and not mixed_route_versions and all(item.get("passed") is True for item in normalized)),
         "telemetry_denial_body_equal": complete and len(denial_bodies) == 1,
         "hint_body_equal": complete and len(hint_bodies) == 1,
         "expected_telemetry_denial_body": TELEMETRY_DENIAL_BODY,

@@ -38,6 +38,8 @@ DEFAULT_NAMESPACE = "resiliencebenchmark-system"
 CONFIGMAP_NAME = "litellm-config"
 SECRET_NAME = "litellm-upstream"
 CONFIG_KEY = "config.yaml"
+AUDIT_CALLBACK_KEY = "gateway_audit.py"
+AUDIT_CALLBACK_PATH = REPO_ROOT / "stage2_service/gateway_audit_callback.py"
 # The sidecar authenticates callers with this key even if a future routing
 # table stops referencing it explicitly.
 ALWAYS_REQUIRED = frozenset({"LITELLM_MASTER_KEY"})
@@ -125,7 +127,10 @@ def render_manifests(
             "namespace": namespace,
             "labels": dict(MANAGED_LABELS),
         },
-        "data": {CONFIG_KEY: config_text},
+        "data": {
+            CONFIG_KEY: config_text,
+            AUDIT_CALLBACK_KEY: AUDIT_CALLBACK_PATH.read_text(encoding="utf-8"),
+        },
     }
     secret = {
         "apiVersion": "v1",

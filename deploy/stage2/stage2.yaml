@@ -193,9 +193,10 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - >-
-              mkdir -p /work /sandbox /ipc &&
+              mkdir -p /work /sandbox /ipc /gateway-audit &&
               chown 10001:10004 /work && chmod 2770 /work &&
               chown 10001:10003 /sandbox && chmod 2770 /sandbox &&
+              chown 10001:10001 /gateway-audit && chmod 0700 /gateway-audit &&
               chown 10001:10001 /ipc && chmod 2770 /ipc
           securityContext:
             runAsUser: 0
@@ -212,6 +213,8 @@ spec:
               mountPath: /sandbox
             - name: agent-exec-ipc
               mountPath: /ipc
+            - name: gateway-audit
+              mountPath: /gateway-audit
       containers:
         # Ordinary sidecars work on the old Kubernetes 1.28 cluster.
         - name: litellm
@@ -222,6 +225,9 @@ spec:
             - /etc/litellm/config.yaml
             - --port
             - "4000"
+          env:
+            - {name: STAGE2_LITELLM_CONFIG_FILE, value: /etc/litellm/config.yaml}
+            - {name: RESBENCH_GATEWAY_AUDIT_DIR, value: /var/lib/resbench-stage2/gateway-audit}
           envFrom:
             - secretRef:
                 name: litellm-upstream
@@ -230,8 +236,15 @@ spec:
               containerPort: 4000
           volumeMounts:
             - name: litellm-config
-              mountPath: /etc/litellm
+              mountPath: /etc/litellm/config.yaml
+              subPath: config.yaml
               readOnly: true
+            - name: litellm-config
+              mountPath: /etc/litellm/gateway_audit.py
+              subPath: gateway_audit.py
+              readOnly: true
+            - name: gateway-audit
+              mountPath: /var/lib/resbench-stage2/gateway-audit
           startupProbe:
             httpGet:
               path: /health/liveliness
@@ -272,6 +285,10 @@ spec:
                   fieldPath: metadata.namespace
             - name: STAGE2_D0_ARTIFACT_ROOT
               value: /var/lib/resbench-stage2/d0
+            - name: STAGE2_LITELLM_CONFIG_FILE
+              value: /etc/litellm/config.yaml
+            - name: RESBENCH_GATEWAY_AUDIT_DIR
+              value: /var/lib/resbench-stage2/gateway-audit
             - name: RESBENCH_LLM_BASE_URL
               valueFrom:
                 secretKeyRef:
@@ -288,6 +305,12 @@ spec:
             - name: runtime
               mountPath: /etc/resbench-stage2
               readOnly: true
+            - name: litellm-config
+              mountPath: /etc/litellm/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: gateway-audit
+              mountPath: /var/lib/resbench-stage2/gateway-audit
             - name: tmp
               mountPath: /tmp
             - name: trial-work
@@ -396,6 +419,9 @@ spec:
               cpu: "1"
               memory: 1Gi
       volumes:
+        - name: gateway-audit
+          emptyDir:
+            sizeLimit: 64Mi
         - name: data
           persistentVolumeClaim:
             claimName: resbench-stage2-data
@@ -437,7 +463,7 @@ spec:
                   items:
                     - path: namespace
                       fieldRef:
-                      fieldPath: metadata.namespace
+                        fieldPath: metadata.namespace
         - name: delegated-cgroup
           hostPath:
             path: /sys/fs/cgroup

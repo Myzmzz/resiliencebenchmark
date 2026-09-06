@@ -85,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
     }
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0 if all(record.passed for record in records) else 1
+    collective_ok = result["collective"].get("complete_harness_set") is True and result["collective"].get("all_passed") is True
+    return 0 if all(record.passed for record in records) and (len(harnesses) < len(ALL_CHANNEL_HARNESSES) or collective_ok) else 1
 
 
 def _validate_protected_root(config_private_root: Path, supplied: Path | None) -> None:

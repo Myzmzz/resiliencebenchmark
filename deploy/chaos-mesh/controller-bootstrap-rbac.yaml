@@ -1,0 +1,47 @@
+# Chaos Mesh 2.7.3 registers a cluster-scoped RemoteCluster informer even in
+# namespace-scoped mode. Grant read-only cache access, never remote mutations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resbench-chaos-mesh-runtime-read
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["remoteclusters"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resbench-chaos-mesh-runtime-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: resbench-chaos-mesh-runtime-read
+subjects:
+  - kind: ServiceAccount
+    name: chaos-controller-manager
+    namespace: chaos-mesh
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resbench-chaos-mesh-controller-events
+  namespace: chaos-mesh
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resbench-chaos-mesh-controller-events
+  namespace: chaos-mesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resbench-chaos-mesh-controller-events
+subjects:
+  - kind: ServiceAccount
+    name: chaos-controller-manager
+    namespace: chaos-mesh

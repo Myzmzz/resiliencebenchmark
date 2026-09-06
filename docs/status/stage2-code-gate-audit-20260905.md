@@ -1,6 +1,6 @@
 # 四智能体整改：代码门逐项核对
 
-状态：主体实现已提交并推送 `e522e55`，构建入口补丁为 `f9972c7`。实际环境发现的镜像引号与Coroot原生接口缺口已补修，本地全量1321通过、9跳过；旧集群准备进行中。完整目标不以本地测试通过替代。
+状态：主体实现及构建修补已发布到 `4f9ba9e`，成对镜像已构建。复核发现WP12请求证据仍有缺口，已优先补代码并重新回归，尚未滚动旧Stage2。完整目标不以本地测试通过替代；下列旧快照保留当时状态，最新记录见文末。
 
 执行工作树是 `resiliencebenchmark-stage2-d0-integration`，分支 `codex/stage2-d0-integration`。旧工作树不改动；后续部署与试验只使用旧集群。
 
@@ -41,3 +41,15 @@
 构建收尾补充：固定 BladeAI 发布标签归档、真实包版本与 MCP 1.x 约束已验证；两个资格脚本进入 Controller 镜像。最新全量报告为 `artifacts/remediation/20260905/build-input-final.xml`，1301 passed、9 skipped、47.23秒。发布信息以 Git 历史和随后部署元数据为准。尚未部署或实跑。新集群不部署、不测试。
 
 后续环境核对已暴露并修复Dockerfile Shell引号和Coroot接口契约问题。当前最新全量为 `artifacts/remediation/20260905/coroot-native-api-final.xml`，1321 passed、9 skipped、47.71秒。新RBAC已创建且18项授权检查通过；Chaos Mesh初次安装未就绪，保留资源并准备使用同版Harbor镜像。Coroot仍为匿名Admin，Viewer身份部署待用户批准；当前代码会拒绝将其视为只读资格。尚未部署新版Stage2或执行真实模型/故障。
+
+## WP12逐项复核与整改（最新）
+
+实际配置快照、按别名探针、Controller生成请求身份、LiteLLM真实入口收据、NativeRunner持久化、D0导入内容重验、矩阵禁止混用路由版本已串接。无资格引用的单独Task同样不能在缺失网关证据时计分；平台证据缺失保留CASE_INVALID归因。生产代码不为旧测试替身绕过资格校验。
+
+部署配置现在把config.yaml与gateway_audit.py作为同目录只读文件挂载，仅Controller与网关共享私有audit卷；Agent既不持有上游密钥也不能写入收据。固定配置挂载随工作负载滚动更新，不能只更新ConfigMap而继续混用旧路由。
+
+新增文件范围理由：`gateway_config.py`、`gateway_audit_callback.py`、`gateway_evidence.py`分别承担路由解析、网关收据生产、严格消费；`tests/integration/gateway_proxy_probe.py`复现真实镜像与模拟模型的接线验证。SQLite ledger改动仅修复回归实际发现的辅助文件生命周期竞争；Mesh启动RBAC资产记录旧集群准备实际缺口，未扩展Agent权限。
+
+本地真实网关镜像16次请求通过（四种Harness标签×chat/stream/responses/messages）。这不是原生Harness执行，不能填入四家资格表。全量最终结果以 `wp12-code-gate-final.xml` 为准；旧集群部署与模型/故障资格仍是后续独立阶段。
+
+该最终回归已完成：1405 passed、9 skipped、0 failures/errors，48.608秒；通过不代表跳过的Linux实机边界已经验证。L0-L4 Prompt、权重/系数与默认C0-D6保护检查均包含其中。

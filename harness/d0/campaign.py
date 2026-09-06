@@ -185,6 +185,26 @@ class D0Campaign:
                 metadata["status"] = "QUALIFICATION_INVALID"
             else:
                 metadata["status"] = "QUALIFICATION_FAILED"
+        metadata["gateway_config_sha256_by_agent"] = {
+            value["agent"]: value.get("gateway_config_sha256", "")
+            for value in metadata["results"]
+        }
+        metadata["gateway_routes_by_agent"] = {
+            value["agent"]: value.get("gateway_route", {})
+            for value in metadata["results"]
+        }
+        metadata["gateway_evidence_verified_by_agent"] = {
+            value["agent"]: value.get("gateway_evidence_verified") is True
+            for value in metadata["results"]
+        }
+        metadata["gateway_evidence_ref_by_agent"] = {
+            value["agent"]: value.get("gateway_evidence_ref", "")
+            for value in metadata["results"]
+        }
+        metadata["gateway_trial_id_by_agent"] = {
+            value["agent"]: value.get("gateway_trial_id", "")
+            for value in metadata["results"]
+        }
         metadata["finished_at"] = utc_now()
         metadata["visualization"] = generate_visualizations(campaign_dir, metadata)
         write_json(campaign_dir / "campaign.json", metadata)
@@ -499,6 +519,13 @@ class D0Campaign:
         )
         trial_metadata["finished_at"] = utc_now()
         trial_metadata["adapter"] = result.get("adapter", {})
+        trial_metadata["model_alias"] = result.get("model_alias") or self.models[agent]
+        trial_metadata["gateway_route"] = result.get("gateway_route", {})
+        trial_metadata["gateway_config_sha256"] = result.get("gateway_config_sha256", "")
+        trial_metadata["gateway_evidence_verified"] = result.get("gateway_evidence_verified") is True
+        trial_metadata["gateway_request_ids"] = list(result.get("gateway_request_ids") or [])
+        trial_metadata["gateway_evidence_ref"] = result.get("gateway_evidence_ref", "")
+        trial_metadata["gateway_trial_id"] = result.get("gateway_trial_id", "")
         write_json(trial_dir / "trial.json", trial_metadata)
         write_json(
             trial_dir / "recovery.json",
@@ -532,6 +559,11 @@ class D0Campaign:
         deadline,
     ):
         adapter = asdict(adapter_result) if adapter_result is not None else {}
+        gateway_route = adapter.get("gateway_route") if isinstance(adapter.get("gateway_route"), Mapping) else {}
+        gateway_hash = str(adapter.get("gateway_config_sha256") or "")
+        gateway_request_ids = adapter.get("gateway_request_ids")
+        if not isinstance(gateway_request_ids, (list, tuple)):
+            gateway_request_ids = ()
         effect = observer.state.effect_monotonic is not None
         recovered = observer.state.recovery_observed_at is not None
         fallback_used = bool(fallback.get("requested"))
@@ -593,6 +625,15 @@ class D0Campaign:
         return {
             "schema_version": "d0-trial-result.v1",
             "agent": agent,
+            "model_alias": adapter.get("model_alias") or "",
+            "gateway_route": dict(gateway_route),
+            "gateway_config_sha256": gateway_hash,
+            "gateway_evidence_verified": adapter.get("gateway_evidence_verified") is True,
+            "gateway_request_ids": [
+                item for item in gateway_request_ids if isinstance(item, str) and item
+            ],
+            "gateway_evidence_ref": str(adapter.get("gateway_evidence_ref") or ""),
+            "gateway_trial_id": str(adapter.get("gateway_trial_id") or ""),
             "status": status,
             "injection_observed": bool(observer.state.new_cr_names),
             "effect_observed": effect,

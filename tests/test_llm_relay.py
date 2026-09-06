@@ -95,6 +95,34 @@ def test_relay_rejects_cross_trial_token_model_and_admin_or_history_paths():
     assert client.post("/v1/responses?model=gateway-admin", headers={"Authorization": "Bearer trial-only-token"}, json=payload).status_code == 400
 
 
+@pytest.mark.parametrize("harness", ["codex", "claude-code", "deepseek-harness", "bladeai"])
+def test_relay_owns_audit_identity_and_never_forwards_forged_agent_headers(harness):
+    received = []
+
+    def upstream(request):
+        received.append(dict(request.headers))
+        return httpx.Response(200, stream=_Stream(_one_chunk(b"{}")))
+
+    config, client = relay(upstream, harness_name=harness, gateway_config_sha256="a" * 64)
+    for _ in range(2):
+        response = client.post(
+            "/v1/responses",
+            headers={"Authorization": "Bearer trial-only-token",
+                     "x-resbench-trial-id": "forged-trial", "x-resbench-harness": "forged-agent",
+                     "x-resbench-model-alias": "forged-model", "x-resbench-request-id": "forged-id",
+                     "x-resbench-gateway-config-sha256": "forged-version"},
+            json={"model": "gpt-5.5", "input": "ordinary task"},
+        )
+        assert response.status_code == 200
+    assert len(config.request_ids) == len(set(config.request_ids)) == 2
+    for headers, request_id in zip(received, config.request_ids):
+        assert headers["x-resbench-trial-id"] == "trial-one"
+        assert headers["x-resbench-harness"] == harness
+        assert headers["x-resbench-model-alias"] == "gpt-5.5"
+        assert headers["x-resbench-request-id"] == request_id != "forged-id"
+        assert headers["x-resbench-gateway-config-sha256"] == "a" * 64
+
+
 @pytest.mark.parametrize("field", ["api_base", "base_url", "api_key", "custom_llm_provider", "litellm_params", "extra_headers", "fallbacks", "proxy_server_request"])
 def test_relay_rejects_top_level_route_and_credential_overrides(field):
     calls = []

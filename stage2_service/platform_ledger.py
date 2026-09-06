@@ -519,10 +519,16 @@ class PlatformLedger:
             connection.close()
 
     def _chmod_sqlite_files(self) -> None:
+        # SQLite may remove WAL/SHM between a presence check and chmod when a
+        # concurrent connection closes.  The main database is never optional.
         for suffix in ("", "-wal", "-shm"):
             path = Path(f"{self.path}{suffix}")
-            if path.exists():
+            try:
                 os.chmod(path, 0o600)
+            except FileNotFoundError:
+                if suffix:
+                    continue
+                raise
 
 
 def _event_from_row(row: sqlite3.Row) -> PlatformEvent:

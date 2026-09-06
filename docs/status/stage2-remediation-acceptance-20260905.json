@@ -9,24 +9,26 @@
   "published_implementation_commit": "e522e55bc77e974fc19ddf362af24c8e8fa5e3dc",
   "published_implementation_branch": "codex/stage2-d0-integration",
   "latest_code_snapshot": {
-    "report": "artifacts/remediation/20260905/coroot-native-api-final.xml",
-    "passed": 1321,
+    "report": "artifacts/remediation/20260905/wp12-code-gate-final.xml",
+    "passed": 1405,
     "skipped": 9,
     "failed": 0,
-    "seconds": 47.71,
+    "seconds": 48.608,
     "scope": "local Python suite at snapshot time; later edits require rerun",
     "frontend_build_exit": 0,
     "frontend_lint_exit": 0,
     "warnings_present": true,
     "live_qualification": "not_executed",
     "code_gate": "passed_local_checks",
-    "remaining": ["old cluster paired image build and preparation", "live qualification and complete acceptance matrix"],
+    "offline_gateway_proxy": {"report": "artifacts/remediation/20260905/gateway-real-proxy-four-identities.log", "received_requests": 16, "http_200": 16, "live_models": false, "native_agents_executed": false},
+    "remaining": ["commit WP12 fixes, rebuild paired images and finish old cluster preparation", "live qualification and complete acceptance matrix"],
     "requirement_audit": "docs/status/stage2-code-gate-audit-20260905.md"
   },
   "old_cluster_preparation": {
     "new_stage2_deployed": false,
     "paired_build_f9972c7": "controller_published_agent_failed_shell_quoting_fixed_locally",
-    "chaos_mesh": "2.7.3_initial_install_timeout_resources_retained_harbor_mirrors_published",
+    "paired_build_4f9ba9e": "controller_and_agent_published_native_packaging_smoke_passed_not_live_qualification",
+    "chaos_mesh": "2.7.3_controller_1_of_1_daemon_3_of_3_ready_after_pull_and_bootstrap_rbac_fixes_no_fault_canary",
     "rbac": "controller_executor_finalizer_created_18_authorization_reviews_passed",
     "coroot_api_shapes": "metrics_series_metadata_trace_and_logs_read_from_native_endpoints",
     "coroot_identity": "anonymous_Admin_must_not_qualify_Viewer_login_change_pending_user_approval",
@@ -101,8 +103,12 @@
     },
     {
       "id": "WP12",
-      "status": "not_verified",
-      "acceptance_evidence": []
+      "status": "implemented_locally_live_qualification_pending",
+      "acceptance_evidence": [
+        "artifacts/remediation/20260905/wp12-code-gate-final.xml",
+        "artifacts/remediation/20260905/gateway-real-proxy-four-identities.log",
+        "tests/integration/gateway_proxy_probe.py"
+      ]
     }
   ],
   "interaction_architecture_stages": [

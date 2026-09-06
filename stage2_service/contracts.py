@@ -558,6 +558,11 @@ class D0QualificationRef(ContractModel):
     manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     agent_status: str
     model_alias: str = Field(min_length=1)
+    gateway_route: dict[str, Any] = Field(default_factory=dict)
+    gateway_config_sha256: str = Field(default="", pattern=r"^(|[a-f0-9]{64})$")
+    gateway_evidence_verified: bool = False
+    gateway_request_ids: tuple[str, ...] = ()
+    gateway_evidence_ref: str = ""
 
 
 class CampaignRequest(ContractModel):
@@ -773,6 +778,12 @@ class TrialResult(ContractModel):
     trial_id: str
     harness: HarnessKind
     kind: TrialKind
+    model_alias: str = ""
+    gateway_route: dict[str, Any] = Field(default_factory=dict)
+    gateway_config_sha256: str = Field(default="", pattern=r"^(|[a-f0-9]{64})$")
+    gateway_evidence_verified: bool = False
+    gateway_request_ids: tuple[str, ...] = ()
+    gateway_evidence_ref: str = ""
     runtime_target: RuntimeTarget
     platform_valid: bool
     diagnostic_only: bool
@@ -840,6 +851,10 @@ class CampaignResult(ContractModel):
     request_id: str
     harnesses: tuple[HarnessKind, ...] = ()
     model_by_harness: dict[HarnessKind, str] = Field(default_factory=dict)
+    gateway_routes_by_harness: dict[HarnessKind, dict[str, Any]] = Field(default_factory=dict)
+    gateway_config_sha256_by_harness: dict[HarnessKind, str] = Field(default_factory=dict)
+    gateway_evidence_verified_by_harness: dict[HarnessKind, bool] = Field(default_factory=dict)
+    gateway_evidence_ref_by_harness: dict[HarnessKind, str] = Field(default_factory=dict)
     platform_status: PlatformStatus
     trials: tuple[TrialResult, ...]
     started_at: datetime

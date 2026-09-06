@@ -151,3 +151,30 @@ def test_daemon_has_static_agent_only_environment_allowlist_without_manifest_arg
     )
     daemon = (ROOT / "harness/agent_exec/server.py").read_text(encoding="utf-8")
     assert "set(args.allow_env) or set(AGENT_ENV_ALLOWLIST)" in daemon
+
+
+def test_gateway_config_is_fixed_and_audit_volume_excludes_the_agent():
+    for filename in ("stage2.yaml", "stage2-integration.yaml", "stage2-matrix-job.yaml"):
+        spec = _pod_specs(DEPLOY / filename)[0]
+        controller = _container(spec, "matrix" if "matrix" in filename else "stage2")
+        gateway = _container(spec, "litellm")
+        agent = _container(spec, "agent-runtime")
+        for component in (controller, gateway):
+            config_mount = next(m for m in component["volumeMounts"] if m["mountPath"] == "/etc/litellm/config.yaml")
+            assert config_mount == {"name": "litellm-config", "mountPath": "/etc/litellm/config.yaml", "subPath": "config.yaml", "readOnly": True}
+            assert any(m["name"] == "gateway-audit" for m in component["volumeMounts"])
+            env = {e["name"]: e.get("value") for e in component["env"]}
+            assert env["STAGE2_LITELLM_CONFIG_FILE"] == "/etc/litellm/config.yaml"
+        assert not any(m["name"] in {"litellm-config", "gateway-audit"} for m in agent["volumeMounts"])
+        assert not any(m["name"] == "data" for m in gateway["volumeMounts"])
+        callback = next(m for m in gateway["volumeMounts"] if m["mountPath"] == "/etc/litellm/gateway_audit.py")
+        assert callback["subPath"] == "gateway_audit.py" and callback["readOnly"] is True
+        assert "chmod 0700 /gateway-audit" in spec["initContainers"][0]["args"][0]
+
+
+def test_projected_namespace_file_uses_a_valid_field_reference():
+    for filename in ("stage2.yaml", "stage2-integration.yaml", "stage2-matrix-job.yaml"):
+        spec = _pod_specs(DEPLOY / filename)[0]
+        volume = next(v for v in spec["volumes"] if v["name"] == "controller-service-account")
+        source = next(s for s in volume["projected"]["sources"] if "downwardAPI" in s)
+        assert source["downwardAPI"]["items"] == [{"path": "namespace", "fieldRef": {"fieldPath": "metadata.namespace"}}]

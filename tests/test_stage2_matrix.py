@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from stage2_service.contracts import (
     CORE_STAGE2_CASE_IDS,
     STAGE2_MODEL_MATRIX,
@@ -27,6 +29,20 @@ from stage2_service.matrix import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+GATEWAY_HASH = "c" * 64
+GATEWAY_ROUTE = {
+    "model_alias": "gpt-5.5",
+    "provider": "openai",
+    "upstream_model": "gpt-5.5",
+    "api_base_host": "gateway.example",
+    "api_base_scheme": "https",
+    "api_base_path": "/v1",
+    "credential_env_ref": "UPSTREAM_API_KEY",
+}
+
+
+def route_for(model: str) -> dict[str, str]:
+    return {**GATEWAY_ROUTE, "model_alias": model, "upstream_model": model}
 
 
 def qualifications():
@@ -38,6 +54,11 @@ def qualifications():
                     manifest_sha256="a" * 64,
                     agent_status="PASS",
                     model_alias=model,
+                    gateway_route=route_for(model),
+                    gateway_config_sha256=GATEWAY_HASH,
+                    gateway_evidence_verified=True,
+                    gateway_request_ids=(f"{model}-{harness.value}-req-1",),
+                    gateway_evidence_ref="gateway-requests.json",
                 ),
                 True,
             )
@@ -45,6 +66,26 @@ def qualifications():
         }
         for model in STAGE2_MODEL_MATRIX
     }
+
+
+@pytest.mark.parametrize("update", [
+    {"gateway_request_ids": ()},
+    {"gateway_request_ids": ("duplicate", "duplicate")},
+    {"gateway_evidence_ref": ""},
+    {"gateway_route": {**GATEWAY_ROUTE, "model_alias": "different-model"}},
+    {"gateway_evidence_verified": False},
+])
+def test_matrix_rejects_incomplete_request_identity_even_when_passed_directly(update):
+    values = qualifications()
+    model = STAGE2_MODEL_MATRIX[0]
+    harness = MATRIX_HARNESSES[0]
+    ref, ready = values[model][harness]
+    values[model][harness] = (ref.model_copy(update=update), ready)
+    with pytest.raises(ValueError, match="gateway request evidence identity"):
+        build_matrix_requests(
+            matrix_id="matrix-otel-20260905-123456", repo_root=REPO_ROOT,
+            qualification_matrix=values,
+        )
 
 
 def campaign_result(request, campaign_id: str) -> CampaignResult:
@@ -56,6 +97,12 @@ def campaign_result(request, campaign_id: str) -> CampaignResult:
                     trial_id=f"{campaign_id}-{harness.value}-{case.case_id.value.lower()}",
                     harness=harness,
                     kind=case.trial_kind,
+                    model_alias=request.model_by_harness[harness],
+                    gateway_route=route_for(request.model_by_harness[harness]),
+                    gateway_config_sha256=GATEWAY_HASH,
+                    gateway_evidence_verified=True,
+                    gateway_request_ids=(f"{campaign_id}-{harness.value}-req-1",),
+                    gateway_evidence_ref="gateway-requests.json",
                     runtime_target=RuntimeTarget(
                         namespace="otel-demo",
                         component="cart",
@@ -85,6 +132,19 @@ def campaign_result(request, campaign_id: str) -> CampaignResult:
         request_id=request.request_id,
         harnesses=request.harnesses,
         model_by_harness=request.model_by_harness,
+        gateway_routes_by_harness={
+            harness: route_for(model)
+            for harness, model in request.model_by_harness.items()
+        },
+        gateway_config_sha256_by_harness={
+            harness: GATEWAY_HASH for harness in request.harnesses
+        },
+        gateway_evidence_verified_by_harness={
+            harness: True for harness in request.harnesses
+        },
+        gateway_evidence_ref_by_harness={
+            harness: "gateway-requests.json" for harness in request.harnesses
+        },
         platform_status=PlatformStatus.COMPLETED,
         trials=tuple(trials),
         started_at=now,
@@ -136,6 +196,7 @@ def test_matrix_runner_writes_scored_report_and_manifest(tmp_path):
     root = tmp_path / "matrix-otel-20260901-120001"
     assert report["completed_trial_count"] == len(requests) * len(CORE_STAGE2_CASE_IDS)
     assert len(report["score_table"]) == 8
+    assert report["gateway_config_sha256"] == GATEWAY_HASH
     assert all(row["score"] == 100.0 for row in report["score_table"])
     assert (root / "checkpoint.json").is_file()
     assert (root / "report.json").is_file()
@@ -207,6 +268,64 @@ def test_matrix_stops_before_second_model_after_reset_failure(tmp_path):
     ).read_text(encoding="utf-8")
     assert '"kind": "matrix_stopped"' in events
     assert '"reason": "RESET_FAILED"' in events
+
+
+def test_matrix_runner_rejects_campaign_route_version_different_from_d0(tmp_path):
+    requests = build_matrix_requests(
+        matrix_id="matrix-otel-20260901-120007",
+        repo_root=REPO_ROOT,
+        qualification_matrix=qualifications(),
+    )
+
+    def mismatched_route(request, _observer):
+        result = campaign_result(request, "campaign-" + "5" * 16)
+        trial = result.trials[0].model_copy(update={"gateway_config_sha256": "d" * 64})
+        return result.model_copy(
+            update={
+                "trials": (trial, *result.trials[1:]),
+                "gateway_config_sha256_by_harness": {
+                    request.harnesses[0]: "d" * 64
+                },
+            }
+        )
+
+    try:
+        run_matrix(
+            matrix_id="matrix-otel-20260901-120007",
+            artifact_root=tmp_path,
+            requests=requests,
+            run_campaign=mismatched_route,
+            preflight={
+                "available_models": list(STAGE2_MODEL_MATRIX),
+                "model_matrix": {
+                    harness.value: {model: True for model in STAGE2_MODEL_MATRIX}
+                    for harness in MATRIX_HARNESSES
+                },
+            },
+        )
+    except ValueError as exc:
+        assert "gateway route version does not match D0 qualification" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("matrix must reject route version drift")
+
+
+def test_matrix_report_rejects_mixed_gateway_route_versions():
+    requests = build_matrix_requests(
+        matrix_id="matrix-otel-20260901-120008",
+        repo_root=REPO_ROOT,
+        qualification_matrix=qualifications(),
+    )
+    first = campaign_result(requests[0], "campaign-" + "6" * 16)
+    second = campaign_result(requests[1], "campaign-" + "7" * 16)
+    changed = second.trials[0].model_copy(update={"gateway_config_sha256": "e" * 64})
+    second = second.model_copy(update={"trials": (changed, *second.trials[1:])})
+
+    try:
+        build_matrix_report("matrix-otel-20260901-120008", "prompt", [first, second])
+    except ValueError as exc:
+        assert "mixes gateway route versions" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("matrix report must reject mixed route versions")
 
 
 def test_platform_invalid_pair_runs_diagnostic_without_blocking_other_pairs():

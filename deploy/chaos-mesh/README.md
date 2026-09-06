@@ -34,10 +34,20 @@ PodNetworkChaos 等内部结构；不能把“三类评测入口”描述为“�
 
 ## 安装与验证
 
+命名空间模式下，2.7.3仍会注册全局RemoteCluster缓存；官方Chart未给它
+集群级list/watch，实测导致Controller约两分钟后退出。额外清单
+`controller-bootstrap-rbac.yaml`仅补全局RemoteCluster只读权限及
+`chaos-mesh`命名空间内的events create/patch，不增加其他命名空间的故障写权限。
+应在首次启动前应用；已安装环境只需补该清单，缓存会自行恢复，不必重启节点。
+
 安装属于已批准的环境准备步骤，可能因镜像下载超过五分钟。先确认没有
 已有同名 release、活跃试验或故障残留，再执行真正的安装：
 
 ```bash
+kubectl --kubeconfig /Users/mymz/.kube/coroot-config \
+  --context kubernetes-admin@kubernetes apply \
+  -f deploy/chaos-mesh/namespace.yaml \
+  -f deploy/chaos-mesh/controller-bootstrap-rbac.yaml
 helm install chaos-mesh chaos-mesh \
   --repo https://charts.chaos-mesh.org --version 2.7.3 \
   --kubeconfig /Users/mymz/.kube/coroot-config \

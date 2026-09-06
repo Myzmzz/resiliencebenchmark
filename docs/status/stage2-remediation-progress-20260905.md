@@ -1,6 +1,6 @@
 # 四智能体整改执行记录
 
-日期：2026-09-05（后续环境记录延续到UTC 09-06）。最新状态：主体整改已推送 `e522e55`，构建入口补丁已推送 `f9972c7`；实际构建发现的引号错误及 Coroot 原生 API 缺口已补修，全量1321通过、9跳过（47.71秒）。旧集群环境准备已开始，新版Stage2尚未部署，真实评测未执行，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
+日期：2026-09-05（后续记录延续到UTC 09-06）。最新状态：`4f9ba9e` 配对镜像已构建并发布，未更新旧集群Stage2工作负载。逐项核对发现WP12网关证据链仍不完整，已优先回到代码整改；本地真实网关对模拟模型服务的16次请求通过，最终全量回归单独记录。真实智能体/故障评测仍未执行，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
 
 最新执行范围：用户明确要求优先在旧集群测试，**不在新集群部署或测试**。全部部署、模型探针、金丝雀资格和验收矩阵固定使用 `/Users/mymz/.kube/coroot-config`、context `kubernetes-admin@kubernetes`。原计划“两套环境”部署/探针要求被此明确指令覆盖；新集群最多用于只读提取既有历史夹具，不算本次运行验证。
 
@@ -181,3 +181,22 @@ Controller 镜像补入两个资格脚本及构建期帮助入口检查。旧集
 - Chaos Mesh使用官方2.7.3 Chart（对应Kubernetes1.28），仅目标命名空间otel-demo，Docker socket，关闭Dashboard/DNS/BPF组件。首次安装等待超时，资源保留；官方两个amd64镜像已原样发布到旧Harbor，准备更新本次release。未创建任何故障对象。
 - accounting最近一次终止为OOMKilled，观察时累计96次重启、内存上限120Mi；未修改业务配置，也不将Ready当成D0基线合格。
 - 最新全量 `coroot-native-api-final.xml` 为1321 passed、9 skipped、7 warnings、47.71秒。仍未发布任何真实Agent能力资格为通过；L0-L4 Prompt/评分与默认C0-D6合同保护通过。
+
+### WP12补齐：代码优先，不继续集群改动
+
+- 路由从实际只读配置生成不可变快照；每个模型独立预检，不可用模型不影响其他健康模型，删除专为旧测试替身设置的放行分支。
+- 四家共用Controller模型转发入口。请求身份由Controller生成，Agent自带同名头不能覆盖；网关使用真实代理入口回调写入不含Prompt、响应正文或密钥的接收记录。
+- 输入记录统一为 `runtime-request.redacted.json`；终态、D0结果与矩阵携带实际模型、路由版本、请求ID和持久化记录引用。记录缺失是平台 `CASE_INVALID`，不是Agent能力失败；D0导入重新校验记录内容，拒绝错误身份、空/重复ID、符号链接和仅有“verified=true”的伪证明。
+- 实际LiteLLM1.92镜像验证发现自定义回调从配置同目录加载，而不是任意Python模块路径。按正式ConfigMap布局修正后，四家身份标识×四种接口共16次HTTP请求全部200、各产生唯一接收记录。使用本地模拟模型服务和 `--network none`，不计入任何智能体实测或模型资格；复现入口 `tests/integration/gateway_proxy_probe.py`，原始报告 `gateway-real-proxy-four-identities.log`。早期失败日志保留。
+- 全量回归暴露SQLite WAL/SHM在多进程关闭连接时消失的竞争。仅对可消失的辅助文件忽略FileNotFoundError，主数据库缺失及其他权限/磁盘错误仍抛出；确定性反例与并发测试通过。
+- 此轮不修改L0-L4 Prompt、节点评分、默认C0-D6用例集，不访问新集群，不滚动旧Stage2。
+
+### 旧集群已完成的准备与尚未完成的资格
+
+- `4f9ba9e` 的Controller与Agent镜像已成对发布，完整构建记录为 `artifacts/stage2/image-4f9ba9e.json`。BladeAI真实TUI构建成功；非root/只读/无网络容器中四个CLI/入口和blade垫片检查通过，不代表实际智能体工具调用成功。
+- Chaos Mesh2.7.3已在旧集群部署，Controller1/1、daemon3/3曾实际就绪。安装/升级等待命令曾超时，不改写为Helm成功退出；镜像拉取和RemoteCluster只读启动RBAC缺口已定位并处理，未注入任何Mesh故障。`controller-bootstrap-rbac.yaml`使启动所需最小授权可复现，故障写权限仍限定otel-demo。
+- 已创建Controller/executor/finalizer身份并完成18项授权review；完整运行时身份/隔离资格尚待执行。网关基础ConfigMap/Secret先前已准备，最新回调配置尚未刷新；三个旧Stage2工作负载均未切换为新版本。
+- Coroot匿名Admin仍不满足只读身份资格；更改登录方式需用户明确同意，目前未执行。accounting曾出现OOMKilled，不能用Pod Ready代替D0基线资格。
+- 下一阶段仍为：代码回归与提交 → 配对新镜像及旧集群准备 → 单项资格/测试；完整范围包括八个D0 Campaign与68格，不缩减为离线测试。
+
+WP12最终代码回归：`wp12-code-gate-final.xml` 共1414项，1405通过、9跳过、0失败/错误，48.608秒；保留7项既有Pydantic弃用警告。通过后冻结代码准备提交，尚未将此次补丁部署到旧Stage2。

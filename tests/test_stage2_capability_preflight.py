@@ -6,10 +6,14 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import yaml
+
+from stage2_service.contracts import STAGE2_SUPPORTED_MODELS
 from stage2_service.capability_preflight import (
     CAPABILITY_QUALIFICATION_SCHEMA,
     harness_capabilities_from_qualification,
 )
+from stage2_service.gateway_config import GatewayConfigSnapshot
 from stage2_service.runtime_factory import Stage2System
 
 
@@ -77,10 +81,51 @@ def test_runtime_preflight_uses_only_qualification_record_for_readiness(
 ):
     record = tmp_path / "capabilities.json"
     record.write_text(json.dumps(_qualification_payload()), encoding="utf-8")
+    gateway_config = tmp_path / "litellm.yaml"
+    gateway_config.write_text(
+        yaml.safe_dump(
+                {
+                    "model_list": [
+                        {
+                            "model_name": alias,
+                            "litellm_params": {
+                                "model": f"openai/{alias}",
+                                "api_base": "http://127.0.0.1:4000/v1",
+                                "api_key": "os.environ/UPSTREAM_API_KEY",
+                            },
+                        }
+                        for alias in STAGE2_SUPPORTED_MODELS
+                    ]
+                }
+            ),
+        encoding="utf-8",
+    )
+    snapshot = GatewayConfigSnapshot.from_file(gateway_config, required_aliases=STAGE2_SUPPORTED_MODELS)
     system = object.__new__(Stage2System)
-    system.config = SimpleNamespace()
+    system.config = SimpleNamespace(
+        repo_root=Path(__file__).resolve().parents[1],
+        llm_base_url="http://127.0.0.1:4000/v1",
+        llm_api_key="runtime-key",
+        gateway_config_file=snapshot.config_path,
+        gateway_snapshot=snapshot,
+    )
     system.d0_gate = SimpleNamespace(inventory=lambda: {"campaigns": []})
-    system._gateway_models = lambda: ({"gpt-5.5"}, None)
+    system._gateway_models = lambda: (set(STAGE2_SUPPORTED_MODELS), None)
+    system._model_probe_runner = lambda _snapshot, _aliases: {
+        "schemaVersion": "resiliencebenchmark.model_probe/v1",
+        "issues": [],
+        "models": [
+            {
+                "alias": alias,
+                "overallStatus": "supported",
+                "probes": [{"check": "openai_chat_completions_basic", "status": "supported"}],
+            }
+            for alias in STAGE2_SUPPORTED_MODELS
+        ],
+    }
+    system._probe_cache_ttl_seconds = 300.0
+    system._probe_lock = __import__("threading").Lock()
+    system._probe_cache = {}
     monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(record))
     monkeypatch.delenv("RESBENCH_CODEX_EVAL_BIN", raising=False)
     monkeypatch.delenv("STAGE2_BLADEAI_PYTHON", raising=False)
@@ -97,7 +142,7 @@ def test_runtime_preflight_uses_only_qualification_record_for_readiness(
         and item["code_execution"] == "platform_sandbox"
         for item in result["harness_capabilities"].values()
     )
-    assert all(models["gpt-5.5"] is True for models in result["model_matrix"].values())
+    assert all(all(models[model] is True for model in STAGE2_SUPPORTED_MODELS) for models in result["model_matrix"].values())
 
 
 def test_failed_qualification_cannot_be_overridden_by_capability_claim(tmp_path: Path):
