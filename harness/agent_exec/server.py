@@ -565,6 +565,22 @@ def _unshare_cgroup_namespace() -> None:
         raise OSError(ctypes.get_errno(), "child requires private cgroup namespace")
 
 
+class _MountAttributes(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_uint64) for name in ("attr_set", "attr_clr", "propagation", "userns_fd")]
+
+
+def _make_mount_tree_read_only(libc: Any) -> None:
+    """Freeze every nested mount, not just the already read-only image root."""
+    mount_setattr = libc.mount_setattr
+    mount_setattr.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint, ctypes.POINTER(_MountAttributes), ctypes.c_size_t]
+    mount_setattr.restype = ctypes.c_int
+    attributes = _MountAttributes(attr_set=1)  # MOUNT_ATTR_RDONLY; all other fields zero.
+    # Linux >=5.12 and the pinned image libc provide recursive mount attributes.
+    # Fail closed on unsupported kernels; a root-only remount is not equivalent.
+    if mount_setattr(-100, b"/", 0x8000, ctypes.byref(attributes), ctypes.sizeof(attributes)) != 0:
+        raise OSError(ctypes.get_errno(), "sandbox requires a recursively read-only mount tree")
+
+
 def _isolate_sandbox_namespaces(sandbox_tmp: Path) -> None:
     """Cut all network paths and make the runtime image read-only for a guest.
 
@@ -583,11 +599,10 @@ def _isolate_sandbox_namespaces(sandbox_tmp: Path) -> None:
     mount = libc.mount
     mount.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_char_p]
     mount.restype = ctypes.c_int
-    ms_rec, ms_private, ms_remount, ms_rdonly = 16384, 1 << 18, 32, 1
+    ms_rec, ms_private, ms_remount = 16384, 1 << 18, 32
     if mount(None, b"/", None, ms_rec | ms_private, None) != 0:
         raise OSError(ctypes.get_errno(), "sandbox cannot privatize mount propagation")
-    if mount(None, b"/", None, ms_remount | ms_rdonly, None) != 0:
-        raise OSError(ctypes.get_errno(), "sandbox cannot remount runtime filesystem read-only")
+    _make_mount_tree_read_only(libc)
     encoded_tmp = os.fsencode(sandbox_tmp)
     ms_bind = 4096
     if mount(encoded_tmp, encoded_tmp, None, ms_bind, None) != 0:

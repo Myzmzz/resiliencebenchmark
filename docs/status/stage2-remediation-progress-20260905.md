@@ -220,3 +220,7 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 `db8e03e`已推送并部署旧integration，三容器稳定就绪。真实UID10002子进程的11项基础边界检查和Controller/executor/finalizer的80项实际身份/RBAC检查通过；六个模型网关接口探针均supported。证据与范围详见 `docs/deploy/stage2-old-cluster-qualification-20260906.md`，不升级为四家原生资格或正式扰动结果。
 
 代码沙箱首次实际初始化失败，独立诊断定位到私有mount propagation的EACCES。Docker默认AppArmor明确禁止mount；为本项目增加保留默认proc/sys保护且只放行四类沙箱操作的专用强制策略，在旧tcse-v100-03实际加载成功，不改全局docker-default、不使用unconfined。另修复空环境下相对python3定位，默认固定 `/opt/agent/.venv/bin/python`。`sandbox-startup-code-gate.xml`全量1420通过、9跳过、49.091秒，0失败/错误；待该补丁部署后复跑sandbox。Coroot登录变更再次以非阻塞问题向用户请求确认，目前未修改。
+
+`ed9314f`已提交推送，配对镜像最终构建成功；期间Docker凭据助手曾等待，未中断或重复构建。专用AppArmor策略应用到integration后，实际sandbox以UID10003成功执行、断网、通过Unix broker调用诊断echo并拒绝未授权工具；但新增文件反例发现/tmp和共享目录仍可写，因此 `sqc07933` 仍判失败，不算资格通过。
+
+根因是只读remount只覆盖根文件系统而不覆盖嵌套emptyDir/tmpfs。改为新命名空间内通过libc的mount_setattr递归只读，然后只bind本次临时目录为可写，缺少内核/libc支持即拒绝，不保留不完整旧路径。旧节点实际运行提取自生产代码的初始化函数，确认三处越界写均EROFS、专属临时目录可写；没有扩大AppArmor策略。全量 `sandbox-recursive-mount-full.xml` 为1423通过、9跳过、52.328秒，0失败/错误；真实完整sandbox链路待新镜像复跑。

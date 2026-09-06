@@ -7,7 +7,7 @@ only old-cluster `tcse-v100-03`; the other nodes have not been qualified.
 
 The profile retains Docker's proc/sys denial patterns and implicit denial of
 unspecified mount operations. Its four allowed operations match the initializer:
-private mount propagation, read-only root remount, bind of a sandbox temporary
+private mount propagation, recursive read-only mount-tree attributes, bind of a sandbox temporary
 directory, and writable remount of that bound temporary directory. Only the
 root initializer holds mount capabilities; guest UID 10003 loses its capability
 set before code executes. No AppArmor `unconfined` or complain-mode setting is
@@ -24,6 +24,12 @@ The live failure that motivated this prerequisite was EACCES on privatizing
 mount propagation under `docker-default`. The default profile explicitly denies
 mount operations; no kernel denial log was available, so the final causal check
 is rerunning the unchanged initializer under this constrained profile.
+
+The initializer uses `mount_setattr(AT_RECURSIVE, MOUNT_ATTR_RDONLY)` before
+binding back the one writable temporary directory. A read-only image root alone
+does not make nested `emptyDir`/tmpfs mounts read-only. This requires Linux 5.12+
+and the pinned libc wrapper; missing support is fatal, not a reason to use the
+previous incomplete root-only remount. The old Linux 5.15 node has been checked.
 
 References: [Docker 26.1.3 profile](https://raw.githubusercontent.com/moby/moby/v26.1.3/profiles/apparmor/template.go),
 [AppArmor mount rule syntax](https://manpages.ubuntu.com/manpages/focal/man5/apparmor.d.5.html).
