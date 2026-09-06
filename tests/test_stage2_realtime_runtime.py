@@ -182,8 +182,8 @@ def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tm
             assert child_env["BLADE_AI_MODEL_NAME"] == "fixture-model"
             assert child_env["BLADE_AI_BLADE_PATH"].endswith("blade-shim/blade")
             mcp = json.loads(Path(child_env["BLADE_AI_MCP_CONFIG_PATH"]).read_text())["mcpServers"]
-            assert set(mcp) == {"k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel"}
-            assert mcp["chaos_control"]["enabled"] is True
+            assert set(mcp) == {"k8s_ro", "telemetry_ro", "source_ro", "harness_channel"}
+            assert child_env["RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL"] == "http://127.0.0.1:18184/sse"
         client = audit_client_from_env(supervisor.environment)
         assert client is not None
         output = []

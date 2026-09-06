@@ -33,23 +33,25 @@ def prepare_bladeai_launch(
     template = json.loads((repo_root / "harness/bladeai/mcp.json.template").read_text())
     servers = {}
     for name, entry in template["mcpServers"].items():
+        if entry.get("enabled") is False:
+            continue
         # Only services provisioned for this case are exposed. Missing optional
         # Coroot/Mesh endpoints do not become broken placeholder URLs.
         variables = Template(entry["url"]).get_identifiers()
         if any(not environment.get(key) for key in variables):
             continue
         rendered = json.loads(Template(json.dumps(entry)).substitute(environment))
-        rendered["enabled"] = True
-        rendered["attach_to"] = ["clarification", "phase1", "phase2", "verifier"]
         servers[name] = rendered
-    if not {"harness_channel", "k8s_ro", "chaos_control"} <= set(servers):
-        raise ValueError("BladeAI task requires provisioned Harness, discovery and controlled injection endpoints")
+    if not {"harness_channel", "k8s_ro", "telemetry_ro", "source_ro"} <= set(servers):
+        raise ValueError("BladeAI task requires provisioned Harness and read-only discovery endpoints")
+    if not environment.get("RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL"):
+        raise ValueError("BladeAI controlled blade shim requires a chaos_control endpoint")
     mcp_path = config_root / "mcp.json"
     write_json(mcp_path, {"mcpServers": servers})
     mcp_path.chmod(0o600)
     child = child_env_for_harness("bladeai", environment, {})
     child.update({key: value for key, value in environment.items()
-                  if key.startswith("RESBENCH_BLADEAI_") and key.endswith("_MCP_SSE_URL")})
+                  if key.startswith("RESBENCH_BLADEAI_") and key.endswith("_MCP_SSE_URL") and value})
     child.update({
         "HOME": str(agent_home), "BLADE_AI_MEMORY_DIR": str(agent_home / "memory"),
         "BLADE_AI_LLM_API_KEY": environment.get("RESBENCH_LLM_API_KEY", ""),
