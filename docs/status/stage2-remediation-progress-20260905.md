@@ -200,3 +200,11 @@ Controller 镜像补入两个资格脚本及构建期帮助入口检查。旧集
 - 下一阶段仍为：代码回归与提交 → 配对新镜像及旧集群准备 → 单项资格/测试；完整范围包括八个D0 Campaign与68格，不缩减为离线测试。
 
 WP12最终代码回归：`wp12-code-gate-final.xml` 共1414项，1405通过、9跳过、0失败/错误，48.608秒；保留7项既有Pydantic弃用警告。通过后冻结代码准备提交，尚未将此次补丁部署到旧Stage2。
+
+### ad07f49发布与旧integration首次切换
+
+WP12代码已提交并推送 `ad07f4955f6eedbb9ee6182f1b27e1ca84c051c2`。配对构建/推送成功，记录 `artifacts/stage2/image-ad07f49.json`。旧集群网关ConfigMap已加入实际回调，独立客户端Secret `resbench-stage2-runtime-integration`只包含网关地址与客户端密钥；未修改主服务/e2e使用的原共享客户端配置。临时明文渲染文件已删除，受保护的源凭据保留。
+
+UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integration各数据路径、原PVC和8080端口。切换前26个任务状态文件均为终态，未发现活动Agent；原采集器未记录精确采集时间，因此审计报告明确写未记录，不回填虚构时间。主服务/e2e仍为原版本。
+
+180秒rollout等待超时。新Pod的init成功，Controller和网关Ready，agent-runtime拒绝启动：镜像安装的iptables位于/usr/sbin，但受限PATH不包含该目录。实际容器已验证绝对路径可用；代码改为守护进程仅允许固定三个系统二进制路径，构建期也执行版本检查，不扩展Agent PATH、不禁用出网限制。补丁全量 `firewall-path-code-gate.xml` 为1407通过、9跳过、0失败/错误，50.830秒。当前等待修复镜像重新部署，不能称此次切换成功；真实模型和故障测试仍未开始。

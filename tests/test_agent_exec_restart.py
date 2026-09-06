@@ -66,9 +66,17 @@ def test_iptables_uses_writable_lock_mount_in_readonly_runtime_image(monkeypatch
     entrypoint._run_iptables(("iptables-restore", "--noflush"), b"*filter\nCOMMIT\n")
     entrypoint._run_iptables(("iptables", "-C", "OUTPUT"))
     assert all(kwargs["env"]["XTABLES_LOCKFILE"] == "/run/resbench/xtables.lock" for _, kwargs in calls)
+    assert calls[0][0][0] == "/usr/sbin/iptables-restore"
+    assert calls[1][0][0] == "/usr/sbin/iptables"
     assert calls[0][1]["input"] == b"*filter\nCOMMIT\n"
     assert "stdin" not in calls[0][1]
     assert calls[1][1]["stdin"] == subprocess.DEVNULL
+
+
+def test_privileged_firewall_runner_rejects_unrecognized_binary(monkeypatch):
+    monkeypatch.setattr(entrypoint.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("must not execute"))
+    with pytest.raises(entrypoint.AgentExecNetworkError, match="unsupported"):
+        entrypoint._run_iptables(("/tmp/iptables", "-L"))
 
 
 def _root_socket_metadata(monkeypatch, target):

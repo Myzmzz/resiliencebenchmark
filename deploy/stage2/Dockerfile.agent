@@ -89,7 +89,10 @@ RUN install -d -m 0755 /app/stage2_service \
     && sed -i '1c #!/opt/bladeai-venv/bin/python' /usr/local/bin/blade \
     && chmod 0755 /app/harness/bladeai/blade-shim/blade /app/harness/bladeai/kubectl-shim/kubectl /usr/local/bin/blade \
     && chmod 0755 /usr/local/bin/codex-eval \
-    && ! command -v blade-native
+    && ! command -v blade-native \
+    && /usr/sbin/iptables-restore --version \
+    && /usr/sbin/iptables --version \
+    && /usr/sbin/ip6tables --version
 
 ARG SOURCE_HEAD=unknown
 LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}

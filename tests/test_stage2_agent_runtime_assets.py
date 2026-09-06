@@ -178,3 +178,11 @@ def test_projected_namespace_file_uses_a_valid_field_reference():
         volume = next(v for v in spec["volumes"] if v["name"] == "controller-service-account")
         source = next(s for s in volume["projected"]["sources"] if "downwardAPI" in s)
         assert source["downwardAPI"]["items"] == [{"path": "namespace", "fieldRef": {"fieldPath": "metadata.namespace"}}]
+
+
+def test_agent_image_checks_privileged_network_commands_at_their_installed_paths():
+    dockerfile = (DEPLOY / "Dockerfile.agent").read_text()
+    for command in ("iptables-restore", "iptables", "ip6tables"):
+        assert f"/usr/sbin/{command} --version" in dockerfile
+    path_line = next(line for line in dockerfile.splitlines() if line.strip().startswith("PATH="))
+    assert "/usr/sbin" not in path_line

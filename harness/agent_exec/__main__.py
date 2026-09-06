@@ -81,8 +81,15 @@ def _ensure_output_rule(execute: Runner, binary: str, rule: Sequence[str]) -> No
 
 
 def _run_iptables(argv: Sequence[str], payload: bytes | None = None) -> None:
+    binaries = {
+        "iptables-restore": "/usr/sbin/iptables-restore",
+        "iptables": "/usr/sbin/iptables",
+        "ip6tables": "/usr/sbin/ip6tables",
+    }
+    if not argv or argv[0] not in binaries:
+        raise AgentExecNetworkError("unsupported privileged firewall binary")
     subprocess.run(
-        list(argv), check=True, input=payload,
+        [binaries[argv[0]], *argv[1:]], check=True, input=payload,
         # /run outside this shared mount belongs to a read-only image.
         env={**os.environ, "XTABLES_LOCKFILE": "/run/resbench/xtables.lock"},
         **({"stdin": subprocess.DEVNULL} if payload is None else {}),
