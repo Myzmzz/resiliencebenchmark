@@ -35,4 +35,27 @@
   Chaos Mesh 清单为空。当前 18 份 D0 inventory 枚举耗时 0.042 秒，因此本次
   不扩展 D0 索引重构。
 
-以上不构成正式故障评测通过。部署后的实际接口验证另行记录。
+以上不构成正式故障评测通过。
+
+## 旧集群实际部署
+
+integration 已更新到 `edd7799`，Pod 为
+`resbench-stage2-integration-67c98d6b7c-xgkhg`。两个运行镜像和初始化镜像均与
+构建记录一致，节点仍为 `tcse-v100-03`，模板的其余字段逐项比较未变。
+main/e2e 未更新，历史 26 条任务保留且全部终结。新 Pod 三容器就绪、零重启，
+ChaosBlade 与 otel-demo 下 Chaos Mesh 清单为空。记录：
+`options-readiness-rollout-ready.json`、`options-readiness-images.json`。
+
+验证保留了两类真实状态：
+
+- 冷启动时首次选项查询耗时 0.493 秒，返回 `running` 且所有模型格关闭。
+  当时网关尚未监听，首次目录与探针连接失败；未冒充通过，失败缓存保留。
+- 随后的 20 次并发查询最大耗时 0.730 秒，均返回同一轮的失败记录，没有
+  启动重复探测。其后网关目录独立查询在 0.502 秒内成功，返回全部六个必需别名。
+
+`options-readiness-rollout-verification.json` 是 Pod 尚未全部就绪的早期快照，
+其中 `pod_ready=false`；它没有被修改或替换成通过记录。
+
+仅本机端口转发为 `127.0.0.1:18080 -> resbench-stage2-integration:8080`。
+没有新增公网端口或修改原有 Postman 配置。接口响应正常不代表模型资格通过，
+仍需等待实际探针成功后才允许提交手测。

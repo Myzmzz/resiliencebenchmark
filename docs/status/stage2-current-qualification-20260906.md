@@ -17,10 +17,14 @@ Codex 的通过记录是 `base-codex-20260906-a3`，不是失败的 a1/a2。第�
 有效终态仍被重复询问，第二轮发现通知回执判定漏掉响应附带通知路径；失败
 原件保留，修复后第三次通过。详细证据见[基础通道资格记录](../deploy/stage2-base-channel-qualification-20260906.md)。
 
-当前各服务的 Controller/Agent 镜像：integration 为 `47f4f04`，main/e2e 为
+当前各服务的 Controller/Agent 镜像：integration 为 `edd7799`，main/e2e 为
 `e6fd44a`；三者的模型网关均已更新，六个模型别名真实探针通过。
 部署与历史数据保留见[网关记录](../deploy/stage2-gateway-rollout-20260906.md)。
 不要把其他服务或旧代码线的状态当成 integration 当前状态。
+
+`edd7799` 将模型能力检查移至后台，`/options` 可立即报告检查中状态；没有有效
+成功结果仍不允许提交任务。该版本也包含 BladeAI 的 MCP 写工具暴露边界修复，
+但这不代替 BladeAI 全链资格。详见[接口检查记录](../deploy/stage2-options-readiness-20260906.md)。
 
 ## 仍需完成
 

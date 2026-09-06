@@ -20,6 +20,23 @@
 IP 或端口，也没有新增 NodePort/Ingress。先用同一个 `base_url` 请求
 `GET /api/v1/stage2/options`，确认上述 Codex 状态，再提交。
 
+### 本机 Postman 的已连接入口
+
+2026-09-06 已建立仅监听本机的端口转发，直接连接上述 integration 服务。
+如果 Postman 运行在这台 Mac 上，可设置 `base_url=http://127.0.0.1:18080`；
+这不是公网地址，也没有修改用户原有 Postman 配置。转发进程结束后，可在本机终端重建：
+
+```sh
+kubectl --kubeconfig /Users/mymz/.kube/coroot-config --context kubernetes-admin@kubernetes \
+  -n resiliencebenchmark-system port-forward --address 127.0.0.1 \
+  service/resbench-stage2-integration 18080:8080
+```
+
+选项接口的 `gateway_probe.status=running` 表示真实模型检查尚未完成，此时
+不要提交。若是 `failed`，查看 `gateway_probe.model_catalog_error` 和
+`model_probes`，不能把 HTTP 200 或服务健康当成模型已就绪。只有目标 Harness
+及其 `gpt-5.5` 模型格均为 `runnable=true` 才进入本项测试。
+
 `disturbance=none` 表示 C0 对照：不额外施加 D1–D8 的能力扰动；不代表不创建
 Prompt 中要求的主故障。请求没有 Episode、权限 Profile、schema_version 或
 request_id；这些都不由用户填写。
