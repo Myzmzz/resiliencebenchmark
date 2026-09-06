@@ -13,6 +13,7 @@ import json
 import re
 import os
 import secrets
+import sys
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -36,6 +37,7 @@ from .contracts import (
     default_case_specs,
 )
 from .platform_ledger import PlatformEvent
+from .mcp_supervisor import McpSupervisorError
 from .runtime_factory import Stage2Components, Stage2System
 
 
@@ -335,6 +337,7 @@ class ChannelQualificationRunner:
                 prompt_level_label=_qualification_mode_for_profile(selected_profile),
             )
         except Exception as exc:  # noqa: BLE001 - qualification must persist failures.
+            _report_mcp_supervisor_error(exc)
             events = components.token_registry.platform_ledger.query(
                 trial_id=trial_id,
                 limit=10_000,
@@ -1457,3 +1460,12 @@ def _cleanup_components(components: Stage2Components, trial_id: str) -> list[str
     except Exception as exc:  # noqa: BLE001
         errors.append(f"supervisor.stop:{type(exc).__name__}")
     return errors
+
+
+def _report_mcp_supervisor_error(exc: BaseException) -> None:
+    if not isinstance(exc, McpSupervisorError):
+        return
+    message = " ".join(str(exc).split())
+    if not message:
+        message = type(exc).__name__
+    print(f"channel qualification MCP startup failed: {message}", file=sys.stderr)

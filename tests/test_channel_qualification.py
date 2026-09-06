@@ -39,6 +39,7 @@ from stage2_service.contracts import (
 )
 from stage2_service.episode import load_fixed_episode
 from stage2_service.gateway_config import GatewayConfigSnapshot
+from stage2_service.mcp_supervisor import McpSupervisorError
 from stage2_service.matrix import fixed_otel_episode_ref
 from stage2_service.permissions import Stage2PermissionManager
 from stage2_service.platform_ledger import PlatformEvent, PlatformLedger
@@ -1719,6 +1720,88 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
     ]
     assert len(restored) == 1
     assert (tmp_path / "out" / "channel-qualification-codex.json").is_file()
+
+
+def test_runner_reports_safe_mcp_supervisor_error_message_to_stderr(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+
+    class PolicyRegistry:
+        def set_server(self, *_args, **_kwargs):
+            pass
+
+        def set_tool(self, *_args, **_kwargs):
+            pass
+
+    class TokenRegistry:
+        platform_ledger = ledger
+
+        def policy_registry(self, _trial_id):
+            return PolicyRegistry()
+
+    class Permissions:
+        token_registry = TokenRegistry()
+
+        def provision(self, campaign_id, trial_id, harness, episode, runtime):
+            return CapabilityProfile(
+                harness=harness,
+                mcp_servers=(
+                    "k8s_ro",
+                    "telemetry_ro",
+                    "source_ro",
+                    "chaos_control",
+                    "harness_channel",
+                ),
+                mcp_tools=(),
+                kubernetes_rules=(),
+                direct_kubeconfig=False,
+                allowed_fault_types=("network-delay",),
+                expires_at="2026-09-05T13:00:00Z",
+            )
+
+        def restore(self, _trial_id):
+            pass
+
+    class Supervisor:
+        def __init__(self):
+            self.base_environment = {"RESBENCH_CHAOS_EXECUTE_ENABLED": "true"}
+
+        def stop(self):
+            pass
+
+    class HarnessRunner:
+        def __init__(self):
+            self.mcp_supervisor = None
+            self.base_environment = {}
+
+        def run(self, **_kwargs):
+            raise McpSupervisorError("MCP port did not become ready: 18185")
+
+    components = SimpleNamespace(
+        permissions=Permissions(),
+        token_registry=Permissions.token_registry,
+        supervisor=Supervisor(),
+        harness_runner=HarnessRunner(),
+    )
+
+    class System:
+        def build_runtime(self, episode, request_model_by_harness, *, namespace):
+            return components
+
+    record = ChannelQualificationRunner(System()).run_one(
+        episode=_episode_fixture(),
+        harness=HarnessKind.BLADEAI,
+        model="gpt-5.5",
+        output_dir=tmp_path / "out",
+        profile="base",
+    )
+
+    stderr = capsys.readouterr().err
+    assert "channel qualification MCP startup failed:" in stderr
+    assert "MCP port did not become ready: 18185" in stderr
+    assert "runner_error:McpSupervisorError" in record.failure_reasons
 
 
 def test_base_runner_uses_only_foundational_servers_and_separate_record_prefix(
