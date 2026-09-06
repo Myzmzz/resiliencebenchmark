@@ -25,6 +25,14 @@ class McpSupervisorError(RuntimeError):
     pass
 
 
+# MCP Python services normally bind quickly.  BladeAI's SSE worker starts
+# several clients under the same old-cluster I/O budget, so give only that
+# transport a wider port-readiness window; Codex/Claude/DeepSeek retain the
+# existing 30-second startup contract.
+DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS = 30
+BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS = 120
+
+
 class McpSupervisor:
     HTTP_PORTS = {
         "k8s_ro": 18081,
@@ -126,7 +134,14 @@ class McpSupervisor:
             if policy_file is not None:
                 env[MCP_POLICY_FILE_ENV] = policy_file
             self.specs[name] = (port, env, log_root / f"{name}.log")
-            self._start_server(name)
+            self._start_server(
+                name,
+                startup_timeout=(
+                    BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS
+                    if harness is HarnessKind.BLADEAI
+                    else DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS
+                ),
+            )
             urls[name] = resource
         if harness is HarnessKind.BLADEAI:
             runtime_env = dict(runtime_environment or {})
@@ -147,7 +162,10 @@ class McpSupervisor:
                 proxy_env[MCP_POLICY_FILE_ENV] = policy_file
             proxy_port = int(runtime_env.get("RESBENCH_BLADEAI_PROXY_PORT", "18481"))
             self.specs["bladeai_k8s_proxy"] = (proxy_port, proxy_env, log_root / "bladeai_k8s_proxy.log")
-            self._start_server("bladeai_k8s_proxy")
+            self._start_server(
+                "bladeai_k8s_proxy",
+                startup_timeout=BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS,
+            )
         return {
             "RESBENCH_K8S_MCP_URL": urls["k8s_ro"],
             "RESBENCH_TELEMETRY_MCP_URL": urls["telemetry_ro"],
@@ -203,7 +221,16 @@ class McpSupervisor:
                 continue
             if name not in self.specs:
                 raise McpSupervisorError(f"MCP server has no restart specification: {name}")
-            self._start_server(name)
+            _port, env, _log_path = self.specs[name]
+            self._start_server(
+                name,
+                startup_timeout=(
+                    BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS
+                    if env.get("RESBENCH_MCP_TRANSPORT") == "sse"
+                    or name == "bladeai_k8s_proxy"
+                    else DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS
+                ),
+            )
             restored.append(name)
         return {
             "restored": sorted(restored),
@@ -237,7 +264,7 @@ class McpSupervisor:
             time.sleep(0.25)
         return latest
 
-    def _start_server(self, name: str) -> None:
+    def _start_server(self, name: str, *, startup_timeout: int = DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS) -> None:
         port, env, log_path = self.specs[name]
         if _port_open(port):
             raise McpSupervisorError(f"MCP loopback port is already in use: {port}")
@@ -253,7 +280,7 @@ class McpSupervisor:
         self.logs[name] = log
         self.processes[name] = process
         try:
-            _wait_process_port(process, port, timeout=30)
+            _wait_process_port(process, port, timeout=startup_timeout)
         except Exception:
             self.processes.pop(name, None)
             self.logs.pop(name, None)

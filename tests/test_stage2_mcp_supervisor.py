@@ -12,6 +12,8 @@ from stage2_service.capability_policy import (
 )
 from stage2_service.contracts import HarnessKind, PermissionProfile
 from stage2_service.mcp_supervisor import (
+    BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS,
+    DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS,
     McpSupervisor,
     _chaos_control_runtime_environment,
 )
@@ -73,7 +75,10 @@ def test_start_trial_injects_policy_file_env_into_all_mcp_servers_and_restart_ke
         "harness_channel": str(tmp_path / "harness.token"),
         McpTokenStateRegistry.POLICY_FILE_STATE_KEY: str(policy.policy_path),
     }
-    supervisor = McpSupervisor(private_root=tmp_path / "mcp", base_environment={})
+    supervisor = McpSupervisor(
+        private_root=tmp_path / "mcp",
+        base_environment={"RESBENCH_K8S_RO_KUBECONFIG": str(tmp_path / "controller.kubeconfig")},
+    )
 
     supervisor.start_trial(
         trial_id="campaign-1234567890abcdef-codex-d5-1",
@@ -99,6 +104,53 @@ def test_start_trial_injects_policy_file_env_into_all_mcp_servers_and_restart_ke
 
     assert len(launched) == 1
     assert launched[0][MCP_POLICY_FILE_ENV] == str(policy.policy_path)
+
+
+def test_bladeai_uses_two_minute_startup_window_but_codex_keeps_thirty_seconds(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    waits: list[int] = []
+    monkeypatch.setattr("stage2_service.mcp_supervisor._port_open", lambda _port: False)
+    monkeypatch.setattr(
+        "stage2_service.mcp_supervisor._wait_process_port",
+        lambda _process, _port, timeout: waits.append(timeout),
+    )
+    monkeypatch.setattr(
+        "stage2_service.mcp_supervisor.subprocess.Popen",
+        lambda *_args, **_kwargs: FakeProcess(),
+    )
+    token_files = {
+        name: str(tmp_path / f"{name}.token")
+        for name in ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel")
+    }
+    supervisor = McpSupervisor(
+        private_root=tmp_path / "mcp",
+        base_environment={"RESBENCH_K8S_RO_KUBECONFIG": str(tmp_path / "controller.kubeconfig")},
+    )
+    supervisor.start_trial(
+        trial_id="campaign-1234567890abcdef-bladeai-d0-1",
+        harness=HarnessKind.BLADEAI,
+        token="t" * 48,
+        token_state_files=token_files,
+        runtime_environment={
+            "RESBENCH_HARNESS_CHANNEL_TOKEN": "h" * 48,
+            "RESBENCH_BLADEAI_PROXY_TOKEN": "p" * 48,
+            "RESBENCH_BLADEAI_PROXY_NAMESPACE": "otel-demo",
+            "RESBENCH_BLADEAI_PROXY_KUBECONFIG": str(tmp_path / "proxy.kubeconfig"),
+        },
+    )
+    assert waits == [BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS] * 6
+
+    waits.clear()
+    supervisor.stop()
+    supervisor.start_trial(
+        trial_id="campaign-1234567890abcdef-codex-d0-1",
+        harness=HarnessKind.CODEX,
+        token="t" * 48,
+        token_state_files=token_files,
+        runtime_environment={"RESBENCH_HARNESS_CHANNEL_TOKEN": "h" * 48},
+    )
+    assert waits == [DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS] * 5
 
 
 def test_chaos_runtime_environment_does_not_infer_d6_variant_from_trial_id() -> None:
