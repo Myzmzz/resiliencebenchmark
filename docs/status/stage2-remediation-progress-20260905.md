@@ -1,6 +1,6 @@
 # 四智能体整改执行记录
 
-日期：2026-09-05。最新状态：主体整改已提交并推送 `e522e55`；构建输入及镜像入口补充修复后全量1301通过、9跳过（47.23秒）。下一步提交补丁并构建双镜像。尚未部署新代码或执行本轮真实评测，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
+日期：2026-09-05（后续环境记录延续到UTC 09-06）。最新状态：主体整改已推送 `e522e55`，构建入口补丁已推送 `f9972c7`；实际构建发现的引号错误及 Coroot 原生 API 缺口已补修，全量1321通过、9跳过（47.71秒）。旧集群环境准备已开始，新版Stage2尚未部署，真实评测未执行，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
 
 最新执行范围：用户明确要求优先在旧集群测试，**不在新集群部署或测试**。全部部署、模型探针、金丝雀资格和验收矩阵固定使用 `/Users/mymz/.kube/coroot-config`、context `kubernetes-admin@kubernetes`。原计划“两套环境”部署/探针要求被此明确指令覆盖；新集群最多用于只读提取既有历史夹具，不算本次运行验证。
 
@@ -172,3 +172,12 @@
 主体代码已推送 `e522e55`。构建前核实上游 `blade-ai-v0.6.2` 指向 `d8c5473ccda329a3841f114f83a43881a2205ab5`，该发布源码的 Python 包版本实际上为 `0.3.0`，依赖 MCP `<2.0`。构建脚本现只从固定标签归档完整 SDK 源码，不读取本地未提交文件，不修改上游版本；BladeAI 独立环境使用 MCP 1.27.0，AgentExec 环境保留 MCP 2.0。真实标签归档检查通过，尚不等于镜像安装成功。
 
 Controller 镜像补入两个资格脚本及构建期帮助入口检查。旧集群部署说明移除新集群节点、原生 sidecar 与向 Agent 发网关 master key 的过期描述。补充后全量 `build-input-final.xml` 为1301 passed、9 skipped、7 warnings、47.23秒；镜像实际构建/部署、四家资格及完整矩阵均待执行。
+
+### 旧集群准备及实际暴露的整改
+
+- `f9972c7` 的Controller镜像构建并发布成功，Agent镜像在Shell引号检查处失败；原始 `build-f9972c7.log` 保留。现改为Python TOML解析，新增对实际Dockerfile命令的引号回归；不能把旧的静态检查当作成功构建。
+- 旧Coroot对无凭据及无效Bearer均返回匿名Admin，已向用户请求批准变更登录方式，尚未修改。原生panel/data和series接口、cart的自动来源Trace/日志已实读；硬编码otel会得到空结果。MCP现使用真实Viewer session、原生API及唯一匹配的结构化series标签，禁止编造UID，并将Cookie留在Controller侧脱敏。
+- 新的Controller、executor、finalizer身份及其RBAC已实际创建；18项只读授权review符合预期。完整私有kubeconfig、Linux隔离与四家运行资格尚未验证。
+- Chaos Mesh使用官方2.7.3 Chart（对应Kubernetes1.28），仅目标命名空间otel-demo，Docker socket，关闭Dashboard/DNS/BPF组件。首次安装等待超时，资源保留；官方两个amd64镜像已原样发布到旧Harbor，准备更新本次release。未创建任何故障对象。
+- accounting最近一次终止为OOMKilled，观察时累计96次重启、内存上限120Mi；未修改业务配置，也不将Ready当成D0基线合格。
+- 最新全量 `coroot-native-api-final.xml` 为1321 passed、9 skipped、7 warnings、47.71秒。仍未发布任何真实Agent能力资格为通过；L0-L4 Prompt/评分与默认C0-D6合同保护通过。

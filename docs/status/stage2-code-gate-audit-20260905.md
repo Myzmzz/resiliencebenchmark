@@ -1,6 +1,6 @@
 # 四智能体整改：代码门逐项核对
 
-状态：主体实现已提交并推送 `e522e55`。构建输入及镜像入口补充修复后，本地全量1301通过、9跳过；随后进入旧集群准备。完整目标不以本地测试通过替代。
+状态：主体实现已提交并推送 `e522e55`，构建入口补丁为 `f9972c7`。实际环境发现的镜像引号与Coroot原生接口缺口已补修，本地全量1321通过、9跳过；旧集群准备进行中。完整目标不以本地测试通过替代。
 
 执行工作树是 `resiliencebenchmark-stage2-d0-integration`，分支 `codex/stage2-d0-integration`。旧工作树不改动；后续部署与试验只使用旧集群。
 
@@ -39,3 +39,5 @@
 最终代码回归：`artifacts/remediation/20260905/code-gate-final.xml` 为1294 passed、9 skipped、48.37秒；前端 build/lint 均退出0，有既有警告。目录检查、凭据模式扫描和差异空白检查通过；被测智能体的真实能力仍未据此宣称已通过。
 
 构建收尾补充：固定 BladeAI 发布标签归档、真实包版本与 MCP 1.x 约束已验证；两个资格脚本进入 Controller 镜像。最新全量报告为 `artifacts/remediation/20260905/build-input-final.xml`，1301 passed、9 skipped、47.23秒。发布信息以 Git 历史和随后部署元数据为准。尚未部署或实跑。新集群不部署、不测试。
+
+后续环境核对已暴露并修复Dockerfile Shell引号和Coroot接口契约问题。当前最新全量为 `artifacts/remediation/20260905/coroot-native-api-final.xml`，1321 passed、9 skipped、47.71秒。新RBAC已创建且18项授权检查通过；Chaos Mesh初次安装未就绪，保留资源并准备使用同版Harbor镜像。Coroot仍为匿名Admin，Viewer身份部署待用户批准；当前代码会拒绝将其视为只读资格。尚未部署新版Stage2或执行真实模型/故障。

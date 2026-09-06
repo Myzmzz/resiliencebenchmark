@@ -2,7 +2,7 @@
 
 The adapter intentionally exposes only GET requests.  It uses Coroot's
 application URL for trace and log reads, and the documented project Prometheus
-range proxy for metrics.  The Controller injects every URL identity; callers
+dashboard panel range API for metrics.  The Controller injects every URL identity; callers
 cannot select a project, an application, a namespace, or an upstream endpoint.
 """
 
@@ -11,8 +11,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import json
+import math
 import os
-from pathlib import PurePosixPath
 import re
 import urllib.error
 import urllib.parse
@@ -28,16 +28,18 @@ COROOT_APPLICATION_ID_ENV = "RESBENCH_COROOT_APPLICATION_ID"
 COROOT_ALLOWED_NAMESPACE_ENV = "RESBENCH_COROOT_ALLOWED_NAMESPACE"
 COROOT_ALLOWED_SERVICES_ENV = "RESBENCH_COROOT_ALLOWED_SERVICES"
 COROOT_TIMEOUT_ENV = "RESBENCH_COROOT_TIMEOUT_SECONDS"
-COROOT_BEARER_TOKEN_ENV = "RESBENCH_COROOT_BEARER_TOKEN"
+COROOT_SESSION_COOKIE_ENV = "RESBENCH_COROOT_SESSION_COOKIE"
 
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_OUTPUT_CHARS = 25_000
 MAX_LABELS = 12
 MAX_LOG_ENTRIES = 100
 MAX_TRACES = 100
+COROOT_VIEWER_ROLE = "Viewer"
 _METRIC_RE = re.compile(r"^[A-Za-z_:][A-Za-z0-9_:]{0,255}$")
 _LABEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _SERVICE_RE = re.compile(r"^[A-Za-z0-9_.:/@+=,\- ]{1,256}$")
+_SESSION_COOKIE_RE = re.compile(r"^[A-Za-z0-9_=-]{1,4096}\.[A-Za-z0-9_=-]{1,4096}$")
 _NAMESPACE_LABELS = frozenset({"namespace", "kubernetes_namespace", "exported_namespace"})
 
 
@@ -77,7 +79,7 @@ class RuntimeConfig:
     scope: ObservationScope
     allowed_services: frozenset[str]
     timeout_seconds: float = 5.0
-    bearer_token: str | None = None
+    session_cookie: str | None = None
 
     @classmethod
     def from_env(cls) -> "RuntimeConfig":
@@ -107,19 +109,14 @@ class RuntimeConfig:
             raise CorootROError("invalid_timeout", "Coroot timeout must be numeric.", "Use 0.5 to 30 seconds.") from exc
         if not 0.5 <= timeout <= 30:
             raise CorootROError("invalid_timeout", "Coroot timeout is outside the permitted range.", "Use 0.5 to 30 seconds.")
-        token = (os.environ.get(COROOT_BEARER_TOKEN_ENV) or "").strip() or None
-        if not token or any(char.isspace() for char in token):
-            raise CorootROError(
-                "missing_readonly_identity", "Coroot requires a configured read-only identity.",
-                "Provision the Controller's scoped Coroot credential before starting this service.",
-            )
+        session_cookie = _session_cookie(os.environ.get(COROOT_SESSION_COOKIE_ENV))
         return cls(
             base_url=base_url,
             project_id=project_id,
             scope=scope,
             allowed_services=services,
             timeout_seconds=timeout,
-            bearer_token=token,
+            session_cookie=session_cookie,
         )
 
 
@@ -194,21 +191,33 @@ class CorootROService:
         self.transport = transport if transport is not None else UrlLibCorootTransport()
 
     async def metrics_range(self, *, metric: str, start: int, end: int, labels: Mapping[str, str] | None = None) -> dict[str, Any]:
-        """Query the Coroot project Prometheus proxy with an injected namespace matcher."""
+        """Query Coroot's authenticated dashboard panel API with an injected namespace matcher."""
 
         self._window(start=start, end=end)
         query = _metric_query(metric=metric, namespace=self.config.scope.namespace, labels=labels or {})
-        response = await self._get(
-            path=self._project_path("prom", "api", "v1", "query_range"),
-            params={"query": query, "start": start, "end": end, "step": _step(start, end)},
+        chart_response = await self._get(
+            path=self._project_path("panel", "data"),
+            params={
+                "from": start * 1000,
+                "to": end * 1000,
+                "query": _dashboard_panel_query(query),
+            },
         )
-        payload = _prometheus_data(response)
+        series_response = await self._get(
+            path=self._project_path("prom", "api", "v1", "series"),
+            params={"match[]": query, "start": start, "end": end},
+        )
+        payload = _coroot_chart_matrix(chart_response, series_response)
         return envelope(
             {
                 "metric": metric,
                 "start": start,
                 "end": end,
-                "query_scope": {"namespace_matcher_injected": True, "application_path_scope": False},
+                "query_scope": {
+                    "namespace_matcher_injected": True,
+                    "application_path_scope": False,
+                    "backend": "coroot_panel_data_with_prom_series_metadata",
+                },
                 "data": payload,
             }
         )
@@ -226,11 +235,12 @@ class CorootROService:
             params={
                 "from": start * 1000,
                 "to": end * 1000,
-                # Coroot's application trace view accepts source::::timestamp-range::duration-range.
-                "trace": f"otel::::-{duration_seconds:g}",
+                # Coroot's application trace view accepts source:id:timestamp-range:duration-range:span.
+                "trace": f"::{start * 1000}-{end * 1000}:{duration_seconds:g}-",
             },
         )
-        spans = _sequence(response.get("spans"), "Coroot trace spans")
+        view = _coroot_view(response, "Coroot trace view")
+        spans = _nullable_sequence(view.get("spans"), "Coroot trace spans")
         matched = [
             item
             for item in spans
@@ -245,6 +255,9 @@ class CorootROService:
                 "end": end,
                 "min_duration_ms": min_duration_ms,
                 "query_scope": {"namespace_matcher_injected": False, "application_path_scope": True},
+                "backend_status": view.get("status"),
+                "backend_message": view.get("message"),
+                "backend_sources": view.get("sources"),
                 "traces": matched,
                 "truncated": len(spans) > len(matched) or len(matched) == MAX_TRACES,
             }
@@ -261,10 +274,11 @@ class CorootROService:
             params={
                 "from": start * 1000,
                 "to": end * 1000,
-                "query": json.dumps({"source": "otel", "view": "messages", "limit": MAX_LOG_ENTRIES}, separators=(",", ":")),
+                "query": json.dumps({"view": "messages", "limit": MAX_LOG_ENTRIES}, separators=(",", ":")),
             },
         )
-        entries = _sequence(response.get("entries"), "Coroot log entries")
+        view = _coroot_view(response, "Coroot log view")
+        entries = _nullable_sequence(view.get("entries"), "Coroot log entries")
         filtered = [
             entry
             for entry in entries
@@ -278,26 +292,23 @@ class CorootROService:
                 "end": end,
                 "pattern_applied": matcher is not None,
                 "query_scope": {"namespace_matcher_injected": False, "application_path_scope": True},
+                "backend_status": view.get("status"),
+                "backend_message": view.get("message"),
+                "backend_source": view.get("source"),
+                "backend_sources": view.get("sources"),
                 "entries": filtered,
                 "truncated": len(entries) > len(filtered) or len(filtered) == MAX_LOG_ENTRIES,
             }
         )
 
     async def _get(self, *, path: str, params: Mapping[str, Any]) -> Mapping[str, Any]:
-        headers = {"Authorization": f"Bearer {self.config.bearer_token}"} if self.config.bearer_token else {}
-        response = await self.transport.get_json(
-            base_url=self.config.base_url,
-            path=path,
-            params=params,
-            headers=headers,
-            timeout_seconds=self.config.timeout_seconds,
-            max_bytes=MAX_RESPONSE_BYTES,
-        )
+        await self._verify_viewer_session()
+        response = await self._request(path=path, params=params)
         if response.status_code in {401, 403}:
             raise CorootROError(
                 "backend_authorization_unqualified",
-                "Coroot denied the configured read-only identity.",
-                "Provision a Coroot identity restricted to this project before running this Trial.",
+                "Coroot denied the configured Viewer session.",
+                "Refresh the Controller-managed Coroot session cookie before running this Trial.",
             )
         if response.status_code == 404:
             raise CorootROError(
@@ -310,6 +321,44 @@ class CorootROService:
         if not isinstance(response.json_data, Mapping):
             raise CorootROError("invalid_backend_response", "Coroot returned an invalid JSON object.", "Complete Coroot API qualification before using this service.")
         return response.json_data
+
+    async def _verify_viewer_session(self) -> None:
+        response = await self._request(path="/api/user", params={})
+        if response.status_code in {401, 403}:
+            raise CorootROError(
+                "backend_authorization_unqualified",
+                "Coroot rejected the configured session cookie.",
+                "Refresh the Controller-managed Coroot Viewer session before running this Trial.",
+            )
+        if response.status_code < 200 or response.status_code >= 300:
+            raise CorootROError("backend_error", "Coroot rejected the identity verification request.", "Check the configured Coroot URL and session.")
+        if not isinstance(response.json_data, Mapping):
+            raise CorootROError("invalid_backend_response", "Coroot returned an invalid user response.", "Complete Coroot API qualification before using this service.")
+        if response.json_data.get("anonymous") is not False:
+            raise CorootROError(
+                "anonymous_identity_forbidden",
+                "Coroot did not prove a non-anonymous user identity.",
+                "Disable anonymous Admin/Viewer mode for Stage2 qualification or use a real Viewer session.",
+            )
+        role = response.json_data.get("role")
+        if role != COROOT_VIEWER_ROLE:
+            raise CorootROError(
+                "readonly_identity_unqualified",
+                "Coroot session is not a non-anonymous Viewer identity.",
+                "Provision a Controller-managed Coroot user with exactly the Viewer role.",
+            )
+
+    async def _request(self, *, path: str, params: Mapping[str, Any]) -> HttpResponse:
+        session_cookie = _session_cookie(self.config.session_cookie)
+        headers = {"Cookie": f"coroot_session={session_cookie}"}
+        return await self.transport.get_json(
+            base_url=self.config.base_url,
+            path=path,
+            params=params,
+            headers=headers,
+            timeout_seconds=self.config.timeout_seconds,
+            max_bytes=MAX_RESPONSE_BYTES,
+        )
 
     def _window(self, *, start: int, end: int) -> None:
         try:
@@ -347,6 +396,35 @@ def _services(value: str | None) -> frozenset[str]:
     return services
 
 
+def _session_cookie(value: str | None) -> str:
+    if value is None or value == "":
+        raise CorootROError(
+            "missing_readonly_identity",
+            "Coroot requires a configured non-anonymous Viewer session.",
+            f"Set {COROOT_SESSION_COOKIE_ENV} to the Controller-managed coroot_session value.",
+        )
+    cookie = value
+    if cookie != cookie.strip():
+        raise CorootROError(
+            "invalid_readonly_identity",
+            "Coroot session must not contain leading or trailing whitespace.",
+            f"Set only the raw coroot_session value in {COROOT_SESSION_COOKIE_ENV}.",
+        )
+    if "coroot_session" in cookie or any(char in cookie for char in "\r\n;\t ,"):
+        raise CorootROError(
+            "invalid_readonly_identity",
+            "Coroot session must be a single coroot_session cookie value, not a Cookie header.",
+            f"Set only the raw coroot_session value in {COROOT_SESSION_COOKIE_ENV}.",
+        )
+    if not _SESSION_COOKIE_RE.fullmatch(cookie):
+        raise CorootROError(
+            "invalid_readonly_identity",
+            "Coroot session cookie value has an unexpected format.",
+            "Refresh the Controller-managed Coroot Viewer session.",
+        )
+    return cookie
+
+
 def _metric_query(*, metric: str, namespace: str, labels: Mapping[str, str]) -> str:
     if not _METRIC_RE.fullmatch(metric):
         raise CorootROError("invalid_metric", "metric must be a Prometheus metric identifier.", "Use a metric name without an expression.")
@@ -360,6 +438,17 @@ def _metric_query(*, metric: str, namespace: str, labels: Mapping[str, str]) -> 
             raise CorootROError("invalid_label", "Metric labels must be bounded exact string filters.", "Use valid label names and values.")
         matchers.append(f'{key}="{_prometheus_literal(value)}"')
     return f"{metric}" + "{" + ",".join(matchers) + "}"
+
+
+def _dashboard_panel_query(promql: str) -> str:
+    panel = {
+        "name": "Stage2 read-only metric range",
+        "description": "Controller-scoped read-only PromQL range query.",
+        "source": {"metrics": {"queries": [{"datasource": "", "query": promql, "legend": "", "color": ""}]}},
+        "widget": {"chart": {"display": "line", "stacked": False}},
+        "box": {"x": 0, "y": 0, "w": 12, "h": 4},
+    }
+    return json.dumps(panel, separators=(",", ":"))
 
 
 def _prometheus_literal(value: str) -> str:
@@ -384,10 +473,6 @@ def _pattern(value: str | None) -> re.Pattern[str] | None:
         raise CorootROError("invalid_pattern", "Log pattern is not a valid regular expression.", "Use a valid bounded regular expression.") from exc
 
 
-def _step(start: int, end: int) -> int:
-    return max(1, min(300, (end - start) // 60 or 1))
-
-
 def _path_part(value: str) -> str:
     return urllib.parse.quote(value, safe="")
 
@@ -399,16 +484,16 @@ def _decode_json(body: bytes) -> Any:
         raise CorootROError("invalid_backend_response", "Coroot returned invalid JSON.", "Complete Coroot API qualification before using this service.") from exc
 
 
-def _prometheus_data(payload: Mapping[str, Any]) -> Any:
-    if payload.get("status") != "success" or not isinstance(payload.get("data"), Mapping):
-        raise CorootROError("invalid_backend_response", "Coroot did not return a successful Prometheus range response.", "Complete Coroot API qualification before using this service.")
-    return payload["data"]
-
-
 def _sequence(value: Any, description: str) -> list[Any]:
     if not isinstance(value, list):
         raise CorootROError("invalid_backend_response", f"Coroot did not return {description}.", "Complete Coroot API qualification before using this service.")
     return value
+
+
+def _nullable_sequence(value: Any, description: str) -> list[Any]:
+    if value is None:
+        return []
+    return _sequence(value, description)
 
 
 def _duration_ms(value: Any) -> float:
@@ -416,3 +501,118 @@ def _duration_ms(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError):
         return -1.0
+
+
+def _coroot_view(payload: Mapping[str, Any], description: str) -> Mapping[str, Any]:
+    data = payload.get("data")
+    if not isinstance(data, Mapping):
+        raise CorootROError(
+            "invalid_backend_response",
+            f"Coroot did not return a native {description} wrapper.",
+            "Complete Coroot API qualification before using this service.",
+        )
+    return data
+
+
+def _coroot_chart_matrix(payload: Mapping[str, Any], series_payload: Mapping[str, Any]) -> dict[str, Any]:
+    chart = payload.get("chart")
+    if chart is None:
+        return {"resultType": "matrix", "result": [], "coroot_chart_context": None, "truncated": False}
+    if not isinstance(chart, Mapping):
+        raise CorootROError("invalid_backend_response", "Coroot returned an invalid chart.", "Complete Coroot API qualification before using this service.")
+    ctx = chart.get("ctx")
+    if not isinstance(ctx, Mapping):
+        raise CorootROError("invalid_backend_response", "Coroot chart is missing context.", "Complete Coroot API qualification before using this service.")
+    from_ms = _number(ctx.get("from"), "Coroot chart ctx.from")
+    to_ms = _number(ctx.get("to"), "Coroot chart ctx.to") if ctx.get("to") is not None else None
+    step_ms = _number(ctx.get("step"), "Coroot chart ctx.step")
+    if step_ms <= 0:
+        raise CorootROError("invalid_backend_response", "Coroot chart step is invalid.", "Complete Coroot API qualification before using this service.")
+    series = _sequence(chart.get("series"), "Coroot chart series")
+    metadata = _series_metadata_by_coroot_name(series_payload)
+    result: list[dict[str, Any]] = []
+    for item in series:
+        if not isinstance(item, Mapping):
+            raise CorootROError("invalid_backend_response", "Coroot chart contains an invalid series.", "Complete Coroot API qualification before using this service.")
+        data = _sequence(item.get("data"), "Coroot chart series data")
+        series_name = item.get("name")
+        if series_name is not None and not isinstance(series_name, str):
+            raise CorootROError("invalid_backend_response", "Coroot chart series name is invalid.", "Complete Coroot API qualification before using this service.")
+        values = []
+        for index, value in enumerate(data):
+            timestamp_ms = from_ms + index * step_ms
+            if to_ms is not None and timestamp_ms > to_ms:
+                raise CorootROError("invalid_backend_response", "Coroot chart series extends past ctx.to.", "Complete Coroot API qualification before using this service.")
+            values.append([int(timestamp_ms / 1000), _chart_sample_value(value)])
+        matched_metadata = metadata.get(series_name or "")
+        result.append(
+            {
+                "metric": dict(matched_metadata) if matched_metadata is not None else {},
+                "values": values,
+                "coroot_series": {
+                    key: value
+                    for key in ("name", "title", "color", "fill", "threshold", "value")
+                    if (value := item.get(key)) not in (None, "")
+                },
+            }
+        )
+    return {
+        "resultType": "matrix",
+        "context": {
+            "from": int(from_ms / 1000),
+            "to": int(to_ms / 1000) if to_ms is not None else None,
+            "step": int(step_ms / 1000),
+            "raw_step": int(_number(ctx.get("raw_step"), "Coroot chart ctx.raw_step") / 1000) if ctx.get("raw_step") is not None else None,
+        },
+        "truncated": bool(ctx.get("truncated")) if isinstance(ctx.get("truncated"), bool) else False,
+        "result": result,
+    }
+
+
+def _number(value: Any, description: str) -> float:
+    if isinstance(value, bool):
+        raise CorootROError("invalid_backend_response", f"{description} is invalid.", "Complete Coroot API qualification before using this service.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise CorootROError("invalid_backend_response", f"{description} is invalid.", "Complete Coroot API qualification before using this service.") from exc
+    if not math.isfinite(number):
+        raise CorootROError("invalid_backend_response", f"{description} is not finite.", "Complete Coroot API qualification before using this service.")
+    return number
+
+
+def _chart_sample_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise CorootROError("invalid_backend_response", "Coroot chart sample value is invalid.", "Complete Coroot API qualification before using this service.")
+    if isinstance(value, (int, float)) and not math.isfinite(float(value)):
+        raise CorootROError("invalid_backend_response", "Coroot chart sample value is not finite.", "Complete Coroot API qualification before using this service.")
+    return value
+
+
+def _series_metadata_by_coroot_name(payload: Mapping[str, Any]) -> dict[str, Mapping[str, str]]:
+    if payload.get("status") != "success":
+        raise CorootROError("invalid_backend_response", "Coroot series metadata query did not succeed.", "Complete Coroot API qualification before using this service.")
+    rows = _sequence(payload.get("data"), "Coroot series metadata")
+    by_name: dict[str, Mapping[str, str] | None] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise CorootROError("invalid_backend_response", "Coroot series metadata contains an invalid row.", "Complete Coroot API qualification before using this service.")
+        labels: dict[str, str] = {}
+        for key, value in row.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise CorootROError("invalid_backend_response", "Coroot series metadata labels must be strings.", "Complete Coroot API qualification before using this service.")
+            labels[key] = value
+        coroot_name = _coroot_labels_string(labels)
+        if coroot_name in by_name:
+            by_name[coroot_name] = None
+        else:
+            by_name[coroot_name] = labels
+    return {name: labels for name, labels in by_name.items() if labels is not None}
+
+
+def _coroot_labels_string(labels: Mapping[str, str]) -> str:
+    if not labels:
+        return ""
+    return "{" + ",".join(f"{key}={labels[key]}" for key in sorted(labels)) + "}"

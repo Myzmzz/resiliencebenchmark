@@ -200,6 +200,7 @@ SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{12,}"),
     re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
     re.compile(r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*['\"]?[^'\"\s,}]+"),
+    re.compile(r"(?i)coroot_session\s*=\s*[^;\s\"']+"),
 ]
 
 
@@ -242,7 +243,7 @@ def sha256_file(path: Path) -> str:
 
 
 def redaction_values(env: Mapping[str, str]) -> list[str]:
-    private_tokens = {"RESBENCH_AGENT_RELAY_TOKEN", "RESBENCH_MCP_AUDIT_AUTHORITY", "RESBENCH_BLADEAI_PROXY_TOKEN"}
+    private_tokens = {"RESBENCH_AGENT_RELAY_TOKEN", "RESBENCH_MCP_AUDIT_AUTHORITY", "RESBENCH_BLADEAI_PROXY_TOKEN", "RESBENCH_COROOT_SESSION_COOKIE"}
     return [value for key, value in env.items() if key in ALLOWED_RUNTIME_ENV | private_tokens and value]
 
 

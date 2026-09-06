@@ -54,8 +54,7 @@ RUN npm ci --prefix /opt/resiliencebenchmark/deepseek-harness --omit=dev --ignor
 
 COPY --from=bladeai_source / /opt/blade-ai
 RUN python -m venv /opt/bladeai-venv \
-    && grep -Eq 'version[[:space:]]*=[[:space:]]*["'"']'"${BLADEAI_PACKAGE_VERSION}"'["'"']' /opt/blade-ai/pyproject.toml \
-    && grep -F '"mcp>=1.0,<2.0"' /opt/blade-ai/pyproject.toml \
+    && python -c 'import os, tomllib; from pathlib import Path; project = tomllib.loads(Path("/opt/blade-ai/pyproject.toml").read_text())["project"]; assert project["version"] == os.environ["BLADEAI_PACKAGE_VERSION"]; assert "mcp>=1.0,<2.0" in project["dependencies"]' \
     && test ! -e /opt/blade-ai/vendor/chaosblade \
     && ! find /opt/blade-ai -type f -name blade -print -quit | grep .
 RUN /opt/bladeai-venv/bin/pip install --no-cache-dir "mcp[cli]==${BLADEAI_MCP_VERSION}" --editable /opt/blade-ai \
