@@ -285,10 +285,42 @@ class InMemoryChaosMeshBackend:
 def _record_from_resource(resource: Mapping[str, Any]) -> ExperimentRecord:
     metadata = resource.get("metadata") or {}
     labels = dict(metadata.get("labels") or {})
+    phase = _observed_phase(resource)
+    return ExperimentRecord(name=str(metadata.get("name") or ""), namespace=str(metadata.get("namespace") or labels.get(NAMESPACE_LABEL) or ""), run_id=str(labels.get(RUN_ID_LABEL) or ""), target_name=str(labels.get(TARGET_NAME_LABEL) or ""), target_uid=str(labels.get(TARGET_UID_LABEL) or ""), fault_type=str(labels.get(FAULT_TYPE_LABEL) or ""), phase=phase, owner=labels.get(OWNER_LABEL), labels=labels, raw=dict(resource))
+
+
+def _observed_phase(resource: Mapping[str, Any]) -> str:
+    """Normalize observed Chaos Mesh 2.7 records, never its desired Run state."""
+    metadata = resource.get("metadata") or {}
+    if metadata.get("deletionTimestamp"):
+        return "Terminating"
     status = resource.get("status") or {}
     experiment = status.get("experiment") or {}
-    phase = str(experiment.get("desiredPhase") or experiment.get("phase") or status.get("phase") or "Unknown")
-    return ExperimentRecord(name=str(metadata.get("name") or ""), namespace=str(metadata.get("namespace") or labels.get(NAMESPACE_LABEL) or ""), run_id=str(labels.get(RUN_ID_LABEL) or ""), target_name=str(labels.get(TARGET_NAME_LABEL) or ""), target_uid=str(labels.get(TARGET_UID_LABEL) or ""), fault_type=str(labels.get(FAULT_TYPE_LABEL) or ""), phase=phase, owner=labels.get(OWNER_LABEL), labels=labels, raw=dict(resource))
+    conditions = {item.get("type"): item.get("status") for item in status.get("conditions", []) if isinstance(item, Mapping)}
+    if conditions.get("Paused") == "True":
+        return "Paused"
+    records = experiment.get("containerRecords")
+    labels = metadata.get("labels") or {}
+    target = f"{metadata.get('namespace', '')}/{labels.get(TARGET_NAME_LABEL, '')}"
+    if (not labels.get(TARGET_NAME_LABEL) or not isinstance(records, list) or not records
+            or any(not isinstance(item, Mapping) or not (
+                item.get("id") == target or str(item.get("id", "")).startswith(target + "/")
+            ) for item in records)):
+        return "Pending"
+    def count(item: Mapping[str, Any], key: str) -> int:
+        value = item.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) else 0
+    if (conditions.get("AllRecovered") == "True"
+            and all(item.get("phase") == "Recovered" and count(item, "injectedCount") > 0
+                    and count(item, "recoveredCount") >= count(item, "injectedCount") for item in records)):
+        return "Completed"
+    if (experiment.get("desiredPhase") == "Run" and conditions.get("AllInjected") == "True"
+            and conditions.get("AllRecovered") != "True"
+            and all(item.get("phase") == "Injected" and count(item, "injectedCount") > 0 for item in records)):
+        return "Running"
+    if experiment.get("desiredPhase") == "Stop":
+        return "Recovering"
+    return "Pending"
 
 
 def _crd_for_manifest(manifest: Mapping[str, Any]) -> str:

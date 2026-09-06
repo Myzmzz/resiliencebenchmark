@@ -230,3 +230,10 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 真实sandbox→broker→带Bearer的harness_channel MCP通知/回执检查`smb603cf`暴露剩余SDK属性错误。按mcp-builder检查流程及当前官方SDK v2文档，代理改用is_error/structured_content，不添加v1兼容路径；BladeAI隔离venv仍为受上游约束的MCP1.x，其原生适配字段不改。新增实际SDK CallToolResult类型回归，以及后台异常不泄漏正文、授权调用失败不当越权的socket测试。全量结果和真实复验另行记录。
 
 `bb08326`已推送并部署。`sandbox-mcp-v2-full.xml`全量1427通过、9跳过、49.626秒；实际`smafbfc3` HTTP链路和`sm05a3a8` SSE链路完成UID10003→broker→生产Harness MCP通知读取/回执，未经认证返回401、平台留下通知送达和工具调用记录，socket无残留。`sm76ebe2`另外通过实际BladeAI venv的MCP1.27.0、UID10002走SSE读取并确认新通知，证明协议互通，不证明BladeAI规划器能力。普通Agent边界在当前部署复验通过，记录`linux-agent-boundary-041520.json`。仍未创建故障，也未开始原生智能体或正式评测任务；完整范围未缩减。
+
+### 旧集群WP10金丝雀（UTC04:24–04:28）
+
+在两个临时Pod之间实际注入1000ms NetworkChaos，创建/删除分别使用executor与finalizer。
+HTTP延迟中位数1.022ms→2001.251ms→0.913ms，所有请求成功，故障对象删除后先验证恢复再删除临时Pod。初始检查器将空的已同步PodNetworkChaos缓存当作残留而报告failed；原记录保留，后续检查确认spec为空且观测版本一致，两个临时Pod删除后内部缓存也被回收，最终五类故障清单为空，复核结果通过。只证明NetworkChaos引擎链路，不证明完整MCP执行或Agent D8行为。
+
+实跑状态同时暴露后端错误地返回期望phase=Run。现基于真实AllInjected和目标containerRecords归一化Running/Recovering/Completed；只有期望Run、缺记录、目标不符、暂停/删除状态均不能产生Running事实。新增真实夹具及共享核心时间窗联动回归。`mesh-observed-phase-final.xml`全量1439通过、9跳过、48.427秒，0失败/错误。详见计划要求的 `docs/deploy/chaos-mesh-and-coroot-20260905.md`。未改L0-L4提示/评分或默认C0-D6用例。
