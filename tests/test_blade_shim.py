@@ -6,6 +6,21 @@ import pytest
 from stage2_service.bladeai_shim import BladeShim, parse_create
 
 
+@pytest.mark.parametrize("argv", [["version"], ["create", "k8s", "pod-network", "delay", "--help"]])
+def test_real_shim_entrypoint_renders_version_and_help_without_tool_calls(tmp_path, monkeypatch, capsys, argv):
+    from stage2_service.bladeai_shim import main
+
+    monkeypatch.setenv("RESBENCH_TRIAL_NAMESPACE", "otel-demo")
+    monkeypatch.setenv("RESBENCH_BLADE_SHIM_STATE_FILE", str(tmp_path / "aliases.json"))
+    monkeypatch.setenv("RESBENCH_BLADEAI_K8S_MCP_SSE_URL", "http://127.0.0.1:18181/sse")
+    monkeypatch.setenv("RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL", "http://127.0.0.1:18184/sse")
+    monkeypatch.setenv("RESBENCH_MCP_TOKEN", "x" * 32)
+    assert main(argv) == 0
+    output = capsys.readouterr()
+    assert output.out and output.err == ""
+    assert not (tmp_path / "aliases.json").exists()
+
+
 class _Tools:
     def __init__(self):
         self.calls = []

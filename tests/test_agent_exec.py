@@ -8,6 +8,7 @@ Linux-only qualification test; macOS development must not silently emulate it.
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -18,6 +19,13 @@ import pytest
 from harness.agent_exec.client import AgentExecClient, AgentExecClientError
 from harness.agent_exec.protocol import MAX_FRAME_BYTES, ProtocolError, decode_frame, encode_frame, recv_frame
 from harness.agent_exec.server import AgentExecServer, AgentExecServerConfig
+
+
+CODEX_VENDOR_ELF = (
+    "/usr/local/lib/node_modules/@openai/codex/node_modules/"
+    "@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+)
+DSH_NODE_MODULES_ROOT = "/opt/resiliencebenchmark/deepseek-harness/node_modules"
 
 
 def test_protocol_rejects_oversized_and_non_object_frames() -> None:
@@ -244,6 +252,199 @@ def test_agent_output_normalization_rejects_symlink_before_controller_can_read_i
         normalize_shared_trial_tree(root, os.getgid())
 
 
+def test_agent_output_normalization_allows_codex_arg0_launcher_aliases(tmp_path: Path) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    root = tmp_path / "trial"
+    alias_dir = root / "codex-home" / "tmp" / "arg0" / "codex-arg0QNsLyw"
+    alias_dir.mkdir(parents=True)
+    for name in (
+        "applypatch",
+        "apply_patch",
+        "codex-execve-wrapper",
+        "codex-linux-sandbox",
+    ):
+        (alias_dir / name).symlink_to(CODEX_VENDOR_ELF)
+    result = root / "result.json"
+    result.write_text("{}", encoding="utf-8")
+    result.chmod(0o600)
+
+    normalize_shared_trial_tree(root, os.getgid())
+
+    assert result.stat().st_mode & 0o777 == 0o660
+    for path in alias_dir.iterdir():
+        assert path.is_symlink()
+        assert os.readlink(path) == CODEX_VENDOR_ELF
+
+
+def test_agent_output_normalization_rejects_codex_arg0_alias_to_untrusted_target(tmp_path: Path) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    root = tmp_path / "trial"
+    alias_dir = root / "codex-home" / "tmp" / "arg0" / "codex-arg0QNsLyw"
+    alias_dir.mkdir(parents=True)
+    (alias_dir / "applypatch").symlink_to(tmp_path / "controller-secret")
+
+    with pytest.raises(RuntimeError, match="symlinks"):
+        normalize_shared_trial_tree(root, os.getgid())
+
+
+def test_agent_output_normalization_allows_dsh_node_modules_package_cache_links(tmp_path: Path) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    root = tmp_path / "trial"
+    node_modules = root / "dsh-home" / "profiles" / "node_modules"
+    (node_modules / "@google").mkdir(parents=True)
+    (node_modules / "@deepseek-ai").mkdir()
+    (node_modules / "@google" / "genai").symlink_to(f"{DSH_NODE_MODULES_ROOT}/@google/genai")
+    (node_modules / "@deepseek-ai" / "dsh-base").symlink_to(f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-base")
+    (node_modules / "zod").symlink_to(f"{DSH_NODE_MODULES_ROOT}/zod")
+    report = root / "result.json"
+    report.write_text("{}", encoding="utf-8")
+    report.chmod(0o600)
+
+    normalize_shared_trial_tree(root, os.getgid())
+
+    assert report.stat().st_mode & 0o777 == 0o660
+    assert node_modules.stat().st_mode & 0o7777 == 0o2770
+    assert (node_modules / "@google").stat().st_mode & 0o7777 == 0o2770
+    assert os.readlink(node_modules / "@google" / "genai") == f"{DSH_NODE_MODULES_ROOT}/@google/genai"
+    assert os.readlink(node_modules / "@deepseek-ai" / "dsh-base") == f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-base"
+    assert os.readlink(node_modules / "zod") == f"{DSH_NODE_MODULES_ROOT}/zod"
+
+
+def test_agent_output_normalization_rejects_dsh_node_modules_mismatched_target(tmp_path: Path) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    root = tmp_path / "trial"
+    node_modules = root / "dsh-home" / "profiles" / "node_modules"
+    (node_modules / "@google").mkdir(parents=True)
+    (node_modules / "@google" / "genai").symlink_to(f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-base")
+
+    with pytest.raises(RuntimeError, match="symlinks"):
+        normalize_shared_trial_tree(root, os.getgid())
+
+
+def test_agent_output_normalization_accepts_only_the_observed_nested_dsh_package(tmp_path: Path) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    root = tmp_path / "trial"
+    package = root / "dsh-home/profiles/node_modules/@deepseek-ai/dsh-client-web"
+    package.parent.mkdir(parents=True)
+    package.symlink_to(f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-web-frontend/node_modules/@deepseek-ai/dsh-client-web")
+    normalize_shared_trial_tree(root, os.getgid())
+    package.unlink()
+    package.symlink_to(f"{DSH_NODE_MODULES_ROOT}/other/node_modules/@deepseek-ai/dsh-client-web")
+    with pytest.raises(RuntimeError, match="symlinks"):
+        normalize_shared_trial_tree(root, os.getgid())
+
+
+def test_agent_output_normalization_rejects_dsh_node_modules_relative_escape_target(tmp_path: Path) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    root = tmp_path / "trial"
+    node_modules = root / "dsh-home" / "profiles" / "node_modules"
+    node_modules.mkdir(parents=True)
+    (node_modules / "zod").symlink_to("../../../../controller-private/zod")
+
+    with pytest.raises(RuntimeError, match="symlinks"):
+        normalize_shared_trial_tree(root, os.getgid())
+
+
+def test_agent_output_normalization_finishes_no_follow_cleanup_state_before_reporting_symlink(tmp_path: Path) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    private_target = tmp_path / "controller-private-token"
+    private_target.write_text("secret", encoding="utf-8")
+    private_target.chmod(0o600)
+    private_mode = private_target.stat().st_mode & 0o777
+
+    root = tmp_path / "trial"
+    session = root / "dsh-home" / "sessions" / "session-1"
+    session.mkdir(parents=True)
+    session.chmod(0o700)
+    result = session / "result.json"
+    result.write_text("{}", encoding="utf-8")
+    result.chmod(0o600)
+    (root / "indirect").symlink_to(private_target)
+
+    with pytest.raises(RuntimeError, match="symlinks"):
+        normalize_shared_trial_tree(root, os.getgid())
+
+    assert root.stat().st_mode & 0o7777 == 0o2770
+    assert session.stat().st_mode & 0o7777 == 0o2770
+    assert result.stat().st_mode & 0o777 == 0o660
+    assert private_target.read_text(encoding="utf-8") == "secret"
+    assert private_target.stat().st_mode & 0o777 == private_mode
+
+    shutil.rmtree(root)
+
+    assert not root.exists()
+    assert private_target.exists()
+
+
+def test_agent_output_metadata_changes_are_no_follow(tmp_path: Path, monkeypatch) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    calls: list[tuple[str, bool]] = []
+    root = tmp_path / "trial"
+    root.mkdir()
+    result = root / "result.json"
+    result.write_text("{}", encoding="utf-8")
+    result.chmod(0o600)
+
+    def record_chown(_path, _uid, _gid, *, follow_symlinks=True):
+        calls.append(("chown", follow_symlinks))
+
+    def record_chmod(_path, _mode, *, follow_symlinks=True):
+        calls.append(("chmod", follow_symlinks))
+
+    monkeypatch.setattr("harness.agent_exec.shared_trial.os.chown", record_chown)
+    monkeypatch.setattr("harness.agent_exec.shared_trial.os.chmod", record_chmod)
+
+    normalize_shared_trial_tree(root, os.getgid() + 1)
+
+    assert calls
+    assert all(follow_symlinks is False for _, follow_symlinks in calls)
+
+
+def test_agent_output_metadata_race_does_not_chmod_replaced_symlink_target(tmp_path: Path, monkeypatch) -> None:
+    from harness.agent_exec.shared_trial import normalize_shared_trial_tree
+
+    private_target = tmp_path / "controller-private-token"
+    private_target.write_text("secret", encoding="utf-8")
+    private_target.chmod(0o600)
+    private_mode = private_target.stat().st_mode & 0o777
+
+    root = tmp_path / "trial"
+    root.mkdir()
+    result = root / "result.json"
+    result.write_text("{}", encoding="utf-8")
+    result.chmod(0o600)
+
+    replaced = False
+    real_chmod = os.chmod
+
+    def replace_with_symlink_before_chmod(path, mode, *, follow_symlinks=True):
+        nonlocal replaced
+        assert follow_symlinks is False
+        if Path(path) == result and not replaced:
+            replaced = True
+            result.unlink()
+            result.symlink_to(private_target)
+            return
+        real_chmod(path, mode, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr("harness.agent_exec.shared_trial.os.chmod", replace_with_symlink_before_chmod)
+
+    normalize_shared_trial_tree(root, os.getgid())
+
+    assert replaced is True
+    assert result.is_symlink()
+    assert private_target.read_text(encoding="utf-8") == "secret"
+    assert private_target.stat().st_mode & 0o777 == private_mode
+
+
 def test_controller_accepts_already_normalized_agent_tree_without_metadata_mutation(tmp_path: Path, monkeypatch) -> None:
     from harness.agent_exec.shared_trial import normalize_shared_trial_tree
 
@@ -264,7 +465,7 @@ def test_controller_rejects_non_owner_unormalized_agent_tree_instead_of_ignoring
     root = tmp_path / "trial"
     root.mkdir()
     (root / "result.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr("harness.agent_exec.shared_trial.os.chown", lambda *_args: (_ for _ in ()).throw(PermissionError()))
+    monkeypatch.setattr("harness.agent_exec.shared_trial.os.chown", lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError()))
 
     with pytest.raises(RuntimeError, match="not controller-normalized"):
         normalize_shared_trial_tree(root, os.getgid() + 1)

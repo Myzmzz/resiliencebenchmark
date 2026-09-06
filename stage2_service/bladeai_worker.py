@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import asyncio
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -135,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         emit("fatal", {"error": f"BladeAI import failed: {type(exc).__name__}"})
         return 2
     try:
+        _install_worker_sdk_runtime(L4ResilienceAgent)
         _assert_controlled_blade_shim()
         confirmation_client = (
             McpHarnessConfirmationClient.from_env()
@@ -160,10 +162,14 @@ def main(argv: list[str] | None = None) -> int:
         target_uid_resolver=target_uid_resolver,
     )
     agent = L4ResilienceAgent()
-    with _capture_native_confirmation_proposal(runtime):
-        agent.prepare(runtime, task)
-        result = agent.execute(runtime, task)
-    agent.cleanup(runtime, task)
+    try:
+        with _capture_native_confirmation_proposal(runtime):
+            agent.prepare(runtime, task)
+            result = agent.execute(runtime, task)
+        agent.cleanup(runtime, task)
+    except BladeTaskError as exc:
+        emit("fatal", {"error": str(exc), "integration_status": "incomplete"})
+        return 2
     print(
         json.dumps(
             {
@@ -216,6 +222,143 @@ def _assert_controlled_blade_shim() -> None:
         raise BladeTaskError(f"unable to verify controlled blade shim: {type(exc).__name__}") from exc
     if resolved != expected:
         raise BladeTaskError("BladeAI resolved a native blade binary instead of the controlled shim")
+
+
+def _install_worker_sdk_runtime(agent_cls: type) -> None:
+    """Patch BladeAI's L4 pool inside this isolated worker process.
+
+    BladeAI 0.6.2's L4 adapter initializes Agent Core with
+    ``asyncio.run(create_agent(...))`` and does not pass ``mcp_manager``.  A
+    connected MCP client owns transports, sessions, and locks tied to the loop
+    that opened them, so this worker initializes MCP and compiles the graphs in
+    the same event loop that executes them, then closes MCP before that loop is
+    torn down.
+    """
+
+    if agent_cls.__dict__.get("_resbench_worker_mcp_runtime") is True:
+        return
+
+    try:
+        import chaos_agent.l4.agent as l4_module
+    except ImportError as exc:  # pragma: no cover - guarded by caller import.
+        raise BladeTaskError("BladeAI L4 module is unavailable") from exc
+
+    class _WorkerMcpChaosAgentPool:
+        inject_graph = None
+        recover_graph = None
+        skill_registry = None
+
+        def __init__(self) -> None:
+            self._initialized = False
+            self._mcp_manager = None
+
+        async def ensure_initialized_async(self) -> None:
+            if self._initialized:
+                return
+            from langgraph.checkpoint.memory import MemorySaver
+
+            from chaos_agent.agent.factory import create_agent
+            from chaos_agent.config.settings import settings
+            from chaos_agent.skills.loader import get_skills_dir
+            from chaos_agent.skills.registry import SkillRegistry
+
+            registry = SkillRegistry()
+            skills_dir = get_skills_dir()
+            if skills_dir.exists():
+                registry.load_from_directory(skills_dir)
+
+            checkpointer = MemorySaver()
+            mcp_manager = None
+            configured_servers: list[str] = []
+            connected_servers: list[str] = []
+            try:
+                if not settings.mcp_enabled:
+                    raise BladeTaskError("BladeAI MCP must be enabled for Stage-2 task mode")
+                from chaos_agent.mcp.config import load_mcp_config
+                from chaos_agent.mcp.manager import McpManager
+
+                config_path = Path(settings.mcp_config_path).expanduser()
+                configs = load_mcp_config(config_path)
+                if not configs:
+                    raise BladeTaskError("BladeAI MCP config is empty")
+                configured_servers = [cfg.name for cfg in configs]
+                mcp_manager = McpManager(configs=configs)
+                await mcp_manager.connect_all(
+                    connect_timeout_seconds=settings.mcp_connect_timeout_seconds,
+                )
+                connected_servers = [client.name for client in mcp_manager._clients]
+                missing = sorted(set(configured_servers) - set(connected_servers))
+                if missing:
+                    raise BladeTaskError(
+                        "BladeAI MCP failed to connect configured servers: "
+                        + ", ".join(missing)
+                    )
+                agents = await create_agent(registry, checkpointer=checkpointer, mcp_manager=mcp_manager)
+            except BaseException:
+                if mcp_manager is not None:
+                    await mcp_manager.disconnect_all()
+                raise
+            self.inject_graph = agents["inject"]
+            self.recover_graph = agents["recover"]
+            self.skill_registry = registry
+            self._mcp_manager = mcp_manager
+            self._initialized = True
+            phase_tool_counts = {
+                phase: len(mcp_manager.tools_for_phase(phase))
+                for phase in ("clarification", "phase1", "phase2", "verifier")
+            }
+            emit(
+                "mcp_lifecycle",
+                {
+                    "configured_servers": configured_servers,
+                    "connected_servers": connected_servers,
+                    "phase_tool_counts": phase_tool_counts,
+                },
+            )
+
+        async def close(self) -> None:
+            if self._mcp_manager is not None:
+                await self._mcp_manager.disconnect_all()
+                self._mcp_manager = None
+            self.inject_graph = None
+            self.recover_graph = None
+            self.skill_registry = None
+            self._initialized = False
+
+    def _patched_ensure_pool(self):
+        if self._pool is None:
+            l4_module._setup_logging()
+            self._pool = _WorkerMcpChaosAgentPool()
+        return self._pool
+
+    def _patched_prepare(self, runtime, task) -> None:
+        self._ensure_pool()
+
+    def _patched_execute(self, runtime, task):
+        if task.task_id in self._completed:
+            return self._completed[task.task_id]
+        self._state_transitions_buffer = []
+        pool = self._ensure_pool()
+
+        async def _run_once():
+            await pool.ensure_initialized_async()
+            try:
+                return await self._async_execute(pool, runtime, task)
+            finally:
+                await pool.close()
+
+        result = asyncio.run(_run_once())
+        if result.status in ("passed", "failed", "cancelled", "degraded"):
+            self._completed[task.task_id] = result
+            if len(self._completed) > 100:
+                oldest_inserted = next(iter(self._completed))
+                del self._completed[oldest_inserted]
+        return result
+
+    agent_cls._ensure_pool = _patched_ensure_pool
+    agent_cls.prepare = _patched_prepare
+    agent_cls.execute = _patched_execute
+    agent_cls._resbench_worker_mcp_runtime = True
 
 
 @contextmanager

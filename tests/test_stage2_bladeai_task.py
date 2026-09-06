@@ -274,6 +274,7 @@ def test_worker_constructs_targetless_l4_task_in_task_mode(tmp_path, monkeypatch
     monkeypatch.setitem(sys.modules, "chaos_agent.l4.agent", agent_module)
     monkeypatch.setitem(sys.modules, "chaos_agent.l4.schemas", schema_module)
     monkeypatch.setattr("stage2_service.bladeai_worker._assert_controlled_blade_shim", lambda: None)
+    monkeypatch.setattr("stage2_service.bladeai_worker._install_worker_sdk_runtime", lambda _agent_cls: None)
     monkeypatch.setattr(
         "stage2_service.bladeai_worker.McpHarnessConfirmationClient.from_env",
         lambda: _Confirm({"ok": True, "allowed": True}),
