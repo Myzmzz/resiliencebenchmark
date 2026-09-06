@@ -59,6 +59,7 @@ def test_agent_visible_mcp_excludes_execution_servers_but_shim_env_keeps_chaos_u
         assert mcp[name]["attach_to"] == template[name]["attach_to"]
     assert child_env["RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL"] == "http://127.0.0.1:18184/sse"
     assert child_env["RESBENCH_MCP_TOKEN"] == "trial-mcp-token"
+    assert child_env["BLADE_AI_MCP_CONNECT_TIMEOUT_SECONDS"] == "120"
 
 
 def test_missing_required_shim_endpoint_fails_even_when_agent_mcp_is_read_only(tmp_path: Path) -> None:

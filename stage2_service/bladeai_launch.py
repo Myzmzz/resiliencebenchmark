@@ -11,6 +11,13 @@ from mcp_servers.bladeai_k8s_proxy.service import ProxyConfig, proxy_kubeconfig
 from scripts.run_harness_trial import child_env_for_harness, write_json
 
 
+# BladeAI starts several authenticated SSE clients in one worker.  The old
+# 30-second SDK default was too narrow for the old cluster under transient I/O
+# pressure; keep the wider wait local to BladeAI so other Harnesses retain
+# their own startup contracts.
+BLADEAI_MCP_CONNECT_TIMEOUT_SECONDS = 120
+
+
 def prepare_bladeai_launch(
     *, repo_root: Path, trial_root: Path, trial_id: str, namespace: str,
     prompt: str, model_alias: str, environment: Mapping[str, str],
@@ -60,7 +67,9 @@ def prepare_bladeai_launch(
         "BLADE_AI_KUBECONFIG_PATH": str(kubeconfig),
         "BLADE_AI_BLADE_PATH": str(repo_root / "harness/bladeai/blade-shim/blade"),
         "BLADE_AI_KUBECTL_PATH": str(repo_root / "harness/bladeai/kubectl-shim/kubectl"),
-        "BLADE_AI_MCP_ENABLED": "true", "BLADE_AI_MCP_CONFIG_PATH": str(mcp_path),
+        "BLADE_AI_MCP_ENABLED": "true",
+        "BLADE_AI_MCP_CONFIG_PATH": str(mcp_path),
+        "BLADE_AI_MCP_CONNECT_TIMEOUT_SECONDS": str(BLADEAI_MCP_CONNECT_TIMEOUT_SECONDS),
         "PYTHONPATH": str(repo_root),
         "RESBENCH_TRIAL_NAMESPACE": namespace,
         "RESBENCH_BLADE_SHIM_STATE_FILE": str(agent_home / "blade-aliases.json"),
