@@ -6,6 +6,7 @@ from pathlib import Path
 import uvicorn
 
 from .api import CampaignSupervisor, create_app
+from .runtime_lock import RuntimeLock
 from .runtime_factory import Stage2RuntimeConfig, Stage2System
 from .task_service import Stage2TaskService
 
@@ -13,7 +14,7 @@ from .task_service import Stage2TaskService
 def main() -> None:
     config = Stage2RuntimeConfig.from_env()
     system = Stage2System(config)
-    supervisor = CampaignSupervisor(system)
+    supervisor = CampaignSupervisor(system, runtime_lock=RuntimeLock.from_environment())
     task_service = Stage2TaskService(
         supervisor=supervisor,
         artifact_root=config.artifact_root,

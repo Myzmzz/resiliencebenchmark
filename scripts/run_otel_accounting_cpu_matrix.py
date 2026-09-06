@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from harness.d0 import D0Campaign, D0CampaignConfig
 from harness.d0.recompute import merge_agent_evidence, recompute_campaign
 from stage2_service.contracts import STAGE2_SUPPORTED_MODELS
+from stage2_service.runtime_lock import RuntimeLock
 
 
 DEFAULT_ARTIFACT_ROOT = Path("/var/lib/resbench-stage2/d0")
@@ -88,7 +89,9 @@ def main(argv: list[str] | None = None) -> int:
             model_keys = {"bladeai": "BLADEAI", "codex": "CODEX", "claude-code": "CLAUDE", "deepseek-harness": "DSH"}
             for agent in agents:
                 environment[f"RESBENCH_D0_{model_keys[agent]}_MODEL"] = args.model
-        report = D0Campaign(config, environment=environment).run(args.campaign_id)
+        lock_owner = f"d0-campaign:{args.model or 'configured'}:{','.join(agents)}"
+        with RuntimeLock.from_environment().acquire(owner=lock_owner):
+            report = D0Campaign(config, environment=environment).run(args.campaign_id)
     except Exception as exc:  # noqa: BLE001 - emit bounded structured failure.
         print(
             json.dumps(

@@ -18,8 +18,10 @@ from stage2_service.task_service import (
     AbortTaskRequest,
     Stage2TaskCreateRequest,
     Stage2TaskService,
+    TaskConflict,
     TaskDetailMode,
 )
+from stage2_service.runtime_lock import RuntimeLock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +59,19 @@ class Runner:
             trials=(),
             started_at=now,
             finished_at=datetime.now(UTC),
+        )
+
+
+class CountingRunner(Runner):
+    def __init__(self):
+        self.calls = 0
+
+    def run(self, request, event_observer=None, stop_requested=None):
+        self.calls += 1
+        return super().run(
+            request,
+            event_observer=event_observer,
+            stop_requested=stop_requested,
         )
 
 
@@ -164,7 +179,10 @@ def preflight(d0: dict | None = None):
 
 
 def task_service(tmp_path, runner, *, preflight_provider=preflight):
-    supervisor = CampaignSupervisor(runner)
+    supervisor = CampaignSupervisor(
+        runner,
+        runtime_lock=RuntimeLock(tmp_path / "stage2-active-run.lock"),
+    )
     controls = Controls()
     service = Stage2TaskService(
         supervisor=supervisor,
@@ -260,6 +278,24 @@ def test_creates_persistent_seven_trial_task_and_reuses_idempotency_key(tmp_path
     timeline = service.get(created["task_id"], mode=TaskDetailMode.TIMELINE)
     assert timeline["events"][0]["actor"] == "HARNESS"
     assert (tmp_path / "tasks" / created["task_id"] / "request.json").is_file()
+
+
+def test_create_task_records_failed_submission_when_runtime_lock_is_held(tmp_path):
+    runner = CountingRunner()
+    service, _supervisor, _controls = task_service(tmp_path, runner)
+    lock_path = tmp_path / "stage2-active-run.lock"
+
+    with RuntimeLock(lock_path).acquire(owner="qualification-cli"):
+        with pytest.raises(TaskConflict, match="Stage-2 runtime is already active"):
+            service.create(request())
+
+    assert runner.calls == 0
+    task_ids = service.store.task_ids()
+    assert len(task_ids) == 1
+    state = service.store.status(task_ids[0])
+    assert state["task_status"] == "FAILED"
+    assert state["terminal"] is True
+    assert state["current_phase"] == "REJECTED"
 
 
 def test_task_create_auto_uses_current_verified_d0_ref_for_formal_mode(tmp_path):

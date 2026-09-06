@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from stage2_service.api import CampaignSupervisor, create_app
 from stage2_service.contracts import CampaignResult, PlatformStatus
 from stage2_service.matrix_evidence import MatrixEvidenceStore
+from stage2_service.runtime_lock import RuntimeLock
 
 
 MATRIX_ID = "matrix-otel-test-0001"
@@ -165,7 +166,13 @@ def test_matrix_evidence_store_recomputes_integrity_and_trial_detail(tmp_path):
 def test_matrix_evidence_api_serves_overview_detail_and_artifact(tmp_path):
     _artifacts(tmp_path)
     client = TestClient(
-        create_app(CampaignSupervisor(Runner()), artifact_root=tmp_path)
+        create_app(
+            CampaignSupervisor(
+                Runner(),
+                runtime_lock=RuntimeLock(tmp_path / "stage2-active-run.lock"),
+            ),
+            artifact_root=tmp_path,
+        )
     )
 
     listed = client.get("/api/v1/matrices")

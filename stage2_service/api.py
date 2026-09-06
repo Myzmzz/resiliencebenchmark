@@ -23,6 +23,7 @@ from .contracts import (
     default_case_specs,
 )
 from .matrix_evidence import MatrixEvidenceNotFound, MatrixEvidenceStore
+from .runtime_lock import RuntimeLock, RuntimeLockLease
 from .task_service import (
     AbortTaskRequest,
     EnvironmentResetRequest,
@@ -41,8 +42,9 @@ class CampaignRunner(Protocol):
 
 
 class CampaignSupervisor:
-    def __init__(self, runner: CampaignRunner):
+    def __init__(self, runner: CampaignRunner, *, runtime_lock: RuntimeLock):
         self.runner = runner
+        self.runtime_lock = runtime_lock
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stage2-campaign")
         self.lock = Lock()
         self.condition = Condition(self.lock)
@@ -61,6 +63,7 @@ class CampaignSupervisor:
                 return request.request_id
             if any(not future.done() for future in self.futures.values()):
                 raise RuntimeError("one Stage-2 campaign is already active")
+            runtime_lease = self.runtime_lock.acquire(owner=f"api:{request.request_id}")
             self.events[request.request_id] = []
             self.interactions[request.request_id] = []
             self.stop_events[request.request_id] = Event()
@@ -68,12 +71,18 @@ class CampaignSupervisor:
                 self.event_sinks[request.request_id] = event_sink
             if result_sink is not None:
                 self.result_sinks[request.request_id] = result_sink
-            self.futures[request.request_id] = self.pool.submit(
-                self._run_request, request
-            )
+            try:
+                self.futures[request.request_id] = self.pool.submit(
+                    self._run_request, request, runtime_lease
+                )
+            except Exception:
+                runtime_lease.release()
+                raise
             return request.request_id
 
-    def _run_request(self, request: CampaignRequest) -> CampaignResult:
+    def _run_request(
+        self, request: CampaignRequest, runtime_lease: RuntimeLockLease
+    ) -> CampaignResult:
         def observe(event) -> None:
             payload = dict(event) if isinstance(event, dict) else {"event": str(event)}
             self.append_event(request.request_id, payload)
@@ -89,13 +98,15 @@ class CampaignSupervisor:
                 result = self.runner.run(request, **kwargs)
             else:
                 result = self.runner.run(request)
+            sink = self.result_sinks.get(request.request_id)
+            if sink is not None:
+                sink(result)
+            return result
         except TypeError:
             # A runner bug must never start the Trial again without its callbacks.
             raise
-        sink = self.result_sinks.get(request.request_id)
-        if sink is not None:
-            sink(result)
-        return result
+        finally:
+            runtime_lease.release()
 
     def append_event(self, request_id: str, event: dict) -> None:
         with self.condition:

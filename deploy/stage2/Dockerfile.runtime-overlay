@@ -27,6 +27,7 @@ COPY --chown=10001:10001 scripts/probe_models.py /app/scripts/probe_models.py
 COPY --chown=10001:10001 scripts/qualify_agent_channel.py /app/scripts/qualify_agent_channel.py
 COPY --chown=10001:10001 scripts/publish_harness_capabilities.py /app/scripts/publish_harness_capabilities.py
 COPY --chown=10001:10001 scripts/qualify_execution_identities.py /app/scripts/qualify_execution_identities.py
+COPY --chown=10001:10001 scripts/serve_stage2_matrix_review.py /app/scripts/serve_stage2_matrix_review.py
 COPY --chown=10001:10001 --chmod=0755 deploy/stage2/codex-eval /app/runtime/bin/codex-eval
 COPY --chown=10001:10001 frontend/dist /app/frontend-dist
 RUN /app/.venv/bin/python -c "import httpx, zstandard, starlette; import stage2_service.harness_runtime, mcp_servers.code_sandbox.server, mcp_servers.audit_bridge" \

@@ -43,6 +43,7 @@ from stage2_service.matrix import fixed_otel_episode_ref
 from stage2_service.permissions import Stage2PermissionManager
 from stage2_service.platform_ledger import PlatformEvent, PlatformLedger
 from stage2_service.runtime_adapters import McpTokenStateRegistry, RuntimeAdapterError
+from stage2_service.runtime_lock import RuntimeLock, RuntimeLockBusy
 
 
 TRIAL_ID = "trial-channel-qualification"
@@ -2264,6 +2265,7 @@ def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatc
     from scripts import qualify_agent_channel as cli
 
     calls: list[tuple[str, ...]] = []
+    monkeypatch.setenv("RESBENCH_AGENT_EXEC_SOCKET", str(tmp_path / "agent-exec" / "agent.sock"))
 
     class Config:
         repo_root = tmp_path
@@ -2276,6 +2278,8 @@ def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatc
 
         def run_all(self, *, episode, model, harnesses, output_dir, profile):
             assert profile == "substitution"
+            with pytest.raises(RuntimeLockBusy):
+                RuntimeLock.from_environment().acquire(owner="nested-api")
             calls.append(tuple(harness.value for harness in harnesses))
             records = [
                 ChannelQualificationRecord(
@@ -2320,6 +2324,8 @@ def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatc
     assert collective["all_passed"] is True
     printed = json.loads(capsys.readouterr().out)
     assert printed["collective"]["hint_body_equal"] is True
+    with RuntimeLock.from_environment().acquire(owner="after-cli"):
+        pass
 
 
 def test_cli_rejects_mismatched_protected_root(tmp_path: Path, monkeypatch) -> None:

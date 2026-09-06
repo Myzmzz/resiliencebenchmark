@@ -23,6 +23,7 @@ from stage2_service.channel_qualification import (
 from stage2_service.contracts import HarnessKind
 from stage2_service.episode import load_fixed_episode
 from stage2_service.matrix import fixed_otel_episode_ref
+from stage2_service.runtime_lock import RuntimeLock
 from stage2_service.runtime_factory import Stage2RuntimeConfig, Stage2System
 
 
@@ -77,13 +78,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     episode = load_fixed_episode(fixed_otel_episode_ref(config.repo_root), root=config.repo_root)
     runner = ChannelQualificationRunner(Stage2System(config), namespace=args.namespace)
-    records = runner.run_all(
-        episode=episode,
-        model=args.model,
-        harnesses=harnesses,
-        output_dir=output_dir,
-        profile=args.profile,
-    )
+    lock_owner = f"channel-qualification:{args.profile}:{args.model}:{','.join(item.value for item in harnesses)}"
+    with RuntimeLock.from_environment().acquire(owner=lock_owner):
+        records = runner.run_all(
+            episode=episode,
+            model=args.model,
+            harnesses=harnesses,
+            output_dir=output_dir,
+            profile=args.profile,
+        )
     prefix = "base-channel-qualification" if args.profile == "base" else "channel-qualification"
     collective_path = output_dir / f"{prefix}-collective.json"
     if not collective_path.is_file():
