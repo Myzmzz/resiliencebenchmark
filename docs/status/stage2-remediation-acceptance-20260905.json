@@ -6,14 +6,14 @@
   "matrix_cell_count": 68,
   "execution_order": ["code_remediation", "old_cluster_preparation", "qualification_and_single_trials"],
   "new_cluster_deployment_or_tests": false,
-  "published_implementation_commit": "bb08326032dbb379c97e324e537bb273a085840a",
+  "published_implementation_commit": "2163098",
   "published_implementation_branch": "codex/stage2-d0-integration",
   "latest_code_snapshot": {
-    "report": "artifacts/remediation/20260905/sandbox-mcp-v2-full.xml",
-    "passed": 1427,
+    "report": "artifacts/remediation/20260905/mesh-observed-phase-final.xml",
+    "passed": 1439,
     "skipped": 9,
     "failed": 0,
-    "seconds": 49.626,
+    "seconds": 48.427,
     "scope": "local Python suite at snapshot time; later edits require rerun",
     "frontend_build_exit": 0,
     "frontend_lint_exit": 0,
@@ -26,8 +26,8 @@
   },
   "old_cluster_preparation": {
     "new_stage2_deployed": true,
-    "current_integration_source": "bb08326",
-    "current_integration_pod": "resbench-stage2-integration-758d48fc58-ctmpg",
+    "current_integration_source": "2163098",
+    "current_integration_pod": "resbench-stage2-integration-759cf5d546-px4b4",
     "current_integration_status": "three_containers_ready_zero_restarts",
     "linux_agent_boundary": "11_checks_passed_actual_UID10002_no_model_or_fault",
     "linux_sandbox_boundary": "6_checks_passed_actual_UID10003_readonly_except_private_tmp_no_model_or_fault",
@@ -35,6 +35,9 @@
     "bladeai_sdk_bridge": "actual_MCP1.27.0_venv_UID10002_SSE_notice_ack_passed_not_native_agent_qualification",
     "model_gateway_probes": "six_supported_aliases_all_passed_real_requests",
     "kubernetes_identity_qualification": "80_actual_checks_passed_no_fault_mutation",
+    "networkchaos_canary": "real_1000ms_delay_effect_and_HTTP_recovery_verified_temporary_pods_and_all_fault_objects_removed",
+    "networkchaos_canary_evidence": "artifacts/remediation/20260905/chaos-mesh-canary-a1/final-adjudication.json",
+    "mesh_phase_runtime_replay": "deployed_2163098_actual_observation_running_desired_only_pending",
     "integration_f1efe28": "three_containers_ready_but_real_child_qualification_failed_stream_counter_and_cgroup_namespace_mismatch",
     "integration_rollout_ad07f49": "started_controller_and_gateway_ready_agent_failed_missing_sbin_on_PATH_patch_verified_locally_not_yet_rolled",
     "integration_gateway_client_secret": "resbench-stage2-runtime-integration",
@@ -45,7 +48,7 @@
     "rbac": "controller_executor_finalizer_created_18_authorization_reviews_passed",
     "coroot_api_shapes": "metrics_series_metadata_trace_and_logs_read_from_native_endpoints",
     "coroot_identity": "anonymous_Admin_must_not_qualify_Viewer_login_change_pending_user_approval",
-    "native_agent_or_fault_tests": "not_executed"
+    "native_agent_trials": "not_executed"
   },
   "matrix_count_note": "源方案正文称56格，附录实际列出4家x17项=68格；保持完整范围。",
   "work_packages": [
@@ -106,8 +109,8 @@
     },
     {
       "id": "WP10",
-      "status": "not_verified",
-      "acceptance_evidence": []
+      "status": "in_progress_coroot_identity_pending_networkchaos_engine_canary_passed",
+      "acceptance_evidence": ["docs/deploy/chaos-mesh-and-coroot-20260905.md", "artifacts/remediation/20260905/chaos-mesh-canary-a1/final-adjudication.json"]
     },
     {
       "id": "WP11",

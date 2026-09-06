@@ -1,6 +1,6 @@
 # 四智能体整改执行记录
 
-日期：2026-09-05（后续记录延续到UTC 09-06）。最新状态：代码已推送至`bb08326`，配对镜像已发布并部署旧integration，三容器就绪且零重启。最新全量1427通过、9跳过；实际UID10002边界、UID10003沙箱、HTTP/SSE MCP往返、BladeAI SDK1.27.0到平台SDK2互通、80项Kubernetes身份授权与六模型探针均取得限定范围的通过证据。Coroot身份尚待用户确认；四家原生智能体资格及正式故障评测仍未执行，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
+日期：2026-09-05（后续记录延续到UTC 09-06）。最新状态：实现代码已推送至`2163098`，配对镜像已部署旧integration，三容器就绪且零重启。最新全量1439通过、9跳过；实际UID10002边界、UID10003沙箱、HTTP/SSE MCP往返、BladeAI SDK互通、80项身份授权、六模型探针及NetworkChaos金丝雀取得限定范围的通过证据。Coroot身份尚待用户确认；四家原生资格及正式Agent评测仍未执行，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
 
 最新执行范围：用户明确要求优先在旧集群测试，**不在新集群部署或测试**。全部部署、模型探针、金丝雀资格和验收矩阵固定使用 `/Users/mymz/.kube/coroot-config`、context `kubernetes-admin@kubernetes`。原计划“两套环境”部署/探针要求被此明确指令覆盖；新集群最多用于只读提取既有历史夹具，不算本次运行验证。
 
@@ -237,3 +237,5 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 HTTP延迟中位数1.022ms→2001.251ms→0.913ms，所有请求成功，故障对象删除后先验证恢复再删除临时Pod。初始检查器将空的已同步PodNetworkChaos缓存当作残留而报告failed；原记录保留，后续检查确认spec为空且观测版本一致，两个临时Pod删除后内部缓存也被回收，最终五类故障清单为空，复核结果通过。只证明NetworkChaos引擎链路，不证明完整MCP执行或Agent D8行为。
 
 实跑状态同时暴露后端错误地返回期望phase=Run。现基于真实AllInjected和目标containerRecords归一化Running/Recovering/Completed；只有期望Run、缺记录、目标不符、暂停/删除状态均不能产生Running事实。新增真实夹具及共享核心时间窗联动回归。`mesh-observed-phase-final.xml`全量1439通过、9跳过、48.427秒，0失败/错误。详见计划要求的 `docs/deploy/chaos-mesh-and-coroot-20260905.md`。未改L0-L4提示/评分或默认C0-D6用例。
+
+`2163098`已推送并以配对镜像部署到`resbench-stage2-integration-759cf5d546-px4b4`，3/3 Ready、零重启。运行镜像对真实历史金丝雀状态回放得到Running，对仅有期望Run的反例得到Pending；记录 `mesh-phase-runtime-replay-2163098.json`，这是已部署代码回放而不是第二次故障试验。当前故障清单仍为空，主服务/e2e尚未切换；Coroot确认、剩余环境资格及四家正式验收仍待完成。

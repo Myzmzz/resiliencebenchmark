@@ -60,6 +60,11 @@ Chaos Mesh返回`desiredPhase=Run`，同时以AllInjected条件和containerRecor
 修复后依据实际条件、执行计数、目标记录与恢复状态归一化，期望Run本身不构成
 运行事实。真实状态夹具及负例回归已入库，仍不能当作其他故障类型实跑。
 
+修复实现`2163098`已部署旧integration，3/3 Ready、零重启。全量1439通过、9跳过；
+运行镜像回放真实捕获返回Running，只有desired Run的反例返回Pending，记录
+`artifacts/remediation/20260905/mesh-phase-runtime-replay-2163098.json`。这是代码
+回放验证，不是新增故障或完整MCP执行器资格。
+
 ## Coroot与未完成项
 
 Coroot复用旧实例，目前仍为匿名Admin。改为独立Viewer及其运行配置待用户确认，
