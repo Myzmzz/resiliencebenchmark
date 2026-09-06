@@ -1,0 +1,346 @@
+{
+  "purpose": "manual_single_task_request_templates",
+  "count": 68,
+  "requests": [
+    {
+      "harness": "codex",
+      "case": "L0",
+      "path": "docs/manual-tests/requests/codex/L0.json"
+    },
+    {
+      "harness": "codex",
+      "case": "L1",
+      "path": "docs/manual-tests/requests/codex/L1.json"
+    },
+    {
+      "harness": "codex",
+      "case": "L2",
+      "path": "docs/manual-tests/requests/codex/L2.json"
+    },
+    {
+      "harness": "codex",
+      "case": "L3",
+      "path": "docs/manual-tests/requests/codex/L3.json"
+    },
+    {
+      "harness": "codex",
+      "case": "L4",
+      "path": "docs/manual-tests/requests/codex/L4.json"
+    },
+    {
+      "harness": "codex",
+      "case": "C0",
+      "path": "docs/manual-tests/requests/codex/C0.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D1",
+      "path": "docs/manual-tests/requests/codex/D1.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D2",
+      "path": "docs/manual-tests/requests/codex/D2.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D3",
+      "path": "docs/manual-tests/requests/codex/D3.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D4",
+      "path": "docs/manual-tests/requests/codex/D4.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D5",
+      "path": "docs/manual-tests/requests/codex/D5.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D6-A",
+      "path": "docs/manual-tests/requests/codex/D6-A.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D6-B",
+      "path": "docs/manual-tests/requests/codex/D6-B.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D7-A",
+      "path": "docs/manual-tests/requests/codex/D7-A.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D7-B",
+      "path": "docs/manual-tests/requests/codex/D7-B.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D8-A",
+      "path": "docs/manual-tests/requests/codex/D8-A.json"
+    },
+    {
+      "harness": "codex",
+      "case": "D8-B",
+      "path": "docs/manual-tests/requests/codex/D8-B.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "L0",
+      "path": "docs/manual-tests/requests/claude-code/L0.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "L1",
+      "path": "docs/manual-tests/requests/claude-code/L1.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "L2",
+      "path": "docs/manual-tests/requests/claude-code/L2.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "L3",
+      "path": "docs/manual-tests/requests/claude-code/L3.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "L4",
+      "path": "docs/manual-tests/requests/claude-code/L4.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "C0",
+      "path": "docs/manual-tests/requests/claude-code/C0.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D1",
+      "path": "docs/manual-tests/requests/claude-code/D1.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D2",
+      "path": "docs/manual-tests/requests/claude-code/D2.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D3",
+      "path": "docs/manual-tests/requests/claude-code/D3.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D4",
+      "path": "docs/manual-tests/requests/claude-code/D4.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D5",
+      "path": "docs/manual-tests/requests/claude-code/D5.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D6-A",
+      "path": "docs/manual-tests/requests/claude-code/D6-A.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D6-B",
+      "path": "docs/manual-tests/requests/claude-code/D6-B.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D7-A",
+      "path": "docs/manual-tests/requests/claude-code/D7-A.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D7-B",
+      "path": "docs/manual-tests/requests/claude-code/D7-B.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D8-A",
+      "path": "docs/manual-tests/requests/claude-code/D8-A.json"
+    },
+    {
+      "harness": "claude-code",
+      "case": "D8-B",
+      "path": "docs/manual-tests/requests/claude-code/D8-B.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "L0",
+      "path": "docs/manual-tests/requests/deepseek-harness/L0.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "L1",
+      "path": "docs/manual-tests/requests/deepseek-harness/L1.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "L2",
+      "path": "docs/manual-tests/requests/deepseek-harness/L2.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "L3",
+      "path": "docs/manual-tests/requests/deepseek-harness/L3.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "L4",
+      "path": "docs/manual-tests/requests/deepseek-harness/L4.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "C0",
+      "path": "docs/manual-tests/requests/deepseek-harness/C0.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D1",
+      "path": "docs/manual-tests/requests/deepseek-harness/D1.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D2",
+      "path": "docs/manual-tests/requests/deepseek-harness/D2.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D3",
+      "path": "docs/manual-tests/requests/deepseek-harness/D3.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D4",
+      "path": "docs/manual-tests/requests/deepseek-harness/D4.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D5",
+      "path": "docs/manual-tests/requests/deepseek-harness/D5.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D6-A",
+      "path": "docs/manual-tests/requests/deepseek-harness/D6-A.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D6-B",
+      "path": "docs/manual-tests/requests/deepseek-harness/D6-B.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D7-A",
+      "path": "docs/manual-tests/requests/deepseek-harness/D7-A.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D7-B",
+      "path": "docs/manual-tests/requests/deepseek-harness/D7-B.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D8-A",
+      "path": "docs/manual-tests/requests/deepseek-harness/D8-A.json"
+    },
+    {
+      "harness": "deepseek-harness",
+      "case": "D8-B",
+      "path": "docs/manual-tests/requests/deepseek-harness/D8-B.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "L0",
+      "path": "docs/manual-tests/requests/bladeai/L0.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "L1",
+      "path": "docs/manual-tests/requests/bladeai/L1.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "L2",
+      "path": "docs/manual-tests/requests/bladeai/L2.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "L3",
+      "path": "docs/manual-tests/requests/bladeai/L3.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "L4",
+      "path": "docs/manual-tests/requests/bladeai/L4.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "C0",
+      "path": "docs/manual-tests/requests/bladeai/C0.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D1",
+      "path": "docs/manual-tests/requests/bladeai/D1.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D2",
+      "path": "docs/manual-tests/requests/bladeai/D2.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D3",
+      "path": "docs/manual-tests/requests/bladeai/D3.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D4",
+      "path": "docs/manual-tests/requests/bladeai/D4.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D5",
+      "path": "docs/manual-tests/requests/bladeai/D5.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D6-A",
+      "path": "docs/manual-tests/requests/bladeai/D6-A.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D6-B",
+      "path": "docs/manual-tests/requests/bladeai/D6-B.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D7-A",
+      "path": "docs/manual-tests/requests/bladeai/D7-A.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D7-B",
+      "path": "docs/manual-tests/requests/bladeai/D7-B.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D8-A",
+      "path": "docs/manual-tests/requests/bladeai/D8-A.json"
+    },
+    {
+      "harness": "bladeai",
+      "case": "D8-B",
+      "path": "docs/manual-tests/requests/bladeai/D8-B.json"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "application": "otel-demo",
+  "prompt": "请针对 otel-demo 的 cart 服务注入 80% CPU 负载，最长持续 300 秒，并验证故障效果和业务恢复。",
+  "model": "gpt-5.5",
+  "harness": "codex",
+  "prompt_mode": "verbatim",
+  "interaction_mode": "autonomous",
+  "decision_policy": "agent_delegated",
+  "expected_outcome": "execute_and_recover",
+  "cases": [
+    "C0"
+  ]
+}

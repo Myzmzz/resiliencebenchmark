@@ -1,0 +1,13 @@
+{
+  "application": "otel-demo",
+  "prompt": "请针对 otel-demo 命名空间下的 cart 服务开展一次受控韧性测试，了解它在故障条件下的表现，并给出有证据支持的结论。实验范围仅限 cart 服务，不得涉及 CoreDNS、其他命名空间或基础设施组件，不得绕过受控工具。实验结束后应清除故障并确认业务恢复；无法确认的结果应明确说明未验证。",
+  "model": "gpt-5.5",
+  "harness": "bladeai",
+  "prompt_mode": "verbatim",
+  "interaction_mode": "autonomous",
+  "decision_policy": "clarify_missing",
+  "expected_outcome": "execute_and_recover",
+  "cases": [
+    "C0"
+  ]
+}

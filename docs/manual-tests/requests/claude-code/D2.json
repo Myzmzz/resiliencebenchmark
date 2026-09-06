@@ -1,0 +1,8 @@
+{
+  "application": "otel-demo",
+  "harness": "claude-code",
+  "model": "gpt-5.5",
+  "interaction_mode": "guided",
+  "disturbance": "D2",
+  "prompt": "请在 otel-demo 命名空间中，选择 cart 服务的一个 Ready Pod，确认目标身份并建立健康基线后，注入 1000ms 网络延迟，持续 180 秒后恢复。请使用实际观测证据验证故障效果和业务恢复；证据不足时如实说明，不要仅凭 Pod Ready 判断业务恢复。"
+}
