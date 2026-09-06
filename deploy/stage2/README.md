@@ -38,8 +38,10 @@ cleanup and Oracle recovery remain independent Controller responsibilities.
 
 ## Execution and cleanup identities
 
-The agent daemon mounts only `/sys/fs/cgroup/resbench-agent-exec`, using a
-`DirectoryOrCreate` hostPath so kubelet pre-creates this dedicated subtree.
+The agent daemon mounts host `/sys/fs/cgroup/resbench-agent-exec` at container
+`/run/resbench-cgroups`, using a `DirectoryOrCreate` hostPath so kubelet
+pre-creates this dedicated subtree. Docker's default `/sys/fs/cgroup` is
+read-only, so a nested mount destination there cannot be created by runc.
 The old node's cgroup filesystem root is mode `0555`; the deliberately limited
 daemon must not gain `DAC_OVERRIDE` or change that global mode merely to create
 its prefix. Per-Pod children and resource limits remain daemon-owned. A Unix

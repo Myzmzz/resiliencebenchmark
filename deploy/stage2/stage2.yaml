@@ -354,7 +354,7 @@ spec:
             - --trial-root
             - /var/lib/resbench-stage2/agent-trials
             - --cgroup-root
-            - /sys/fs/cgroup/resbench-agent-exec
+            - /run/resbench-cgroups
             - --sandbox-trial-root
             - /var/lib/resbench-stage2/sandbox-trials
             - --controller-uid
@@ -407,10 +407,10 @@ spec:
             - name: agent-tmp
               mountPath: /tmp
             # This is the privileged daemon's TCB boundary.  It only accepts
-            # `/sys/fs/cgroup/resbench-agent-exec/<pod-uid>` in code; evaluated
-            # Agent children never receive this mount or CAP_SYS_ADMIN.
+            # `/run/resbench-cgroups/<pod-uid>` in code; evaluated children
+            # cannot modify the root-owned subtree and receive no CAP_SYS_ADMIN.
             - name: delegated-cgroup
-              mountPath: /sys/fs/cgroup/resbench-agent-exec
+              mountPath: /run/resbench-cgroups
           readinessProbe:
             exec:
               command: ["/opt/agent/.venv/bin/python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect('/run/resbench/agent-exec.sock'); s.close()"]

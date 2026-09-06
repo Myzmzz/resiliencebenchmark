@@ -12,7 +12,7 @@ The deployment starts it explicitly, for example:
 python -m harness.agent_exec.server \
   --socket /run/resbench/agent-exec.sock \
   --trial-root /trials \
-  --cgroup-root /sys/fs/cgroup/resbench-agent-exec \
+  --cgroup-root /run/resbench-cgroups \
   --memory-max 536870912 --pids-max 64 --cpu-max '100000 100000' \
   --controller-uid 10001 --socket-gid 10001 --agent-uid 10002 --agent-gid 10002 \
   --allow-env OPENAI_BASE_URL --allow-env OPENAI_API_KEY ...

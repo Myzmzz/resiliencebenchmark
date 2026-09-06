@@ -149,7 +149,7 @@ spec:
           image: __STAGE2_AGENT_IMAGE__
           imagePullPolicy: IfNotPresent
           command: ["/opt/agent/.venv/bin/python", "-m", "harness.agent_exec"]
-          args: ["--socket", "/run/resbench/agent-exec.sock", "--trial-root", "/var/lib/resbench-stage2/agent-trials", "--sandbox-trial-root", "/var/lib/resbench-stage2/sandbox-trials", "--cgroup-root", "/sys/fs/cgroup/resbench-agent-exec", "--controller-uid", "10001", "--agent-uid", "10002", "--agent-gid", "10004", "--shared-trial-gid", "10004", "--sandbox-uid", "10003", "--sandbox-gid", "10003", "--socket-gid", "10001", "--memory-max", "536870912", "--pids-max", "64", "--cpu-max", "100000 100000", "--job-completion-file", "/run/resbench/controller/job-complete"]
+          args: ["--socket", "/run/resbench/agent-exec.sock", "--trial-root", "/var/lib/resbench-stage2/agent-trials", "--sandbox-trial-root", "/var/lib/resbench-stage2/sandbox-trials", "--cgroup-root", "/run/resbench-cgroups", "--controller-uid", "10001", "--agent-uid", "10002", "--agent-gid", "10004", "--shared-trial-gid", "10004", "--sandbox-uid", "10003", "--sandbox-gid", "10003", "--socket-gid", "10001", "--memory-max", "536870912", "--pids-max", "64", "--cpu-max", "100000 100000", "--job-completion-file", "/run/resbench/controller/job-complete"]
           env:
             - name: RESBENCH_AGENT_EXEC_POD_UID
               valueFrom:
@@ -180,7 +180,7 @@ spec:
             - name: agent-tmp
               mountPath: /tmp
             - name: delegated-cgroup
-              mountPath: /sys/fs/cgroup/resbench-agent-exec
+              mountPath: /run/resbench-cgroups
           readinessProbe:
             exec:
               command: ["/opt/agent/.venv/bin/python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect('/run/resbench/agent-exec.sock'); s.close()"]

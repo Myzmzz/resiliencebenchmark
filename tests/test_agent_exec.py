@@ -163,6 +163,54 @@ def test_trial_cwd_rejects_symlink_escape(tmp_path: Path) -> None:
         _safe_trial_cwd(root, "escape")
 
 
+def test_cgroup_root_requires_pre_mounted_single_pod_leaf_and_enables_controllers(monkeypatch, tmp_path: Path):
+    """Filesystem simulation only; Linux cgroup delegation is qualified separately."""
+    import harness.agent_exec.server as server_module
+
+    prefix = tmp_path / "resbench-cgroups"
+    real_path = Path
+    monkeypatch.setattr(
+        server_module,
+        "Path",
+        lambda value: prefix if str(value) == "/run/resbench-cgroups" else real_path(value),
+    )
+    leaf = prefix / "pod-uid"
+    with pytest.raises(RuntimeError, match="pre-mounted"):
+        server_module._validate_cgroup_root(leaf)
+    prefix.mkdir()
+    (prefix / "cgroup.controllers").write_text("cpu memory pids", encoding="ascii")
+    (prefix / "cgroup.subtree_control").write_text("", encoding="ascii")
+    # root.mkdir creates the leaf, but a real cgroup mount supplies its files.
+    original_mkdir = Path.mkdir
+    def mkdir_with_cgroup(self, *args, **kwargs):
+        original_mkdir(self, *args, **kwargs)
+        if self == leaf:
+            (self / "cgroup.controllers").write_text("cpu memory pids", encoding="ascii")
+            (self / "cgroup.subtree_control").write_text("", encoding="ascii")
+    monkeypatch.setattr(Path, "mkdir", mkdir_with_cgroup)
+
+    server_module._validate_cgroup_root(leaf)
+
+    assert (prefix / "cgroup.subtree_control").read_text() == "+cpu +memory +pids"
+    assert (leaf / "cgroup.subtree_control").read_text() == "+cpu +memory +pids"
+    with pytest.raises(RuntimeError, match="one delegated"):
+        server_module._validate_cgroup_root(leaf / "nested")
+
+
+def test_cgroup_root_rejects_missing_required_controller(monkeypatch, tmp_path: Path):
+    """Filesystem simulation only; this is not a Linux cgroup qualification."""
+    import harness.agent_exec.server as server_module
+
+    prefix = tmp_path / "resbench-cgroups"
+    prefix.mkdir()
+    (prefix / "cgroup.controllers").write_text("cpu memory", encoding="ascii")
+    (prefix / "cgroup.subtree_control").write_text("", encoding="ascii")
+    real_path = Path
+    monkeypatch.setattr(server_module, "Path", lambda value: prefix if str(value) == "/run/resbench-cgroups" else real_path(value))
+    with pytest.raises(RuntimeError, match="lacks"):
+        server_module._validate_cgroup_root(prefix / "pod")
+
+
 def test_agent_output_normalization_makes_only_regular_shared_files_controller_readable(tmp_path: Path) -> None:
     from harness.agent_exec.shared_trial import normalize_shared_trial_tree
 
@@ -351,7 +399,7 @@ def test_linux_socket_streams_child_and_rejects_escape(tmp_path: Path) -> None:
     root = tmp_path / "trials"
     root.mkdir()
     socket_path = tmp_path / "runtime" / "agent.sock"
-    cgroup = Path("/sys/fs/cgroup/resbench-agent-exec") / f"test-{os.getpid()}"
+    cgroup = Path("/run/resbench-cgroups") / f"test-{os.getpid()}"
     server = AgentExecServer(
         AgentExecServerConfig(
             socket_path=socket_path,
@@ -401,7 +449,7 @@ def test_linux_disconnect_kills_process_group(tmp_path: Path) -> None:
             agent_uid=account.pw_uid,
             agent_gid=account.pw_gid,
             allowed_env={"SAFE"},
-            cgroup_path=Path("/sys/fs/cgroup/resbench-agent-exec") / f"kill-test-{os.getpid()}",
+            cgroup_path=Path("/run/resbench-cgroups") / f"kill-test-{os.getpid()}",
             socket_gid=os.getgid(),
             cgroup_limits={"memory.max": "536870912", "pids.max": "64", "cpu.max": "100000 100000"},
         )

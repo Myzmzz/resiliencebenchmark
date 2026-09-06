@@ -210,3 +210,5 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 180秒rollout等待超时。新Pod的init成功，Controller和网关Ready，agent-runtime拒绝启动：镜像安装的iptables位于/usr/sbin，但受限PATH不包含该目录。实际容器已验证绝对路径可用；代码改为守护进程仅允许固定三个系统二进制路径，构建期也执行版本检查，不扩展Agent PATH、不禁用出网限制。补丁全量 `firewall-path-code-gate.xml` 为1407通过、9跳过、0失败/错误，50.830秒。当前等待修复镜像重新部署，不能称此次切换成功；真实模型和故障测试仍未开始。
 
 `0492363`路径修复已推送，配对镜像已构建并预拉至旧节点。第二轮启动通过网络设置，但创建cgroup前缀失败；实查节点根目录为root:root、0555，受限daemon未获DAC_OVERRIDE。没有AppArmor拒绝日志，不将其归因于AppArmor。部署改为Kubelet预建并只挂载专用子目录，不改全局cgroup权限、不增daemon能力。另补Unix socket就绪检查：旧模板没有Agent readiness，rollout曾捕捉短暂容器启动而退出0，但后续仍为CrashLoop；不能据此写成功。三模板、重启逻辑与不变量27项定向测试通过，真实部署验证另记。
+
+`6b16736`部署资产修补已发布。Kubelet成功预建了host专用目录，但runc在只读的容器默认/sys/fs/cgroup下创建嵌套挂载点时失败，进程未启动、退出128。最终挂载位置改为容器 `/run/resbench-cgroups`，host仍仅委派原专用子树；daemon严格要求预挂载cgroup v2，不创建普通目录、不兼容旧挂载路径，并从实际委派根/leaf自身读取controller可用性。`cgroup-prefix-code-gate.xml`全量1407通过、9跳过、55.145秒；随后新增4个确定性文件系统模拟反例，最终专项31通过、2个Linux/root跳过。部署成功与实际子进程隔离资格仍需后续独立核实。

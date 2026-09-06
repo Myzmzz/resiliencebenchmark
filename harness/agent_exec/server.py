@@ -473,16 +473,15 @@ def _ensure_no_symlink(path: Path) -> None:
 
 
 def _validate_cgroup_root(root: Path) -> None:
-    prefix = Path("/sys/fs/cgroup/resbench-agent-exec")
+    prefix = Path("/run/resbench-cgroups")
     if not root.is_absolute() or root.parent != prefix or not root.name:
-        raise RuntimeError("cgroup root must be one delegated per-Pod leaf below /sys/fs/cgroup/resbench-agent-exec")
-    if not (Path("/sys/fs/cgroup/cgroup.controllers").is_file()):
-        raise RuntimeError("agent_exec requires cgroup v2")
-    prefix.mkdir(exist_ok=True)
+        raise RuntimeError("cgroup root must be one delegated per-Pod leaf below /run/resbench-cgroups")
+    if not prefix.is_dir() or not (prefix / "cgroup.controllers").is_file():
+        raise RuntimeError("delegated cgroup prefix must be pre-mounted cgroup v2")
     root.mkdir(exist_ok=True)
     required = {"cpu", "memory", "pids"}
     for target in (prefix, root):
-        available = set((target.parent / "cgroup.controllers").read_text(encoding="ascii").split())
+        available = set((target / "cgroup.controllers").read_text(encoding="ascii").split())
         if not required.issubset(available):
             raise RuntimeError("delegated cgroup root lacks cpu, memory, or pids controller")
         subtree = target / "cgroup.subtree_control"
