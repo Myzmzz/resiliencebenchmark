@@ -16,7 +16,7 @@ This directory decides which upstream provider serves each public alias.
 | --- | --- |
 | `config.yaml` | LiteLLM routing table (`model_list`). Committed; contains no secrets. |
 | `providers.env.example` | Names of the credentials the routing table references. |
-| `../../../scripts/render_litellm_gateway.py` | Renders ConfigMap `litellm-config` and Secret `litellm-upstream` from a local env file and checks nothing is missing. |
+| `../../../scripts/render_litellm_gateway.py` | Renders `litellm-config`, provider-only `litellm-upstream`, and Controller-only `resbench-stage2-gateway-client` from a protected local env file. |
 | `../stage2*.yaml` | Pod templates carrying `containers[litellm]`; matrix completion uses the Controller-owned completion marker. |
 
 The real credentials live outside git, for example
@@ -67,6 +67,17 @@ rollout. Preserve each workload's data paths and node placement. Do not apply
 the complete Deployment templates over the old workloads; patch the reviewed
 container, identity, volume and security changes as one coherent update.
 Deploying only the new Controller image does not create the Agent boundary.
+
+The old e2e workload uses a 5Gi emptyDir for its data, unlike the main service's
+PVC. Back up and verify its `artifacts` before replacing the Pod, then restore
+only those records to the same path. Do not copy old private credentials or
+claim historical records qualify the new runtime. Pin each rollout to its
+currently verified node where the AppArmor profile is installed.
+
+All Controller templates now reference `resbench-stage2-gateway-client` for
+the gateway URL/key, while `litellm-upstream` is accessible only to the gateway.
+The application runtime Secret retains its existing configuration. This avoids
+changing legacy consumers or accidentally retaining their upstream model route.
 
 Keep provider credentials and rendered Secrets in a private directory outside
 Git. Never print decoded Secrets or place keys in command arguments. Reuse the

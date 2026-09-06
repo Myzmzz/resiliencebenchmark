@@ -8,9 +8,10 @@ agreement:
 
 1. collect every placeholder the routing table references,
 2. verify that a local env file (never committed) defines each of them,
-3. write two Kubernetes manifests: ConfigMap ``litellm-config`` with the
+3. write three Kubernetes manifests: ConfigMap ``litellm-config`` with the
    routing table and Secret ``litellm-upstream`` with exactly the referenced
-   credentials,
+   credentials, plus gateway-only ``resbench-stage2-gateway-client`` for the
+   trusted Controllers (never evaluated Agent containers),
 4. print a redacted summary. Secret values are never echoed.
 
 Typical use::
@@ -19,7 +20,9 @@ Typical use::
         --env-file "../.secrets/llm-providers.env" --check
     uv run python scripts/render_litellm_gateway.py \\
         --env-file "../.secrets/llm-providers.env" --output-dir /tmp/litellm-render
-    kubectl apply -f /tmp/litellm-render/
+
+Apply and roll out only with the reviewed cluster/data preservation procedure
+in ``deploy/stage2/litellm/README.md``.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ DEFAULT_CONFIG = REPO_ROOT / "deploy/stage2/litellm/config.yaml"
 DEFAULT_NAMESPACE = "resiliencebenchmark-system"
 CONFIGMAP_NAME = "litellm-config"
 SECRET_NAME = "litellm-upstream"
+CLIENT_SECRET_NAME = "resbench-stage2-gateway-client"
 CONFIG_KEY = "config.yaml"
 AUDIT_CALLBACK_KEY = "gateway_audit.py"
 AUDIT_CALLBACK_PATH = REPO_ROOT / "stage2_service/gateway_audit_callback.py"
@@ -117,8 +121,8 @@ def render_manifests(
     config: Mapping[str, Any],
     env: Mapping[str, str],
     namespace: str,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Build the ConfigMap and Secret objects (Secret carries only referenced names)."""
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Separate provider credentials from the Controller's gateway-only client."""
     configmap = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
@@ -143,15 +147,21 @@ def render_manifests(
         },
         "stringData": {name: env[name] for name in sorted(required_names(config))},
     }
-    return configmap, secret
+    client_secret = {
+        "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
+        "metadata": {"name": CLIENT_SECRET_NAME, "namespace": namespace, "labels": dict(MANAGED_LABELS)},
+        "stringData": {"llm-base-url": "http://127.0.0.1:4000/v1", "llm-api-key": env["LITELLM_MASTER_KEY"]},
+    }
+    return configmap, secret, client_secret
 
 
-def write_manifests(output_dir: Path, configmap: Mapping[str, Any], secret: Mapping[str, Any]) -> list[Path]:
+def write_manifests(output_dir: Path, configmap: Mapping[str, Any], secret: Mapping[str, Any], client_secret: Mapping[str, Any]) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for filename, payload in (
         ("litellm-config.configmap.yaml", configmap),
         ("litellm-upstream.secret.yaml", secret),
+        ("resbench-stage2-gateway-client.secret.yaml", client_secret),
     ):
         path = output_dir / filename
         path.write_text(
@@ -198,12 +208,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.check or not args.output_dir:
         print("credentials complete; nothing written" if args.check else "credentials complete; pass --output-dir to render")
         return 0
-    configmap, secret = render_manifests(config_text, config, env, args.namespace)
-    for path in write_manifests(args.output_dir, configmap, secret):
+    configmap, secret, client_secret = render_manifests(config_text, config, env, args.namespace)
+    for path in write_manifests(args.output_dir, configmap, secret, client_secret):
         print(f"wrote {path}")
     print(
-        "apply with: kubectl apply -f "
-        f"{args.output_dir}/ && kubectl -n {args.namespace} rollout restart deploy/resbench-stage2-integration"
+        "Generated gateway objects only; preserve live workload data paths and "
+        "apply the reviewed old-cluster rollout before qualifying Agents."
     )
     return 0
 

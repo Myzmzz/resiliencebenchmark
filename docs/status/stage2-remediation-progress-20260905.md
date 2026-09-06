@@ -239,3 +239,11 @@ HTTP延迟中位数1.022ms→2001.251ms→0.913ms，所有请求成功，故障�
 实跑状态同时暴露后端错误地返回期望phase=Run。现基于真实AllInjected和目标containerRecords归一化Running/Recovering/Completed；只有期望Run、缺记录、目标不符、暂停/删除状态均不能产生Running事实。新增真实夹具及共享核心时间窗联动回归。`mesh-observed-phase-final.xml`全量1439通过、9跳过、48.427秒，0失败/错误。详见计划要求的 `docs/deploy/chaos-mesh-and-coroot-20260905.md`。未改L0-L4提示/评分或默认C0-D6用例。
 
 `2163098`已推送并以配对镜像部署到`resbench-stage2-integration-759cf5d546-px4b4`，3/3 Ready、零重启。运行镜像对真实历史金丝雀状态回放得到Running，对仅有期望Run的反例得到Pending；记录 `mesh-phase-runtime-replay-2163098.json`，这是已部署代码回放而不是第二次故障试验。当前故障清单仍为空，主服务/e2e尚未切换；Coroot确认、剩余环境资格及四家正式验收仍待完成。
+
+### 主服务/e2e切换准备
+
+UTC04:41–04:42只读核对两套旧实例：主服务只有服务PID1；e2e额外9个git进程均为Z状态僵尸。历史Campaign API返回404，未把它当作终态证据；文件末次更新分别在08-24和09-01，未发现活动Agent或当前故障。原规格已归档。
+
+主服务数据使用PVC，e2e实际为5Gi emptyDir，直接滚动会丢记录。已分别备份artifacts（339文件/2784135字节、86文件/355671字节）并验证归档成员仅为artifacts内常规文件/目录，没有链接或越界路径；不包含private凭据目录。备份位置为受保护的 `artifacts/remediation/20260905/backups/`。e2e新Pod将恢复记录至原路径，随后逐文件比对。
+
+网关渲染器补齐第三个产物 `resbench-stage2-gateway-client`，只包含本地网关地址及客户端密钥；三模板Controller共用此明确入口，Agent不挂载它，原应用运行Secret保持。删除CLI中无集群上下文的自动rollout示例提示。`gateway-client-secret-full.xml`全量1439通过、9跳过、49.021秒，0失败/错误；实际滚动与恢复结果另记。

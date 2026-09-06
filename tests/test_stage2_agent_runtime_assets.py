@@ -178,6 +178,11 @@ def test_gateway_config_is_fixed_and_audit_volume_excludes_the_agent():
             assert any(m["name"] == "gateway-audit" for m in component["volumeMounts"])
             env = {e["name"]: e.get("value") for e in component["env"]}
             assert env["STAGE2_LITELLM_CONFIG_FILE"] == "/etc/litellm/config.yaml"
+        controller_env = {entry["name"]: entry for entry in controller["env"]}
+        for name, key in (("RESBENCH_LLM_BASE_URL", "llm-base-url"), ("RESBENCH_LLM_API_KEY", "llm-api-key")):
+            assert controller_env[name]["valueFrom"]["secretKeyRef"] == {"name": "resbench-stage2-gateway-client", "key": key}
+        assert not agent.get("envFrom")
+        assert not any("secretKeyRef" in entry.get("valueFrom", {}) for entry in agent["env"])
         assert not any(m["name"] in {"litellm-config", "gateway-audit"} for m in agent["volumeMounts"])
         assert not any(m["name"] == "data" for m in gateway["volumeMounts"])
         callback = next(m for m in gateway["volumeMounts"] if m["mountPath"] == "/etc/litellm/gateway_audit.py")

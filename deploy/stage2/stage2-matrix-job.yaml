@@ -110,12 +110,12 @@ spec:
             - name: RESBENCH_LLM_BASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: resbench-stage2-runtime-e2e
+                  name: resbench-stage2-gateway-client
                   key: llm-base-url
             - name: RESBENCH_LLM_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: resbench-stage2-runtime-e2e
+                  name: resbench-stage2-gateway-client
                   key: llm-api-key
           volumeMounts:
             - name: data
