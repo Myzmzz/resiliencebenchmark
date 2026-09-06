@@ -235,7 +235,44 @@ def run_with_turn_complete_fixture(
         return CommandResult(returncode=0, stdout=b"Understood\n", stderr=b"")
 
     def fake_prepare_bladeai_launch(**kwargs):
-        return ["/bin/echo"], b"", dict(kwargs["environment"])
+        agent_home = Path(kwargs["trial_root"]) / "bladeai-home"
+        config_root = agent_home / ".blade-ai"
+        config_root.mkdir(mode=0o700, parents=True)
+        kubeconfig = agent_home / "proxy.kubeconfig"
+        write_json(kubeconfig, {"apiVersion": "v1", "kind": "Config"})
+        task_path = agent_home / "task.json"
+        write_json(
+            task_path,
+            {
+                "mode": "task",
+                "trial_id": kwargs["trial_id"],
+                "intent": kwargs["prompt"],
+                "namespace": kwargs["namespace"],
+                "kubeconfig": str(kubeconfig),
+            },
+        )
+        mcp_path = config_root / "mcp.json"
+        write_json(
+            mcp_path,
+            {
+                "mcpServers": {
+                    "harness_channel": {"transport": "http", "url": "http://127.0.0.1:18085/mcp"},
+                    "k8s_ro": {"transport": "http", "url": "http://127.0.0.1:18081/mcp"},
+                    "source_ro": {"transport": "http", "url": "http://127.0.0.1:18084/mcp"},
+                    "telemetry_ro": {"transport": "http", "url": "http://127.0.0.1:18082/mcp"},
+                }
+            },
+        )
+        child_env = dict(kwargs["environment"])
+        child_env.update(
+            {
+                "BLADE_AI_BLADE_PATH": str(Path(kwargs["repo_root"]) / "harness/bladeai/blade-shim/blade"),
+                "BLADE_AI_KUBECTL_PATH": str(Path(kwargs["repo_root"]) / "harness/bladeai/kubectl-shim/kubectl"),
+                "BLADE_AI_MCP_CONFIG_PATH": str(mcp_path),
+                "RESBENCH_BLADE_SHIM_STATE_FILE": str(agent_home / "blade-aliases.json"),
+            }
+        )
+        return [kwargs["python_executable"], "-m", "stage2_service.bladeai_worker", str(task_path)], b"", child_env
 
     monkeypatch.setattr(harness_runtime, "create_adapter", lambda _harness: FakeAdapter())
     monkeypatch.setattr(harness_runtime, "subprocess_streaming_runner", fake_streaming_runner)

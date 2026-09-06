@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -110,42 +111,44 @@ def test_stage2_tool_event_ignores_sdk_events_without_tool_identity():
     )
 
 
-@pytest.mark.asyncio
-async def test_stage2_event_graph_emits_tool_events_during_astream():
-    emitted = []
-    graph = _FakeGraph(
-        [
-            {
-                "event": "on_tool_start",
-                "name": "source_ro__source_search",
-                "run_id": "run-1",
-                "data": {"input": {"query": "cart"}},
-            },
-            {"event": "on_chain_end", "run_id": "chain-1"},
-        ],
-        values={"done": True},
-    )
-    wrapped = BladeAIStage2EventGraph(
-        graph,
-        emit=lambda kind, payload: emitted.append((kind, payload)),
-        operation="inject",
-    )
-
-    seen = [event async for event in wrapped.astream_events({}, {}, version="v2")]
-
-    assert seen == graph.events
-    assert emitted == [
-        (
-            "runtime_tool_start",
-            {
-                "call_id": "run-1",
-                "tool": "source_ro__source_search",
-                "operation": "inject",
-                "node": "",
-                "input": {"query": "cart"},
-            },
+def test_stage2_event_graph_emits_tool_events_during_astream():
+    async def run():
+        emitted = []
+        graph = _FakeGraph(
+            [
+                {
+                    "event": "on_tool_start",
+                    "name": "source_ro__source_search",
+                    "run_id": "run-1",
+                    "data": {"input": {"query": "cart"}},
+                },
+                {"event": "on_chain_end", "run_id": "chain-1"},
+            ],
+            values={"done": True},
         )
-    ]
+        wrapped = BladeAIStage2EventGraph(
+            graph,
+            emit=lambda kind, payload: emitted.append((kind, payload)),
+            operation="inject",
+        )
+
+        seen = [event async for event in wrapped.astream_events({}, {}, version="v2")]
+
+        assert seen == graph.events
+        assert emitted == [
+            (
+                "runtime_tool_start",
+                {
+                    "call_id": "run-1",
+                    "tool": "source_ro__source_search",
+                    "operation": "inject",
+                    "node": "",
+                    "input": {"query": "cart"},
+                },
+            )
+        ]
+
+    asyncio.run(run())
 
 
 def test_tool_callback_handler_emits_start_end_and_error_with_same_run_id():
@@ -204,7 +207,7 @@ def test_tool_callback_handler_emits_start_end_and_error_with_same_run_id():
                 "tool": "telemetry_ro__telemetry_prom_metric_range",
                 "operation": "recover",
                 "node": "",
-                "input": {},
+                "input": "{}",
             },
         ),
         (
@@ -225,69 +228,77 @@ def test_tool_callback_handler_emits_start_end_and_error_with_same_run_id():
     ]
 
 
-@pytest.mark.asyncio
-async def test_stage2_event_graph_ainvoke_preserves_graph_output_without_state():
-    graph = _FakeInvokeGraph(output={"actual": "invoke-result"})
-    wrapped = BladeAIStage2EventGraph(
-        graph,
-        emit=lambda _kind, _payload: None,
-        operation="recover",
-    )
+def test_stage2_event_graph_ainvoke_preserves_graph_output_without_state():
+    async def run():
+        graph = _FakeInvokeGraph(output={"actual": "invoke-result"})
+        wrapped = BladeAIStage2EventGraph(
+            graph,
+            emit=lambda _kind, _payload: None,
+            operation="recover",
+        )
 
-    result = await wrapped.ainvoke({"state": "value"}, {"configurable": {}})
+        result = await wrapped.ainvoke({"state": "value"}, {"configurable": {}})
 
-    assert result == {"actual": "invoke-result"}
-    assert graph.aget_state_called is False
+        assert result == {"actual": "invoke-result"}
+        assert graph.aget_state_called is False
 
-
-@pytest.mark.asyncio
-async def test_stage2_event_graph_ainvoke_keeps_output_that_differs_from_checkpoint():
-    graph = _FakeInvokeGraph(
-        output={"actual": "invoke-result"},
-        checkpoint={"checkpoint": "different"},
-    )
-    wrapped = BladeAIStage2EventGraph(
-        graph,
-        emit=lambda _kind, _payload: None,
-        operation="recover",
-    )
-
-    result = await wrapped.ainvoke({"state": "value"}, None)
-
-    assert result == {"actual": "invoke-result"}
-    assert graph.aget_state_called is False
+    asyncio.run(run())
 
 
-@pytest.mark.asyncio
-async def test_stage2_event_graph_ainvoke_propagates_graph_exception():
-    graph = _FakeInvokeGraph(error=RuntimeError("recover failed"))
-    wrapped = BladeAIStage2EventGraph(
-        graph,
-        emit=lambda _kind, _payload: None,
-        operation="recover",
-    )
+def test_stage2_event_graph_ainvoke_keeps_output_that_differs_from_checkpoint():
+    async def run():
+        graph = _FakeInvokeGraph(
+            output={"actual": "invoke-result"},
+            checkpoint={"checkpoint": "different"},
+        )
+        wrapped = BladeAIStage2EventGraph(
+            graph,
+            emit=lambda _kind, _payload: None,
+            operation="recover",
+        )
 
-    with pytest.raises(RuntimeError, match="recover failed"):
-        await wrapped.ainvoke({"state": "value"}, {"configurable": {}})
+        result = await wrapped.ainvoke({"state": "value"}, None)
 
-    assert graph.aget_state_called is False
+        assert result == {"actual": "invoke-result"}
+        assert graph.aget_state_called is False
+
+    asyncio.run(run())
 
 
-@pytest.mark.asyncio
-async def test_stage2_event_graph_ainvoke_appends_callback_without_overwriting():
-    existing = object()
-    graph = _FakeInvokeGraph(output={"ok": True})
-    wrapped = BladeAIStage2EventGraph(
-        graph,
-        emit=lambda _kind, _payload: None,
-        operation="recover",
-    )
+def test_stage2_event_graph_ainvoke_propagates_graph_exception():
+    async def run():
+        graph = _FakeInvokeGraph(error=RuntimeError("recover failed"))
+        wrapped = BladeAIStage2EventGraph(
+            graph,
+            emit=lambda _kind, _payload: None,
+            operation="recover",
+        )
 
-    await wrapped.ainvoke({"state": "value"}, {"callbacks": [existing]})
+        with pytest.raises(RuntimeError, match="recover failed"):
+            await wrapped.ainvoke({"state": "value"}, {"configurable": {}})
 
-    callbacks = graph.config["callbacks"]
-    assert callbacks[0] is existing
-    assert any(isinstance(item, BladeAIToolCallbackHandler) for item in callbacks)
+        assert graph.aget_state_called is False
+
+    asyncio.run(run())
+
+
+def test_stage2_event_graph_ainvoke_appends_callback_without_overwriting():
+    async def run():
+        existing = object()
+        graph = _FakeInvokeGraph(output={"ok": True})
+        wrapped = BladeAIStage2EventGraph(
+            graph,
+            emit=lambda _kind, _payload: None,
+            operation="recover",
+        )
+
+        await wrapped.ainvoke({"state": "value"}, {"callbacks": [existing]})
+
+        callbacks = graph.config["callbacks"]
+        assert callbacks[0] is existing
+        assert any(isinstance(item, BladeAIToolCallbackHandler) for item in callbacks)
+
+    asyncio.run(run())
 
 
 class _FakeGraph:

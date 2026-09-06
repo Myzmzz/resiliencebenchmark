@@ -13,7 +13,7 @@ from stage2_service.contracts import (
     TrialRuntimeContext,
     default_case_specs,
 )
-from stage2_service.harness_adapters.base import AgentMessage, ToolCall
+from stage2_service.harness_adapters.base import AgentMessage, Checkpoint, ToolCall
 from stage2_service.harness_adapters.bladeai import BladeAIHarnessAdapter
 from stage2_service.harness_adapters.claude_code import ClaudeCodeHarnessAdapter
 from stage2_service.harness_adapters.codex import CodexHarnessAdapter
@@ -153,8 +153,7 @@ def test_bladeai_sdk_step_markers_are_not_bypass_attempts() -> None:
     )
 
     assert len(events) == 1
-    assert isinstance(events[0], ToolCall)
-    assert events[0].tool.startswith("bladeai.")
+    assert isinstance(events[0], Checkpoint)
     assert is_forbidden_native_event(events[0], source="native") is False
 
 

@@ -9,7 +9,7 @@ from stage2_service.capability_preflight import harness_capabilities_from_qualif
 from stage2_service.capability_qualification import evaluate_wp8_artifacts, publish_capabilities
 from stage2_service.contracts import TrialRuntimeContext
 from stage2_service.gateway_config import GatewayConfigSnapshot
-from test_bladeai_qualification import (
+from tests.test_bladeai_qualification import (
     CLEANUP_HANDLE, MODEL, TARGET, TRIAL_ID, _events, _platform_event, _recovery, _report,
 )
 
@@ -53,8 +53,13 @@ def _artifacts(tmp_path):
         _platform_event(28, "ToolResult", {"source": "native", "replayed": False,
                         "call_id": "native-status", "status": "completed", "payload": {"code": 200}}),
     ])
-    rows = [{"event_type": e.event_type, **e.payload} for e in events
-            if e.event_type in {"ToolCall", "ToolResult", "Checkpoint"}]
+    rows = []
+    for e in events:
+        if e.event_type in {"ToolCall", "ToolResult", "Checkpoint"}:
+            row = {"event_type": e.event_type, **e.payload}
+            if row.get("source") in {"native", "mcp_server"}:
+                row["replayed"] = False
+            rows.append(row)
     native.mkdir(parents=True)
     (native / "canonical-events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     report = _report()

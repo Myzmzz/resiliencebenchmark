@@ -36,6 +36,7 @@ def test_bladeai_template_uses_v062_mcp_shape_and_sse_http_transport():
         *EXPECTED_READ_ONLY,
         "coroot_ro",
         "harness_channel",
+        "code_sandbox",
         "chaos_control",
         "chaos_mesh_control",
     }

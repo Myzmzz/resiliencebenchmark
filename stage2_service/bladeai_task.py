@@ -234,10 +234,11 @@ def partial_plan_from_native_proposal(
     fault = proposal.get("fault_intent")
     if not isinstance(fault, Mapping):
         raise BladeTaskError("BladeAI proposal is missing structured fault_intent")
+    action = _required_text(fault.get("action"), "proposal.fault_intent.action")
     fault_type = _canonical_fault_type(
         _required_text(fault.get("scope"), "proposal.fault_intent.scope"),
         _required_text(fault.get("target"), "proposal.fault_intent.target"),
-        _required_text(fault.get("action"), "proposal.fault_intent.action"),
+        action,
     )
     params = proposal.get("params")
     if not isinstance(params, Mapping) or not params:
@@ -249,7 +250,7 @@ def partial_plan_from_native_proposal(
         if str(key) != "timeout"
     }
     try:
-        intensity = canonical_native_intensity(fault_type, native_params)
+        intensity = canonical_native_intensity(fault_type, native_params, action=action)
     except BladeShimError as exc:
         raise BladeTaskError(str(exc)) from exc
     partial: dict[str, Any] = {

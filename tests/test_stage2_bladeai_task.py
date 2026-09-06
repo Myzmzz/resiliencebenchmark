@@ -247,6 +247,42 @@ def test_current_sdk_payload_is_mechanically_partial_and_missing_target_or_param
             raise AssertionError("unsupported current SDK payload was accepted")
 
 
+@pytest.mark.parametrize(
+    ("action", "params", "expected_intensity"),
+    [
+        ("loss", {"percent": "35", "timeout": "60"}, {"loss_percent": 35}),
+        ("drop", {"timeout": "60"}, {"loss_percent": 100}),
+    ],
+)
+def test_current_sdk_network_loss_uses_native_action_for_intensity_mapping(action, params, expected_intensity):
+    proposal = _current_native_proposal()
+    proposal["fault_intent"] = {
+        "fault_type": f"pod-network-{action}",
+        "scope": "pod",
+        "target": "network",
+        "action": action,
+    }
+    proposal["params"] = params
+
+    partial = partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+
+    assert partial["fault_type"] == "network-loss"
+    assert partial["intensity"] == expected_intensity
+
+
+def test_current_sdk_fault_action_is_required_for_exact_native_mapping():
+    proposal = _current_native_proposal()
+    proposal["fault_intent"] = {
+        "fault_type": "pod-network-loss",
+        "scope": "pod",
+        "target": "network",
+    }
+    proposal["params"] = {"percent": "35", "timeout": "60"}
+
+    with pytest.raises(BladeTaskError, match="proposal.fault_intent.action"):
+        partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+
+
 def test_timeout_is_copied_exactly_and_is_not_synthesized_when_sdk_did_not_expose_it():
     short = _current_native_proposal()
     short["params"] = {"time": "300", "timeout": "60"}

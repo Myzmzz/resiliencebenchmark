@@ -281,6 +281,10 @@ def test_bladeai_wp8_runner_rejects_unlabelled_or_not_ready_canary(tmp_path, mon
         "stage2_service.bladeai_qualification_runner.load_fixed_episode",
         lambda ref, *, root: SimpleNamespace(ref=SimpleNamespace(episode_id="EPI-TEST-BLADEAI-WP8")),
     )
+    monkeypatch.setattr(
+        "stage2_service.bladeai_qualification_runner.fixed_otel_episode_ref",
+        lambda repo_root: SimpleNamespace(episode_id="EPI-TEST-BLADEAI-WP8"),
+    )
 
     result = BladeAIQualificationRunner(
         _system(tmp_path, components),
@@ -300,6 +304,10 @@ def test_bladeai_wp8_runner_finalizes_before_restore_after_harness_exception(tmp
     monkeypatch.setattr(
         "stage2_service.bladeai_qualification_runner.load_fixed_episode",
         lambda ref, *, root: SimpleNamespace(ref=SimpleNamespace(episode_id="EPI-TEST-BLADEAI-WP8")),
+    )
+    monkeypatch.setattr(
+        "stage2_service.bladeai_qualification_runner.fixed_otel_episode_ref",
+        lambda repo_root: SimpleNamespace(episode_id="EPI-TEST-BLADEAI-WP8"),
     )
 
     result = BladeAIQualificationRunner(
