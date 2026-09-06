@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
+from pathlib import Path
 from typing import Any
+from typing_extensions import Annotated
 
 from mcp import types
 from mcp.server import MCPServer
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
+from pydantic import WithJsonSchema
 
 from mcp_servers.http_runtime import run_mcp_server
 from mcp_servers.audit_bridge import AuditBridgeClient
@@ -23,6 +28,65 @@ from .service import (
 
 
 _SERVICE: HarnessChannelService | None = None
+_AGENT_RESULT_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "harness"
+    / "schemas"
+    / "agent-result.schema.json"
+)
+
+
+def _agent_result_schema_for_tool() -> dict[str, Any]:
+    schema = json.loads(_AGENT_RESULT_SCHEMA_PATH.read_text(encoding="utf-8"))
+    expanded = _expand_local_json_schema_refs(schema)
+    expanded.pop("$defs", None)
+    return expanded
+
+
+def _expand_local_json_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
+    return _expand_schema_node(schema, schema, ())
+
+
+def _expand_schema_node(node: Any, root: dict[str, Any], resolving: tuple[str, ...]) -> Any:
+    if isinstance(node, list):
+        return [_expand_schema_node(item, root, resolving) for item in node]
+    if not isinstance(node, dict):
+        return node
+
+    if "$ref" not in node:
+        return {
+            key: _expand_schema_node(value, root, resolving)
+            for key, value in node.items()
+        }
+
+    ref = node["$ref"]
+    if not isinstance(ref, str) or not ref.startswith("#/"):
+        raise RuntimeError("agent-result schema contains an unsupported external reference")
+    if ref in resolving:
+        raise RuntimeError("agent-result schema contains a circular reference")
+
+    resolved = _expand_schema_node(_resolve_local_json_pointer(root, ref), root, (*resolving, ref))
+    siblings = {
+        key: _expand_schema_node(value, root, resolving)
+        for key, value in node.items()
+        if key != "$ref"
+    }
+    if not siblings:
+        return resolved
+    return {"allOf": [resolved, siblings]}
+
+
+def _resolve_local_json_pointer(root: dict[str, Any], ref: str) -> Any:
+    current: Any = root
+    for raw_part in ref[2:].split("/"):
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(current, dict) or part not in current:
+            raise RuntimeError("agent-result schema contains a dangling local reference")
+        current = current[part]
+    return copy.deepcopy(current)
+
+
+AgentResult = Annotated[dict[str, Any], WithJsonSchema(_agent_result_schema_for_tool())]
 
 
 def _service() -> HarnessChannelService:
@@ -140,7 +204,7 @@ def create_server(
         title="Submit Harness Result",
         annotations=_annotations("Submit Harness Result"),
     )
-    async def harness_submit_result(result: dict[str, Any]) -> dict[str, Any]:
+    async def harness_submit_result(result: AgentResult) -> dict[str, Any]:
         """Submit the final Agent result for schema validation and storage."""
 
         return await invoke("harness_submit_result", {"result": result}, lambda: svc().submit_result(result))

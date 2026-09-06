@@ -6,6 +6,9 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+from jsonschema import Draft202012Validator
+
 from controller.safety import default_policy
 from mcp_servers.audit_bridge import AuditBridgeClient, AuditBridgeConfig, AuditBridgeListener
 from mcp_servers.harness_channel.hints import (
@@ -27,6 +30,9 @@ from stage2_service.harness_adapters.base import ToolCall, ToolResult
 from stage2_service.plan_schema import PlanSafetyEnvelope
 from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.simulated_user import HarnessResponder, SimulatedUserPolicy
+
+
+AGENT_RESULT_SCHEMA = Path(__file__).resolve().parents[1] / "harness" / "schemas" / "agent-result.schema.json"
 
 
 def run(awaitable):
@@ -193,6 +199,17 @@ def _profile(*servers: str):
     return PermissionProfile(profile_id="p0-full-authorized", mcp_servers=servers)
 
 
+def _schema_refs(schema):
+    if isinstance(schema, dict):
+        if "$ref" in schema:
+            yield schema["$ref"]
+        for value in schema.values():
+            yield from _schema_refs(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            yield from _schema_refs(item)
+
+
 def test_mcp_lists_four_harness_channel_tools(tmp_path: Path) -> None:
     service, _ledger, _decision = channel(tmp_path)
     server = create_server(service=service)
@@ -210,6 +227,54 @@ def test_mcp_lists_four_harness_channel_tools(tmp_path: Path) -> None:
         assert "case_id" not in tool.input_schema.get("properties", {})
         assert "variant" not in tool.input_schema.get("properties", {})
         assert "path" not in tool.input_schema.get("properties", {})
+
+
+def test_submit_result_tool_schema_exposes_authoritative_result_contract(tmp_path: Path) -> None:
+    service, _ledger, _decision = channel(tmp_path)
+    server = create_server(service=service)
+    submit_tool = {tool.name: tool for tool in run(server.list_tools())}["harness_submit_result"]
+    authority = json.loads(AGENT_RESULT_SCHEMA.read_text(encoding="utf-8"))
+
+    input_schema = submit_tool.input_schema
+    assert input_schema["required"] == ["result"]
+    assert set(input_schema["properties"]) == {"result"}
+
+    result_schema = input_schema["properties"]["result"]
+    assert result_schema["required"] == authority["required"]
+    assert set(result_schema["properties"]) == set(authority["properties"])
+    assert list(_schema_refs(result_schema)) == []
+
+    recommendation = result_schema["properties"]["clarification_request"]["anyOf"][1]["properties"]["recommendation"]
+    effect_condition = recommendation["properties"]["effect_condition"]
+    recovery_condition = recommendation["properties"]["recovery_condition"]
+    assert "allOf" in effect_condition
+    assert "allOf" in recovery_condition
+    assert effect_condition["allOf"][0]["required"] == ["metric", "operator", "threshold"]
+    assert recovery_condition["allOf"][0]["required"] == ["metric", "operator", "threshold"]
+
+    authority_validator = Draft202012Validator(authority)
+    tool_validator = Draft202012Validator(result_schema)
+    valid = valid_result()
+    invalid_missing = {"status": "completed"}
+    invalid_enum = {**valid, "status": "not-a-status"}
+
+    assert list(authority_validator.iter_errors(valid)) == []
+    assert list(tool_validator.iter_errors(valid)) == []
+    assert bool(list(authority_validator.iter_errors(invalid_missing))) is True
+    assert bool(list(tool_validator.iter_errors(invalid_missing))) is True
+    assert bool(list(authority_validator.iter_errors(invalid_enum))) is True
+    assert bool(list(tool_validator.iter_errors(invalid_enum))) is True
+
+
+def test_submit_result_schema_ref_expansion_rejects_unsupported_refs() -> None:
+    from mcp_servers.harness_channel.server import _expand_local_json_schema_refs
+
+    with pytest.raises(RuntimeError, match="external reference"):
+        _expand_local_json_schema_refs({"$ref": "https://example.test/schema.json"})
+    with pytest.raises(RuntimeError, match="dangling local reference"):
+        _expand_local_json_schema_refs({"$ref": "#/$defs/missing", "$defs": {}})
+    with pytest.raises(RuntimeError, match="circular reference"):
+        _expand_local_json_schema_refs({"$ref": "#/$defs/loop", "$defs": {"loop": {"$ref": "#/$defs/loop"}}})
 
 
 def test_harness_channel_emits_realtime_call_and_receipt(tmp_path: Path) -> None:

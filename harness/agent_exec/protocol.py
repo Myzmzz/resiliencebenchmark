@@ -144,7 +144,10 @@ def parse_start_request(value: Mapping[str, Any]) -> StartRequest:
     argv_raw = value.get("argv")
     if not isinstance(argv_raw, list) or not argv_raw or len(argv_raw) > MAX_ARGV_ITEMS:
         raise ProtocolError("argv must be a non-empty bounded list")
-    argv = tuple(_bounded_string(item, "argv item", MAX_ARG_BYTES) for item in argv_raw)
+    # execve permits empty arguments (Claude uses --tools "" to disable native
+    # tools). Only the executable must be non-empty; byte/NUL limits still apply.
+    argv = tuple(_bounded_string(item, "argv item", MAX_ARG_BYTES, allow_empty=index > 0)
+                 for index, item in enumerate(argv_raw))
     env_raw = value.get("env")
     if not isinstance(env_raw, dict) or len(env_raw) > MAX_ENV_ITEMS:
         raise ProtocolError("env must be a bounded object")
@@ -206,9 +209,10 @@ def _recv_exact(sock: socket.socket, count: int, *, allow_eof: bool = False) -> 
     return b"".join(chunks)
 
 
-def _bounded_string(value: object, field: str, maximum: int) -> str:
-    if not isinstance(value, str) or not value:
-        raise ProtocolError(f"{field} must be a non-empty string")
+def _bounded_string(value: object, field: str, maximum: int, *, allow_empty: bool = False) -> str:
+    if not isinstance(value, str) or (not allow_empty and not value):
+        requirement = "a string" if allow_empty else "a non-empty string"
+        raise ProtocolError(f"{field} must be {requirement}")
     if len(value.encode("utf-8")) > maximum:
         raise ProtocolError(f"{field} exceeds maximum size")
     if "\x00" in value:

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import base64
 
 import pytest
 
 from harness.agent_exec.environment import AGENT_ENV_ALLOWLIST
-from harness.agent_exec.protocol import StartRequest
+from harness.agent_exec.protocol import ProtocolError, parse_start_request
 from harness.agent_exec.server import AgentExecServer, AgentExecServerConfig
 from mcp_servers.bladeai_k8s_proxy.service import ProxyConfig
-from scripts.run_harness_trial import child_env_for_harness
+from scripts.run_harness_trial import build_argv, child_env_for_harness, load_yaml
 from stage2_service.bladeai_launch import prepare_bladeai_launch
 
 
@@ -16,6 +17,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TRIAL_RELAY_TOKEN = "trial-relay-token-for-agent-only-0001"
 GATEWAY_MASTER_KEY = "gateway-master-key-must-not-reach-agent"
 TRIAL_MCP_TOKEN = "trial-mcp-token-for-agent-only-000001"
+
+
+@pytest.mark.parametrize("argv", [[""], ["claude", None], ["claude", "\x00"], ["claude", "x" * 65537]])
+def test_empty_option_support_does_not_relax_executable_type_nul_or_size_limits(argv):
+    with pytest.raises(ProtocolError):
+        parse_start_request({"type": "start", "request_id": "run", "argv": argv,
+                             "env": {}, "stdin": "", "cwd": ".", "timeout_seconds": 1})
 
 
 def _parent_env() -> dict[str, str]:
@@ -79,10 +87,12 @@ def _daemon() -> AgentExecServer:
     )
 
 
-def _assert_default_daemon_accepts(child_env: dict[str, str]) -> None:
-    _daemon()._validate_request(
-        StartRequest("run", ("agent",), child_env, b"", ".", 1)
-    )
+def _assert_default_daemon_accepts(child_env: dict[str, str], argv: list[str], stdin: bytes = b"") -> None:
+    request = parse_start_request({
+        "type": "start", "request_id": "run", "argv": argv, "env": child_env,
+        "stdin": base64.b64encode(stdin).decode(), "cwd": ".", "timeout_seconds": 1,
+    })
+    _daemon()._validate_request(request)
 
 
 def _assert_controller_private_env_absent(child_env: dict[str, str]) -> None:
@@ -124,7 +134,13 @@ def test_default_daemon_allowlist_accepts_real_child_env_for_formal_harnesses(
         _homes(tmp_path / harness_name),
     )
 
-    _assert_default_daemon_accepts(child_env)
+    definition = load_yaml(REPO_ROOT / "harness/harnesses.yaml")["harnesses"][harness_name]
+    argv, stdin, failure = build_argv(harness_name, definition, "gpt-5.5", "readonly prompt", {
+        "output_schema_file": REPO_ROOT / "harness/schemas/agent-result.schema.json",
+        "codex_last_message_file": tmp_path / "result.json", "mcp_config_file": tmp_path / "mcp.json",
+    })
+    assert not failure
+    _assert_default_daemon_accepts(child_env, argv, stdin)
     _assert_controller_private_env_absent(child_env)
     assert child_env[key_name] == TRIAL_RELAY_TOKEN
     assert child_env["USER"] == "resbench"
@@ -136,7 +152,7 @@ def test_default_daemon_allowlist_accepts_real_child_env_for_formal_harnesses(
 def test_default_daemon_allowlist_accepts_real_bladeai_env_with_optional_servers(
     tmp_path: Path,
 ) -> None:
-    _argv, _stdin, child_env = prepare_bladeai_launch(
+    argv, stdin, child_env = prepare_bladeai_launch(
         repo_root=REPO_ROOT,
         trial_root=tmp_path / "bladeai-trial",
         trial_id="campaign-1234567890abcdef-bladeai-d0-1",
@@ -148,7 +164,7 @@ def test_default_daemon_allowlist_accepts_real_bladeai_env_with_optional_servers
         python_executable="/opt/bladeai-venv/bin/python",
     )
 
-    _assert_default_daemon_accepts(child_env)
+    _assert_default_daemon_accepts(child_env, argv, stdin)
     _assert_controller_private_env_absent(child_env)
     assert child_env["BLADE_AI_LLM_API_KEY"] == TRIAL_RELAY_TOKEN
     assert child_env["BLADE_AI_API_BASE_URL"] == "http://127.0.0.1:18090/v1"
