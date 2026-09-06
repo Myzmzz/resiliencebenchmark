@@ -1,6 +1,6 @@
 # 四智能体整改执行记录
 
-日期：2026-09-05（后续记录延续到UTC 09-06）。最新状态：`4f9ba9e` 配对镜像已构建并发布，未更新旧集群Stage2工作负载。逐项核对发现WP12网关证据链仍不完整，已优先回到代码整改；本地真实网关对模拟模型服务的16次请求通过，最终全量回归单独记录。真实智能体/故障评测仍未执行，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
+日期：2026-09-05（后续记录延续到UTC 09-06）。最新状态：代码已推送至`bb08326`，配对镜像已发布并部署旧integration，三容器就绪且零重启。最新全量1427通过、9跳过；实际UID10002边界、UID10003沙箱、HTTP/SSE MCP往返、BladeAI SDK1.27.0到平台SDK2互通、80项Kubernetes身份授权与六模型探针均取得限定范围的通过证据。Coroot身份尚待用户确认；四家原生智能体资格及正式故障评测仍未执行，完整目标未完成。以下各轮记录保留其当时状态，不代表最新状态。
 
 最新执行范围：用户明确要求优先在旧集群测试，**不在新集群部署或测试**。全部部署、模型探针、金丝雀资格和验收矩阵固定使用 `/Users/mymz/.kube/coroot-config`、context `kubernetes-admin@kubernetes`。原计划“两套环境”部署/探针要求被此明确指令覆盖；新集群最多用于只读提取既有历史夹具，不算本次运行验证。
 
@@ -228,3 +228,5 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 `5d7a498`已推送、成对镜像已构建并部署integration。实际`sq460f4d`完成UID10003、禁网、临时目录正反写入、诊断echo代理和未授权工具拒绝，6项全部通过且无socket残留。这不是原生Agent/真实MCP资格。
 
 真实sandbox→broker→带Bearer的harness_channel MCP通知/回执检查`smb603cf`暴露剩余SDK属性错误。按mcp-builder检查流程及当前官方SDK v2文档，代理改用is_error/structured_content，不添加v1兼容路径；BladeAI隔离venv仍为受上游约束的MCP1.x，其原生适配字段不改。新增实际SDK CallToolResult类型回归，以及后台异常不泄漏正文、授权调用失败不当越权的socket测试。全量结果和真实复验另行记录。
+
+`bb08326`已推送并部署。`sandbox-mcp-v2-full.xml`全量1427通过、9跳过、49.626秒；实际`smafbfc3` HTTP链路和`sm05a3a8` SSE链路完成UID10003→broker→生产Harness MCP通知读取/回执，未经认证返回401、平台留下通知送达和工具调用记录，socket无残留。`sm76ebe2`另外通过实际BladeAI venv的MCP1.27.0、UID10002走SSE读取并确认新通知，证明协议互通，不证明BladeAI规划器能力。普通Agent边界在当前部署复验通过，记录`linux-agent-boundary-041520.json`。仍未创建故障，也未开始原生智能体或正式评测任务；完整范围未缩减。
