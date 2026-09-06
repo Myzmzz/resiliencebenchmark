@@ -153,12 +153,13 @@ def test_runtime_preflight_uses_only_qualification_record_for_readiness(
     }
     system._probe_cache_ttl_seconds = 300.0
     system._probe_lock = __import__("threading").Lock()
-    system._probe_cache = {}
+    system._gateway_readiness = {}
     monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(record))
     monkeypatch.delenv("RESBENCH_CODEX_EVAL_BIN", raising=False)
     monkeypatch.delenv("STAGE2_BLADEAI_PYTHON", raising=False)
     monkeypatch.setattr("stage2_service.runtime_factory.shutil.which", lambda _: None)
 
+    system.refresh_gateway_readiness()
     result = system.preflight()
 
     assert result["schema_version"] == "stage2-preflight.v3"

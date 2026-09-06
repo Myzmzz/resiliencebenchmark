@@ -602,6 +602,11 @@ class Stage2TaskService:
             .get(request.model)
         )
         if available is not True:
+            if (preflight.get("gateway_probe") or {}).get("status") == "running":
+                raise TaskValidationError(
+                    "gateway_probe_in_progress: model readiness is being checked; "
+                    "read /api/v1/stage2/options before submitting"
+                )
             raise TaskValidationError(
                 f"model/Harness combination is unavailable: {request.harness.value}/{request.model}"
             )
@@ -982,6 +987,8 @@ class Stage2TaskService:
             },
             "models": list(STAGE2_SUPPORTED_MODELS),
             "model_matrix": model_matrix,
+            "gateway_probe": preflight.get("gateway_probe"),
+            "model_probes": preflight.get("model_probes", {}),
             "prompt_modes": [item.value for item in PromptMode],
             "interaction_modes": [item.value for item in InteractionMode],
             "decision_policies": [item.value for item in DecisionPolicy],
@@ -1189,7 +1196,11 @@ class Stage2TaskService:
         elif not qualified:
             reason = "qualification_not_passed"
         elif not static_supported:
-            reason = "no_live_model_route"
+            reason = (
+                "gateway_probe_in_progress"
+                if (preflight.get("gateway_probe") or {}).get("status") == "running"
+                else "no_live_model_route"
+            )
         elif not runnable_cases:
             reason = "no_supported_task_cases"
         return {

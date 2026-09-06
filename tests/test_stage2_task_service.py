@@ -487,6 +487,37 @@ def test_api_exposes_timeline_and_debug_modes(tmp_path):
     assert "payload" in debug.json()["events"][0]
 
 
+def test_options_reports_gateway_check_in_progress_without_admitting_task(tmp_path):
+    snapshot = preflight()
+    snapshot["gateway_probe"] = {"status": "running", "completed_at": None}
+    snapshot["model_probes"] = {
+        "gpt-5.5": {"runnable": False, "probe_status": "running"}
+    }
+    snapshot["model_matrix"] = {
+        harness: {model: False for model in models}
+        for harness, models in snapshot["model_matrix"].items()
+    }
+    runner = CountingRunner()
+    service, supervisor, _controls = task_service(
+        tmp_path, runner, preflight_provider=lambda: snapshot
+    )
+    client = TestClient(create_app(supervisor, task_service=service))
+
+    response = client.get("/api/v1/stage2/options")
+    assert response.status_code == 200
+    assert response.json()["gateway_probe"] == snapshot["gateway_probe"]
+    assert response.json()["model_probes"] == snapshot["model_probes"]
+    codex = next(h for h in response.json()["harnesses"] if h["harness"] == "codex")
+    assert codex["runnable"] is False
+    assert codex["reason"] == "gateway_probe_in_progress"
+
+    created = client.post("/api/v1/stage2/tasks", json=request().model_dump(mode="json"))
+    assert created.status_code == 422
+    assert "gateway_probe_in_progress" in created.text
+    assert runner.calls == 0
+    assert supervisor.list_runs() == []
+
+
 def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     service, supervisor, _controls = task_service(tmp_path, Runner())
     client = TestClient(create_app(supervisor, task_service=service))

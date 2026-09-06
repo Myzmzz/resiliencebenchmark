@@ -10,7 +10,8 @@ import shutil
 import time
 import urllib.request
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, Callable, Mapping, Sequence
@@ -64,6 +65,49 @@ class RuntimeConfigurationError(RuntimeError):
 
 
 GatewayProbeRunner = Callable[[GatewayConfigSnapshot, Sequence[str]], Mapping[str, Any]]
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _gateway_probe_failure_report(error_type: str) -> dict[str, Any]:
+    return {
+        "schemaVersion": "resiliencebenchmark.model_probe/v1",
+        "issues": [
+            {
+                "severity": "ERROR",
+                "message": "gateway model probe failed",
+                "errorType": error_type,
+            }
+        ],
+        "models": [],
+    }
+
+
+def _probe_report_has_error(report: Mapping[str, Any]) -> bool:
+    issues = report.get("issues")
+    return any(
+        isinstance(issue, Mapping) and issue.get("severity") == "ERROR"
+        for issue in issues
+    ) if isinstance(issues, list) else False
+
+
+@dataclass
+class GatewayReadinessEntry:
+    key: tuple[str, str, tuple[str, ...]]
+    snapshot: GatewayConfigSnapshot
+    status: str
+    started_monotonic: float
+    started_at: str
+    completed_monotonic: float | None = None
+    completed_at: str | None = None
+    available_models: set[str] = field(default_factory=set)
+    model_error: str | None = None
+    probe_report: dict[str, Any] | None = None
+    error_type: str | None = None
+    error: str | None = None
+    event: Event = field(default_factory=Event)
 
 
 @dataclass(frozen=True)
@@ -1105,13 +1149,29 @@ class Stage2System:
         self._model_probe_runner = model_probe_runner or self._default_model_probe_runner
         self._probe_cache_ttl_seconds = probe_cache_ttl_seconds
         self._probe_lock = Lock()
-        self._probe_cache: dict[tuple[str, str, tuple[str, ...]], tuple[float, dict[str, Any]]] = {}
+        self._gateway_readiness: dict[tuple[str, str, tuple[str, ...]], GatewayReadinessEntry] = {}
 
     def preflight(self) -> dict[str, Any]:
-        available_models, model_error = self._gateway_models()
         snapshot, snapshot_error = self._gateway_snapshot()
-        probe_report = self._gateway_probe_report(snapshot) if snapshot is not None else {
-            "issues": [{"severity": "ERROR", "message": snapshot_error or "gateway config snapshot unavailable"}],
+        readiness = self._gateway_readiness_snapshot(snapshot, wait=False) if snapshot is not None else {
+            "status": "failed",
+            "started_at": None,
+            "completed_at": None,
+            "age_seconds": None,
+            "config_sha256": None,
+            "llm_base_url": self.config.llm_base_url,
+            "aliases": list(STAGE2_SUPPORTED_MODELS),
+            "available_models": [],
+            "model_catalog_error": snapshot_error or "gateway config snapshot unavailable",
+            "error": snapshot_error or "gateway config snapshot unavailable",
+        }
+        available_models = set(readiness.get("available_models") or [])
+        model_error = readiness.get("model_catalog_error")
+        probe_report = readiness.get("probe_report") if isinstance(readiness.get("probe_report"), Mapping) else {
+            "issues": (
+                [] if readiness["status"] == "running" else
+                [{"severity": "ERROR", "message": snapshot_error or "gateway config snapshot unavailable"}]
+            ),
             "models": [],
         }
         model_probes = self._model_probe_statuses(
@@ -1119,6 +1179,9 @@ class Stage2System:
             available_models=available_models,
             probe_report=probe_report,
         )
+        if readiness["status"] == "running":
+            for model_probe in model_probes.values():
+                model_probe["probe_status"] = "running"
         qualification_path = os.environ.get("STAGE2_HARNESS_CAPABILITIES_FILE")
         harness_capabilities, capability_qualification = (
             harness_capabilities_from_qualification(
@@ -1156,6 +1219,11 @@ class Stage2System:
             "model_matrix": model_matrix,
             "available_models": sorted(available_models),
             "model_catalog_error": model_error,
+            "gateway_probe": {
+                key: value
+                for key, value in readiness.items()
+                if key != "probe_report"
+            },
             "gateway_config": {
                 "config_sha256": snapshot.config_sha256 if snapshot else None,
                 "config_path": snapshot.config_path.as_posix() if snapshot else None,
@@ -1181,6 +1249,23 @@ class Stage2System:
             },
             "reset_mode": "mutation_evidence_tiered",
         }
+
+    def refresh_gateway_readiness(self) -> dict[str, Any]:
+        snapshot, snapshot_error = self._gateway_snapshot()
+        if snapshot is None:
+            return {
+                "status": "failed",
+                "started_at": None,
+                "completed_at": None,
+                "age_seconds": None,
+                "config_sha256": None,
+                "llm_base_url": self.config.llm_base_url,
+                "aliases": list(STAGE2_SUPPORTED_MODELS),
+                "available_models": [],
+                "model_catalog_error": snapshot_error or "gateway config snapshot unavailable",
+                "error": snapshot_error or "gateway config snapshot unavailable",
+            }
+        return self._gateway_readiness_snapshot(snapshot, wait=True)
 
     def _d0_selection_by_harness_model(
         self,
@@ -1224,9 +1309,6 @@ class Stage2System:
         return result
 
     def _gateway_snapshot(self) -> tuple[GatewayConfigSnapshot | None, str | None]:
-        snapshot = getattr(self.config, "gateway_snapshot", None)
-        if snapshot is not None:
-            return snapshot, None
         path = getattr(self.config, "gateway_config_file", None)
         if path is None:
             return None, "gateway config snapshot unavailable"
@@ -1238,30 +1320,135 @@ class Stage2System:
         except GatewayConfigError as exc:
             return None, str(exc)
 
-    def _gateway_probe_report(self, snapshot: GatewayConfigSnapshot) -> Mapping[str, Any]:
+    def _gateway_readiness_snapshot(
+        self, snapshot: GatewayConfigSnapshot, *, wait: bool
+    ) -> dict[str, Any]:
         aliases = tuple(STAGE2_SUPPORTED_MODELS)
         cache_key = (snapshot.config_sha256, self.config.llm_base_url, aliases)
         now = time.monotonic()
         with self._probe_lock:
-            cached = self._probe_cache.get(cache_key)
-            if cached is not None and now - cached[0] <= self._probe_cache_ttl_seconds:
-                return cached[1]
-            try:
-                report = dict(self._model_probe_runner(snapshot, aliases))
-            except Exception as exc:  # noqa: BLE001 - preflight reports bounded setup failures.
-                report = {
-                    "schemaVersion": "resiliencebenchmark.model_probe/v1",
-                    "issues": [
-                        {
-                            "severity": "ERROR",
-                            "message": "gateway model probe failed",
-                            "errorType": type(exc).__name__,
-                        }
-                    ],
-                    "models": [],
-                }
-            self._probe_cache[cache_key] = (now, report)
-            return report
+            cache = self._gateway_readiness
+            entry = cache.get(cache_key)
+            if entry is not None:
+                if entry.status == "running":
+                    target = entry
+                elif (
+                    entry.completed_monotonic is not None
+                    and now - entry.completed_monotonic <= self._probe_cache_ttl_seconds
+                ):
+                    return self._gateway_readiness_public(entry, now=now)
+                else:
+                    target = self._start_gateway_readiness_refresh_locked(
+                        cache_key, snapshot, aliases
+                    )
+            else:
+                target = self._start_gateway_readiness_refresh_locked(
+                    cache_key, snapshot, aliases
+                )
+            if not wait:
+                return self._gateway_readiness_public(target, now=now)
+        target.event.wait()
+        with self._probe_lock:
+            return self._gateway_readiness_public(target, now=time.monotonic())
+
+    def _start_gateway_readiness_refresh_locked(
+        self,
+        cache_key: tuple[str, str, tuple[str, ...]],
+        snapshot: GatewayConfigSnapshot,
+        aliases: tuple[str, ...],
+    ) -> GatewayReadinessEntry:
+        entry = GatewayReadinessEntry(
+            key=cache_key,
+            snapshot=snapshot,
+            status="running",
+            started_monotonic=time.monotonic(),
+            started_at=_utc_now_text(),
+        )
+        self._gateway_readiness[cache_key] = entry
+        thread = Thread(
+            target=self._run_gateway_readiness_refresh,
+            args=(entry, aliases),
+            name="stage2-gateway-readiness",
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except Exception as exc:  # noqa: BLE001 - start failure must not leave a running entry.
+            entry.status = "failed"
+            entry.completed_monotonic = time.monotonic()
+            entry.completed_at = _utc_now_text()
+            entry.probe_report = _gateway_probe_failure_report(type(exc).__name__)
+            entry.error_type = type(exc).__name__
+            entry.error = "gateway readiness refresh could not be started"
+            entry.event.set()
+        return entry
+
+    def _run_gateway_readiness_refresh(
+        self,
+        entry: GatewayReadinessEntry,
+        aliases: tuple[str, ...],
+    ) -> None:
+        available_models: set[str] = set()
+        model_error: str | None = None
+        try:
+            available_models, model_error = self._gateway_models()
+            probe_report = dict(self._model_probe_runner(entry.snapshot, aliases))
+        except Exception as exc:  # noqa: BLE001 - preflight reports bounded setup failures.
+            completed = time.monotonic()
+            with self._probe_lock:
+                entry.status = "failed"
+                entry.completed_monotonic = completed
+                entry.completed_at = _utc_now_text()
+                entry.available_models = set(available_models)
+                entry.model_error = model_error
+                entry.probe_report = _gateway_probe_failure_report(type(exc).__name__)
+                entry.error_type = type(exc).__name__
+                entry.error = "gateway model probe failed"
+                entry.event.set()
+            return
+        completed = time.monotonic()
+        failed = model_error is not None or _probe_report_has_error(probe_report)
+        with self._probe_lock:
+            entry.status = "failed" if failed else "complete"
+            entry.completed_monotonic = completed
+            entry.completed_at = _utc_now_text()
+            entry.available_models = set(available_models)
+            entry.model_error = model_error
+            entry.probe_report = probe_report
+            if failed:
+                entry.error_type = "GatewayProbeIssue"
+                entry.error = "gateway model probe failed"
+            entry.event.set()
+
+    def _gateway_readiness_public(
+        self,
+        entry: GatewayReadinessEntry,
+        *,
+        now: float,
+    ) -> dict[str, Any]:
+        age_seconds = (
+            max(0.0, now - entry.completed_monotonic)
+            if entry.completed_monotonic is not None
+            else None
+        )
+        payload: dict[str, Any] = {
+            "status": entry.status,
+            "started_at": entry.started_at,
+            "completed_at": entry.completed_at,
+            "age_seconds": age_seconds,
+            "config_sha256": entry.snapshot.config_sha256,
+            "llm_base_url": entry.key[1],
+            "aliases": list(entry.key[2]),
+            "available_models": sorted(entry.available_models),
+            "model_catalog_error": entry.model_error,
+        }
+        if entry.status in {"complete", "failed"}:
+            payload["probe_report"] = dict(entry.probe_report or {})
+        if entry.error_type is not None:
+            payload["error_type"] = entry.error_type
+        if entry.error is not None:
+            payload["error"] = entry.error
+        return payload
 
     def _default_model_probe_runner(
         self,

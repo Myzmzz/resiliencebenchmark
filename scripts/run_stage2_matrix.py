@@ -56,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.resume_from
         else ()
     )
+    # Explicit execution waits for the same single-flight check that HTTP
+    # clients observe asynchronously; an empty cold cache is not qualification.
+    system.refresh_gateway_readiness()
     report = run_matrix(
         matrix_id=args.matrix_id,
         artifact_root=config.artifact_root,
