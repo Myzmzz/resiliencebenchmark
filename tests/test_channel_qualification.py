@@ -41,12 +41,16 @@ from stage2_service.episode import load_fixed_episode
 from stage2_service.gateway_config import GatewayConfigSnapshot
 from stage2_service.matrix import fixed_otel_episode_ref
 from stage2_service.permissions import Stage2PermissionManager
-from stage2_service.platform_ledger import PlatformLedger
+from stage2_service.platform_ledger import PlatformEvent, PlatformLedger
 from stage2_service.runtime_adapters import McpTokenStateRegistry, RuntimeAdapterError
 
 
 TRIAL_ID = "trial-channel-qualification"
 NOW = "2026-09-05T12:00:00+00:00"
+A2_NOTICE_ACK_FIXTURE = (
+    Path(__file__).resolve().parent
+    / "fixtures/channel_qualification/base-codex-a2-notice-ack-events.json"
+)
 
 
 def _episode_fixture(episode_id: str = "EPI-TEST-CHANNEL-0001") -> SimpleNamespace:
@@ -627,6 +631,137 @@ def _append_base_success_events(
         )
 
 
+def _append_base_controller_notice_events(
+    ledger: PlatformLedger,
+    *,
+    trial_id: str = TRIAL_ID,
+    delivery_trial_id: str = TRIAL_ID,
+    include_ack: bool = True,
+    include_delivery: bool = True,
+    ack_delivery_id: str = "delivery-1",
+) -> None:
+    _append_pair(
+        ledger,
+        "k8s",
+        "k8s_ro.k8s_list_resources",
+        {"ok": True, "items": [{"kind": "Pod", "metadata": {"name": "cart"}}]},
+        trial_id=trial_id,
+    )
+    _append_pair(
+        ledger,
+        "telemetry",
+        "telemetry_ro.telemetry_prom_metric_range",
+        {"ok": True, "window": {"seconds": 30}},
+        trial_id=trial_id,
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolCall",
+        occurred_at=NOW,
+        payload={
+            "source": "mcp_server",
+            "call_id": "confirm",
+            "tool": "harness_channel.harness_confirm",
+            "arguments": {"plan": {"intent": "confirm-only", "hypothetical": True}},
+        },
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="CONFIRM_DENIED",
+        occurred_at=NOW,
+        payload={"allowed": False, "reason": "safe_refusal_expected"},
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolResult",
+        occurred_at=NOW,
+        payload={
+            "source": "mcp_server",
+            "call_id": "confirm",
+            "status": "completed",
+            "payload": {"ok": True, "allowed": False, "reason": "safe_refusal_expected"},
+        },
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolCall",
+        occurred_at=NOW,
+        payload={
+            "source": "mcp_server",
+            "call_id": "consult",
+            "tool": "harness_channel.harness_consult",
+            "arguments": {"question": "neutral decline only"},
+        },
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="CONSULT_DECLINED",
+        occurred_at=NOW,
+        payload={"reason": "no_causal_disturbance_denial", "question": "neutral decline only"},
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolResult",
+        occurred_at=NOW,
+        payload={
+            "source": "mcp_server",
+            "call_id": "consult",
+            "status": "completed",
+            "payload": {
+                "ok": True,
+                "message": "当前没有可提供的信息。",
+                "hint_delivered": False,
+                "controller_notices": [
+                    {
+                        "attempt": 1,
+                        "delivery_id": "delivery-1",
+                        "notice": {
+                            "notice_id": 1,
+                            "notice_type": QUALIFICATION_NOTICE_TYPE,
+                            "payload": {"fact": "Base channel qualification notice."},
+                        },
+                    }
+                ],
+            },
+        },
+    )
+    if include_delivery:
+        ledger.append(
+            trial_id=delivery_trial_id,
+            event_type="NOTICE_DELIVERED",
+            occurred_at=NOW,
+            payload={
+                "delivery_id": "delivery-1",
+                "notice_id": 1,
+                "notice_type": QUALIFICATION_NOTICE_TYPE,
+                "path": "in_band",
+            },
+        )
+    _append_pair(
+        ledger,
+        "poll-empty",
+        "harness_channel.harness_poll_notices",
+        {"ok": True, "notices": [], "acknowledged": [], "ack_errors": []},
+        trial_id=trial_id,
+        arguments={"ack_ids": None, "limit": 5},
+    )
+    if include_ack:
+        _append_pair(
+            ledger,
+            "poll-ack",
+            "harness_channel.harness_poll_notices",
+            {
+                "ok": True,
+                "notices": [],
+                "acknowledged": [{"delivery_id": ack_delivery_id, "notice_id": 1}],
+                "ack_errors": [],
+            },
+            trial_id=trial_id,
+            arguments={"ack_ids": [ack_delivery_id], "limit": 5},
+        )
+    _append_submit_exchange(ledger, "submit", valid=True, trial_id=trial_id)
+
+
 def _evaluate(ledger: PlatformLedger) -> ChannelQualificationRecord:
     return evaluate_channel_qualification(
         ledger.query(trial_id=TRIAL_ID, limit=10_000),
@@ -668,6 +803,49 @@ def test_evaluator_accepts_invalid_result_then_last_valid_submission(tmp_path: P
         "submit-invalid",
         "submit",
     ]
+
+
+def test_evaluator_accepts_controller_notices_carrier_after_sandbox_before_poll_ack(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_success_events(ledger)
+    rows = [event.as_dict() for event in ledger.query(trial_id=TRIAL_ID, limit=10_000)]
+    old_delivery = next(row for row in rows if row["event_type"] == "NOTICE_DELIVERED")
+    notice_item = next(
+        row["payload"]["payload"]["notices"][0]
+        for row in rows
+        if row["event_type"] == "ToolResult"
+        and row["payload"].get("call_id") == "poll-1"
+    )
+    rows = [row for row in rows if row["event_type"] != "NOTICE_DELIVERED"]
+    for row in rows:
+        if row["event_type"] != "ToolResult":
+            continue
+        if row["payload"].get("call_id") == "sandbox":
+            row["payload"]["payload"]["controller_notices"] = [notice_item]
+        elif row["payload"].get("call_id") == "poll-1":
+            row["payload"]["payload"]["notices"] = []
+    sandbox_index = next(
+        index
+        for index, row in enumerate(rows)
+        if row["event_type"] == "ToolResult"
+        and row["payload"].get("call_id") == "sandbox"
+    )
+    rows.insert(sandbox_index + 1, old_delivery)
+    events = [
+        PlatformEvent(**{**row, "sequence": index + 1})
+        for index, row in enumerate(rows)
+    ]
+
+    record = evaluate_channel_qualification(
+        events,
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+    )
+
+    assert record.passed is True
+    assert "missing_notice_ack" not in record.failure_reasons
+    assert "required_order_violated" not in record.failure_reasons
 
 
 def test_evaluator_rejects_valid_result_without_matching_result_submitted_event(tmp_path: Path) -> None:
@@ -725,6 +903,123 @@ def test_base_evaluator_accepts_foundational_channel_sequence(tmp_path: Path) ->
         "telemetry_ro",
     ]
     assert "base-channel qualification; not a fault qualification" in record.limitations
+
+
+def test_base_evaluator_accepts_a2_controller_notice_carrier_native_ack_replay() -> None:
+    rows = json.loads(A2_NOTICE_ACK_FIXTURE.read_text(encoding="utf-8"))
+    events = [PlatformEvent(**row) for row in rows]
+    trial_id = next(row["trial_id"] for row in rows if row["event_type"] == "ToolCall")
+
+    record = evaluate_base_channel_qualification(
+        events,
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=trial_id,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is True
+    assert record.base_checks["notice_ack_verified"] is True
+    assert "missing_notice_ack" not in record.failure_reasons
+
+
+@pytest.mark.parametrize("malformed_notice_id", ["2", True, None])
+def test_base_evaluator_rejects_controller_notice_without_valid_notice_id(
+    tmp_path: Path,
+    malformed_notice_id: object,
+) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_controller_notice_events(ledger)
+    rows = [event.as_dict() for event in ledger.query(trial_id=TRIAL_ID, limit=10_000)]
+    for row in rows:
+        if row["event_type"] != "ToolResult":
+            continue
+        payload = row["payload"].get("payload", {})
+        notices = payload.get("controller_notices")
+        if not notices:
+            continue
+        notice = notices[0]["notice"]
+        if malformed_notice_id is None:
+            notice.pop("notice_id", None)
+        else:
+            notice["notice_id"] = malformed_notice_id
+        break
+    events = [PlatformEvent(**row) for row in rows]
+
+    record = evaluate_base_channel_qualification(
+        events,
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is False
+    assert record.base_checks["notice_ack_verified"] is False
+    assert "missing_notice_ack" in record.failure_reasons
+
+
+def test_base_evaluator_accepts_controller_notices_carrier_before_explicit_ack(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_controller_notice_events(ledger)
+
+    record = evaluate_base_channel_qualification(
+        ledger.query(trial_id=TRIAL_ID, limit=10_000),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is True
+    assert record.base_checks["notice_ack_verified"] is True
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["wrong_ack_id", "cross_trial_delivery", "missing_ack", "missing_delivery"],
+)
+def test_base_evaluator_rejects_broken_notice_ack_evidence(tmp_path: Path, damage: str) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_controller_notice_events(
+        ledger,
+        ack_delivery_id="wrong-delivery" if damage == "wrong_ack_id" else "delivery-1",
+        delivery_trial_id="other-trial" if damage == "cross_trial_delivery" else TRIAL_ID,
+        include_ack=damage != "missing_ack",
+        include_delivery=damage != "missing_delivery",
+    )
+
+    record = evaluate_base_channel_qualification(
+        ledger.query(limit=10_000),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is False
+    assert record.base_checks["notice_ack_verified"] is False
+    assert "missing_notice_ack" in record.failure_reasons
 
 
 def test_base_record_publishes_into_preflight_from_real_evaluator_output(tmp_path: Path) -> None:

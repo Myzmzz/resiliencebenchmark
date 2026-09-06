@@ -117,6 +117,15 @@ class ToolExchange:
 
 
 @dataclass(frozen=True)
+class NoticeAckEvidence:
+    carrier: ToolExchange
+    ack: ToolExchange
+    notice: PlatformEvent
+    delivery_id: str
+    notice_id: int | None
+
+
+@dataclass(frozen=True)
 class ChannelQualificationRecord:
     schema_version: str = "stage2-channel-qualification.v1"
     qualification_type: str = CHANNEL_QUALIFICATION_MODE
@@ -638,36 +647,8 @@ def evaluate_channel_qualification(
     if sandbox is not None and sandbox_run is None:
         failures.append("missing_completed_sandbox_run_evidence")
 
-    first_poll = _first_exchange(
-        exchanges,
-        lambda item: item.tool == "harness_channel.harness_poll_notices"
-        and bool(item.payload.get("notices")),
-    )
-    claimed_delivery_id, claimed_notice_id = _claimed_qualification_notice(first_poll)
-    ack_poll = _first_exchange(
-        exchanges,
-        lambda item: item.tool == "harness_channel.harness_poll_notices"
-        and claimed_delivery_id is not None
-        and claimed_delivery_id in set(str(item) for item in item.arguments.get("ack_ids", []))
-        and _acknowledges_notice(item, claimed_delivery_id, claimed_notice_id),
-    )
-    notice = (
-        _first_event_between(
-            original_events,
-            "NOTICE_DELIVERED",
-            ack_poll.call_sequence,
-            ack_poll.result_sequence,
-            lambda event: event.payload.get("notice_type") == QUALIFICATION_NOTICE_TYPE
-            and event.payload.get("delivery_id") == claimed_delivery_id
-            and (
-                claimed_notice_id is None
-                or event.payload.get("notice_id") == claimed_notice_id
-            ),
-        )
-        if ack_poll is not None
-        else None
-    )
-    if first_poll is None or claimed_delivery_id is None or ack_poll is None or notice is None:
+    notice_ack = _notice_ack_evidence(original_events, exchanges, trial_id=trial_id)
+    if notice_ack is None:
         failures.append("missing_notice_ack")
 
     submit, result_event = _last_valid_result_submission(original_events, exchanges)
@@ -683,17 +664,20 @@ def evaluate_channel_qualification(
         ("coroot_result", coroot.result_sequence if coroot else None),
         ("sandbox_call", sandbox.call_sequence if sandbox else None),
         ("sandbox_result", sandbox.result_sequence if sandbox else None),
-        ("first_poll_call", first_poll.call_sequence if first_poll else None),
-        ("first_poll_result", first_poll.result_sequence if first_poll else None),
-        ("ack_call", ack_poll.call_sequence if ack_poll else None),
-        ("notice_delivered", notice.sequence if notice else None),
-        ("ack_result", ack_poll.result_sequence if ack_poll else None),
+        ("ack_call", notice_ack.ack.call_sequence if notice_ack else None),
+        ("ack_result", notice_ack.ack.result_sequence if notice_ack else None),
         ("submit_call", submit.call_sequence if submit else None),
         ("result_submitted", result_event.sequence if result_event else None),
         ("submit_result", submit.result_sequence if submit else None),
     ]
     present_sequences = [sequence for _name, sequence in milestones if sequence is not None]
     if len(present_sequences) != len(set(present_sequences)) or present_sequences != sorted(present_sequences):
+        failures.append("required_order_violated")
+    if (
+        notice_ack is not None
+        and sandbox is not None
+        and notice_ack.carrier.result_sequence < sandbox.result_sequence
+    ):
         failures.append("required_order_violated")
 
     passed = not failures
@@ -839,41 +823,8 @@ def evaluate_base_channel_qualification(
     if not consult_roundtrip_verified:
         failures.append("base_consult_must_decline_without_hint")
 
-    first_poll = _first_exchange(
-        exchanges,
-        lambda item: item.tool == "harness_channel.harness_poll_notices"
-        and bool(item.payload.get("notices")),
-    )
-    claimed_delivery_id, claimed_notice_id = _claimed_qualification_notice(first_poll)
-    ack_poll = _first_exchange(
-        exchanges,
-        lambda item: item.tool == "harness_channel.harness_poll_notices"
-        and claimed_delivery_id is not None
-        and claimed_delivery_id in set(str(item) for item in item.arguments.get("ack_ids", []))
-        and _acknowledges_notice(item, claimed_delivery_id, claimed_notice_id),
-    )
-    notice = (
-        _first_event_between(
-            original_events,
-            "NOTICE_DELIVERED",
-            ack_poll.call_sequence,
-            ack_poll.result_sequence,
-            lambda event: event.payload.get("notice_type") == QUALIFICATION_NOTICE_TYPE
-            and event.payload.get("delivery_id") == claimed_delivery_id
-            and (
-                claimed_notice_id is None
-                or event.payload.get("notice_id") == claimed_notice_id
-            ),
-        )
-        if ack_poll is not None
-        else None
-    )
-    notice_ack_verified = (
-        first_poll is not None
-        and claimed_delivery_id is not None
-        and ack_poll is not None
-        and notice is not None
-    )
+    notice_ack = _notice_ack_evidence(original_events, exchanges, trial_id=trial_id)
+    notice_ack_verified = notice_ack is not None
     if not notice_ack_verified:
         failures.append("missing_notice_ack")
 
@@ -1279,6 +1230,52 @@ def _first_successful_exchange(
     )
 
 
+def _notice_ack_evidence(
+    events: Sequence[PlatformEvent],
+    exchanges: Sequence[ToolExchange],
+    *,
+    trial_id: str,
+) -> NoticeAckEvidence | None:
+    for carrier in exchanges:
+        if not _payload_ok(carrier):
+            continue
+        delivery_id, notice_id = _claimed_qualification_notice(carrier)
+        if delivery_id is None:
+            continue
+        ack = _first_exchange(
+            exchanges,
+            lambda item: item.tool == "harness_channel.harness_poll_notices"
+            and item.call_sequence > carrier.result_sequence
+            and delivery_id in _ack_ids(item)
+            and _payload_ok(item)
+            and _acknowledges_notice(item, delivery_id, notice_id),
+        )
+        if ack is None:
+            continue
+        delivered = _first_event_between(
+            events,
+            "NOTICE_DELIVERED",
+            carrier.result_sequence,
+            ack.result_sequence,
+            lambda event: event.trial_id == trial_id
+            and event.payload.get("notice_type") == QUALIFICATION_NOTICE_TYPE
+            and event.payload.get("delivery_id") == delivery_id
+            and (
+                notice_id is None
+                or event.payload.get("notice_id") == notice_id
+            ),
+        )
+        if delivered is not None:
+            return NoticeAckEvidence(
+                carrier=carrier,
+                ack=ack,
+                notice=delivered,
+                delivery_id=delivery_id,
+                notice_id=notice_id,
+            )
+    return None
+
+
 def _last_valid_result_submission(
     events: Sequence[PlatformEvent],
     exchanges: Sequence[ToolExchange],
@@ -1362,22 +1359,25 @@ def _without_controller_call_id(payload: Mapping[str, Any]) -> dict[str, Any]:
 def _claimed_qualification_notice(exchange: ToolExchange | None) -> tuple[str | None, int | None]:
     if exchange is None:
         return None, None
-    notices = exchange.payload.get("notices")
-    if not isinstance(notices, list):
-        return None, None
-    for item in notices:
-        if not isinstance(item, Mapping):
+    for field in ("controller_notices", "notices"):
+        notices = exchange.payload.get(field)
+        if not isinstance(notices, list):
             continue
-        notice = item.get("notice")
-        if not isinstance(notice, Mapping):
-            continue
-        if notice.get("notice_type") != QUALIFICATION_NOTICE_TYPE:
-            continue
-        delivery_id = item.get("delivery_id")
-        if not isinstance(delivery_id, str) or not delivery_id:
-            continue
-        notice_id = notice.get("notice_id")
-        return delivery_id, notice_id if isinstance(notice_id, int) else None
+        for item in notices:
+            if not isinstance(item, Mapping):
+                continue
+            notice = item.get("notice")
+            if not isinstance(notice, Mapping):
+                continue
+            if notice.get("notice_type") != QUALIFICATION_NOTICE_TYPE:
+                continue
+            delivery_id = item.get("delivery_id")
+            if not isinstance(delivery_id, str) or not delivery_id:
+                continue
+            notice_id = notice.get("notice_id")
+            if not isinstance(notice_id, int) or isinstance(notice_id, bool):
+                continue
+            return delivery_id, notice_id
     return None, None
 
 
@@ -1398,6 +1398,13 @@ def _acknowledges_notice(
             continue
         return True
     return False
+
+
+def _ack_ids(exchange: ToolExchange) -> set[str]:
+    raw = exchange.arguments.get("ack_ids")
+    if not isinstance(raw, list):
+        return set()
+    return {str(value) for value in raw}
 
 
 def _prepare_output_dir(path: Path) -> Path:

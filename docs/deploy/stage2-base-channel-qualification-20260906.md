@@ -74,9 +74,12 @@ Postman 请求字段。先确认旧集群无活动任务、无故障残留；每
 声称具备该项能力。已验证的中途交互使用 `in_band_mcp`。基础发布始终为
 `code_execution=none`，WP11 沙箱资格和 BladeAI WP8 晋级仍需后续完整接线。
 
-当前单任务 POST 内部仍使用 `qualification_mode=diagnostic`。基础发布不会
-把它自动变成正式矩阵计分；正式计分还需服务器内部绑定有效 D0 证据。不能
-把“任务能启动”“实验执行完成”和“正式计分资格通过”混为一谈。
+单任务 POST 的正式资格由服务端自动选择：当前 Harness/model 有已结束、
+与当前网关匹配且已重新核验的 D0 记录时，内部使用 `qualification_mode=required`
+并绑定该组合的引用；无需等待其余七个组合。没有有效记录时仍可作真实单任务
+诊断，响应中的 `qualification.mode=diagnostic` 和 `reason` 会明确说明原因，
+不能当成正式矩阵成绩。用户请求不增加 D0、Episode、权限或资格参数。
+基础发布本身不证明故障注入能力，也不会伪造 D0 记录。
 
 ## 第一次真实基础资格：失败记录
 
@@ -105,3 +108,29 @@ Controller 已保存的合规终态，不再解释文本产生额外问题；无
 原平台事件和失败归因；`base-codex-a1-native.tar.gz` 保留原生记录；
 `base-codex-a1.stderr.log` 保留中断结果；`base-codex-a1-before/after-*` 为独立
 故障清单。该失败不因后续修复而追改为通过。
+
+## 第二次真实基础资格：通知判定缺陷
+
+`2c0a902` 部署到 `resbench-stage2-integration-7f746fd7d9-nnrfr` 后运行
+`base-codex-20260906-a2`，Trial 为 `campaign-1f69ab3f569f4276-codex-d0-1`。
+本次真实会话正常完成：10 个模型请求、一个原生回合、9 次 MCP 调用；无重复
+确认反馈，终态修复已在真实环境生效。原资格结果仍保留 `failed/missing_notice_ack`。
+
+其余六项检查通过。唯一误判来自通知：通知附带在成功的 `harness_consult`
+响应中（call 419 / result 423），Native 收到后在序号 425 确认送达。Agent 随后
+poll 返回空列表，又在 call 432 / result 434 显式回执，返回 `acknowledged` 一项
+且 `ack_errors=[]`。旧判定只认 poll 返回通知，并要求送达事件夹在显式回执调用
+内部，错误排除了平台既有的响应附带通知和 Native 自动回执机制。
+
+修复后的共同核验接受两种合法 carrier，但仍要求相同 Trial、delivery_id、
+notice_id、notice_type、真实显式回执输入输出和平台送达事件。原始 A2 文件不
+修改；脱敏事件判定夹具提交在 `tests/fixtures/channel_qualification/`，不作为
+资格 artifact。回放通过不替代下一次实跑。
+
+本次清理无错误，临时目录/令牌文件均不存在，前后故障清单为空，没有发布能力
+文件。A2 是本轮第 2 次平台原因失败，只剩一次真实复验预算。
+
+证据：`base-codex-a2.stdout.json`、`base-codex-a2-platform-events.json`、
+`base-codex-a2-native.tar.gz`、`base-codex-a2-cleanup.json` 及独立故障清单，均在
+`artifacts/remediation/20260905/`。本轮修复全量回归为 1575 通过、10 跳过、
+0 失败，56.484 秒，见 `notice-task-selection-full.xml`。
