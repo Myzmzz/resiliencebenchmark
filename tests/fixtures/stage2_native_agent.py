@@ -80,6 +80,13 @@ if "resume" not in sys.argv:
 else:
     feedback = json.loads(text.split("```json\n", 1)[1].split("```", 1)[0])
     payload = feedback["payload"]
+    if scenario == "safe_refusal":
+        assert payload["approved"] is False
+        assert payload["approved_plan"] is None
+        say({"status": "blocked", "decision": "safe_stop",
+             "effect_assessment": "not_attempted", "recovery_assessment": "not_applicable"})
+        print(json.dumps({"type": "turn.completed"}), flush=True)
+        sys.exit(0)
     if scenario == "advice" and payload.get("approved") is None:
         assert payload["answer_mode"] == "custom"
         assert payload["supplied_plan"]["target"]["uid"] == "uid-a"

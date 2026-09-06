@@ -1,4 +1,4 @@
-"""Normalize live Codex/Claude JSONL output into disturbance lifecycle events."""
+"""Map canonical live harness events into disturbance lifecycle events."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from disturbances.types import DisturbancePhase, LifecycleEvent
+from stage2_service.harness_adapters import AgentMessage, CanonicalEvent, ToolCall, ToolResult
 
 
 class HarnessStreamError(RuntimeError):
@@ -16,7 +17,7 @@ EventEmitter = Callable[[LifecycleEvent], list[dict[str, Any]]]
 
 
 ALLOWED_SERVER_PREFIXES = frozenset(
-    {"k8s_ro", "telemetry_ro", "source_ro", "chaos_control"}
+    {"k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel"}
 )
 
 
@@ -33,6 +34,7 @@ class StreamingLifecycleBridge:
         self.emit = emit
         self.main_fault_applied = False
         self.observation_started = False
+        self._calls_by_id: dict[str, ToolCall] = {}
 
     def start(self) -> list[dict[str, Any]]:
         return self.emit(self._event(DisturbancePhase.EXECUTION, "trial_started"))
@@ -46,17 +48,40 @@ class StreamingLifecycleBridge:
             )
         )
 
-    def handle(self, raw_event: Mapping[str, Any]) -> list[dict[str, Any]]:
-        kind = _trace_kind(raw_event)
-        if kind not in {"tool_call", "tool_result"}:
+    def handle(self, event: CanonicalEvent) -> list[dict[str, Any]]:
+        if isinstance(event, AgentMessage):
             return []
-        tool = _tool_name(raw_event)
-        if not tool:
-            raise HarnessStreamError("tool event is missing a stable MCP tool name")
-        server = tool.split(".", 1)[0]
-        if server not in ALLOWED_SERVER_PREFIXES:
-            raise HarnessStreamError(f"non-MCP or unapproved tool event observed: {tool}")
+        if isinstance(event, ToolCall):
+            self._validate_tool_call(event)
+            self._calls_by_id[event.call_id] = event
+            return self._handle_tool_event(
+                kind="tool_call",
+                tool=event.tool,
+                payload=event.model_dump(mode="json"),
+                success=False,
+            )
+        if isinstance(event, ToolResult):
+            call = self._calls_by_id.get(event.call_id)
+            if call is None:
+                raise HarnessStreamError(
+                    f"tool result {event.call_id!r} is missing a matching ToolCall"
+                )
+            return self._handle_tool_event(
+                kind="tool_result",
+                tool=call.tool,
+                payload=event.model_dump(mode="json"),
+                success=_successful_result(event),
+            )
+        return []
 
+    def _handle_tool_event(
+        self,
+        *,
+        kind: str,
+        tool: str,
+        payload: Mapping[str, Any],
+        success: bool,
+    ) -> list[dict[str, Any]]:
         phase = self._phase(tool)
         records: list[dict[str, Any]] = []
         if (
@@ -74,14 +99,8 @@ class StreamingLifecycleBridge:
                     )
                 )
             )
-        records.extend(
-            self.emit(self._event(phase, kind, tool=tool, payload=dict(raw_event)))
-        )
-        if (
-            kind == "tool_result"
-            and tool.endswith("chaos_create_experiment")
-            and _successful(raw_event)
-        ):
+        records.extend(self.emit(self._event(phase, kind, tool=tool, payload=payload)))
+        if kind == "tool_result" and tool.endswith("chaos_create_experiment") and success:
             self.main_fault_applied = True
             records.extend(
                 self.emit(
@@ -130,34 +149,18 @@ class StreamingLifecycleBridge:
             payload=dict(payload or {}),
         )
 
+    def _validate_tool_call(self, call: ToolCall) -> None:
+        server = call.tool.split(".", 1)[0]
+        if server not in ALLOWED_SERVER_PREFIXES:
+            raise HarnessStreamError(
+                f"non-MCP or unapproved tool event observed: {call.tool}"
+            )
 
-def _trace_kind(event: Mapping[str, Any]) -> str | None:
-    marker = str(event.get("type") or event.get("event") or event.get("kind") or "")
-    if marker == "mcp_tool_call":
-        completed = str(event.get("status") or "").lower() in {"completed", "failed"}
-        has_result = any(
-            event.get(key) is not None for key in ("result", "error", "output")
-        )
-        return "tool_result" if completed or has_result else "tool_call"
-    if marker in {"tool_call", "tool_use", "function_call"}:
-        return "tool_call"
-    if marker in {"tool_result", "function_call_output"}:
-        return "tool_result"
-    return None
-
-
-def _tool_name(event: Mapping[str, Any]) -> str | None:
-    tool = event.get("tool") or event.get("name")
-    server = event.get("server") or event.get("server_name")
-    if not isinstance(tool, str) or not tool:
-        return None
-    normalized = tool.removeprefix("mcp__").replace("__", ".")
-    if isinstance(server, str) and server and "." not in normalized:
-        normalized = f"{server}.{normalized}"
-    return normalized
-
-
-def _successful(event: Mapping[str, Any]) -> bool:
-    if event.get("error"):
+def _successful_result(result: ToolResult) -> bool:
+    if result.status != "completed":
         return False
-    return str(event.get("status") or "completed").lower() not in {"failed", "error"}
+    if result.payload.get("ok") is False:
+        return False
+    if result.payload.get("error"):
+        return False
+    return True

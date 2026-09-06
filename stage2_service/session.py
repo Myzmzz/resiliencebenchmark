@@ -7,12 +7,14 @@ import os
 import subprocess
 import threading
 import time
+import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .contracts import FeedbackCategory
+from harness.agent_exec.protocol import MAX_NATIVE_OUTPUT_BYTES
 
 
 StructuredFeedbackType = FeedbackCategory
@@ -55,6 +57,7 @@ class SessionCommandResult:
     stderr: bytes
     timed_out: bool = False
     cancelled: bool = False
+    output_truncated: bool = False
 
 
 ResumeArgvBuilder = Callable[[str, int], Sequence[str]]
@@ -62,6 +65,7 @@ SessionIdProvider = Callable[[], str | None]
 Observer = Callable[[bytes], Any]
 Redactor = Callable[[Any], Any]
 TurnCompleteObserver = Callable[[Mapping[str, Any]], Any]
+TurnExecutor = Callable[..., "SessionCommandResult"]
 
 
 @dataclass
@@ -110,6 +114,9 @@ class HarnessSession:
         transcript_path: Path | None = None,
         redactor: Redactor | None = None,
         retry_budget: RetryBudget | None = None,
+        record_observer: Callable[[Mapping[str, Any]], None] | None = None,
+        activity_provider: Callable[[], bool] | None = None,
+        turn_executor: TurnExecutor | None = None,
     ):
         self.argv = list(argv)
         self.stdin = bytes(stdin)
@@ -125,11 +132,16 @@ class HarnessSession:
         self.transcript_path = transcript_path
         self.redactor = redactor or (lambda value: value)
         self.retry_budget = retry_budget or RetryBudget()
+        self.record_observer = record_observer
+        self.activity_provider = activity_provider
+        self.turn_executor = turn_executor
         self._pending_feedback: list[StructuredFeedback] = []
         self._lock = threading.Lock()
         self._session_id: str | None = None
         self._started = False
         self._current_process: subprocess.Popen[bytes] | None = None
+        self._transport_cancelled = threading.Event()
+        self._native_output_bytes = 0
         self._turn_index = 0
 
     @property
@@ -264,11 +276,13 @@ class HarnessSession:
                 "returncode": resumed.returncode,
                 "timed_out": resumed.timed_out,
                 "cancelled": resumed.cancelled,
+                "output_truncated": resumed.output_truncated,
             }
             if (
                 resumed.returncode == 0
                 and not resumed.timed_out
                 and not resumed.cancelled
+                and not resumed.output_truncated
             ):
                 self._record(
                     "FEEDBACK_DELIVERED",
@@ -285,10 +299,12 @@ class HarnessSession:
                 stderr=aggregate.stderr + resumed.stderr,
                 timed_out=resumed.timed_out,
                 cancelled=resumed.cancelled,
+                output_truncated=aggregate.output_truncated or resumed.output_truncated,
             )
         if (
             aggregate.timed_out
             or aggregate.cancelled
+            or aggregate.output_truncated
             or aggregate.returncode != 0
         ):
             self._fail_pending_feedback("native turn ended before feedback delivery")
@@ -308,10 +324,15 @@ class HarnessSession:
                 "selected model is at capacity", "rate limit exceeded", "service unavailable",
                 "connection refused", "connection reset", "stream disconnected before completion",
             ))
-            acted = any(marker in result.stdout for marker in (
-                b'"mcp_tool_call"', b'"tool_use"', b'"command_execution"', b'"agent_message"',
-            ))
-            can_retry = not acted and not result.cancelled and not result.timed_out
+            # Native format knowledge belongs to the Harness adapter. With no
+            # activity evidence, stdout is conservatively treated as activity.
+            acted = self.activity_provider() if self.activity_provider is not None else bool(result.stdout.strip())
+            can_retry = (
+                not acted
+                and not result.cancelled
+                and not result.timed_out
+                and not result.output_truncated
+            )
             if schema_error and "--output-schema" in current_argv and can_retry:
                 index = current_argv.index("--output-schema")
                 del current_argv[index:index + 2]
@@ -321,18 +342,20 @@ class HarnessSession:
             else:
                 return SessionCommandResult(
                     returncode=result.returncode if not schema_error else 1,
-                    stdout=stdout, stderr=stderr, timed_out=result.timed_out, cancelled=result.cancelled,
+                    stdout=stdout, stderr=stderr, timed_out=result.timed_out,
+                    cancelled=result.cancelled, output_truncated=result.output_truncated,
                 )
             if not self.retry_budget.consume("native_startup", repair):
                 self._record("RETRY_BUDGET_EXHAUSTED", {"kind": "native_startup", "reason": repair})
-                return SessionCommandResult(1, stdout, stderr)
+                return SessionCommandResult(1, stdout, stderr, output_truncated=result.output_truncated)
             self._record("NATIVE_RETRY", self.retry_budget.retries[-1])
 
     def cancel(self) -> None:
+        self._transport_cancelled.set()
         process = self._current_process
         if process is not None and process.poll() is None:
             process.terminate()
-            self._record("SESSION_CANCEL_REQUESTED", {})
+        self._record("SESSION_CANCEL_REQUESTED", {})
 
     def close(self) -> None:
         process = self._current_process
@@ -355,6 +378,43 @@ class HarnessSession:
                 stderr=b"",
                 timed_out=True,
             )
+        output_remaining = MAX_NATIVE_OUTPUT_BYTES - self._native_output_bytes
+        if output_remaining <= 0:
+            return SessionCommandResult(
+                returncode=1,
+                stdout=b"",
+                stderr=b"",
+                output_truncated=True,
+            )
+        self._record(
+            "TURN_STARTED",
+            {"turn": turn_kind, "argv": list(argv), "stdin_bytes": len(stdin)},
+        )
+
+        def observe(line: bytes) -> None:
+            observer_result = self.stdout_line_observer(line)
+            self._queue_observer_feedback(observer_result)
+
+        if self.turn_executor is not None:
+            try:
+                result = self.turn_executor(
+                    list(argv),
+                    stdin,
+                    self.env,
+                    max(1, math.ceil(remaining)),
+                    observe,
+                    self._transport_cancel_requested,
+                    output_limit_bytes=output_remaining,
+                )
+            except Exception as exc:
+                self._record(
+                    "TURN_FAILED",
+                    {"turn": turn_kind, "error_type": type(exc).__name__},
+                )
+                raise
+            bounded = self._bound_native_output(result, output_remaining)
+            self._finish_turn(turn_kind, bounded)
+            return bounded
         process = subprocess.Popen(
             list(argv),
             stdin=subprocess.PIPE,
@@ -366,18 +426,31 @@ class HarnessSession:
         stdout_chunks: list[bytes] = []
         stderr_chunks: list[bytes] = []
         observer_errors: list[Exception] = []
-        self._record(
-            "TURN_STARTED",
-            {"turn": turn_kind, "argv": list(argv), "stdin_bytes": len(stdin)},
-        )
+        output_lock = threading.Lock()
+        local_output_bytes = 0
+        local_output_truncated = False
+
+        def capture(chunk: bytes, destination: list[bytes]) -> bytes:
+            nonlocal local_output_bytes, local_output_truncated
+            with output_lock:
+                allowed = max(0, output_remaining - local_output_bytes)
+                accepted = chunk[:allowed]
+                if accepted:
+                    destination.append(accepted)
+                    local_output_bytes += len(accepted)
+                if len(accepted) < len(chunk) or local_output_bytes >= output_remaining:
+                    local_output_truncated = True
+                    if process.poll() is None:
+                        process.terminate()
+                return accepted
 
         def drain_stdout() -> None:
             assert process.stdout is not None
             for line in iter(process.stdout.readline, b""):
-                stdout_chunks.append(line)
+                accepted = capture(line, stdout_chunks)
                 try:
-                    observer_result = self.stdout_line_observer(line)
-                    self._queue_observer_feedback(observer_result)
+                    if accepted:
+                        observe(accepted)
                 except Exception as exc:  # noqa: BLE001 - observer owns safety policy.
                     observer_errors.append(exc)
                     process.terminate()
@@ -386,7 +459,7 @@ class HarnessSession:
         def drain_stderr() -> None:
             assert process.stderr is not None
             for line in iter(process.stderr.readline, b""):
-                stderr_chunks.append(line)
+                capture(line, stderr_chunks)
 
         stdout_thread = threading.Thread(target=drain_stdout, daemon=True)
         stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
@@ -401,7 +474,7 @@ class HarnessSession:
         timed_out = False
         cancelled = False
         while process.poll() is None:
-            if self.cancel_requested is not None and self.cancel_requested():
+            if self._transport_cancel_requested():
                 cancelled = True
                 break
             remaining = deadline - time.monotonic()
@@ -429,7 +502,14 @@ class HarnessSession:
             stderr=b"".join(stderr_chunks),
             timed_out=timed_out,
             cancelled=cancelled,
+            output_truncated=local_output_truncated,
         )
+        result = self._bound_native_output(result, output_remaining)
+        self._finish_turn(turn_kind, result)
+        return result
+
+    def _finish_turn(self, turn_kind: str, result: SessionCommandResult) -> None:
+        """Record a turn identically regardless of local or sidecar transport."""
         self._record(
             "TURN_FINISHED",
             {
@@ -439,19 +519,46 @@ class HarnessSession:
                 "stderr_bytes": len(result.stderr),
                 "timed_out": result.timed_out,
                 "cancelled": result.cancelled,
+                "output_truncated": result.output_truncated,
             },
         )
         self._queue_turn_complete_feedback(
             {
                 "turn": turn_kind,
                 "returncode": result.returncode,
-                "stdout": b"".join(stdout_chunks),
-                "stderr": b"".join(stderr_chunks),
+                "stdout": result.stdout,
+                "stderr": result.stderr,
                 "timed_out": result.timed_out,
                 "cancelled": result.cancelled,
+                "output_truncated": result.output_truncated,
             }
         )
-        return result
+
+    def _bound_native_output(
+        self,
+        result: SessionCommandResult,
+        remaining: int,
+    ) -> SessionCommandResult:
+        """Enforce one 16 MiB evidence budget across every native resume turn."""
+        combined = result.stdout + result.stderr
+        accepted = combined[:remaining]
+        stdout = accepted[: min(len(result.stdout), len(accepted))]
+        stderr = accepted[len(stdout):]
+        truncated = result.output_truncated or len(combined) > remaining
+        self._native_output_bytes += len(accepted)
+        return SessionCommandResult(
+            returncode=result.returncode,
+            stdout=stdout,
+            stderr=stderr,
+            timed_out=result.timed_out,
+            cancelled=result.cancelled,
+            output_truncated=truncated,
+        )
+
+    def _transport_cancel_requested(self) -> bool:
+        return self._transport_cancelled.is_set() or (
+            self.cancel_requested is not None and self.cancel_requested()
+        )
 
     def _pop_feedback(self) -> StructuredFeedback | None:
         with self._lock:
@@ -505,19 +612,20 @@ class HarnessSession:
         return self._session_id
 
     def _record(self, event: str, payload: Mapping[str, Any]) -> None:
-        if self.transcript_path is None:
-            return
-        self.transcript_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.transcript_path.exists():
-            self.transcript_path.touch(mode=0o600)
-        os.chmod(self.transcript_path, 0o600)
         record = {
             "ts": time.time(),
             "event": event,
             "payload": self.redactor(dict(payload)),
         }
-        with self.transcript_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        if self.transcript_path is not None:
+            self.transcript_path.parent.mkdir(parents=True, exist_ok=True)
+            if not self.transcript_path.exists():
+                self.transcript_path.touch(mode=0o600)
+            os.chmod(self.transcript_path, 0o600)
+            with self.transcript_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        if self.record_observer is not None:
+            self.record_observer(record)
 
     def _semantic_nudge_rejection(
         self, feedback: StructuredFeedback

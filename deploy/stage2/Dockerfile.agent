@@ -1,0 +1,75 @@
+# Evaluated-runtime image.  It intentionally excludes kubectl, helm, all
+# controller services, ClusterRole material, and the native ChaosBlade binary.
+FROM node:24.13.0-bookworm-slim AS node_runtime
+FROM bladeai-src AS bladeai_source
+
+FROM python:3.12.13-slim-bookworm
+
+ARG UV_VERSION=0.10.9
+ARG SOURCE_HEAD=unknown
+LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PATH=/opt/agent/.venv/bin:/opt/bladeai-venv/bin:/opt/resiliencebenchmark/deepseek-harness/bin:/usr/local/bin:/usr/bin:/bin
+
+# iptables/ip6tables is used only by the root-owned agent-exec daemon to make
+# a UID-scoped egress allowlist before it drops to the evaluated Agent UID.
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+       ca-certificates iptables iproute2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ! command -v kubectl \
+    && ! command -v helm
+
+COPY --from=node_runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node_runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && npm install --global --no-audit --no-fund \
+       @openai/codex@0.139.0 @anthropic-ai/claude-code@2.1.233
+
+RUN python -m venv /opt/agent/.venv \
+    && /opt/agent/.venv/bin/pip install --no-cache-dir "mcp[cli]==2.0.0" "uv==${UV_VERSION}"
+
+# DeepSeek Harness and BladeAI are the two remaining evaluated runtimes.  No
+# native ChaosBlade vendor directory is copied from bladeai_source.
+RUN install -d -m 0755 /opt/resiliencebenchmark/deepseek-harness
+COPY harness/deepseek-harness/runtime-lock/package.json /opt/resiliencebenchmark/deepseek-harness/package.json
+COPY harness/deepseek-harness/runtime-lock/package-lock.json /opt/resiliencebenchmark/deepseek-harness/package-lock.json
+RUN npm ci --prefix /opt/resiliencebenchmark/deepseek-harness --omit=dev --ignore-scripts --no-audit --no-fund \
+    && install -d -m 0755 /opt/resiliencebenchmark/deepseek-harness/bin \
+    && printf '%s\n' '#!/bin/sh' 'exec node /opt/resiliencebenchmark/deepseek-harness/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"' > /opt/resiliencebenchmark/deepseek-harness/bin/dsh \
+    && chmod 0755 /opt/resiliencebenchmark/deepseek-harness/bin/dsh \
+    && ln -s /opt/resiliencebenchmark/deepseek-harness/bin/dsh /usr/local/bin/dsh
+
+COPY --from=bladeai_source / /opt/blade-ai
+RUN python -m venv /opt/bladeai-venv \
+    && grep -Eq 'version[[:space:]]*=[[:space:]]*["'"']0\.6\.2["'"']' /opt/blade-ai/pyproject.toml \
+    && /opt/bladeai-venv/bin/pip install --no-cache-dir "mcp[cli]==2.0.0" --editable /opt/blade-ai \
+    && rm -rf /opt/blade-ai/vendor/chaosblade \
+    && ! find /opt/blade-ai -type f -name blade -print -quit | grep .
+
+# Only the execution daemon and the minimal Blade client modules are copied.
+COPY harness/__init__.py /app/harness/__init__.py
+COPY harness/agent_exec /app/harness/agent_exec
+COPY harness/schemas/agent-result.schema.json /app/harness/schemas/agent-result.schema.json
+COPY harness/bladeai/blade-shim/blade /app/harness/bladeai/blade-shim/blade
+COPY harness/bladeai/kubectl-shim/kubectl /app/harness/bladeai/kubectl-shim/kubectl
+COPY deploy/stage2/codex-eval /usr/local/bin/codex-eval
+COPY stage2_service/bladeai_worker.py /app/stage2_service/bladeai_worker.py
+COPY stage2_service/bladeai_task.py /app/stage2_service/bladeai_task.py
+COPY stage2_service/bladeai_shim.py /app/stage2_service/bladeai_shim.py
+COPY stage2_service/bladeai_read_cli.py /app/stage2_service/bladeai_read_cli.py
+RUN install -d -m 0755 /app/stage2_service \
+    && touch /app/stage2_service/__init__.py \
+    && cp /app/harness/bladeai/blade-shim/blade /usr/local/bin/blade \
+    && sed -i '1c #!/opt/bladeai-venv/bin/python' /app/harness/bladeai/blade-shim/blade \
+    && sed -i '1c #!/opt/bladeai-venv/bin/python' /usr/local/bin/blade \
+    && chmod 0755 /app/harness/bladeai/blade-shim/blade /app/harness/bladeai/kubectl-shim/kubectl /usr/local/bin/blade \
+    && chmod 0755 /usr/local/bin/codex-eval \
+    && ! command -v blade-native
+
+WORKDIR /app
+ENTRYPOINT ["/opt/agent/.venv/bin/python", "-m", "harness.agent_exec"]

@@ -109,6 +109,8 @@ make mirror-sock-shop-dry
 
 本阶段还提供四类 Agent 可用 MCP 的仓库实现：`k8s_ro` 负责受限 Kubernetes 只读对象、事件和 Pod 日志；`telemetry_ro` 负责 Prometheus、Jaeger、Loki 的结构化限窗查询；`source_ro` 负责锁定源码快照读取；`chaos_control` 负责带 baseline ledger、目标 UID 校验、持久截止时间和 cleanup ledger 的 ChaosBlade 控制。仓库已包含 loopback systemd 单元、固定提交部署器、端点资格检查和 Codex/Claude Code/DeepSeek Harness 单次运行器；本地的认证 HTTP/SSE 契约已通过，远端安装与 Harness 真实调用仍未资格化。每个 Episode 必须单独收窄 namespace、Telemetry service 和 Source application；共享集群的 Telemetry 还必须有上游强制 label scope，结果后过滤本身不构成硬租户隔离。
 
+Stage2 的 MCP server 以独立 loopback 进程组启动；停止 Trial 时会有界终止该已知组内的 server 及其子进程。该动作只回收本地执行通道，故障对象是否消失与业务是否恢复仍必须由 Controller ledger 与独立 Oracle 另行核验。
+
 ## 下一阶段
 
 1. 使用轮换后的 Harbor Robot Account 完成 Sock Shop digest 镜像同步并恢复 14 个 Deployment。

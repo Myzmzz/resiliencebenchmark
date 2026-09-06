@@ -98,7 +98,21 @@ def preflight():
                 "gpt-5.5": True,
                 "claude-opus-5": True,
             },
-        }
+        },
+        "harness_capabilities": {
+            harness: {
+                "kind": harness,
+                "execution_model": "stream",
+                "streams_tool_results": True,
+                "post_hoc_trace": False,
+                "supports_resume": True,
+                "supports_mid_turn_feedback": True,
+                "feedback_channels": ["in_band_mcp"],
+                "code_execution": "platform_sandbox",
+                "qualification_passed": True,
+            }
+            for harness in ("codex", "claude-code", "deepseek-harness", "bladeai")
+        },
     }
 
 
@@ -124,7 +138,7 @@ def request():
     )
 
 
-def test_harness_interaction_and_case_capabilities_are_enforced():
+def test_request_contract_defers_harness_capability_gating_to_live_preflight():
     codex = Stage2TaskCreateRequest(
         application="otel-demo",
         prompt="run one bounded experiment",
@@ -138,32 +152,13 @@ def test_harness_interaction_and_case_capabilities_are_enforced():
         prompt="run one bounded experiment",
         model="gpt-5.5",
         harness="deepseek-harness",
-        interaction_mode="autonomous",
-        decision_policy="agent_delegated",
-        cases=["C0"],
+        interaction_mode="guided",
+        cases=["D5"],
     )
 
     assert codex.cases == (Stage2CaseId.D6,)
-    assert deepseek.cases == (Stage2CaseId.C0,)
-    with pytest.raises(ValueError, match="guided interaction is not supported"):
-        Stage2TaskCreateRequest(
-            application="otel-demo",
-            prompt="run one bounded experiment",
-            model="gpt-5.5",
-            harness="deepseek-harness",
-            interaction_mode="guided",
-            cases=["C0"],
-        )
-    with pytest.raises(ValueError, match="mid-session feedback"):
-        Stage2TaskCreateRequest(
-            application="otel-demo",
-            prompt="run one bounded experiment",
-            model="gpt-5.5",
-            harness="deepseek-harness",
-            interaction_mode="autonomous",
-            decision_policy="agent_delegated",
-            cases=["D5"],
-        )
+    assert deepseek.cases == (Stage2CaseId.D5,)
+    assert deepseek.interaction_mode.value == "guided"
 
 
 def test_prompt_level_label_is_corrected_when_prompt_omits_fault_type():
@@ -303,16 +298,22 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "guided",
     ]
     assert harnesses["deepseek-harness"]["supported_interaction_modes"] == [
-        "autonomous"
+        "autonomous", "guided"
     ]
-    assert harnesses["deepseek-harness"]["supported_cases"] == [
-        "C0",
-        "D1",
-        "D3",
-        "D4",
+    expected_cases = ["C0", "D1", "D3", "D4", "D2", "D5", "D6", "D7", "D8"]
+    assert harnesses["deepseek-harness"]["supported_cases"] == expected_cases
+    assert harnesses["bladeai"]["supported_interaction_modes"] == [
+        "autonomous", "guided"
     ]
-    assert harnesses["bladeai"]["supported_interaction_modes"] == []
-    assert harnesses["bladeai"]["supported_cases"] == []
+    assert harnesses["bladeai"]["supported_cases"] == expected_cases
+    assert all(item["runnable"] is True for item in harnesses.values())
+    assert options.json()["capability_loss"] == {
+        "supported": True,
+        "runnable": True,
+        "reason": None,
+        "support_reason": None,
+        "cases": ["D7-A", "D7-B", "D8-A", "D8-B"],
+    }
     assert "none" in {
         item["value"] for item in options.json()["disturbances"]
     }
@@ -354,6 +355,8 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "D4",
         "D5",
         "D6",
+        "D7",
+        "D8",
     ]
     assert autonomy.status_code == 200
     assert [item["level"] for item in autonomy.json()["levels"]] == [
@@ -567,6 +570,71 @@ def test_disturbance_shortcut_maps_to_case_and_d6_variant(tmp_path):
     assert status.json()["input"]["cases"] == ["D6"]
     assert status.json()["input"]["disturbance"] == "D6-B"
     assert status.json()["input"]["d6_variant"] == "D6-B"
+
+
+@pytest.mark.parametrize(
+    ("disturbance", "case_id", "variant"),
+    [
+        ("D7-A", "D7", "A"),
+        ("D7-B", "D7", "B"),
+        ("D8-A", "D8", "A"),
+        ("D8-B", "D8", "B"),
+    ],
+)
+def test_tool_substitution_shortcut_maps_to_typed_case_and_variant(
+    tmp_path, disturbance, case_id, variant
+):
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    client = TestClient(create_app(supervisor, task_service=service))
+    payload = request().model_dump(mode="json")
+    payload.pop("cases", None)
+    payload["disturbance"] = disturbance
+
+    response = client.post("/api/v1/stage2/tasks", json=payload)
+
+    assert response.status_code == 202
+    task_id = response.json()["task_id"]
+    assert response.json()["cases"] == [case_id]
+    assert response.json()["tool_substitution_variant"] == variant
+    status = client.get(f"/api/v1/stage2/tasks/{task_id}")
+    assert status.json()["input"]["cases"] == [case_id]
+    assert status.json()["input"]["tool_substitution_variant"] == variant
+    campaign = service.store.campaign_request(task_id)
+    assert campaign["cases"] == [case_id]
+    assert campaign["tool_substitution_variant"] == variant
+
+
+def test_tool_substitution_requires_variant_when_case_is_selected_directly():
+    with pytest.raises(ValueError, match="requires tool_substitution_variant"):
+        Stage2TaskCreateRequest(
+            application="otel-demo",
+            prompt="run one bounded experiment",
+            model="gpt-5.5",
+            harness="codex",
+            cases=["D7"],
+        )
+
+
+def test_d7_d8_are_not_runnable_when_one_harness_lacks_platform_sandbox(tmp_path):
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    original_preflight = service.preflight_provider
+
+    def no_sandbox_preflight():
+        value = original_preflight()
+        value["harness_capabilities"]["bladeai"]["code_execution"] = "none"
+        return value
+
+    service.preflight_provider = no_sandbox_preflight
+    client = TestClient(create_app(supervisor, task_service=service))
+    options = client.get("/api/v1/stage2/options").json()
+    assert options["capability_loss"]["supported"] is False
+    assert options["capability_loss"]["support_reason"] == "bladeai: platform_sandbox_missing"
+    payload = request().model_dump(mode="json")
+    payload.pop("cases", None)
+    payload["disturbance"] = "D7-A"
+    rejected = client.post("/api/v1/stage2/tasks", json=payload)
+    assert rejected.status_code == 422
+    assert "D7/D8 require all four Harnesses" in rejected.json()["detail"]
 
 
 def test_rejects_mismatched_cases_and_disturbance_or_unrunnable_app(tmp_path):

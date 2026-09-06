@@ -12,12 +12,9 @@ from stage2_service.harness_runtime import (
     NativeHarnessRunner,
     _agent_checkpoint_from_item,
     _append_case_runtime_prompt,
-    _bladeai_fault_parts,
     _compose_agent_prompt,
     _clarification_request_from_item,
     _extract_recorded_feedback,
-    _interaction_event,
-    _normalize_bladeai_event,
     _runtime_public_episode,
 )
 from stage2_service.contracts import (
@@ -45,6 +42,27 @@ def runner(tmp_path: Path):
         base_environment={},
     )
 
+
+
+def normalize_tool_event(*, campaign_id, trial_id, harness, runtime_context, item):
+    """Exercise the canonical boundary; completed fixtures have an explicit start.
+
+    These legacy unit examples isolate one result, not a running fault window.
+    The separate mapper tests cover effect-query triggering at its real phase.
+    """
+    from stage2_service.harness_adapters import create_adapter
+    from stage2_service.lifecycle_mapper import LifecycleMapper
+    adapter = create_adapter(harness)
+    mapper = LifecycleMapper(campaign_id, trial_id, harness, runtime_context.cleanup_handle)
+    native = {"id": "fixture-call", **item}
+    terminal = native.get("status") in {"completed", "failed", "error", "success"}
+    if terminal:
+        start = {key: value for key, value in native.items() if key not in {"result", "error", "output"}}
+        start["status"] = "in_progress"
+        for event in adapter.on_stream_line(json.dumps(start).encode()):
+            mapper.consume(event)
+    return [mapped for event in adapter.on_stream_line(json.dumps(native).encode())
+            for mapped in mapper.consume(event)]
 
 def trial_runtime(trial_id: str) -> TrialRuntimeContext:
     return TrialRuntimeContext(
@@ -86,6 +104,13 @@ def test_codex_runtime_requires_isolated_codex_eval(tmp_path: Path):
 def test_stage2_native_harness_timeout_covers_fault_and_lifecycle(tmp_path: Path):
     assert DEFAULT_TIMEOUT_SECONDS == 1800
     assert runner(tmp_path).timeout_seconds == 1800
+
+
+def test_public_runner_preserves_explicit_campaign_safety_parameters():
+    import inspect
+
+    parameters = inspect.signature(NativeHarnessRunner.run).parameters
+    assert {"cancel_requested", "decision_policy", "expected_outcome", "prompt_level_label"} <= set(parameters)
 
 
 def test_extracts_structured_agent_question_and_checkpoint():
@@ -153,7 +178,7 @@ def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):
             "campaign-1234567890abcdef-codex-t2"
         ),
     }
-    target = runtime._normalize_tool_event(
+    target = normalize_tool_event(
         **common,
         item={
             "type": "mcp_tool_call",
@@ -168,7 +193,7 @@ def test_normalizes_target_binding_and_main_fault_request(tmp_path: Path):
             "result": {"structured_content": {"ok": True}},
         },
     )
-    create = runtime._normalize_tool_event(
+    create = normalize_tool_event(
         **common,
         item={
             "type": "mcp_tool_call",
@@ -197,7 +222,7 @@ def test_main_fault_running_requires_explicit_successful_create_result(tmp_path:
             "campaign-1234567890abcdef-codex-t4"
         ),
     }
-    rejected = runtime._normalize_tool_event(
+    rejected = normalize_tool_event(
         **common,
         item={
             "type": "mcp_tool_call",
@@ -213,7 +238,7 @@ def test_main_fault_running_requires_explicit_successful_create_result(tmp_path:
             },
         },
     )
-    accepted = runtime._normalize_tool_event(
+    accepted = normalize_tool_event(
         **common,
         item={
             "type": "mcp_tool_call",
@@ -230,7 +255,7 @@ def test_main_fault_running_requires_explicit_successful_create_result(tmp_path:
 
 
 def test_successful_tool_metadata_does_not_create_false_permission_denial(tmp_path: Path):
-    events = runner(tmp_path)._normalize_tool_event(
+    events = normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t6",
         harness=HarnessKind.CODEX,
@@ -256,7 +281,7 @@ def test_successful_tool_metadata_does_not_create_false_permission_denial(tmp_pa
 
 
 def test_plan_validation_rejection_is_not_permission_or_channel_failure(tmp_path: Path):
-    events = runner(tmp_path)._normalize_tool_event(
+    events = normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-c0",
         harness=HarnessKind.CODEX,
@@ -289,7 +314,7 @@ def test_plan_validation_rejection_is_not_permission_or_channel_failure(tmp_path
 
 
 def test_tool_argument_rejection_is_not_channel_failure(tmp_path: Path):
-    events = runner(tmp_path)._normalize_tool_event(
+    events = normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-c0",
         harness=HarnessKind.CODEX,
@@ -310,12 +335,12 @@ def test_tool_argument_rejection_is_not_channel_failure(tmp_path: Path):
         },
     )
 
-    assert [event.kind for event in events] == ["effect_check_started", "tool_request_rejected"]
+    assert [event.kind for event in events] == ["tool_request_rejected"]
     assert events[-1].payload["error_codes"] == ["invalid_min_duration"]
 
 
 def test_transport_unavailable_is_channel_failure(tmp_path: Path):
-    events = runner(tmp_path)._normalize_tool_event(
+    events = normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-d5",
         harness=HarnessKind.CODEX,
@@ -335,11 +360,11 @@ def test_transport_unavailable_is_channel_failure(tmp_path: Path):
         },
     )
 
-    assert [event.kind for event in events] == ["effect_check_started", "tool_channel_error"]
+    assert [event.kind for event in events] == ["tool_channel_error"]
 
 
 def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
-    events = runner(tmp_path)._normalize_tool_event(
+    events = normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t3",
         harness=HarnessKind.CODEX,
@@ -360,7 +385,7 @@ def test_normalizes_permission_denial_on_selected_tool(tmp_path: Path):
 
 
 def test_normalizes_codex_auth_required_as_permission_denial(tmp_path: Path):
-    events = runner(tmp_path)._normalize_tool_event(
+    events = normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t7",
         harness=HarnessKind.CODEX,
@@ -448,21 +473,15 @@ def test_runtime_public_episode_replaces_historical_fixed_fault_contract():
 
 
 def test_interaction_event_keeps_external_tool_data_but_removes_private_reasoning():
-    value = _interaction_event(
-        {
-            "type": "mcp_tool_call",
-            "tool": "k8s_list_resources",
-            "status": "completed",
-            "arguments": {"namespace": "otel-demo"},
-            "result": {"ok": True},
-            "analysis": "private model reasoning",
-        },
-        {},
-    )
+    from stage2_service.canonical_interactions import public_interaction
+    from stage2_service.harness_adapters.base import ToolCall, ToolResult
+    request = ToolCall(call_id="call-1", tool="k8s_ro.k8s_list_resources", arguments={"namespace": "otel-demo"})
+    value = public_interaction(ToolResult(call_id="call-1", status="completed",
+                               payload={"ok": True, "analysis": "private model reasoning"}), request)
 
     assert value["event_type"] == "TOOL_INTERACTION"
-    assert value["tool"] == "k8s_list_resources"
-    assert "analysis" not in value["payload"]
+    assert value["tool"] == "k8s_ro.k8s_list_resources"
+    assert "analysis" not in value["payload"]["result"]
     assert value["payload"]["arguments"]["namespace"] == "otel-demo"
 
 
@@ -524,7 +543,7 @@ def test_extract_recorded_feedback_keeps_delivery_status(tmp_path: Path):
 
 
 def test_ignores_nested_permission_payload_without_tool_identity(tmp_path: Path):
-    events = runner(tmp_path)._normalize_tool_event(
+    events = normalize_tool_event(
         campaign_id="campaign-1234567890abcdef",
         trial_id="campaign-1234567890abcdef-codex-t5",
         harness=HarnessKind.CODEX,
@@ -537,7 +556,9 @@ def test_ignores_nested_permission_payload_without_tool_identity(tmp_path: Path)
     assert events == []
 
 
-def test_bladeai_native_l4_events_map_to_c1_c6_contract():
+def test_bladeai_native_steps_do_not_fabricate_execution_or_business_recovery():
+    from stage2_service.harness_adapters import create_adapter
+    from stage2_service.lifecycle_mapper import LifecycleMapper
     runtime = TrialRuntimeContext(
         trial_id="campaign-1234567890abcdef-bladeai-t1",
         episode_id="EPI-OTEL-CART-DEADLINE-001",
@@ -548,17 +569,15 @@ def test_bladeai_native_l4_events_map_to_c1_c6_contract():
         cleanup_handle="cleanup-" + "a" * 36,
         baseline_capability="b" * 40,
     )
-    events = _normalize_bladeai_event(
-        "campaign-1234567890abcdef",
-        runtime.trial_id,
-        {
-            "type": "stage2_bladeai_event",
-            "kind": "step_start",
-            "payload": {"name": "auto_recover"},
-        },
-        runtime,
-    )
-
-    assert _bladeai_fault_parts("network-delay") == ("pod", "network", "delay")
-    assert events[0].phase is LifecyclePhase.C6_RECOVERY
-    assert events[0].kind == "recovery_requested"
+    adapter = create_adapter(HarnessKind.BLADEAI)
+    mapper = LifecycleMapper("campaign-1234567890abcdef", runtime.trial_id,
+                             HarnessKind.BLADEAI, runtime.cleanup_handle)
+    events = []
+    for kind in ("step_start", "step_end", "finish"):
+        for event in adapter.on_stream_line(json.dumps({
+            "type": "stage2_bladeai_event", "kind": kind, "payload": {"name": "auto_recover"},
+        }).encode()):
+            events.extend(mapper.consume(event))
+    assert not {event.kind for event in events} & {
+        "recovery_requested", "business_recovery_verified", "main_fault_running",
+    }

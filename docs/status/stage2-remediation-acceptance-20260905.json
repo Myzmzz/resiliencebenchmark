@@ -1,0 +1,936 @@
+{
+  "objective": "完整实现四智能体整改方案及配套交互链路方案，并在测试环境验证",
+  "source_plan": "docs/design/stage2-four-agent-l0-l4-d1-d8-remediation-plan-20260905.md",
+  "source_architecture": "docs/design/stage2-remediation-architecture-20260905.md",
+  "baseline_commit": "70a3b307b39113109220b664cfeae63486e9cf3f",
+  "matrix_cell_count": 68,
+  "execution_order": ["code_remediation", "old_cluster_preparation", "qualification_and_single_trials"],
+  "new_cluster_deployment_or_tests": false,
+  "latest_code_snapshot": {
+    "report": "artifacts/remediation/20260905/code-gate-final.xml",
+    "passed": 1294,
+    "skipped": 9,
+    "failed": 0,
+    "seconds": 48.37,
+    "scope": "local Python suite at snapshot time; later edits require rerun",
+    "frontend_build_exit": 0,
+    "frontend_lint_exit": 0,
+    "warnings_present": true,
+    "live_qualification": "not_executed",
+    "code_gate": "passed_local_checks",
+    "remaining": ["commit and publish", "old cluster preparation", "live qualification and complete acceptance matrix"],
+    "requirement_audit": "docs/status/stage2-code-gate-audit-20260905.md"
+  },
+  "matrix_count_note": "源方案正文称56格，附录实际列出4家x17项=68格；保持完整范围。",
+  "work_packages": [
+    {
+      "id": "WP0",
+      "status": "in_progress",
+      "acceptance_evidence": [
+        "tests/test_stage2_remediation_baseline.py",
+        "tests/fixtures/stage2_remediation/baseline.json",
+        "tests/fixtures/harness_streams/deepseek_consult_roundtrip.tool-events.jsonl",
+        "artifacts/remediation/20260905/baseline-combined.xml"
+      ]
+    },
+    {
+      "id": "WP1",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP2",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP3",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP4",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP5",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP6",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP7",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP8",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP9",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP10",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP11",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "id": "WP12",
+      "status": "not_verified",
+      "acceptance_evidence": []
+    }
+  ],
+  "interaction_architecture_stages": [
+    {
+      "stage": 0,
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "stage": 1,
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "stage": 2,
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "stage": 3,
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "stage": 4,
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "stage": 5,
+      "status": "not_verified",
+      "acceptance_evidence": []
+    },
+    {
+      "stage": 6,
+      "status": "not_verified",
+      "acceptance_evidence": []
+    }
+  ],
+  "trials": [
+    {
+      "harness": "codex",
+      "test_case": "L0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "L1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "L2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "L3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "L4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "C0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D5",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D6-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D6-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D7-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D7-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D8-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "codex",
+      "test_case": "D8-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "L0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "L1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "L2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "L3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "L4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "C0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D5",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D6-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D6-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D7-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D7-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D8-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "claude-code",
+      "test_case": "D8-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "L0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "L1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "L2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "L3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "L4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "C0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D5",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D6-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D6-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D7-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D7-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D8-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "deepseek-harness",
+      "test_case": "D8-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "L0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "L1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "L2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "L3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "L4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "C0",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D1",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D2",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D3",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D4",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D5",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D6-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D6-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D7-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D7-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D8-A",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    },
+    {
+      "harness": "bladeai",
+      "test_case": "D8-B",
+      "status": "not_executed",
+      "task_id": null,
+      "model_alias": null,
+      "environment": null,
+      "ledger_range": null,
+      "oracle_evidence": null,
+      "result_evidence": null
+    }
+  ],
+  "additional_required_gates": [
+    {
+      "requirement": "四家合成通信资格往返",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "BladeAI每种必需交互的完整真实资格链路",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "两套环境六模型网关探针与四家请求过网关证据",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "两模型正式轴下八个D0资格campaign重跑",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "ChaosBlade与Chaos Mesh受控故障能力及清理恢复资格",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "Coroot指标、Trace、日志作用域与历史窗口查询资格",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "L0-L4合同保护与全量离线回归",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "每个真实Trial前后无残留故障及业务恢复",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "黄金原始夹具补齐并回放",
+      "status": "not_verified",
+      "evidence": []
+    },
+    {
+      "requirement": "Postman参数、部署说明及最终逐项验收报告",
+      "status": "not_verified",
+      "evidence": []
+    }
+  ]
+}

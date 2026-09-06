@@ -27,6 +27,13 @@
       "headers": {
         "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
       }
+    },
+    "harness_channel": {
+      "type": "http",
+      "url": "${RESBENCH_HARNESS_CHANNEL_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_HARNESS_CHANNEL_TOKEN}"
+      }
     }
   }
 }

@@ -92,3 +92,4 @@ may include the following optional structured report:
   "remaining_risk": "known uncertainty"
 }
 ```
+`harness_channel` 提供确认、求助、提交结果与通知拉取

@@ -20,6 +20,8 @@ def runtime_env():
         "RESBENCH_SOURCE_MCP_URL": "http://127.0.0.1:18183/mcp",
         "RESBENCH_CHAOS_CONTROL_MCP_URL": "http://127.0.0.1:18184/mcp",
         "RESBENCH_MCP_TOKEN": "mcp-token-that-must-not-leak-000000",
+        "RESBENCH_HARNESS_CHANNEL_TOKEN": "channel-token-that-must-not-leak-00000",
+        "RESBENCH_HARNESS_CHANNEL_MCP_URL": "http://127.0.0.1:18185/mcp",
         "KUBECONFIG": "/tmp/should-not-pass",
         "BLADE_AI_KUBECONFIG_PATH": "/tmp/bladeai-should-not-pass",
         "CLAUDE_CONFIG_FILE": "/root/.claude/resbench-mcp.json",
@@ -64,6 +66,22 @@ def test_streaming_runner_honors_controller_cancellation():
 
     assert result.cancelled is True
     assert result.timed_out is False
+
+
+def test_streaming_runner_reports_native_output_limit_as_incomplete(monkeypatch):
+    import stage2_service.session as session_module
+
+    monkeypatch.setattr(session_module, "MAX_NATIVE_OUTPUT_BYTES", 8)
+    result = trial.subprocess_streaming_runner(
+        [sys.executable, "-c", "import sys; sys.stdout.write('x' * 1024); sys.stdout.flush()"],
+        b"",
+        {},
+        5,
+        lambda _line: None,
+    )
+
+    assert result.output_truncated is True
+    assert len(result.stdout) <= 8
 
 
 def test_streaming_runner_archives_unsupported_structured_feedback(tmp_path):
@@ -490,7 +508,7 @@ def test_execute_codex_uses_fixed_argv_stdin_and_allowlisted_env(tmp_path):
     def fake_runner(argv, stdin, env, timeout_seconds):
         calls.append({"argv": argv, "stdin": stdin, "env": dict(env), "timeout": timeout_seconds})
         stdout = (
-            json.dumps({"type": "tool_call", "tool": "k8s_ro.k8s_cluster_inventory", "args": {"namespace": "otel-demo"}})
+            json.dumps({"type": "tool_call", "call_id": "call-inventory", "tool": "k8s_ro.k8s_cluster_inventory", "args": {"namespace": "otel-demo"}})
             + "\n"
             + json.dumps(final)
             + "\n"
@@ -593,9 +611,10 @@ def test_codex_mcp_jsonl_shape_records_call_and_result(tmp_path):
 
     def fake_runner(argv, stdin, env, timeout_seconds):
         events = [
-            {"type": "mcp_tool_call", "server": "k8s_ro", "tool": "k8s_cluster_inventory", "status": "in_progress"},
+            {"type": "mcp_tool_call", "id": "call-k8s", "server": "k8s_ro", "tool": "k8s_cluster_inventory", "status": "in_progress"},
             {
                 "type": "mcp_tool_call",
+                "id": "call-k8s",
                 "server": "k8s_ro",
                 "tool": "k8s_cluster_inventory",
                 "status": "completed",
@@ -626,11 +645,12 @@ def test_codex_mcp_jsonl_shape_records_call_and_result(tmp_path):
     assert any(event["kind"] == "tool_result" and event.get("tool") == "k8s_ro.k8s_cluster_inventory" for event in trace["events"])
 
 
-def test_codex_item_started_and_completed_are_distinct_nonduplicated_events():
+def test_codex_item_started_and_completed_are_distinct_nonduplicated_events(tmp_path):
     started = {
         "type": "item.started",
         "item": {
             "type": "mcp_tool_call",
+            "id": "call-telemetry",
             "server": "telemetry_ro",
             "tool": "telemetry_prom_metric_range",
             "status": "in_progress",
@@ -642,6 +662,7 @@ def test_codex_item_started_and_completed_are_distinct_nonduplicated_events():
         "type": "item.completed",
         "item": {
             "type": "mcp_tool_call",
+            "id": "call-telemetry",
             "server": "telemetry_ro",
             "tool": "telemetry_prom_metric_range",
             "status": "completed",
@@ -649,15 +670,99 @@ def test_codex_item_started_and_completed_are_distinct_nonduplicated_events():
             "error": None,
         },
     }
-    objects = trial.extract_json_objects(
-        json.dumps(started) + "\n" + json.dumps(completed) + "\n"
-    )
-    tool_events = [item for item in objects if item.get("type") == "mcp_tool_call"]
+    stdout = (
+        json.dumps(started)
+        + "\n"
+        + json.dumps(completed)
+        + "\n"
+        + json.dumps(valid_agent_result())
+        + "\n"
+    ).encode()
 
-    assert len(tool_events) == 2
-    assert [trial.trace_kind_from_event(item) for item in tool_events] == [
+    report = trial.run_trial(
+        REPO_ROOT,
+        "codex",
+        "gpt-5.6",
+        execute=True,
+        artifact_root=tmp_path,
+        parent_env=runtime_env(),
+        runner=lambda *_args: trial.CommandResult(returncode=0, stdout=stdout, stderr=b""),
+        trial_id="codex-item-pairing",
+    )
+    trace = load_json(artifact_ref_path(report, tmp_path, "runTraceRef"))
+
+    assert [event["kind"] for event in trace["events"] if event.get("tool") == "telemetry_ro.telemetry_prom_metric_range"] == [
         "tool_call",
         "tool_result",
+    ]
+
+
+def test_codex_native_process_stream_uses_adapter_before_bridge(tmp_path):
+    import sys
+    from harness.streaming import StreamingLifecycleBridge
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_codex = bin_dir / "codex"
+    payloads = [
+        {"type": "thread.started", "thread_id": "thread-native-1"},
+        {
+            "type": "item.started",
+            "item": {
+                "type": "mcp_tool_call",
+                "id": "call-create",
+                "name": "mcp__chaos_control__chaos_create_experiment",
+                "arguments": {"duration": "1s"},
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "mcp_tool_call",
+                "id": "call-create",
+                "name": "mcp__chaos_control__chaos_create_experiment",
+                "status": "completed",
+                "result": {"structured_content": {"ok": True, "state": "Running"}},
+            },
+        },
+        valid_agent_result(),
+    ]
+    fake_codex.write_text(
+        f"#!{Path(sys.executable).resolve()}\n"
+        "import json\n"
+        f"for item in json.loads({json.dumps(payloads)!r}):\n"
+        "    print(json.dumps(item), flush=True)\n",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o755)
+    lifecycle = []
+
+    def emit(event):
+        lifecycle.append(event)
+        return []
+
+    bridge = StreamingLifecycleBridge("run-native", "D0", emit)
+    parent_env = runtime_env()
+    parent_env["RESBENCH_D0_NATIVE_PATH"] = str(bin_dir)
+
+    report = trial.run_trial(
+        REPO_ROOT,
+        "codex",
+        "gpt-5.6",
+        execute=True,
+        artifact_root=tmp_path,
+        parent_env=parent_env,
+        event_observer=bridge.handle,
+        enforce_formal_runtime=False,
+        trial_id="codex-native-process-bridge",
+    )
+
+    assert report["status"] == "completed"
+    assert bridge.main_fault_applied is True
+    assert [event.kind for event in lifecycle if event.kind in {"tool_call", "tool_result", "main_fault_applied"}] == [
+        "tool_call",
+        "tool_result",
+        "main_fault_applied",
     ]
 
 
@@ -665,10 +770,10 @@ def test_codex_item_started_and_completed_are_distinct_nonduplicated_events():
     "tool_event",
     [
         {"type": "command_execution", "command": "cat /etc/passwd", "status": "completed"},
-        {"type": "tool_call", "tool": "shell_tool", "status": "completed"},
-        {"type": "function_call", "name": "exec_command", "status": "completed"},
-        {"type": "tool_use", "name": "Bash", "status": "completed"},
-        {"type": "mcp_tool_call", "server": "unknown", "tool": "k8s_cluster_inventory"},
+        {"type": "tool_call", "call_id": "call-shell", "tool": "shell_tool", "status": "completed"},
+        {"type": "function_call", "call_id": "call-exec", "name": "exec_command", "status": "completed"},
+        {"type": "tool_use", "id": "toolu-bash", "name": "Bash", "status": "completed"},
+        {"type": "mcp_tool_call", "id": "call-unknown-mcp", "server": "unknown", "tool": "k8s_cluster_inventory"},
     ],
 )
 def test_non_mcp_tool_event_fails_trial_even_with_valid_final_result(tmp_path, tool_event):
@@ -687,6 +792,43 @@ def test_non_mcp_tool_event_fails_trial_even_with_valid_final_result(tmp_path, t
         parent_env=runtime_env(),
         runner=lambda *_args: trial.CommandResult(returncode=0, stdout=stdout, stderr=b""),
         trial_id="forbidden-tool",
+    )
+
+    assert report["status"] == "failed"
+    assert report["error"] == "harness exposed or used a non-MCP tool"
+
+
+def test_claude_bash_tool_use_fails_trial_even_with_valid_final_result(tmp_path):
+    tool_use = {
+        "type": "message",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu-bash",
+                    "name": "Bash",
+                    "input": {"command": "kubectl get pods"},
+                }
+            ],
+        },
+    }
+    stdout = (
+        json.dumps(tool_use)
+        + "\n"
+        + json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": json.dumps(valid_agent_result())}]}})
+        + "\n"
+    ).encode()
+
+    report = trial.run_trial(
+        REPO_ROOT,
+        "claude-code",
+        "claude-opus-5",
+        execute=True,
+        artifact_root=tmp_path,
+        parent_env=runtime_env(),
+        runner=lambda *_args: trial.CommandResult(returncode=0, stdout=stdout, stderr=b""),
+        trial_id="claude-forbidden-bash",
     )
 
     assert report["status"] == "failed"
@@ -808,7 +950,7 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert "deepseek-v4-pro" not in calls[0]["settings"]
     assert "agent-default-model:" in calls[0]["settings"]
     assert "streamable-http" in calls[0]["cordis"]
-    assert calls[0]["cordis"].count("failOnStartupError: true") == 4
+    assert calls[0]["cordis"].count("failOnStartupError: true") == 5
     assert planned["argv"][0] == "dsh"
     assert "Public episode contract follows" not in encoded_artifacts
     assert "<prompt omitted from artifacts>" in encoded_artifacts
@@ -817,6 +959,48 @@ def test_deepseek_execute_prepares_home_files_and_omits_prompt_from_artifacts(tm
     assert "KUBECONFIG" not in calls[0]["env"]
     assert "BLADE_AI_KUBECONFIG_PATH" not in calls[0]["env"]
     assert "DSH_PERMISSION_MODE" not in calls[0]["env"]
+
+
+def test_capture_dsh_session_trace_preserves_multiframe_archive_and_redacts(tmp_path):
+    zstd = pytest.importorskip("zstandard")
+    dsh_home = tmp_path / "dsh-home"
+    artifact_dir = tmp_path / "artifact"
+    source_dir = dsh_home / "profiles" / "headless"
+    source_dir.mkdir(parents=True)
+    artifact_dir.mkdir()
+    secret = runtime_env()["RESBENCH_MCP_TOKEN"]
+    records = [
+        {"type": "session", "id": "dsh-session-1"},
+        {
+            "type": "assistant/message",
+            "data": {
+                "message": {
+                    "content": [{"type": "text", "text": f"token={secret}"}]
+                }
+            },
+        },
+    ]
+    compressor = zstd.ZstdCompressor()
+    frames = [
+        compressor.compress(json.dumps(record).encode("utf-8") + b"\n")
+        for record in records
+    ]
+    (source_dir / "session.jsonl.zstd").write_bytes(b"".join(frames))
+    events: list[dict] = []
+
+    refs = trial.capture_dsh_session_trace(
+        dsh_home, artifact_dir, runtime_env(), events
+    )
+
+    assert refs == ["dsh-session-00.jsonl.zstd", "dsh-session-00.jsonl"]
+    jsonl = (artifact_dir / "dsh-session-00.jsonl").read_text(encoding="utf-8")
+    assert secret not in jsonl
+    assert "<redacted>" in jsonl
+    archived_lines = list(
+        trial.iter_zstd_jsonl_lines(artifact_dir / "dsh-session-00.jsonl.zstd")
+    )
+    assert len(archived_lines) == 2
+    assert events[0]["payload_ref"] == "dsh-session-00.jsonl.zstd"
 
 
 def test_deepseek_claude_model_uses_anthropic_protocol(tmp_path):

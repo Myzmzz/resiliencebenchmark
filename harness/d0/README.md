@@ -2,12 +2,12 @@
 
 This package runs the current, deliberately narrow qualification line:
 
-> 请针对otel-demo下的accounting服务的一个 pod 注入高 cpu 故障，持续 5 分钟，5 分钟后需要自动恢复
+> 请针对 otel-demo 下 accounting 服务的一个 Pod 注入 cpu-load（80% CPU）故障，持续 5 分钟，5 分钟后自动恢复。
 
 It sends that exact text to BladeAI, Codex, Claude Code, and DeepSeek Harness.
 The Agent owns target discovery, injection, effect verification, recovery, and
-recovery verification. The Harness owns native-protocol approval, append-only
-recording, independent Pod/CPU/ChaosBlade observation, deadline enforcement,
+recovery verification. The Harness owns shared-channel confirmation, append-only
+recording, independent Pod/CPU/fault-inventory observation, deadline enforcement,
 and bounded fallback cleanup.
 
 ## Execute on the remote test host
@@ -19,27 +19,36 @@ uv run python scripts/run_otel_accounting_cpu_matrix.py --execute
 Required runtime inputs are environment-owned and must not be committed:
 
 - `RESBENCH_D0_EXECUTION_HOST_ID=1.94.151.57`
-- `RESBENCH_CONTROLLER_KUBECONFIG`
+- `STAGE2_KUBECONFIG` (or an explicit `--kubeconfig`)
 - `RESBENCH_LLM_BASE_URL`, `RESBENCH_LLM_API_KEY`
-- `RESBENCH_K8S_MCP_URL`, `RESBENCH_TELEMETRY_MCP_URL`
-- `RESBENCH_SOURCE_MCP_URL`, `RESBENCH_CHAOS_CONTROL_MCP_URL`
-- `RESBENCH_MCP_TOKEN`
+- The deployed Stage2 Controller configuration (`STAGE2_*`), its scoped service
+  identity, and the shared `agent-runtime` container and working volumes.
+- `STAGE2_HARNESS_CAPABILITIES_FILE`, with evidence-backed qualification records.
+- `STAGE2_D0_ARTIFACT_ROOT`, matching the production D0 qualification inventory.
+- `RESBENCH_AGENT_EXEC_SOCKET` (defaults to `/run/resbench/agent-exec.sock`).
 
 The command has no simulated or local execute mode. It fails closed on a
-non-Linux host or when the declared execution-host id differs. For Codex,
-Claude Code, and DeepSeek Harness, a Trial-bound `d0_chaos_control` facade keeps
-controller secrets outside the fixed Agent prompt while requiring the Agent to
-discover and submit the live Pod name and UID itself. BladeAI is exercised
-through its native Session/Turn/SSE and internal chaos path; it is bounded by
-the independent observer deadline and fallback, so its tool boundary is not
-identical to the other three Agents.
+non-Linux host or when the declared execution-host id differs. All four Agents
+use `NativeD0Adapter` and the production Stage2 component graph: NativeHarnessRunner,
+AgentExec, per-Trial MCP policy, Harness channel and inference-only relay. BladeAI
+uses the same controlled shim and read proxy as Stage2 tasks. The old D0 facade
+and external BladeAI session process were removed; no global monkeypatch or
+Controller-local CLI fallback remains. Runtime inventory consumes qualification
+evidence, never Controller-side `which` results.
+
+Target selection and fault parameters are not inferred by the Controller from
+the prompt. The preparer grants a namespace-scoped baseline capability; the Agent
+must discover its Pod and submit a plan through the shared confirmation path.
+The D0 Oracle still measures accounting CPU, the 270–330 second duration window,
+owned-fault absence, recovery and foreign interference independently. Keep one
+Trial active at a time and do not proceed after unverified cleanup.
 
 ## Artifacts
 
-Each Campaign retains Agent responses/events, MCP tool events when the native
-Harness exports them, Controller commands, automatic approvals, Oracle samples,
+Each Campaign retains Agent responses/events, authenticated MCP tool events,
+the native Harness report/session artifacts, Controller commands, approvals, Oracle samples,
 per-Agent results, an HTML report, SVG CPU/timeline/comparison figures,
-CSV/JSON summaries, a Markdown audit report, and a SHA-256 manifest.
+CSV/JSON summaries and a Markdown audit report.
 
 `FALLBACK_RECOVERED` never becomes Agent PASS. `TIMEOUT_RECOVERED` means the
 Agent configured the bounded timeout and the independent Oracle verified timely

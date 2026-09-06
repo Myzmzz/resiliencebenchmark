@@ -15,7 +15,6 @@ from fastapi import FastAPI, Header, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from .contracts import (
-    STAGE2_SUPPORTED_MODELS,
     CampaignRequest,
     CampaignResult,
     CaseBundle,
@@ -320,41 +319,9 @@ def create_app(
 
     @app.get("/api/v1/preflight")
     def preflight() -> dict:
-        if preflight_provider is not None:
-            return dict(preflight_provider())
-        return {
-            "status": "READY_TO_CHECK",
-            "harnesses": {
-                "codex": True,
-                "claude-code": False,
-                "deepseek-harness": False,
-                "bladeai": False,
-            },
-            "models": list(STAGE2_SUPPORTED_MODELS),
-            "model_matrix": {
-                harness: {model: available for model in STAGE2_SUPPORTED_MODELS}
-                for harness, available in {
-                    "codex": True,
-                    "claude-code": False,
-                    "deepseek-harness": False,
-                    "bladeai": False,
-                }.items()
-            },
-            "cases": [item.model_dump(mode="json") for item in default_case_specs()],
-            "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
-            "rbac": {
-                "trial_token_rotation": True,
-                "observability_revoke": [
-                    "mcp.k8s.read",
-                    "mcp.telemetry.read",
-                    "mcp.source.read",
-                ],
-                "chaos_revoke": ["mcp.chaos.create"],
-            },
-            "chaosblade": {"executor": "chaos_control", "execute_enabled_required": True},
-            "d0": {"artifact_root_configured": False, "campaigns": []},
-            "reset_mode": "unknown",
-        }
+        if preflight_provider is None:
+            raise HTTPException(status_code=503, detail="Runtime qualification provider is unavailable")
+        return dict(preflight_provider())
 
     @app.get("/api/v1/qualifications")
     def qualifications() -> dict:

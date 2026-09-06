@@ -15,9 +15,6 @@ from harness.d0.common import AGENTS, append_jsonl, redact_sensitive_text, utc_n
 from harness.d0.inventory import collect_execution_inventory
 from harness.d0.observer import KubectlD0Observer
 from harness.d0.recompute import recompute_trial
-from harness.d0.facade import D0ChaosFacade
-from mcp_servers.chaos_control.service import KubectlChaosBackend
-from mcp_servers.d0_chaos_control.server import D0AuditedKubectlBackend
 
 
 def remote_host(_expected: str):
@@ -98,14 +95,13 @@ class FakeAdapter:
         )
 
 
-def test_d0_maps_unified_gateway_config_into_bladeai_environment(tmp_path):
+def test_d0_does_not_reintroduce_external_bladeai_runtime_or_credentials(tmp_path):
     adapters = {name: FakeAdapter(name) for name in AGENTS}
     campaign = D0Campaign(
         D0CampaignConfig(
             repo_root=tmp_path,
             artifact_root=tmp_path / "artifacts",
             kubeconfig=tmp_path / "kubeconfig",
-            episode_file=tmp_path / "episode.yaml",
         ),
         environment={
             "RESBENCH_LLM_BASE_URL": "https://gateway.example/v1",
@@ -115,9 +111,9 @@ def test_d0_maps_unified_gateway_config_into_bladeai_environment(tmp_path):
         adapters=adapters,
     )
 
-    assert campaign.environment["BLADE_AI_API_BASE_URL"] == "https://gateway.example/v1"
-    assert campaign.environment["BLADE_AI_LLM_API_KEY"] == "secret-value"
-    assert campaign.environment["BLADE_AI_MODEL_NAME"] == "gpt-5.6-sol"
+    assert "BLADE_AI_API_BASE_URL" not in campaign.environment
+    assert "BLADE_AI_LLM_API_KEY" not in campaign.environment
+    assert campaign.models["bladeai"] == "gpt-5.6-sol"
 
 
 @dataclass
@@ -186,31 +182,6 @@ class FakeObserver:
         return {"pods": [], "chaosblades": []}
 
 
-class FakeFacade:
-    def __init__(self, **_kwargs):
-        pass
-
-    def start(self):
-        return {"RESBENCH_CHAOS_CONTROL_MCP_URL": "http://127.0.0.1:19000/mcp"}
-
-    def stop(self):
-        return None
-
-    def public_context(self):
-        return {"url": "http://127.0.0.1:19000/mcp"}
-
-
-class FakeBladeAIServer:
-    def __init__(self, **_kwargs):
-        pass
-
-    def start(self):
-        return None
-
-    def stop(self):
-        return None
-
-
 def config(tmp_path: Path) -> D0CampaignConfig:
     kubeconfig = tmp_path / "kubeconfig"
     kubeconfig.write_text("test", encoding="utf-8")
@@ -218,7 +189,6 @@ def config(tmp_path: Path) -> D0CampaignConfig:
         repo_root=tmp_path,
         artifact_root=tmp_path / "artifacts",
         kubeconfig=kubeconfig,
-        episode_file=tmp_path / "episode.yaml",
         sample_seconds=1,
         effect_wait_seconds=1,
         recovery_deadline_seconds=1,
@@ -235,8 +205,6 @@ def test_campaign_runs_four_agents_and_builds_visualization(tmp_path, monkeypatc
         observer_factory=FakeObserver,
         host_evidence_provider=remote_host,
         inventory_provider=fake_inventory,
-        facade_factory=FakeFacade,
-        bladeai_server_factory=FakeBladeAIServer,
     ).run("d0-test-campaign")
 
     assert report["status"] == "QUALIFIED"
@@ -275,8 +243,6 @@ def test_fallback_cleanup_is_not_agent_pass(tmp_path, monkeypatch):
         observer_factory=UnrecoveredObserver,
         host_evidence_provider=remote_host,
         inventory_provider=fake_inventory,
-        facade_factory=FakeFacade,
-        bladeai_server_factory=FakeBladeAIServer,
     ).run("d0-fallback-campaign")
 
     assert report["status"] == "EVALUATION_READY"
@@ -292,8 +258,6 @@ def test_timeout_recovery_is_a_distinct_evaluation_ready_outcome(tmp_path):
         observer_factory=FakeObserver,
         host_evidence_provider=remote_host,
         inventory_provider=fake_inventory,
-        facade_factory=FakeFacade,
-        bladeai_server_factory=FakeBladeAIServer,
     )
     report.config = dataclass_replace(report.config, agents=("codex",))
 
@@ -423,6 +387,10 @@ def test_recompute_counts_delayed_restart_after_cpu_recovery(tmp_path):
         },
     ]
     for row in samples:
+        for pod in row["pods"]:
+            pod["uid"] = "fixture-accounting-uid"
+        for fault in row["chaosblades"]:
+            fault.update(owner="chaos_control", target_uid="fixture-accounting-uid", fault_type="cpu-load", cpu_percent=80, phase="Success")
         append_jsonl(trial / "oracle-samples.jsonl", row)
     append_jsonl(
         trial / "all-events.jsonl",
@@ -502,7 +470,7 @@ def test_recompute_distinguishes_created_cr_without_effect(tmp_path):
                     "cpu_millicores": 20,
                 }
             ],
-            "chaosblades": [{"name": "d0-cr", "run_id": "trial-1"}],
+            "chaosblades": [{"name": "d0-cr", "run_id": "trial-1", "owner": "chaos_control"}],
         },
     )
     append_jsonl(
@@ -535,6 +503,7 @@ def test_observer_attributes_only_current_trial_cr(tmp_path):
         trial_id="trial-1",
     )
     observer.state.baseline_cpu = {"accounting-pod": 4}
+    observer.state.baseline_uid = {"accounting-pod": "uid-1"}
     observer._apply(
         {
             "ts": "2026-09-01T00:00:10Z",
@@ -548,7 +517,7 @@ def test_observer_attributes_only_current_trial_cr(tmp_path):
                 }
             ],
             "chaosblades": [
-                {"name": "ours", "run_id": "trial-1", "owner": "chaos_control"},
+                {"name": "ours", "run_id": "trial-1", "owner": "chaos_control", "target_uid": "uid-1", "fault_type": "cpu-load", "cpu_percent": 80, "phase": "Success"},
                 {"name": "foreign", "run_id": "another-trial", "owner": "chaos_control"},
             ],
         }
@@ -738,7 +707,6 @@ harnesses:
 """,
         encoding="utf-8",
     )
-    monkeypatch.setattr("harness.d0.inventory.shutil.which", lambda *_args, **_kwargs: "/bin/echo")
 
     def runner(argv, **_kwargs):
         if argv[-2:] == ["config", "current-context"]:
@@ -754,7 +722,7 @@ harnesses:
                 '{"status":{"userInfo":{"username":"system:serviceaccount:test:runner","groups":["test"]}}}',
                 "",
             )
-        return subprocess.CompletedProcess(argv, 0, "tool version 1\n", "")
+        pytest.fail("inventory must not launch an Agent in the Controller")
 
     campaign_dir = tmp_path / "artifacts/campaign"
     campaign_dir.mkdir(parents=True)
@@ -766,6 +734,10 @@ harnesses:
         host=remote_host("1.94.151.57"),
         models={name: "model-a" for name in AGENTS},
         environment={"PATH": "/bin"},
+        runtime_descriptors={name: {
+            "capability": {"qualification_passed": True},
+            "qualification": {"status": "qualified", "evidence_ref": "fixture://channel"},
+        } for name in AGENTS},
         runner=runner,
     )
 
@@ -779,53 +751,10 @@ harnesses:
         .read_text()
         .splitlines()
     ]
-    assert len(rows) == 7
+    assert len(rows) == 3
+    assert all(row["available"] and row["execution_boundary"] == "agent_exec_sidecar"
+               for row in inventory["agents"].values())
     assert all(row["execution_host_id"] == "1.94.151.57" for row in rows)
-
-
-def test_d0_facade_backend_records_actual_kubectl_without_raw_json(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("RESBENCH_D0_EXECUTION_HOST_ID", "1.94.151.57")
-
-    async def fake_kubectl(_self, _args, *, stdin=None):
-        assert stdin is None
-        return '{"metadata":{"name":"d0-cr"}}'
-
-    monkeypatch.setattr(KubectlChaosBackend, "_kubectl", fake_kubectl)
-    path = tmp_path / "controller-commands.jsonl"
-    backend = D0AuditedKubectlBackend("kubectl", str(path))
-
-    result = asyncio.run(
-        backend._kubectl(
-            ["--kubeconfig", "/secret/path", "get", "chaosblades.chaosblade.io", "-o", "json"]
-        )
-    )
-    row = json.loads(path.read_text())
-
-    assert result.startswith("{")
-    assert "/secret/path" not in json.dumps(row)
-    assert row["argv"][2] == "<kubeconfig>"
-    assert row["execution_host_id"] == "1.94.151.57"
-    assert "MCP response and Oracle" in row["stdout"]
-
-
-def test_facade_stop_removes_controller_private_capabilities(tmp_path):
-    trial = tmp_path / "trial"
-    trial.mkdir()
-    facade = D0ChaosFacade(
-        repo_root=tmp_path,
-        kubeconfig=tmp_path / "kubeconfig",
-        trial_dir=trial,
-        trial_id="trial-1",
-        target={"namespace": "otel-demo", "name": "accounting-pod", "uid": "uid-1"},
-        environment={},
-    )
-    assert facade.private.is_dir()
-
-    facade.stop()
-
-    assert not facade.private.exists()
 
 
 def test_controller_cancels_live_agent_before_deadline_fallback(tmp_path, monkeypatch):
@@ -883,8 +812,6 @@ def test_controller_cancels_live_agent_before_deadline_fallback(tmp_path, monkey
         observer_factory=ActiveUnrecoveredObserver,
         host_evidence_provider=remote_host,
         inventory_provider=fake_inventory,
-        facade_factory=FakeFacade,
-        bladeai_server_factory=FakeBladeAIServer,
     ).run("d0-deadline-campaign")
 
     result = report["results"][0]

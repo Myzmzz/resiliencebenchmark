@@ -1,0 +1,4 @@
+{"type":"session","id":"session-synthetic-dsh","time":1788627000000}
+{"type":"tool/call","time":1788627001000,"data":{"callId":"call-dsh-1","name":"mcp__telemetry_ro__telemetry_prom_metric_range","arguments":"{\"metric\":\"request_duration\",\"start\":1,\"end\":2,\"step\":1}"}}
+{"type":"tool/result","time":1788627002000,"data":{"message":{"source":{"kind":"tool","callId":"call-dsh-1"},"content":[{"type":"tool-result","toolCallId":"call-dsh-1","content":[{"type":"text","text":"{\"ok\":true,\"series\":[1,2,3]}"}],"isError":false}],"role":"user","id":"message-result-1"}}}
+{"type":"assistant/message","time":1788627003000,"data":{"message":{"role":"assistant","content":[{"type":"text","text":"{\"status\":\"done\",\"effect_assessment\":\"verified\"}"}],"id":"assistant-1"}}}

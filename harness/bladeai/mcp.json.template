@@ -7,6 +7,9 @@
         "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
       },
       "attach_to": [
+        "clarification",
+        "phase1",
+        "phase2",
         "verifier"
       ],
       "timeout_seconds": 30
@@ -18,6 +21,9 @@
         "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
       },
       "attach_to": [
+        "clarification",
+        "phase1",
+        "phase2",
         "verifier"
       ],
       "timeout_seconds": 30
@@ -29,6 +35,9 @@
         "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
       },
       "attach_to": [
+        "clarification",
+        "phase1",
+        "phase2",
         "verifier"
       ],
       "timeout_seconds": 30
@@ -41,6 +50,44 @@
         "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
       },
       "attach_to": [],
+      "timeout_seconds": 30
+    },
+    "chaos_mesh_control": {
+      "enabled": false,
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_CHAOS_MESH_CONTROL_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      },
+      "attach_to": [],
+      "timeout_seconds": 30
+    },
+    "coroot_ro": {
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_COROOT_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"
+      },
+      "attach_to": [
+        "clarification",
+        "phase1",
+        "phase2",
+        "verifier"
+      ],
+      "timeout_seconds": 30
+    },
+    "harness_channel": {
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_HARNESS_CHANNEL_MCP_SSE_URL}",
+      "headers": {
+        "Authorization": "Bearer ${RESBENCH_HARNESS_CHANNEL_TOKEN}"
+      },
+      "attach_to": [
+        "clarification",
+        "phase1",
+        "phase2",
+        "verifier"
+      ],
       "timeout_seconds": 30
     }
   }

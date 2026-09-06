@@ -168,6 +168,8 @@ def collect_agent_tool_records(trial_dir: Path) -> list[dict[str, Any]]:
     tools: list[dict[str, Any]] = []
     seen = set()
     for index, record in enumerate(records):
+        if record.get("source") == "native_stream":
+            continue  # Agent-authored claims are not authenticated tool calls.
         candidates = [record, record.get("payload"), _load_ref(trial_dir, record)]
         for candidate in candidates:
             for name in _tool_names(candidate):

@@ -9,7 +9,7 @@ from mcp.server import MCPServer
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 
-from mcp_servers.http_runtime import run_mcp_server
+from mcp_servers.http_runtime import PolicyGate, run_mcp_server
 from .service import K8sROError, K8sROService, RuntimeConfig, error_envelope
 
 
@@ -65,13 +65,17 @@ def create_server(
     def svc() -> K8sROService:
         return service if service is not None else _service()
 
+    policy_gate = PolicyGate.from_env("k8s_ro")
+
     @server.tool(name="k8s_get_resource", title="Get Kubernetes Resource", annotations=_read_annotations("Get Kubernetes Resource"))
+    @policy_gate.guard("k8s_get_resource")
     async def k8s_get_resource(namespace: str, resource: str, name: str) -> dict[str, Any]:
         """Get one allowlisted namespaced Kubernetes resource as sanitized JSON."""
 
         return await _call(svc().get_resource(namespace=namespace, resource=resource, name=name))
 
     @server.tool(name="k8s_list_resources", title="List Kubernetes Resources", annotations=_read_annotations("List Kubernetes Resources"))
+    @policy_gate.guard("k8s_list_resources")
     async def k8s_list_resources(
         namespace: str,
         resource: str,
@@ -84,6 +88,7 @@ def create_server(
         return await _call(svc().list_resources(namespace=namespace, resource=resource, label_selector=label_selector, limit=limit, offset=offset))
 
     @server.tool(name="k8s_list_events", title="List Kubernetes Events", annotations=_read_annotations("List Kubernetes Events"))
+    @policy_gate.guard("k8s_list_events")
     async def k8s_list_events(
         namespace: str,
         involved_object_kind: str | None = None,
@@ -96,6 +101,7 @@ def create_server(
         return await _call(svc().list_events(namespace=namespace, involved_object_kind=involved_object_kind, involved_object_name=involved_object_name, limit=limit, offset=offset))
 
     @server.tool(name="k8s_pod_logs", title="Read Pod Logs", annotations=_read_annotations("Read Pod Logs"))
+    @policy_gate.guard("k8s_pod_logs")
     async def k8s_pod_logs(
         namespace: str,
         pod: str,
@@ -108,6 +114,7 @@ def create_server(
         return await _call(svc().pod_logs(namespace=namespace, pod=pod, container=container, since_seconds=since_seconds, tail_lines=tail_lines))
 
     @server.tool(name="k8s_cluster_inventory", title="Kubernetes Cluster Inventory", annotations=_read_annotations("Kubernetes Cluster Inventory"))
+    @policy_gate.guard("k8s_cluster_inventory")
     async def k8s_cluster_inventory(resource: str, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         """List a small allowlist of cluster-scope inventory resources such as nodes, namespaces, and CRD names."""
 

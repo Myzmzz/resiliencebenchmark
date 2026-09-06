@@ -1,0 +1,3 @@
+#!/opt/bladeai-venv/bin/python
+from stage2_service.bladeai_read_cli import main
+main()

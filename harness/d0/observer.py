@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import socket
 import subprocess
@@ -39,9 +40,15 @@ def _cpu_millicores(value: str) -> int:
     return int(float(text) * 1000)
 
 
+def _healthy_cpu_sample(pod: dict[str, Any]) -> bool:
+    value = pod.get("cpu_millicores")
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 200
+
+
 @dataclass
 class ObserverState:
     baseline_cpu: dict[str, int] = field(default_factory=dict)
+    baseline_uid: dict[str, str] = field(default_factory=dict)
     initial_cr_names: set[str] = field(default_factory=set)
     new_cr_names: set[str] = field(default_factory=set)
     effect_confirmed_at: str | None = None
@@ -60,16 +67,18 @@ class KubectlD0Observer:
         kubeconfig: Path,
         artifact_dir: Path,
         trial_id: str,
+        cleanup_kubeconfig: Path | Callable[[], Path | None] | None = None,
         sample_seconds: int = 10,
-        ownership_mode: str = "strict-run-id",
+        include_chaos_mesh: bool = False,
         runner: CommandRunner = _default_runner,
     ):
         self.kubeconfig = kubeconfig.expanduser().resolve()
+        self.cleanup_kubeconfig = cleanup_kubeconfig
         self.artifact_dir = artifact_dir
         self.trial_id = trial_id
         self.sample_seconds = max(1, int(sample_seconds))
         self.runner = runner
-        self.ownership_mode = ownership_mode
+        self.include_chaos_mesh = include_chaos_mesh
         self.state = ObserverState()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -84,8 +93,16 @@ class KubectlD0Observer:
             "working_directory": str(Path.cwd()),
         }
 
-    def _run(self, args: list[str], *, timeout: int = 60) -> subprocess.CompletedProcess[str]:
-        argv = ["kubectl", "--kubeconfig", str(self.kubeconfig), *args]
+    def _run(self, args: list[str], *, timeout: int = 60, identity: str = "controller") -> subprocess.CompletedProcess[str]:
+        if identity not in {"controller", "finalizer"}:
+            raise ValueError("unknown D0 Kubernetes identity")
+        selected = self.cleanup_kubeconfig if identity == "finalizer" else self.kubeconfig
+        if callable(selected):
+            selected = selected()
+        if selected is None:
+            raise RuntimeError("D0 cleanup requires the separate finalizer kubeconfig")
+        selected = Path(selected).expanduser().resolve()
+        argv = ["kubectl", "--kubeconfig", str(selected), *args]
         self.command_sequence += 1
         command_id = f"{self.trial_id}-controller-{self.command_sequence:05d}"
         started_at = utc_now()
@@ -109,6 +126,7 @@ class KubectlD0Observer:
                 "finished_at": finished_at,
                 **self.execution_identity,
                 "argv": ["kubectl", "--kubeconfig", "<kubeconfig>", *args],
+                "kubeconfig_role": identity,
                 "duration_ms": round((time.monotonic() - started) * 1000, 1),
                 "returncode": result.returncode,
                 "stdout": stdout,
@@ -162,10 +180,22 @@ class KubectlD0Observer:
             target_names: list[str] = []
             targets: list[str] = []
             actions: list[str] = []
+            cpu_percent: float | None = None
             for experiment in experiments:
                 targets.append(str(experiment.get("target") or ""))
                 actions.append(str(experiment.get("action") or ""))
                 for matcher in experiment.get("matchers", []):
+                    if (experiment.get("target") == "cpu" and experiment.get("action") == "fullload"
+                            and matcher.get("name") == "cpu-percent"):
+                        values = matcher.get("value") or []
+                        if len(values) == 1 and not isinstance(values[0], bool):
+                            try:
+                                numeric = float(values[0])
+                            except (TypeError, ValueError):
+                                pass
+                            else:
+                                if math.isfinite(numeric) and 0 <= numeric <= 100:
+                                    cpu_percent = numeric
                     if matcher.get("name") == "names":
                         target_names.extend(
                             str(value) for value in matcher.get("value", [])
@@ -182,11 +212,40 @@ class KubectlD0Observer:
                     "logical_namespace": labels.get("benchmark.namespace"),
                     "run_id": labels.get("benchmark.run_id"),
                     "target_uid": labels.get("benchmark.target_uid"),
+                    "fault_type": labels.get("benchmark.fault_type"),
+                    "cpu_percent": cpu_percent,
                     "targets": sorted(set(targets)),
                     "actions": sorted(set(actions)),
                     "target_names": sorted(set(target_names)),
                 }
             )
+        chaos_mesh = []
+        if self.include_chaos_mesh:
+            for resource in (
+                "networkchaos.chaos-mesh.org",
+                "podchaos.chaos-mesh.org",
+                "stresschaos.chaos-mesh.org",
+            ):
+                payload = self._json(["-n", "otel-demo", "get", resource])
+                for item in payload.get("items", []):
+                    metadata = item.get("metadata", {})
+                    labels = metadata.get("labels", {})
+                    chaos_mesh.append(
+                        {
+                            "resource": resource,
+                            "kind": item.get("kind"),
+                            "name": metadata.get("name"),
+                            "uid": metadata.get("uid"),
+                            "created_at": metadata.get("creationTimestamp"),
+                            "deletion_started_at": metadata.get("deletionTimestamp"),
+                            "phase": item.get("status", {}).get("phase"),
+                            "owner": labels.get("benchmark.owner"),
+                            "run_id": labels.get("benchmark.run_id"),
+                            "target_uid": labels.get("benchmark.target_uid"),
+                            "target_name": labels.get("benchmark.target_name"),
+                            "fault_type": labels.get("benchmark.fault_type"),
+                        }
+                    )
         pod_rows = []
         for item in accounting:
             metadata = item.get("metadata", {})
@@ -215,6 +274,7 @@ class KubectlD0Observer:
             "metrics_source": "kubernetes-metrics-api-via-kubectl-top",
             "pods": pod_rows,
             "chaosblades": crs,
+            "chaos_mesh": chaos_mesh,
         }
 
     def prepare(self, *, convergence_timeout_seconds: int = 90) -> dict[str, Any]:
@@ -226,8 +286,9 @@ class KubectlD0Observer:
             converged = (
                 len(pods) == 1
                 and pods[0].get("ready") is True
-                and int(pods[0].get("cpu_millicores") or 0) <= 200
+                and _healthy_cpu_sample(pods[0])
                 and not sample.get("chaosblades")
+                and not sample.get("chaos_mesh")
             )
             append_jsonl(
                 self.samples_path,
@@ -244,6 +305,7 @@ class KubectlD0Observer:
             str(item["name"]): int(item.get("cpu_millicores") or 0)
             for item in sample["pods"]
         }
+        self.state.baseline_uid = {str(item["name"]): str(item.get("uid") or "") for item in sample["pods"]}
         self.state.initial_cr_names = {
             str(item["name"]) for item in sample["chaosblades"] if item.get("name")
         }
@@ -276,18 +338,8 @@ class KubectlD0Observer:
 
     def _apply(self, sample: dict[str, Any]) -> None:
         self.state.samples += 1
-        baseline_names = set(self.state.baseline_cpu)
-
         def owned(item: dict[str, Any]) -> bool:
-            if item.get("run_id") == self.trial_id:
-                return True
-            return (
-                self.ownership_mode == "native-bladeai"
-                and not item.get("run_id")
-                and not item.get("owner")
-                and bool(baseline_names.intersection(item.get("target_names") or []))
-                and "cpu" in (item.get("targets") or [])
-            )
+            return item.get("run_id") == self.trial_id and item.get("owner") == "chaos_control"
 
         owned_names = {
             str(item["name"])
@@ -303,6 +355,10 @@ class KubectlD0Observer:
         foreign = (all_names - self.state.initial_cr_names) - owned_names
         self.state.new_cr_names.update(new)
         self.state.foreign_cr_names.update(foreign)
+        self.state.foreign_cr_names.update(
+            f"chaos_mesh/{item.get('resource', 'unknown')}/{item['name']}"
+            for item in sample.get("chaos_mesh", []) if item.get("name")
+        )
         maximum = max(
             [int(item.get("cpu_millicores") or 0) for item in sample["pods"]] or [0]
         )
@@ -312,6 +368,10 @@ class KubectlD0Observer:
         baseline = max(self.state.baseline_cpu.values() or [0])
         active_phase = any(
             item.get("name") in self.state.new_cr_names
+            and item.get("fault_type") == "cpu-load" and item.get("cpu_percent") == 80
+            and str(item.get("phase") or "").lower() in {"success", "running"}
+            and item.get("target_uid") in set(self.state.baseline_uid.values()) - {""}
+            and any(pod.get("uid") == item.get("target_uid") for pod in sample["pods"])
             for item in sample["chaosblades"]
         )
         if (
@@ -346,7 +406,7 @@ class KubectlD0Observer:
             safe_target = (
                 len(pods) == 1
                 and pods[0].get("ready") is True
-                and int(pods[0].get("cpu_millicores") or 0) <= 200
+                and _healthy_cpu_sample(pods[0])
                 and str(pods[0].get("uid") or "")
                 == str(labels.get("benchmark.target_uid") or "")
             )
@@ -381,6 +441,7 @@ class KubectlD0Observer:
                     payload,
                 ],
                 timeout=30,
+                identity="finalizer",
             )
             return {
                 "attempted": True,
@@ -414,7 +475,8 @@ class KubectlD0Observer:
                         name,
                         "--ignore-not-found=true",
                         "--wait=false",
-                    ]
+                    ],
+                    identity="finalizer",
                 )
                 if result.returncode == 0:
                     deleted.append(name)
@@ -472,8 +534,9 @@ class KubectlD0Observer:
             candidate = (
                 len(pods) == 1
                 and pods[0].get("ready") is True
-                and int(pods[0].get("cpu_millicores") or 0) <= 200
+                and _healthy_cpu_sample(pods[0])
                 and not last.get("chaosblades")
+                and not last.get("chaos_mesh")
             )
             pressure = (
                 self.check_pressure_process(str(pods[0]["name"]))

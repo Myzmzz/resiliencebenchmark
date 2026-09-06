@@ -94,20 +94,20 @@ def test_generates_codex_case_bundle_and_preflight_contract():
     assert bundle.status_code == 200
     expected_cases = [case.value for case in CORE_STAGE2_CASE_IDS]
     assert [item["case_id"] for item in bundle.json()["cases"]] == expected_cases
-    assert [item["case_id"] for item in preflight.json()["cases"]] == expected_cases
-    assert preflight.status_code == 200
-    assert preflight.json()["harnesses"]["codex"] is True
-    assert preflight.json()["models"] == [
-        "gpt-5.5",
-        "claude-opus-5",
-        "deepseek-v4-pro-0813",
-        "deepseek-v4-flash-0731",
-        "qwen3.8-max",
-        "qwen3.8-flash",
-    ]
-    assert preflight.json()["model_matrix"]["codex"] == {
-        model: True for model in preflight.json()["models"]
+    assert preflight.status_code == 503
+    assert "harnesses" not in preflight.json()
+
+
+def test_preflight_forwards_runtime_qualification_without_codex_default():
+    observed = {
+        "status": "ERROR",
+        "harnesses": {name: False for name in ("codex", "claude-code", "deepseek-harness", "bladeai")},
+        "harness_capability_qualification": {"status": "qualification_file_missing"},
     }
+    client = TestClient(create_app(CampaignSupervisor(Runner()), preflight_provider=lambda: observed))
+    response = client.get("/api/v1/preflight")
+    assert response.status_code == 200
+    assert response.json() == observed
 
 
 def test_stage2_frontend_health_contract_uses_the_active_repo():

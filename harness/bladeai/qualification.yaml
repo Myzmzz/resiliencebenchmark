@@ -15,7 +15,7 @@ bladeai:
     config_path_flag: BLADE_AI_MCP_CONFIG_PATH
     config_path_status: declared_but_loader_uses_default_home_path
     default_path: ~/.blade-ai/mcp.json
-    runtime_transport_status: native_sse_runtime_live_qualified_read_only
+    runtime_transport_status: historical_read_only_smoke_only
     host_native_sse_listeners:
       k8s_ro: 127.0.0.1:18181
       telemetry_ro: 127.0.0.1:18182
@@ -31,12 +31,28 @@ bladeai:
       - k8s_ro
       - telemetry_ro
       - source_ro
+      - coroot_ro
+      - harness_channel
     attach_to:
       k8s_ro:
+        - clarification
+        - phase1
+        - phase2
         - verifier
       telemetry_ro:
+        - clarification
+        - phase1
+        - phase2
         - verifier
       source_ro:
+        - clarification
+        - phase1
+        - phase2
+        - verifier
+      coroot_ro:
+        - clarification
+        - phase1
+        - phase2
         - verifier
     controlled_write_servers:
       chaos_control:
@@ -45,16 +61,22 @@ bladeai:
           BladeAI v0.6.2 cannot classify dynamic MCP tool scope for the target
           guard. ChaosBlade write actions must be executed by the benchmark
           controller after budget, UID, baseline, and cleanup gates pass.
+      chaos_mesh_control:
+        enabled: false
+        reason: BladeAI writes are only available through the controlled blade shim.
   gates:
     before_qualifying_bladeai:
       - render template with runtime-only token
       - copy or symlink rendered file to ~/.blade-ai/mcp.json
       - set BLADE_AI_MCP_ENABLED=true
-      - render URLs to host-native authenticated SSE listeners on loopback ports 18181-18183
-      - verify startup logs contain MCP connected for k8s_ro, telemetry_ro, and source_ro
+      - render URLs to authenticated loopback SSE listeners including harness_channel and coroot_ro
+      - verify startup logs contain MCP connected for every read-only service
       - verify chaos_control is not connected from BladeAI
+      - verify BLADE_AI_BLADE_PATH resolves exactly to harness/bladeai/blade-shim/blade
+      - verify the SDK kubeconfig points to the loopback proxy and exposes no ServiceAccount credential
+      - exercise read, confirmation, shim create/destroy, notice, consult, and result submission in one Trial
   live_evidence:
-    status: qualified-read-only
+    status: platform_integration_incomplete
     bladeAiVersion: 0.6.2
     serverReady: true
     connectedTools:
@@ -62,5 +84,13 @@ bladeai:
       telemetry_ro: 10
       source_ro: 5
     chaosControlConnected: false
-    attachTo: verifier
-    shutdownBoundary: Timed smoke emitted a non-fatal cancel-scope disconnect warning after successful startup.
+    attachTo: historical-verifier-only
+    historicalEvidence: Timed read-only smoke predated task-mode, Harness channel, proxy, and blade shim.
+    missingRequiredInteractions:
+      - task_mode_l4_target_none
+      - loopback_kubernetes_proxy
+      - harness_confirm_affects_execution
+      - controlled_shim_create_destroy
+      - in_band_notice
+      - harness_consult
+      - harness_submit_result

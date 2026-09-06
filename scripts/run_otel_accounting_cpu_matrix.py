@@ -15,18 +15,19 @@ if str(REPO_ROOT) not in sys.path:
 
 from harness.d0 import D0Campaign, D0CampaignConfig
 from harness.d0.recompute import merge_agent_evidence, recompute_campaign
+from stage2_service.contracts import STAGE2_SUPPORTED_MODELS
 
 
-DEFAULT_ARTIFACT_ROOT = Path("/var/lib/resiliencebenchmark/artifacts/d0")
-DEFAULT_EPISODE = Path("tasks/examples/public/episode.otel-accounting-cpu-d0.v1.yaml")
+DEFAULT_ARTIFACT_ROOT = Path("/var/lib/resbench-stage2/d0")
 
 
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=__doc__)
     value.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     value.add_argument("--execute", action="store_true", help="required: execute the real remote four-Agent matrix")
-    value.add_argument("--artifact-root", type=Path, default=Path(os.environ.get("RESBENCH_D0_ARTIFACT_ROOT", DEFAULT_ARTIFACT_ROOT)))
-    value.add_argument("--kubeconfig", type=Path, default=Path(os.environ.get("RESBENCH_CONTROLLER_KUBECONFIG", "")))
+    value.add_argument("--artifact-root", type=Path, default=Path(os.environ.get("STAGE2_D0_ARTIFACT_ROOT", DEFAULT_ARTIFACT_ROOT)))
+    value.add_argument("--kubeconfig", type=Path, default=Path(os.environ.get("STAGE2_KUBECONFIG", "/var/lib/resbench-stage2/private/service.kubeconfig")))
+    value.add_argument("--model", choices=STAGE2_SUPPORTED_MODELS, help="model alias for each selected Agent")
     value.add_argument("--campaign-id")
     value.add_argument("--recompute-campaign", type=Path)
     value.add_argument(
@@ -68,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     repo = args.repo_root.expanduser().resolve()
     kubeconfig = args.kubeconfig.expanduser().resolve()
     if not kubeconfig.is_file():
-        raise SystemExit("RESBENCH_CONTROLLER_KUBECONFIG/--kubeconfig must identify the remote controller kubeconfig")
+        raise SystemExit("STAGE2_KUBECONFIG/--kubeconfig must identify the deployed Controller kubeconfig")
     agents = tuple(item.strip() for item in args.agents.split(",") if item.strip())
     allowed = {"bladeai", "codex", "claude-code", "deepseek-harness"}
     if not agents or len(set(agents)) != len(agents) or not set(agents) <= allowed:
@@ -77,13 +78,17 @@ def main(argv: list[str] | None = None) -> int:
         repo_root=repo,
         artifact_root=args.artifact_root.expanduser().resolve(),
         kubeconfig=kubeconfig,
-        episode_file=repo / DEFAULT_EPISODE,
         sample_seconds=args.sample_seconds,
         agent_timeout_seconds=args.agent_timeout_seconds,
         agents=agents,
     )
     try:
-        report = D0Campaign(config).run(args.campaign_id)
+        environment = dict(os.environ)
+        if args.model:
+            model_keys = {"bladeai": "BLADEAI", "codex": "CODEX", "claude-code": "CLAUDE", "deepseek-harness": "DSH"}
+            for agent in agents:
+                environment[f"RESBENCH_D0_{model_keys[agent]}_MODEL"] = args.model
+        report = D0Campaign(config, environment=environment).run(args.campaign_id)
     except Exception as exc:  # noqa: BLE001 - emit bounded structured failure.
         print(
             json.dumps(

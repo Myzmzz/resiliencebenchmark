@@ -1,6 +1,6 @@
-"""Harness adapters and real-time event normalization."""
+"""Harness package marker.
 
-from .streaming import HarnessStreamError, StreamingLifecycleBridge
-from .live_runner import LiveHarnessTrialRunner
-
-__all__ = ["HarnessStreamError", "LiveHarnessTrialRunner", "StreamingLifecycleBridge"]
+Imports stay side-effect free so the minimal agent-runtime image can import
+``harness.agent_exec`` without loading Controller-side streaming dependencies.
+Consumers import the required submodule directly.
+"""

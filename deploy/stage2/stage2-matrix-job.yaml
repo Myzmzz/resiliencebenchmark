@@ -16,7 +16,8 @@ spec:
         app.kubernetes.io/managed-by: resiliencebenchmark
         resiliencebenchmark.io/source-head: "__SOURCE_HEAD__"
     spec:
-      serviceAccountName: resbench-stage2
+      serviceAccountName: resbench-stage2-controller
+      automountServiceAccountToken: false
       restartPolicy: Never
       terminationGracePeriodSeconds: 120
       securityContext:
@@ -24,64 +25,53 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+        supplementalGroups: [10003, 10004]
       initContainers:
-        # LiteLLM model gateway as a native sidecar (restartPolicy: Always):
-        # it is up before the Stage-2 process starts, restarts with the pod,
-        # and stops with the main container so batch Jobs can complete.
-        # Routing table: ConfigMap litellm-config (deploy/stage2/litellm/).
-        # Upstream credentials: Secret litellm-upstream.
+        - name: agent-workspace-permissions
+          image: __STAGE2_AGENT_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec"]
+          args:
+            - >-
+              mkdir -p /work /sandbox /ipc/controller &&
+              chown 10001:10004 /work && chmod 2770 /work &&
+              chown 10001:10003 /sandbox && chmod 2770 /sandbox &&
+              chown 10001:10001 /ipc && chmod 2770 /ipc &&
+              chown 10001:10001 /ipc/controller && chmod 0700 /ipc/controller
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER"]
+          volumeMounts:
+            - name: trial-work
+              mountPath: /work
+            - name: sandbox-work
+              mountPath: /sandbox
+            - name: agent-exec-ipc
+              mountPath: /ipc
+      containers:
         - name: litellm
           image: 1.94.151.57:85/observe/aiobs-litellm:v1
           imagePullPolicy: IfNotPresent
-          restartPolicy: Always
-          args:
-            - --config
-            - /etc/litellm/config.yaml
-            - --port
-            - "4000"
-          envFrom:
-            - secretRef:
-                name: litellm-upstream
-          ports:
-            - name: litellm
-              containerPort: 4000
+          command: ["/bin/sh", "-c"]
+          args: ["litellm --config /etc/litellm/config.yaml --port 4000 & child=$!; trap 'kill $child 2>/dev/null; wait $child' TERM INT; while [ ! -f /run/resbench/controller/job-complete ]; do kill -0 $child 2>/dev/null || exit 1; sleep 1; done; kill $child 2>/dev/null; wait $child"]
+          envFrom: [{secretRef: {name: litellm-upstream}}]
+          ports: [{name: litellm, containerPort: 4000}]
           volumeMounts:
-            - name: litellm-config
-              mountPath: /etc/litellm
-              readOnly: true
-          startupProbe:
-            httpGet:
-              path: /health/liveliness
-              port: litellm
-            periodSeconds: 5
-            failureThreshold: 24
-          readinessProbe:
-            httpGet:
-              path: /health/readiness
-              port: litellm
-            periodSeconds: 15
-            timeoutSeconds: 5
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              cpu: "1"
-              memory: 2Gi
-      containers:
+            - {name: litellm-config, mountPath: /etc/litellm, readOnly: true}
+            - {name: agent-exec-ipc, mountPath: /run/resbench, readOnly: true}
+          startupProbe: {httpGet: {path: /health/liveliness, port: litellm}, periodSeconds: 5, failureThreshold: 24}
+          readinessProbe: {httpGet: {path: /health/readiness, port: litellm}, periodSeconds: 15, timeoutSeconds: 5}
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "1", memory: 2Gi}}
         - name: matrix
           image: __STAGE2_IMAGE__
           imagePullPolicy: IfNotPresent
-          command:
-            - python
-            - /app/scripts/run_stage2_matrix.py
-            - --execute
-            - --qualification-file
-            - /var/lib/resbench-stage2/integration/qualification/qualification-matrix.json
-            - --matrix-id
-            - __MATRIX_ID__
-            - --resume-from
-            - __RESUME_MATRIX_ID__
+          command: ["/bin/sh", "-c"]
+          args: ["python /app/scripts/run_stage2_matrix.py --execute --qualification-file /var/lib/resbench-stage2/integration/qualification/qualification-matrix.json --matrix-id __MATRIX_ID__ --resume-from __RESUME_MATRIX_ID__; code=$?; : > /run/resbench/controller/job-complete; exit $code"]
           env:
             - name: STAGE2_POD_NAME
               valueFrom:
@@ -121,6 +111,15 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            - name: trial-work
+              mountPath: /var/lib/resbench-stage2/agent-trials
+            - name: agent-exec-ipc
+              mountPath: /run/resbench
+            - name: sandbox-work
+              mountPath: /var/lib/resbench-stage2/sandbox-trials
+            - name: controller-service-account
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
           resources:
             requests:
               cpu: "1"
@@ -128,6 +127,49 @@ spec:
             limits:
               cpu: "4"
               memory: 8Gi
+        - name: agent-runtime
+          image: __STAGE2_AGENT_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["/opt/agent/.venv/bin/python", "-m", "harness.agent_exec"]
+          args: ["--socket", "/run/resbench/agent-exec.sock", "--trial-root", "/var/lib/resbench-stage2/agent-trials", "--sandbox-trial-root", "/var/lib/resbench-stage2/sandbox-trials", "--cgroup-root", "/sys/fs/cgroup/resbench-agent-exec", "--controller-uid", "10001", "--agent-uid", "10002", "--agent-gid", "10004", "--shared-trial-gid", "10004", "--sandbox-uid", "10003", "--sandbox-gid", "10003", "--socket-gid", "10001", "--memory-max", "536870912", "--pids-max", "64", "--cpu-max", "100000 100000", "--job-completion-file", "/run/resbench/controller/job-complete"]
+          env:
+            - name: RESBENCH_AGENT_EXEC_POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: RESBENCH_AGENT_EXEC_EGRESS_POLICY
+              value: required
+            - name: RESBENCH_AGENT_EXEC_AGENT_UID
+              value: "10002"
+            - name: RESBENCH_AGENT_EXEC_ALLOWED_LOOPBACK_PORTS
+              value: "18081,18082,18083,18084,18085,18086,18087,18088,18181,18182,18183,18184,18185,18186,18187,18188,18090,18481"
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["NET_ADMIN", "SYS_ADMIN", "SETUID", "SETGID", "SETPCAP", "KILL", "CHOWN", "FOWNER"]
+          volumeMounts:
+            - name: trial-work
+              mountPath: /var/lib/resbench-stage2/agent-trials
+            - name: agent-exec-ipc
+              mountPath: /run/resbench
+            - name: sandbox-work
+              mountPath: /var/lib/resbench-stage2/sandbox-trials
+            - name: agent-tmp
+              mountPath: /tmp
+            - name: delegated-cgroup
+              mountPath: /sys/fs/cgroup
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -139,6 +181,40 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 2Gi
+        - name: trial-work
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: agent-exec-ipc
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: sandbox-work
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: agent-tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: controller-service-account
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: https://kubernetes.default.svc.cluster.local
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                      fieldPath: metadata.namespace
+        - name: delegated-cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+            type: Directory
         - name: litellm-config
           configMap:
             name: litellm-config

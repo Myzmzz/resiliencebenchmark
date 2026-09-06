@@ -297,10 +297,10 @@ def _stage2_fault_contract(
         "target": {
             "namespace": target.namespace,
             "kind": target.kind,
-            "selection_mode": "agent",
-            "component": None,
-            "pod_name": None,
-            "pod_uid": None,
+            "selection_mode": "controller_explicit",
+            "component": target.component,
+            "pod_name": target.name,
+            "pod_uid": target.uid,
         },
         "request_contract": {
             "validate_then_create": True,

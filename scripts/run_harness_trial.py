@@ -28,11 +28,20 @@ from urllib.parse import urlparse
 import jsonschema
 import yaml
 
+from stage2_service.contracts import HarnessKind
+from stage2_service.harness_adapters import (
+    AgentMessage,
+    CanonicalEvent,
+    HarnessAdapter,
+    ToolCall,
+    ToolResult,
+    create_adapter,
+)
+from stage2_service.harness_adapters.deepseek import iter_zstd_jsonl_lines
 from stage2_service.session import (
     HarnessSession,
     ResumeArgvBuilder,
     discover_codex_session_id,
-    session_id_from_event,
     structured_feedbacks_from_observer,
 )
 
@@ -90,12 +99,17 @@ FORBIDDEN_LAUNCHER_MARKERS = {
 }
 
 ALLOWED_RUNTIME_ENV = {
+    "RESBENCH_HARNESS_CHANNEL_MCP_URL",
+    "RESBENCH_HARNESS_CHANNEL_TOKEN",
     "RESBENCH_LLM_BASE_URL",
     "RESBENCH_LLM_API_KEY",
     "RESBENCH_K8S_MCP_URL",
     "RESBENCH_TELEMETRY_MCP_URL",
     "RESBENCH_SOURCE_MCP_URL",
     "RESBENCH_CHAOS_CONTROL_MCP_URL",
+    "RESBENCH_COROOT_MCP_URL",
+    "RESBENCH_CHAOS_MESH_CONTROL_MCP_URL",
+    "RESBENCH_CODE_SANDBOX_MCP_URL",
     "RESBENCH_MCP_TOKEN",
     "RESBENCH_BASELINE_GATE_TOKEN",
     "RESBENCH_CLEANUP_HANDLE",
@@ -107,6 +121,9 @@ ALLOWED_RUNTIME_ENV = {
     "RESBENCH_CODEX_AUTH_FILE",
 }
 OPTIONAL_RUNTIME_ENV = {
+    "RESBENCH_COROOT_MCP_URL",
+    "RESBENCH_CHAOS_MESH_CONTROL_MCP_URL",
+    "RESBENCH_CODE_SANDBOX_MCP_URL",
     "RESBENCH_BASELINE_GATE_TOKEN",
     "RESBENCH_CLEANUP_HANDLE",
     "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF",
@@ -117,6 +134,7 @@ OPTIONAL_RUNTIME_ENV = {
     "RESBENCH_CODEX_AUTH_FILE",
 }
 ALLOWED_MCP_TOOLS = {
+    "harness_channel": {"harness_consult", "harness_confirm", "harness_submit_result", "harness_poll_notices"},
     "k8s_ro": {
         "k8s_get_resource",
         "k8s_list_resources",
@@ -152,12 +170,21 @@ ALLOWED_MCP_TOOLS = {
         "chaos_destroy_experiment",
         "chaos_recovery_status",
     },
+    "coroot_ro": {"coroot_metrics_range", "coroot_traces_find", "coroot_logs_range"},
+    "chaos_mesh_control": {"chaos_mesh_validate_plan", "chaos_mesh_inventory_run", "chaos_mesh_create_experiment", "chaos_mesh_get_experiment", "chaos_mesh_operation_status", "chaos_mesh_destroy_experiment", "chaos_mesh_recovery_status"},
+    "code_sandbox": {"run_python"},
 }
 MCP_URL_ENV = {
+    "__RESBENCH_HARNESS_CHANNEL_MCP_URL__": "RESBENCH_HARNESS_CHANNEL_MCP_URL",
     "__RESBENCH_K8S_MCP_URL__": "RESBENCH_K8S_MCP_URL",
     "__RESBENCH_TELEMETRY_MCP_URL__": "RESBENCH_TELEMETRY_MCP_URL",
     "__RESBENCH_SOURCE_MCP_URL__": "RESBENCH_SOURCE_MCP_URL",
     "__RESBENCH_CHAOS_CONTROL_MCP_URL__": "RESBENCH_CHAOS_CONTROL_MCP_URL",
+}
+OPTIONAL_MCP_URL_ENV = {
+    "coroot_ro": "RESBENCH_COROOT_MCP_URL",
+    "chaos_mesh_control": "RESBENCH_CHAOS_MESH_CONTROL_MCP_URL",
+    "code_sandbox": "RESBENCH_CODE_SANDBOX_MCP_URL",
 }
 FORBIDDEN_AGENT_KEYS = {
     "groundtruth",
@@ -183,10 +210,11 @@ class CommandResult:
     stderr: bytes
     timed_out: bool = False
     cancelled: bool = False
+    output_truncated: bool = False
 
 
 Runner = Callable[[Sequence[str], bytes, Mapping[str, str], int], CommandResult]
-EventObserver = Callable[[Mapping[str, Any]], None]
+EventObserver = Callable[[CanonicalEvent], Any]
 
 
 def utc_now() -> str:
@@ -214,7 +242,8 @@ def sha256_file(path: Path) -> str:
 
 
 def redaction_values(env: Mapping[str, str]) -> list[str]:
-    return [value for key, value in env.items() if key in ALLOWED_RUNTIME_ENV and value]
+    private_tokens = {"RESBENCH_AGENT_RELAY_TOKEN", "RESBENCH_MCP_AUDIT_AUTHORITY", "RESBENCH_BLADEAI_PROXY_TOKEN"}
+    return [value for key, value in env.items() if key in ALLOWED_RUNTIME_ENV | private_tokens and value]
 
 
 def redact_text(value: bytes | str, env: Mapping[str, str]) -> str:
@@ -445,7 +474,26 @@ def render_dsh_contract(repo_root: Path, dsh_home: Path, env: Mapping[str, str],
     settings = settings.replace("__RESBENCH_DSH_BASE_URL__", base_url)
     settings = settings.replace("__RESBENCH_MODEL_ALIAS__", model_alias)
     (dsh_home / "settings.yaml").write_text(settings, encoding="utf-8")
-    shutil.copyfile(source_dir / "mcp.cordis.patch.yml", dsh_home / "cordis.patch.yml")
+    patch = (source_dir / "mcp.cordis.patch.yml").read_text(encoding="utf-8")
+    for server, url_env in OPTIONAL_MCP_URL_ENV.items():
+        if env.get(url_env):
+            patch += _dsh_optional_server_block(server, url_env)
+    (dsh_home / "cordis.patch.yml").write_text(patch, encoding="utf-8")
+
+
+def _dsh_optional_server_block(server: str, url_env: str) -> str:
+    return (
+        "\n- insert:\n"
+        f"    - id: mcp-{server.replace('_', '-')}\n"
+        "      name: '@deepseek-ai/dsh-mcp-client'\n"
+        "      config:\n"
+        f"        serverName: {server}\n"
+        "        transport: streamable-http\n"
+        f"        url: !!js process.env.{url_env}\n"
+        "        headers:\n"
+        "          Authorization: !!js '`Bearer ${process.env.RESBENCH_MCP_TOKEN}`'\n"
+        "        failOnStartupError: true\n"
+    )
 
 
 def render_codex_config(repo_root: Path, codex_home: Path, env: Mapping[str, str]) -> Path:
@@ -460,6 +508,9 @@ def render_codex_config(repo_root: Path, codex_home: Path, env: Mapping[str, str
     rendered = template.replace("__RESBENCH_LLM_BASE_URL__", env.get("RESBENCH_LLM_BASE_URL", ""))
     for placeholder, env_name in MCP_URL_ENV.items():
         rendered = rendered.replace(placeholder, env.get(env_name, ""))
+    for server, env_name in OPTIONAL_MCP_URL_ENV.items():
+        if env.get(env_name):
+            rendered += f'\n[mcp_servers.{server}]\nurl = "{env[env_name]}"\nbearer_token_env_var = "RESBENCH_MCP_TOKEN"\n'
     token = env.get("RESBENCH_MCP_TOKEN", "")
     if token and token in rendered:
         raise ValueError("codex config rendering attempted to persist the MCP token")
@@ -486,11 +537,21 @@ def copy_codex_auth(codex_home: Path, env: Mapping[str, str]) -> bool:
     return True
 
 
-def render_claude_config(repo_root: Path, claude_home: Path) -> Path:
+def render_claude_config(repo_root: Path, claude_home: Path, env: Mapping[str, str] | None = None) -> Path:
     source = repo_root / "harness" / "claude-code" / "mcp.json.template"
     claude_home.mkdir(parents=True, exist_ok=True)
     path = claude_home / "mcp.json"
-    shutil.copyfile(source, path)
+    if env is None:
+        shutil.copyfile(source, path)
+    else:
+        value = json.loads(source.read_text(encoding="utf-8"))
+        for server, url_env in OPTIONAL_MCP_URL_ENV.items():
+            if env.get(url_env):
+                value["mcpServers"][server] = {
+                    "type": "http", "url": "${" + url_env + "}",
+                    "headers": {"Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"},
+                }
+        write_json(path, value)
     return path
 
 
@@ -516,6 +577,7 @@ def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], home
             "RESBENCH_TELEMETRY_MCP_URL": parent_env.get("RESBENCH_TELEMETRY_MCP_URL", ""),
             "RESBENCH_SOURCE_MCP_URL": parent_env.get("RESBENCH_SOURCE_MCP_URL", ""),
             "RESBENCH_CHAOS_CONTROL_MCP_URL": parent_env.get("RESBENCH_CHAOS_CONTROL_MCP_URL", ""),
+            **{name: parent_env.get(name, "") for name in OPTIONAL_MCP_URL_ENV.values()},
             "RESBENCH_MCP_TOKEN": parent_env.get("RESBENCH_MCP_TOKEN", ""),
         }
     elif harness_name == "deepseek-harness":
@@ -524,6 +586,9 @@ def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], home
     else:
         child = {key: value for key, value in parent_env.items() if key in ALLOWED_RUNTIME_ENV and value}
     child = {key: value for key, value in child.items() if value}
+    for key in ("RESBENCH_HARNESS_CHANNEL_MCP_URL", "RESBENCH_HARNESS_CHANNEL_TOKEN"):
+        if parent_env.get(key):
+            child[key] = parent_env[key]
     child.update(homes)
     home_key = {
         "codex": "CODEX_HOME",
@@ -751,6 +816,9 @@ def subprocess_streaming_runner(
     transcript_path: Path | None = None,
     redactor: Callable[[Any], Any] | None = None,
     retry_budget=None,
+    record_observer: Callable[[Mapping[str, Any]], None] | None = None,
+    activity_provider: Callable[[], bool] | None = None,
+    turn_executor=None,
 ) -> CommandResult:
     """Run a harness and forward stdout JSONL before process completion."""
 
@@ -768,6 +836,9 @@ def subprocess_streaming_runner(
         transcript_path=transcript_path,
         redactor=redactor,
         retry_budget=retry_budget,
+        record_observer=record_observer,
+        activity_provider=activity_provider,
+        turn_executor=turn_executor,
     ).start().wait()
     return CommandResult(
         returncode=session_result.returncode,
@@ -775,6 +846,7 @@ def subprocess_streaming_runner(
         stderr=session_result.stderr,
         timed_out=session_result.timed_out,
         cancelled=session_result.cancelled,
+        output_truncated=session_result.output_truncated,
     )
 
 
@@ -885,73 +957,36 @@ def string_json_candidates(value: str) -> list[Any]:
     return parsed
 
 
-def trace_kind_from_event(event: Mapping[str, Any]) -> str | None:
-    marker = str(event.get("type") or event.get("event") or event.get("kind") or "")
-    if marker == "mcp_tool_call":
-        completed = str(event.get("status") or "").lower() in {"completed", "failed"}
-        has_result = any(
-            event.get(key) is not None for key in ("result", "error", "output")
-        )
-        return "tool_result" if completed or has_result else "tool_call"
-    if marker in {"tool_call", "tool_use", "function_call"}:
+def canonical_event_kind(event: CanonicalEvent) -> str | None:
+    if isinstance(event, ToolCall):
         return "tool_call"
-    if marker in {"tool_result", "function_result"}:
+    if isinstance(event, ToolResult):
         return "tool_result"
-    if marker in {"message", "agent_message", "assistant"}:
+    if isinstance(event, AgentMessage):
         return "agent_message"
     return None
 
 
-def event_tool_name(event: Mapping[str, Any]) -> str | None:
-    tool = event.get("tool") or event.get("name")
-    server = event.get("server") or event.get("server_name")
-    if isinstance(tool, str) and tool:
-        if isinstance(server, str) and server and not tool.startswith(("mcp__", f"{server}.")):
-            return f"{server}.{tool}"
-        return tool
-    return None
+def canonical_event_payload(event: CanonicalEvent) -> dict[str, Any]:
+    return event.model_dump(mode="json")
 
 
-def forbidden_non_mcp_tool_event(event: Mapping[str, Any]) -> bool:
-    marker = str(event.get("type") or event.get("event") or event.get("kind") or "")
-    if marker in {
-        "command_execution",
-        "file_change",
-        "apply_patch",
-        "web_search",
-        "computer_use",
-        "browser_use",
-        "subagent_call",
-    }:
-        return True
-    if marker in {"tool_call", "tool_use", "function_call", "mcp_tool_call"}:
-        return not allowed_mcp_tool_event(event)
-    return False
-
-
-def allowed_mcp_tool_event(event: Mapping[str, Any]) -> bool:
-    marker = str(event.get("type") or event.get("event") or event.get("kind") or "")
-    raw_tool = event.get("tool") or event.get("name")
-    raw_server = event.get("server") or event.get("server_name")
-    if marker == "mcp_tool_call":
-        return (
-            isinstance(raw_server, str)
-            and isinstance(raw_tool, str)
-            and raw_tool in ALLOWED_MCP_TOOLS.get(raw_server, set())
-        )
-    name = event_tool_name(event)
-    if not name:
-        return False
+def allowed_mcp_tool_call(call: ToolCall) -> bool:
+    name = call.tool
     if name.startswith("mcp__"):
         parts = name.split("__", 2)
         if len(parts) != 3:
             return False
         _, server, tool = parts
         return tool in ALLOWED_MCP_TOOLS.get(server, set())
-    if "." in name:
-        server, tool = name.split(".", 1)
-        return tool in ALLOWED_MCP_TOOLS.get(server, set())
-    return False
+    if "." not in name:
+        return False
+    server, tool = name.split(".", 1)
+    return tool in ALLOWED_MCP_TOOLS.get(server, set())
+
+
+def forbidden_tool_call(event: CanonicalEvent) -> bool:
+    return isinstance(event, ToolCall) and not allowed_mcp_tool_call(event)
 
 
 def build_argv(
@@ -1120,48 +1155,37 @@ def capture_dsh_session_trace(
     env: Mapping[str, str],
     events: list[dict[str, Any]],
 ) -> list[str]:
-    """Export DSH Trial-local compressed sessions before the ephemeral home is deleted."""
+    """Archive redacted, complete DSH logs using the bundled Python codec.
+
+    Preserve the native records, not a guessed tool-name substring taxonomy.
+    The Harness adapter, shared by live and offline consumers, interprets them.
+    """
+    import zstandard
+
     references: list[str] = []
-    zstd = shutil.which("zstd")
     for index, source in enumerate(sorted(dsh_home.rglob("session.jsonl.zstd"))):
-        raw_name = f"dsh-session-{index:02d}.jsonl.zstd"
-        raw_path = artifact_dir / raw_name
-        shutil.copyfile(source, raw_path)
-        references.append(raw_name)
-        if not zstd:
-            continue
-        completed = subprocess.run(
-            [zstd, "-dc", str(source)],
-            check=False,
-            capture_output=True,
-        )
-        if completed.returncode:
-            continue
-        text = redact_text(completed.stdout, env)
         jsonl_name = f"dsh-session-{index:02d}.jsonl"
-        (artifact_dir / jsonl_name).write_text(text, encoding="utf-8")
-        references.append(jsonl_name)
-        for event_index, line in enumerate(text.splitlines()):
-            try:
-                value = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            event_type = str(value.get("type") or "")
-            if "tool" not in event_type and "mcp" not in event_type:
-                continue
-            ref = f"dsh-session-{index:02d}-event-{event_index:04d}.json"
-            write_json(artifact_dir / ref, value)
-            kind = "tool_result" if any(
-                marker in event_type for marker in ("result", "response", "end")
-            ) else "tool_call"
-            events.append(
-                {
-                    "ts": utc_now(),
-                    "kind": kind,
-                    "payload_ref": ref,
-                    "redacted": True,
-                }
-            )
+        jsonl_path = artifact_dir / jsonl_name
+        total = 0
+        with jsonl_path.open("w", encoding="utf-8") as destination:
+            jsonl_path.chmod(0o600)
+            for line in iter_zstd_jsonl_lines(source):
+                output_line = f"{line}\n"
+                total += len(output_line.encode("utf-8"))
+                if total > 128 * 1024 * 1024:
+                    raise ValueError("DSH native trace exceeds 128 MiB archive limit")
+                destination.write(redact_text(output_line, env))
+        compressed_name = f"dsh-session-{index:02d}.jsonl.zstd"
+        compressed_path = artifact_dir / compressed_name
+        with jsonl_path.open("rb") as original, compressed_path.open("wb") as destination:
+            compressed_path.chmod(0o600)
+            zstandard.ZstdCompressor().copy_stream(original, destination)
+        references.extend([compressed_name, jsonl_name])
+        events.append({
+            "ts": utc_now(), "kind": "controller_gate",
+            "summary": "complete redacted native session captured; adapter replay required",
+            "payload_ref": compressed_name, "redacted": True,
+        })
     return references
 
 
@@ -1206,6 +1230,7 @@ def run_trial(
         raise ValueError("bladeai trials use the dedicated BladeAI adapter, not run_harness_trial.py")
     if model_alias not in model_registry:
         raise ValueError(f"unknown model alias: {model_alias}")
+    harness_kind = HarnessKind(harness_name)
 
     common_prompt_file = resolve_prompt_file(harnesses, "common_task", repo)
     prompt_file = resolve_prompt_file(harnesses, prompt_ref, repo)
@@ -1261,6 +1286,9 @@ def run_trial(
     result: CommandResult | None = None
     homes_deleted = False
     native_session_refs: list[str] = []
+    canonical_events: list[CanonicalEvent] = []
+    stream_adapter: HarnessAdapter = create_adapter(harness_kind)
+    agent_activity_seen = False
 
     try:
         paths: dict[str, Path] = {
@@ -1270,7 +1298,7 @@ def run_trial(
         codex_result_files = [paths["codex_last_message_file"]]
         render_codex_config(repo, codex_home, env)
         codex_auth_copied = copy_codex_auth(codex_home, env)
-        paths["mcp_config_file"] = render_claude_config(repo, claude_home)
+        paths["mcp_config_file"] = render_claude_config(repo, claude_home, env)
         render_dsh_contract(repo, dsh_home, env, model_alias)
 
         homes = {
@@ -1299,7 +1327,7 @@ def run_trial(
                 resolved_command = resolve_formal_harness_command(harness_name, argv[0])
                 argv = [resolved_command, *argv[1:]]
         elif execute and not fail_closed_reason and runner is None:
-            resolved_command = shutil.which(argv[0])
+            resolved_command = shutil.which(argv[0], path=child_env.get("PATH"))
             if not resolved_command:
                 raise ValueError(f"D0 native harness command is unavailable: {argv[0]}")
             argv = [resolved_command, *argv[1:]]
@@ -1368,23 +1396,32 @@ def run_trial(
                 captured_session_id: str | None = None
 
                 def observe_stdout_line(line: bytes) -> list[Any]:
-                    nonlocal captured_session_id
+                    nonlocal agent_activity_seen, captured_session_id
                     feedbacks: list[Any] = []
-                    for stream_event in extract_json_objects(redact_text(line, env)):
-                        observed_stream_events.append(stream_event)
-                        if captured_session_id is None:
-                            captured_session_id = session_id_from_event(stream_event)
-                        response = event_observer(redact_json(stream_event, env))
+                    line_events = stream_adapter.on_stream_line(line)
+                    if captured_session_id is None and stream_adapter.session_id:
+                        captured_session_id = stream_adapter.session_id
+                    for stream_event in line_events:
+                        canonical_events.append(stream_event)
+                        observed_stream_events.append(canonical_event_payload(stream_event))
+                        if isinstance(stream_event, (ToolCall, AgentMessage)):
+                            agent_activity_seen = True
+                        response = event_observer(stream_event)
                         feedbacks.extend(structured_feedbacks_from_observer(response))
                     return feedbacks
 
                 def observe_turn_complete(summary: Mapping[str, Any]) -> list[Any]:
                     response = event_observer(
-                        {
-                            "type": "native_turn_completed",
-                            "summary": dict(summary),
-                            "observed_event_count": len(observed_stream_events),
-                        }
+                        AgentMessage(
+                            text=json.dumps(
+                                {
+                                    "type": "native_turn_completed",
+                                    "summary": dict(summary),
+                                    "observed_event_count": len(observed_stream_events),
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
                     )
                     return structured_feedbacks_from_observer(response)
 
@@ -1421,6 +1458,7 @@ def run_trial(
                     interaction_mode=interaction_mode,
                     transcript_path=session_events_jsonl,
                     redactor=lambda value: redact_json(value, env),
+                    activity_provider=lambda: agent_activity_seen,
                 )
             if session_events_jsonl.is_file():
                 events.append(
@@ -1440,20 +1478,18 @@ def run_trial(
                 events.append({"ts": utc_now(), "kind": "error", "payload_ref": stderr_ref, "redacted": True})
             if stdout_truncated or stderr_truncated:
                 events.append({"ts": utc_now(), "kind": "error", "summary": "agent output exceeded max_output_bytes and was truncated"})
-            forbidden_tool_seen = False
-            for index, item in enumerate(extract_json_objects(redact_text(result.stdout, env))):
-                if forbidden_non_mcp_tool_event(item):
-                    forbidden_tool_seen = True
-                kind = trace_kind_from_event(item)
-                if not kind:
-                    continue
-                ref = f"event-{index:04d}.json"
-                write_json(artifact_dir / ref, redact_json(item, env))
-                event: dict[str, Any] = {"ts": utc_now(), "kind": kind, "payload_ref": ref, "redacted": True}
-                tool = event_tool_name(item)
-                if tool:
-                    event["tool"] = tool
-                events.append(event)
+            if result.output_truncated:
+                events.append({
+                    "ts": utc_now(),
+                    "kind": "error",
+                    "summary": "NATIVE_OUTPUT_LIMIT_EXCEEDED",
+                })
+            if event_observer is None:
+                for line in result.stdout.splitlines():
+                    canonical_events.extend(stream_adapter.on_stream_line(line))
+            forbidden_tool_seen = any(
+                forbidden_tool_call(event) for event in canonical_events
+            )
             if forbidden_tool_seen:
                 events.append(
                     {
@@ -1462,7 +1498,10 @@ def run_trial(
                         "summary": "harness emitted a non-MCP tool event outside the benchmark surface",
                     }
                 )
-            if result.timed_out:
+            if result.output_truncated:
+                status = "failed"
+                error = "NATIVE_OUTPUT_LIMIT_EXCEEDED"
+            elif result.timed_out:
                 status = "timeout"
                 error = "agent process exceeded timeout_seconds"
             elif result.cancelled:
@@ -1499,6 +1538,42 @@ def run_trial(
             native_session_refs.append("session-events.jsonl")
         shutil.rmtree(temp_root, ignore_errors=True)
         homes_deleted = not temp_root.exists()
+
+    posthoc_events = stream_adapter.on_turn_end(artifact_dir)
+    if posthoc_events:
+        canonical_events.extend(posthoc_events)
+    if any(forbidden_tool_call(event) for event in posthoc_events):
+        events.append(
+            {
+                "ts": utc_now(),
+                "kind": "error",
+                "summary": "harness emitted a non-MCP tool event outside the benchmark surface",
+            }
+        )
+        status = "failed"
+        error = "harness exposed or used a non-MCP tool"
+
+    tool_by_call_id: dict[str, str] = {}
+    for index, event in enumerate(canonical_events):
+        kind = canonical_event_kind(event)
+        if not kind:
+            continue
+        ref = f"event-{index:04d}.json"
+        write_json(artifact_dir / ref, redact_json(canonical_event_payload(event), env))
+        trace_event: dict[str, Any] = {
+            "ts": utc_now(),
+            "kind": kind,
+            "payload_ref": ref,
+            "redacted": True,
+        }
+        if isinstance(event, ToolCall):
+            tool_by_call_id[event.call_id] = event.tool
+            trace_event["tool"] = event.tool
+        elif isinstance(event, ToolResult):
+            tool = tool_by_call_id.get(event.call_id)
+            if tool:
+                trace_event["tool"] = tool
+        events.append(trace_event)
 
     final_output: dict[str, Any] = {"status": status, "agent_report_ref": agent_ref}
     if error:

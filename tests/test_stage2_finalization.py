@@ -16,21 +16,25 @@ class Chaos:
     def __init__(self, absent_before=False):
         self.absent_before = absent_before
 
-    def status(self, _handle):
+    def inventory_trial(self, _runtime):
         return {
-            "resource_absent": self.absent_before,
-            "ever_active": True,
-            "target_uid": "uid-current",
-            "target_name": "cart",
-            "namespace": "otel-demo",
-            "fault_type": "network-delay",
+            "qualified": True,
+            "owned_resources_absent": self.absent_before,
+            "inventory_clear": self.absent_before,
+            "foreign_active_count": 0,
+            "trial": {
+                "resource_absent": self.absent_before,
+                "ever_active": True,
+                "target_uid": "uid-current",
+                "target_name": "cart",
+                "namespace": "otel-demo",
+                "fault_type": "network-delay",
+            },
         }
 
-    def destroy(self, _handle):
-        return {"verified_absent": True}
-
-    def inventory(self, _namespace):
-        return {"global_chaosblade_count": 0, "active_owned_count": 0}
+    def cleanup_owned(self, _runtime):
+        self.absent_before = True
+        return {"verified_absent": True, "principal": "CONTROLLER_FALLBACK"}
 
 
 class Traffic:
@@ -141,18 +145,36 @@ def test_cleanup_verification_is_independent_from_business_recovery():
     assert result.business_recovery_verified is False
 
 
+def test_incomplete_inventory_never_turns_an_absent_resource_into_verified_cleanup():
+    class IncompleteInventoryChaos(Chaos):
+        def inventory_trial(self, runtime):
+            result = super().inventory_trial(runtime)
+            result.update(
+                qualified=False,
+                inventory_clear=False,
+                owned_resources_absent=False,
+                unavailable_executors=["chaos_mesh"],
+            )
+            return result
+
+    result = Stage2Finalizer(
+        IncompleteInventoryChaos(absent_before=True), Traffic()
+    ).finalize("trial", object(), context(), report())
+
+    assert result.fault_absent is False
+    assert result.controller_cleanup_verified is False
+    assert result.business_recovery_verified is True
+
+
 def test_condition_met_agent_cleanup_is_attributed_to_agent_not_timer():
     class AgentCleanupChaos(Chaos):
-        def status(self, _handle):
-            return {
-                "resource_absent": True,
-                "ever_active": True,
-                "target_uid": "uid-current",
-                "target_name": "cart",
-                "namespace": "otel-demo",
-                "fault_type": "network-delay",
-                "ledger_state": "destroyed",
-            }
+        def inventory_trial(self, runtime):
+            result = super().inventory_trial(runtime)
+            result["trial"]["resource_absent"] = True
+            result["owned_resources_absent"] = True
+            result["inventory_clear"] = True
+            result["trial"]["ledger_state"] = "destroyed"
+            return result
 
     accepted = LifecycleEvent(
         event_id="accepted",
@@ -222,14 +244,10 @@ def test_bounded_timeout_is_observed_before_controller_cleanup():
             super().__init__(absent_before=False)
             self.status_calls = 0
 
-        def status(self, _handle):
+        def inventory_trial(self, runtime):
             self.status_calls += 1
-            return {
-                "resource_absent": self.status_calls >= 2,
-                "ever_active": True,
-                "target_uid": "uid-current",
-                "fault_type": "network-delay",
-            }
+            self.absent_before = self.status_calls >= 2
+            return super().inventory_trial(runtime)
 
     no_explicit_recovery = report().model_copy(update={"lifecycle_events": ()})
     runtime = context().model_copy(
@@ -255,31 +273,16 @@ def test_bounded_timeout_is_observed_before_controller_cleanup():
     assert result.fault_effect_evidence["timeout_recovery_observed"] is True
 
 
-def test_unique_external_bladeai_fault_is_reconciled_by_target_and_type():
-    class ExternalChaos(Chaos):
-        def __init__(self):
-            super().__init__()
-            self.external_calls = 0
-
-        def status(self, _handle):
-            return {"error_type": "missing-ledger"}
-
-        def external_status(self, runtime):
-            self.external_calls += 1
-            if self.external_calls >= 2:
-                return {"resource_absent": True, "ever_active": False}
-            return {
-                "resource_absent": False,
-                "ever_active": True,
-                "external": True,
-                "target_uid": runtime.target.uid,
-                "target_name": runtime.target.name,
-                "namespace": runtime.target.namespace,
-                "fault_type": runtime.main_fault["fault_type"],
-            }
-
-        def cleanup_external(self, _runtime):
-            return {"verified_absent": True, "external_experiment": "bladeai-cr"}
+def test_unified_inventory_reconciles_a_controller_owned_fault():
+    class InventoryChaos(Chaos):
+        def inventory_trial(self, runtime):
+            result = super().inventory_trial(runtime)
+            result["resources"] = [{
+                "executor_id": "chaosblade",
+                "name": "controller-cr",
+                "owned_by_trial": True,
+            }]
+            return result
 
     runtime = context().model_copy(
         update={
@@ -292,7 +295,7 @@ def test_unique_external_bladeai_fault_is_reconciled_by_target_and_type():
     no_explicit_recovery = report().model_copy(update={"lifecycle_events": ()})
 
     result = Stage2Finalizer(
-        ExternalChaos(),
+        InventoryChaos(),
         Traffic(),
         poll_seconds=1,
         sleep=lambda _seconds: None,
@@ -301,4 +304,4 @@ def test_unique_external_bladeai_fault_is_reconciled_by_target_and_type():
     assert result.main_fault_ever_active is True
     assert result.main_fault_target_verified is True
     assert result.fault_absent is True
-    assert result.fault_effect_evidence["external_chaos_reconciled"] is True
+    assert result.fault_effect_evidence["fault_inventory"]["qualified"] is True

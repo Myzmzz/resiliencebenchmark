@@ -18,12 +18,15 @@ from typing import Any, Callable, Mapping
 import yaml
 
 from mcp_servers.chaos_control.service import ChaosControlService, RuntimeConfig
+from mcp_servers.chaos_mesh_control.service import ChaosMeshControlService
 
 from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 
 from .artifacts import ArtifactStore
 from .request_observation import request_observability, target_request_effect, timestamp as _window_timestamp
 from .campaign import CampaignEngine
+from .capability_preflight import harness_capabilities_from_qualification
+from .capability_loss.factory import CapabilityLossRuntimeFactory
 from .condition_monitor import ConditionRecoveryMonitor
 from .condition_policy import evaluate_condition
 from .contracts import (
@@ -31,19 +34,22 @@ from .contracts import (
     STAGE2_SUPPORTED_MODELS,
     CampaignRequest,
     CampaignResult,
+    HarnessKind,
     default_case_specs,
 )
 from .disturbance import RuntimeDisturbancePlanner
 from .episode import load_fixed_episode
 from .evaluator import Stage2Evaluator
 from .finalization import Stage2Finalizer
+from .fault_inventory import resource_from_experiment, snapshot_for_trial
 from .harness_runtime import NativeHarnessRunner
-from .kubernetes_permissions import KubernetesPermissionBackend
+from harness.agent_exec.client import AgentExecClient
 from .mcp_supervisor import McpSupervisor
 from .matrix import fixed_otel_episode_ref
 from .permissions import Stage2PermissionManager
 from .preparation import ApplicationTrafficCapabilityIssuer, KubernetesTrialPreparer
 from .qualification import D0QualificationGate
+from .kubernetes_identities import CONTROLLER_SERVICE_ACCOUNT, prepare_execution_identities
 from .reset import OtelDemoResetter
 from .runtime_adapters import (
     CompositeDisturbanceExecutor,
@@ -116,6 +122,205 @@ class Stage2RuntimeConfig:
                 else None
             ),
         )
+
+
+@dataclass(frozen=True)
+class Stage2Components:
+    gate: KubernetesEnvironmentGate
+    traffic: "KubernetesTrafficEvidence"
+    permissions: Stage2PermissionManager
+    issuer: ApplicationTrafficCapabilityIssuer
+    preparer: KubernetesTrialPreparer
+    supervisor: McpSupervisor
+    harness_runner: NativeHarnessRunner
+    cleanup_backend: "DirectChaosCleanup"
+    finalizer: Stage2Finalizer
+    resetter: OtelDemoResetter
+    disturbance_executor: CompositeDisturbanceExecutor
+    token_registry: McpTokenStateRegistry
+
+
+def build_runtime(
+    episode,
+    request_model_by_harness: Mapping[Any, str],
+    *,
+    namespace: str = "otel-demo",
+) -> Stage2Components:
+    """Build the production Stage-2 runtime from process configuration."""
+    config = Stage2RuntimeConfig.from_env()
+    for path in (config.private_root, config.artifact_root):
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path, 0o700)
+    write_incluster_kubeconfig(config.kubeconfig)
+    return _build_runtime(
+        config=config,
+        episode=episode,
+        request_model_by_harness=request_model_by_harness,
+        namespace=namespace,
+    )
+
+
+def _build_runtime(
+    *,
+    config: Stage2RuntimeConfig,
+    episode,
+    request_model_by_harness: Mapping[Any, str],
+    namespace: str,
+) -> Stage2Components:
+    model_by_harness = _normalize_model_by_harness(request_model_by_harness)
+    gate = KubernetesEnvironmentGate(config.kubeconfig)
+    traffic = KubernetesTrafficEvidence(gate, episode)
+    private = config.private_root
+    identities = prepare_execution_identities(
+        config.kubeconfig, private / "kube-identities", control_namespace=config.controller_pod_namespace,
+    )
+    baseline_dir = private / "chaos-control/baseline"
+    ledger_dir = private / "chaos-control/active"
+    for path in (baseline_dir, ledger_dir):
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path, 0o700)
+    token_registry = McpTokenStateRegistry(private / "mcp-tokens")
+    permissions = Stage2PermissionManager(
+        private_root=private / "permissions",
+        token_registry=token_registry,
+    )
+    issuer = ApplicationTrafficCapabilityIssuer(
+        ledger_dir=baseline_dir,
+        controller_pod_uid=config.controller_pod_uid,
+        traffic_evidence=traffic,
+    )
+    preparer = KubernetesTrialPreparer.from_incluster(issuer)
+    controller_token_ref = (
+        f"k8s://{config.controller_pod_namespace}/serviceaccount/{CONTROLLER_SERVICE_ACCOUNT}"
+    )
+    mcp_environment = {
+        "RESBENCH_K8S_RO_KUBECONFIG": str(config.kubeconfig),
+        "RESBENCH_K8S_RO_NAMESPACE_ALLOWLIST": namespace,
+        "RESBENCH_PROMETHEUS_URL": "http://prometheus.observability.svc:9090",
+        "RESBENCH_JAEGER_URL": "http://jaeger-query.observability.svc:16686",
+        "RESBENCH_LOKI_URL": "http://loki.observability.svc:3100",
+        "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": namespace,
+        "RESBENCH_JAEGER_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
+        "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
+        "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(private / "telemetry"),
+        "RESBENCH_WORKLOAD_STATS_URL": "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
+        "RESBENCH_WORKLOAD_STAT_NAME": "/api/cart",
+        "RESBENCH_SOURCE_ROOT": str(config.source_root),
+        "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": "otel-demo",
+        "RESBENCH_CHAOS_EXECUTE_ENABLED": "true",
+        "RESBENCH_CHAOS_KUBECONFIG": str(identities.executor_kubeconfig),
+        "RESBENCH_CHAOS_CLEANUP_KUBECONFIG": str(identities.finalizer_kubeconfig),
+        "RESBENCH_CHAOS_NAMESPACE_ALLOWLIST": namespace,
+        "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": controller_token_ref,
+        "RESBENCH_CHAOS_CONTROLLER_POD_UID": config.controller_pod_uid,
+        "RESBENCH_CHAOS_CONTROLLER_POD_NAMESPACE": config.controller_pod_namespace,
+        "RESBENCH_CHAOS_CONTROLLER_POD_NAME": config.controller_pod_name,
+        "RESBENCH_CHAOS_BASELINE_LEDGER_DIR": str(baseline_dir),
+        "RESBENCH_CHAOS_LEDGER_DIR": str(ledger_dir),
+    }
+    supervisor = McpSupervisor(
+        private_root=private / "mcp-runtime",
+        base_environment=mcp_environment,
+    )
+    harness_environment = {
+        "RESBENCH_LLM_BASE_URL": config.llm_base_url,
+        "RESBENCH_LLM_API_KEY": config.llm_api_key,
+        "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": controller_token_ref,
+        "RESBENCH_CHAOS_CONTROLLER_POD_UID": config.controller_pod_uid,
+        "RESBENCH_CODEX_EVAL_BIN": os.environ.get(
+            "RESBENCH_CODEX_EVAL_BIN", ""
+        ),
+        "STAGE2_BLADEAI_PYTHON": os.environ.get(
+            "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
+        ),
+        "STAGE2_BLADEAI_MODEL": model_by_harness.get(
+            HarnessKind.BLADEAI,
+            STAGE2_DEFAULT_MODEL,
+        ),
+    }
+    runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
+        config.kubeconfig
+    )
+    disturbance_executor = CompositeDisturbanceExecutor(
+        kubernetes_client=runtime_client,
+        mcp_tokens=token_registry,
+        target_rebinder=issuer,
+        mcp_supervisor=supervisor,
+    )
+    cleanup_environment = {**mcp_environment, "RESBENCH_CHAOS_KUBECONFIG": str(identities.finalizer_kubeconfig)}
+    chaos_service = ChaosControlService(
+        RuntimeConfig.from_env(cleanup_environment, server_name="chaos_control")
+    )
+    chaos_mesh_service = ChaosMeshControlService(
+        RuntimeConfig.from_env(cleanup_environment, server_name="chaos_mesh_control")
+    )
+    cleanup_backend = DirectChaosCleanup(
+        chaos_service, chaos_mesh_service, identities.finalizer_kubeconfig
+    )
+    harness_runner = NativeHarnessRunner(
+        repo_root=config.repo_root,
+        private_root=private / "harness",
+        artifact_root=config.artifact_root,
+        permissions=permissions,
+        mcp_supervisor=supervisor,
+        base_environment=harness_environment,
+        capability_loss_factory=CapabilityLossRuntimeFactory(
+            cleanup_backend=cleanup_backend,
+            qualification_path=Path(os.environ.get(
+                "STAGE2_SUBSTITUTION_QUALIFICATION_FILE",
+                str(private / "capability-loss-qualification.json"),
+            )),
+            evidence_root=private / "capability-loss",
+        ),
+        agent_exec_client=AgentExecClient(
+            Path(os.environ.get("RESBENCH_AGENT_EXEC_SOCKET", "/run/resbench/agent-exec.sock")),
+            expected_server_uid=0,
+        ),
+        agent_work_root=Path(os.environ.get(
+            "STAGE2_AGENT_WORK_ROOT", "/var/lib/resbench-stage2/agent-trials",
+        )),
+        sandbox_work_root=Path(os.environ.get(
+            "STAGE2_SANDBOX_WORK_ROOT", "/var/lib/resbench-stage2/sandbox-trials",
+        )),
+    )
+    finalizer = Stage2Finalizer(
+        cleanup_backend,
+        traffic,
+        recovery_timeout_seconds=180,
+    )
+    resetter = OtelDemoResetter(
+        repo_root=config.repo_root,
+        kubeconfig=config.kubeconfig,
+        runtime_env_file=config.runtime_env_file,
+        chart_file=config.otel_chart_file,
+        environment_gate=gate,
+        traffic_evidence=traffic,
+        timeout_seconds=120,
+        recovery_timeout_seconds=180,
+        verify_only=False,
+    )
+    return Stage2Components(
+        gate=gate,
+        traffic=traffic,
+        permissions=permissions,
+        issuer=issuer,
+        preparer=preparer,
+        supervisor=supervisor,
+        harness_runner=harness_runner,
+        cleanup_backend=cleanup_backend,
+        finalizer=finalizer,
+        resetter=resetter,
+        disturbance_executor=disturbance_executor,
+        token_registry=token_registry,
+    )
+
+
+def _normalize_model_by_harness(values: Mapping[Any, str]) -> dict[HarnessKind, str]:
+    result: dict[HarnessKind, str] = {}
+    for key, value in values.items():
+        harness = key if isinstance(key, HarnessKind) else HarnessKind(str(key))
+        result[harness] = value
+    return result
 
 
 class KubernetesTrafficEvidence:
@@ -681,92 +886,178 @@ def _prometheus_range_values(response: Mapping[str, Any]) -> list[float]:
 
 
 class DirectChaosCleanup:
-    def __init__(self, service: ChaosControlService, kubeconfig: Path):
-        self.service = service
+    """Controller-only exact cleanup across ChaosBlade and Chaos Mesh.
+
+    It never deletes by target/name discovery alone.  A resource is deletable
+    only through its matching private Trial ledger and executor-specific
+    destroy method; foreign resources remain evidence for the reset gate.
+    """
+
+    def __init__(
+        self,
+        chaosblade: ChaosControlService,
+        chaos_mesh: ChaosMeshControlService,
+        kubeconfig: Path,
+    ):
+        self.services = {
+            "chaosblade": chaosblade,
+            "chaos_mesh": chaos_mesh,
+        }
         self.kubeconfig = str(kubeconfig)
 
-    def destroy(self, cleanup_handle: str):
-        return asyncio.run(
-            self.service.destroy_experiment(
-                cleanup_handle=cleanup_handle, kubeconfig=self.kubeconfig
-            )
-        )
+    def inventory_trial(self, runtime):
+        return asyncio.run(self._inventory_trial(runtime))
+
+    def cleanup_owned(self, runtime):
+        return asyncio.run(self._cleanup_owned(runtime))
 
     def status(self, cleanup_handle: str):
-        return asyncio.run(
-            self.service.recovery_status(
-                cleanup_handle=cleanup_handle, kubeconfig=self.kubeconfig
-            )
-        )
+        """Condition-monitor status through the one exact ledger owner."""
+        return asyncio.run(self._status(cleanup_handle))
 
-    def inventory(self, namespace: str):
-        return asyncio.run(
-            self.service.inventory_run(
-                namespace=namespace, kubeconfig=self.kubeconfig
-            )
-        )
+    def destroy(self, cleanup_handle: str):
+        """Controller fallback cleanup; never attributed to the Agent MCP."""
+        return asyncio.run(self._destroy(cleanup_handle))
 
-    def external_status(self, runtime):
-        inventory = self.inventory(runtime.target.namespace)
-        candidates = [
-            item
-            for item in inventory.get("experiments", [])
-            if item.get("terminal") is not True
-            and item.get("owned") is not True
-            and item.get("target_name") == runtime.target.name
-            and item.get("fault_type") == runtime.main_fault.get("fault_type")
-        ]
-        if not candidates:
-            return {"resource_absent": True, "ever_active": False, "candidates": []}
-        if len(candidates) != 1:
-            return {
-                "resource_absent": False,
-                "ever_active": False,
-                "ambiguous": True,
-                "candidates": [item.get("name") for item in candidates],
-            }
-        candidate = candidates[0]
-        return {
-            "resource_absent": False,
-            "ever_active": True,
-            "external": True,
-            "experiment_name": candidate.get("name"),
-            "target_name": runtime.target.name,
-            "target_uid": runtime.target.uid,
-            "fault_type": runtime.main_fault.get("fault_type"),
-        }
-
-    def cleanup_external(self, runtime):
-        status = self.external_status(runtime)
-        if status.get("resource_absent") is True:
-            return {"verified_absent": True, "idempotent": True}
-        if status.get("ever_active") is not True:
-            return {
-                "verified_absent": False,
-                "reason": "external ChaosBlade candidate is ambiguous",
-                "candidates": status.get("candidates", []),
-            }
-        name = str(status["experiment_name"])
-
-        async def cleanup():
-            await self.service.backend.delete_experiment(
-                runtime.target.namespace, name, self.kubeconfig
-            )
-            for _ in range(30):
-                after = await self.service.backend.get_experiment(
-                    runtime.target.namespace, name, self.kubeconfig
+    async def _inventory_trial(self, runtime) -> dict[str, Any]:
+        ledgers: dict[str, list[dict[str, Any]]] = {}
+        unavailable: list[str] = []
+        for executor_id, service in self.services.items():
+            try:
+                ledgers[executor_id] = self._read_ledgers(service)
+            except Exception:
+                unavailable.append(executor_id)
+        resources = []
+        qualified = []
+        for executor_id, service in self.services.items():
+            if executor_id in unavailable:
+                continue
+            try:
+                records = await service.backend.list_experiments(
+                    self.kubeconfig, runtime.target.namespace
                 )
-                if after is None:
-                    return True
-                await asyncio.sleep(1)
-            return False
-
-        verified = asyncio.run(cleanup())
-        return {
-            "external_experiment": name,
-            "verified_absent": verified,
-            "idempotent": True,
+            except Exception:
+                unavailable.append(executor_id)
+                continue
+            qualified.append(executor_id)
+            for record in records:
+                resources.append(
+                    resource_from_experiment(
+                        executor_id,
+                        record,
+                        ledger_matched=self._matches_any_ledger(
+                            record, ledgers[executor_id], executor_id
+                        ),
+                    )
+                )
+        snapshot = snapshot_for_trial(
+            trial_id=runtime.trial_id,
+            resources=resources,
+            qualified_executors=qualified,
+            unavailable_executors=unavailable,
+        )
+        trial_ledgers = [
+            (executor_id, ledger)
+            for executor_id, values in ledgers.items()
+            for ledger in values
+            if ledger.get("run_id") == runtime.trial_id
+            and ledger.get("cleanup_handle") == runtime.cleanup_handle
+            and ledger.get("executor_id") == executor_id
+        ]
+        ledger_executor = trial_ledgers[0][0] if len(trial_ledgers) == 1 else None
+        ledger = trial_ledgers[0][1] if len(trial_ledgers) == 1 else {}
+        matching_resources = [
+            resource for resource in resources if resource.owned_by_trial(runtime.trial_id)
+        ]
+        snapshot["trial"] = {
+            "resource_absent": snapshot["owned_resources_absent"],
+            "ever_active": bool(ledger.get("ever_active")),
+            "namespace": str(ledger.get("namespace") or runtime.target.namespace),
+            "target_name": str(ledger.get("target_name") or runtime.target.name),
+            "target_uid": str(ledger.get("target_uid") or runtime.target.uid),
+            "fault_type": str(ledger.get("fault_type") or runtime.main_fault.get("fault_type") or ""),
+            "duration_seconds": ledger.get("duration_seconds"),
+            "intensity": dict(ledger.get("intensity") or {}),
+            "experiment_name": ledger.get("experiment_name"),
+            "ledger_state": ledger.get("state"),
+            "cleanup_principal": ledger.get("cleanup_principal"),
+            "started_at": ledger.get("started_at"),
+            "ended_at": ledger.get("ended_at"),
+            "deadline_at": ledger.get("deadline_at"),
+            "matching_resource_count": len(matching_resources),
+            "ledger_match_count": len(trial_ledgers),
+            "executor_id": ledger_executor,
         }
+        return snapshot
+
+    async def _cleanup_owned(self, runtime) -> dict[str, Any]:
+        inventory = await self._inventory_trial(runtime)
+        if inventory.get("qualified") is not True:
+            return {"verified_absent": False, "principal": "CONTROLLER_FALLBACK", "reason": "fault_inventory_incomplete"}
+        trial = dict(inventory.get("trial") or {})
+        if int(trial.get("ledger_match_count") or 0) == 0:
+            return {"verified_absent": inventory.get("owned_resources_absent") is True, "principal": "CONTROLLER_FALLBACK", "idempotent": True}
+        if int(trial.get("ledger_match_count") or 0) != 1:
+            return {"verified_absent": False, "principal": "CONTROLLER_FALLBACK", "reason": "ambiguous_trial_ledger"}
+        executor_id = str(trial.get("executor_id") or "")
+        if executor_id not in self.services:
+            return {"verified_absent": False, "principal": "CONTROLLER_FALLBACK", "reason": "unknown_trial_executor"}
+        result = await self.services[executor_id].destroy_experiment(
+            cleanup_handle=runtime.cleanup_handle, kubeconfig=self.kubeconfig,
+            principal="CONTROLLER_FALLBACK",
+        )
+        return {**dict(result), "principal": "CONTROLLER_FALLBACK", "executor_id": executor_id}
+
+    @staticmethod
+    def _read_ledgers(service) -> list[dict[str, Any]]:
+        rows = []
+        for path in service._iter_cleanup_ledger_paths():
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("invalid cleanup ledger record")
+            rows.append(value)
+        return rows
+
+    @staticmethod
+    def _matches_any_ledger(record, ledgers: list[dict[str, Any]], executor_id: str) -> bool:
+        return any(
+            ledger.get("executor_id") == executor_id
+            and ledger.get("experiment_name") == record.name
+            and ledger.get("namespace") == record.namespace
+            and ledger.get("run_id") == record.run_id
+            and ledger.get("target_uid") == record.target_uid
+            and ledger.get("fault_type") == record.fault_type
+            for ledger in ledgers
+        )
+
+    async def _status(self, cleanup_handle: str) -> dict[str, Any]:
+        executor_id, service = self._service_for_handle(cleanup_handle)
+        result = await service.recovery_status(
+            cleanup_handle=cleanup_handle, kubeconfig=self.kubeconfig
+        )
+        return {**dict(result), "executor_id": executor_id}
+
+    async def _destroy(self, cleanup_handle: str) -> dict[str, Any]:
+        executor_id, service = self._service_for_handle(cleanup_handle)
+        result = await service.destroy_experiment(
+            cleanup_handle=cleanup_handle,
+            kubeconfig=self.kubeconfig,
+            principal="CONTROLLER_FALLBACK",
+        )
+        return {**dict(result), "executor_id": executor_id, "principal": "CONTROLLER_FALLBACK"}
+
+    def _service_for_handle(self, cleanup_handle: str):
+        matches = []
+        for executor_id, service in self.services.items():
+            for ledger in self._read_ledgers(service):
+                if ledger.get("cleanup_handle") != cleanup_handle:
+                    continue
+                if ledger.get("executor_id") != executor_id:
+                    continue
+                matches.append((executor_id, service))
+        if len(matches) != 1:
+            raise RuntimeError("cleanup handle has no unique executor-owned ledger")
+        return matches[0]
 
 
 class Stage2System:
@@ -784,16 +1075,20 @@ class Stage2System:
         self._active_controls: dict[str, dict[str, Any]] = {}
 
     def preflight(self) -> dict[str, Any]:
-        codex = os.environ.get("RESBENCH_CODEX_EVAL_BIN", "")
-        blade_python = os.environ.get(
-            "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
-        )
         available_models, model_error = self._gateway_models()
+        qualification_path = os.environ.get("STAGE2_HARNESS_CAPABILITIES_FILE")
+        harness_capabilities, capability_qualification = (
+            harness_capabilities_from_qualification(
+                Path(qualification_path).resolve() if qualification_path else None
+            )
+        )
+        # Harness CLIs live in the isolated Agent runtime, not the Controller
+        # container.  Only a fresh, evidence-backed descriptor establishes
+        # eligibility here; actual sidecar connection remains fail-closed when
+        # a Trial starts.
         runtimes = {
-            "codex": bool(codex and Path(codex).is_file()),
-            "claude-code": shutil.which("claude") is not None,
-            "deepseek-harness": shutil.which("dsh") is not None,
-            "bladeai": Path(blade_python).is_file(),
+            name: bool(harness_capabilities.get(name, {}).get("qualification_passed"))
+            for name in ("codex", "claude-code", "deepseek-harness", "bladeai")
         }
         model_matrix = {
             name: {
@@ -806,7 +1101,7 @@ class Stage2System:
             name: all(model_matrix[name].values()) for name in runtimes
         }
         return {
-            "schema_version": "stage2-preflight.v2",
+            "schema_version": "stage2-preflight.v3",
             "status": "READY" if any(harnesses.values()) else "ERROR",
             "harnesses": harnesses,
             "models": list(STAGE2_SUPPORTED_MODELS),
@@ -814,13 +1109,17 @@ class Stage2System:
             "available_models": sorted(available_models),
             "model_catalog_error": model_error,
             "cases": [item.model_dump(mode="json") for item in default_case_specs()],
-            "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
-            "bidirectional_sessions": {
-                "codex": True,
-                "claude-code": True,
-                "deepseek-harness": False,
-                "bladeai": False,
+            "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel"],
+            "disturbance_mcp_servers": {
+                "D7": ["coroot_ro", "chaos_mesh_control", "code_sandbox"],
+                "D8": ["coroot_ro", "chaos_mesh_control", "code_sandbox"],
             },
+            "executors": {
+                "chaosblade": {"server": "chaos_control", "execute_enabled_required": True},
+                "chaos_mesh": {"server": "chaos_mesh_control", "execute_enabled_required": True},
+            },
+            "harness_capabilities": harness_capabilities,
+            "harness_capability_qualification": capability_qualification,
             "d0": self.d0_gate.inventory(),
             "reset_mode": "mutation_evidence_tiered",
         }
@@ -846,6 +1145,11 @@ class Stage2System:
             if isinstance(item, Mapping) and item.get("id")
         }, None
 
+    def build_runtime(self, episode, request_model_by_harness, *, namespace="otel-demo") -> Stage2Components:
+        """Compose one attempt with this system's pinned configuration."""
+        return _build_runtime(config=self.config, episode=episode,
+                              request_model_by_harness=request_model_by_harness, namespace=namespace)
+
     def run(
         self,
         request: CampaignRequest,
@@ -853,153 +1157,46 @@ class Stage2System:
         stop_requested=None,
     ) -> CampaignResult:
         episode = load_fixed_episode(request.episode, root=self.config.repo_root)
-        gate = KubernetesEnvironmentGate(self.config.kubeconfig)
-        traffic = KubernetesTrafficEvidence(gate, episode)
-        private = self.config.private_root
-        baseline_dir = private / "chaos-control/baseline"
-        ledger_dir = private / "chaos-control/active"
-        for path in (baseline_dir, ledger_dir):
-            path.mkdir(mode=0o700, parents=True, exist_ok=True)
-            os.chmod(path, 0o700)
-        permission_backend = KubernetesPermissionBackend.from_incluster()
-        token_registry = McpTokenStateRegistry(private / "mcp-tokens")
-        permissions = Stage2PermissionManager(
-            private_root=private / "permissions",
-            token_registry=token_registry,
-            permission_backend=permission_backend,
-        )
-        issuer = ApplicationTrafficCapabilityIssuer(
-            ledger_dir=baseline_dir,
-            controller_pod_uid=self.config.controller_pod_uid,
-            traffic_evidence=traffic,
-        )
-        preparer = KubernetesTrialPreparer.from_incluster(issuer)
-        controller_token_ref = (
-            "k8s://resiliencebenchmark-system/serviceaccount/resbench-stage2"
-        )
-        mcp_environment = {
-            "RESBENCH_K8S_RO_KUBECONFIG": str(self.config.kubeconfig),
-            "RESBENCH_K8S_RO_NAMESPACE_ALLOWLIST": "otel-demo",
-            "RESBENCH_PROMETHEUS_URL": "http://prometheus.observability.svc:9090",
-            "RESBENCH_JAEGER_URL": "http://jaeger-query.observability.svc:16686",
-            "RESBENCH_LOKI_URL": "http://loki.observability.svc:3100",
-            "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": "otel-demo",
-            "RESBENCH_JAEGER_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
-            "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
-            "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(private / "telemetry"),
-            "RESBENCH_WORKLOAD_STATS_URL": "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
-            "RESBENCH_WORKLOAD_STAT_NAME": "/api/cart",
-            "RESBENCH_SOURCE_ROOT": str(self.config.source_root),
-            "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": "otel-demo",
-            "RESBENCH_CHAOS_EXECUTE_ENABLED": "true",
-            "RESBENCH_CHAOS_KUBECONFIG": str(self.config.kubeconfig),
-            "RESBENCH_CHAOS_NAMESPACE_ALLOWLIST": "otel-demo",
-            "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": controller_token_ref,
-            "RESBENCH_CHAOS_CONTROLLER_POD_UID": self.config.controller_pod_uid,
-            "RESBENCH_CHAOS_CONTROLLER_POD_NAMESPACE": self.config.controller_pod_namespace,
-            "RESBENCH_CHAOS_CONTROLLER_POD_NAME": self.config.controller_pod_name,
-            "RESBENCH_CHAOS_BASELINE_LEDGER_DIR": str(baseline_dir),
-            "RESBENCH_CHAOS_LEDGER_DIR": str(ledger_dir),
-        }
-        supervisor = McpSupervisor(
-            private_root=private / "mcp-runtime",
-            base_environment=mcp_environment,
-        )
-        harness_environment = {
-            "RESBENCH_LLM_BASE_URL": self.config.llm_base_url,
-            "RESBENCH_LLM_API_KEY": self.config.llm_api_key,
-            "RESBENCH_CHAOS_CONTROLLER_TOKEN_REF": controller_token_ref,
-            "RESBENCH_CHAOS_CONTROLLER_POD_UID": self.config.controller_pod_uid,
-            "RESBENCH_CODEX_EVAL_BIN": os.environ.get(
-                "RESBENCH_CODEX_EVAL_BIN", ""
-            ),
-            "STAGE2_BLADEAI_PYTHON": os.environ.get(
-                "STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"
-            ),
-            "STAGE2_BLADEAI_MODEL": request.model_by_harness.get(
-                next(
-                    harness
-                    for harness in request.harnesses
-                    if harness.value == "bladeai"
-                ),
-                STAGE2_DEFAULT_MODEL,
-            )
-            if any(harness.value == "bladeai" for harness in request.harnesses)
-            else STAGE2_DEFAULT_MODEL,
-        }
-        harness_runner = NativeHarnessRunner(
-            repo_root=self.config.repo_root,
-            private_root=private / "harness",
-            artifact_root=self.config.artifact_root,
-            permissions=permissions,
-            mcp_supervisor=supervisor,
-            base_environment=harness_environment,
-        )
-        runtime_client = KubernetesDisturbanceClient.from_kubeconfig(
-            self.config.kubeconfig
-        )
-        disturbance_executor = CompositeDisturbanceExecutor(
-            kubernetes_client=runtime_client,
-            mcp_tokens=token_registry,
-            rbac_permissions=permission_backend,
-            target_rebinder=issuer,
-            mcp_supervisor=supervisor,
-        )
-        chaos_service = ChaosControlService(RuntimeConfig.from_env(mcp_environment))
-        cleanup_backend = DirectChaosCleanup(
-            chaos_service, self.config.kubeconfig
-        )
-        finalizer = Stage2Finalizer(
-            cleanup_backend,
-            traffic,
-            recovery_timeout_seconds=180,
-        )
-        resetter = OtelDemoResetter(
-            repo_root=self.config.repo_root,
-            kubeconfig=self.config.kubeconfig,
-            runtime_env_file=self.config.runtime_env_file,
-            chart_file=self.config.otel_chart_file,
-            environment_gate=gate,
-            traffic_evidence=traffic,
-            timeout_seconds=120,
-            recovery_timeout_seconds=180,
-            verify_only=False,
+        components = self.build_runtime(
+            episode, request.model_by_harness,
+            namespace=request.application_namespace,
         )
         engine = CampaignEngine(
             episode=episode,
-            environment_gate=gate,
-            preparer=preparer,
-            permissions=permissions,
-            harness_runner=harness_runner,
+            environment_gate=components.gate,
+            preparer=components.preparer,
+            permissions=components.permissions,
+            harness_runner=components.harness_runner,
             disturbance_planner=RuntimeDisturbancePlanner(),
-            disturbance_executor=disturbance_executor,
-            finalizer=finalizer,
+            disturbance_executor=components.disturbance_executor,
+            finalizer=components.finalizer,
             evaluator=Stage2Evaluator(),
-            resetter=resetter,
+            resetter=components.resetter,
             condition_monitor_factory=lambda: ConditionRecoveryMonitor(
-                traffic, cleanup_backend
+                components.traffic, components.cleanup_backend
             ),
             artifacts=ArtifactStore(self.config.artifact_root),
+            platform_ledger=components.token_registry.platform_ledger,
             qualification_gate=self.d0_gate,
         )
         with self._active_lock:
             self._active_controls[request.request_id] = {
-                "permissions": permissions,
-                "resetter": resetter,
+                "permissions": components.permissions,
+                "resetter": components.resetter,
                 "episode": episode,
             }
         try:
-            traffic.start_sampling()
+            components.traffic.start_sampling()
             return engine.run(
                 request,
                 event_observer=event_observer,
                 stop_requested=stop_requested,
             )
         finally:
-            traffic.close()
+            components.traffic.close()
             with self._active_lock:
                 self._active_controls.pop(request.request_id, None)
-            supervisor.stop()
+            components.supervisor.stop()
 
     def restore_permissions(
         self, task_id: str, trial_id: str | None, target_state: str
@@ -1023,17 +1220,17 @@ class Stage2System:
                 "target_state": target_state,
                 "reason": "the active Agent runtime is no longer available",
             }
-        backend = KubernetesPermissionBackend.from_incluster()
-        cleanup = dict(backend.cleanup_trial(trial_id))
         token_root = self.config.private_root / "mcp-tokens" / trial_id
+        removed_tokens = 0
         if token_root.is_dir():
             for path in token_root.iterdir():
                 if path.is_file():
                     path.unlink(missing_ok=True)
+                    removed_tokens += 1
         return {
-            "verified": cleanup.get("verified") is True,
+            "verified": True,
             "target_state": target_state,
-            "backend": cleanup,
+            "mcp_tokens_removed": removed_tokens,
         }
 
     def reset_environment(self, operation_id: str, application: str) -> Mapping[str, Any]:
@@ -1086,21 +1283,21 @@ def write_incluster_kubeconfig(path: Path) -> None:
         ],
         "users": [
             {
-                "name": "resbench-stage2",
-                "user": {"token": token_path.read_text(encoding="utf-8").strip()},
+                "name": CONTROLLER_SERVICE_ACCOUNT,
+                "user": {"tokenFile": str(token_path)},
             }
         ],
         "contexts": [
             {
-                "name": "resbench-stage2",
+                "name": CONTROLLER_SERVICE_ACCOUNT,
                 "context": {
                     "cluster": "kubernetes",
-                    "user": "resbench-stage2",
+                    "user": CONTROLLER_SERVICE_ACCOUNT,
                     "namespace": "otel-demo",
                 },
             }
         ],
-        "current-context": "resbench-stage2",
+        "current-context": CONTROLLER_SERVICE_ACCOUNT,
     }
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")

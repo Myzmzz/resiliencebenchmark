@@ -91,6 +91,9 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
     assert context.target.name == "cart-abc"
     assert context.target.uid == "uid-current"
     assert core.selectors[0] == "app.kubernetes.io/component=cart"
+    assert context.main_fault["target"]["selection_mode"] == "controller_explicit"
+    assert context.main_fault["target"]["component"] == "cart"
+    assert context.main_fault["target"]["pod_name"] == "cart-abc"
     assert context.main_fault["target"]["pod_uid"] == "uid-current"
     assert context.main_fault["duration_seconds"] == 1200
     assert context.main_fault["intensity"] == {"delay_ms": 2000}

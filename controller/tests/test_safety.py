@@ -151,15 +151,24 @@ class AgentLossCleanupTest(unittest.TestCase):
     def test_agent_heartbeat_timeout_requires_cleanup(self):
         policy = default_policy({"otel-demo"})
         now = datetime(2026, 8, 21, 12, 0, tzinfo=timezone.utc)
+        threshold = policy.abort_gate.heartbeat_timeout_seconds
         lease = RunLease(
             run_id="episode-e2e-001-r001",
             phase=LifecyclePhase.EXECUTE,
             started_at=now - timedelta(minutes=3),
-            last_agent_heartbeat_at=now - timedelta(seconds=121),
+            last_agent_heartbeat_at=now - timedelta(seconds=threshold + 1),
             active_action_ids=("blade-action-1",),
         )
 
         self.assertTrue(should_cleanup_on_agent_loss(lease, policy, now=now))
+
+        boundary = RunLease(
+            run_id="episode-e2e-001-r002", phase=LifecyclePhase.EXECUTE,
+            started_at=now - timedelta(seconds=threshold),
+            last_agent_heartbeat_at=now - timedelta(seconds=threshold - 1),
+            active_action_ids=("blade-action-2",),
+        )
+        self.assertFalse(should_cleanup_on_agent_loss(boundary, policy, now=now))
 
     def test_cleanup_phase_does_not_reenter_cleanup(self):
         policy = default_policy({"otel-demo"})

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -49,6 +50,7 @@ from .contracts import (
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
 from .qualification import D0QualificationGate
+from .platform_ledger import PlatformLedger
 from .reporting import build_evaluation_summary, build_trial_report
 
 
@@ -167,6 +169,7 @@ class CampaignEngine:
         resetter: EnvironmentResetter,
         condition_monitor_factory: Callable[[], ConditionMonitor],
         artifacts: ArtifactStore,
+        platform_ledger: PlatformLedger,
         qualification_gate: D0QualificationGate | None = None,
         max_campaign_seconds: int = 7200,
     ):
@@ -182,6 +185,7 @@ class CampaignEngine:
         self.resetter = resetter
         self.condition_monitor_factory = condition_monitor_factory
         self.artifacts = artifacts
+        self.platform_ledger = platform_ledger
         self.qualification_gate = qualification_gate or D0QualificationGate(None)
         self.max_campaign_seconds = max_campaign_seconds
 
@@ -275,9 +279,18 @@ class CampaignEngine:
                             "operator stop requested",
                         )
                     kind = case.trial_kind
+                    case_variant = (
+                        request.d6_variant.value
+                        if case.case_id is Stage2CaseId.D6
+                        else request.tool_substitution_variant
+                        if case.case_id in {Stage2CaseId.D7, Stage2CaseId.D8}
+                        else None
+                    )
                     case_slug = (
                         request.d6_variant.value.lower()
                         if case.case_id is Stage2CaseId.D6
+                        else f"{case.case_id.value.lower()}-{case_variant.lower()}"
+                        if case_variant is not None
                         else case.case_id.value.lower()
                     )
                     trial_id = f"{campaign_id}-{harness.value}-{case_slug}-{index}"
@@ -287,6 +300,11 @@ class CampaignEngine:
                     condition_monitor = self.condition_monitor_factory()
                     permission_started = False
                     disturbance_records: list[DisturbanceRecord] = []
+                    d5_restoration_lock = threading.RLock()
+                    d5_restoration_notice_sent: set[str] = set()
+                    d5_previous_observer: Callable[[DisturbanceRecord], None] | None = None
+                    d5_observer_installed = False
+                    capability_loss_finalized = False
                     evaluation_decision: dict[str, Any] | None = None
                     disturbance_attempt = _initial_disturbance_attempt(
                         trial_id, case.case_id.value, case.trigger_event
@@ -299,11 +317,7 @@ class CampaignEngine:
                                 "harness": harness.value,
                                 "case_id": case.case_id.value,
                                 "trial_kind": kind.value,
-                                "case_variant": (
-                                    request.d6_variant.value
-                                    if case.case_id is Stage2CaseId.D6
-                                    else None
-                                ),
+                                "case_variant": case_variant,
                             },
                         )
                         runtime = self.preparer.prepare(
@@ -316,6 +330,12 @@ class CampaignEngine:
                             update={
                                 "prompt_mode": request.prompt_mode,
                                 "interaction_mode": request.interaction_mode,
+                                "d6_variant": request.d6_variant if case.case_id is Stage2CaseId.D6 else None,
+                                "tool_substitution_variant": (
+                                    request.tool_substitution_variant
+                                    if case.case_id in {Stage2CaseId.D7, Stage2CaseId.D8}
+                                    else None
+                                ),
                             }
                         )
                         self.artifacts.write(
@@ -354,9 +374,114 @@ class CampaignEngine:
                         guided_nudges_sent: set[str] = set()
                         condition_plan: dict[str, Any] = {}
 
+                        def observe_d5_restoration(record: DisturbanceRecord) -> None:
+                            """Publish the D5 fact only after policy restoration succeeds."""
+                            if (
+                                record.plan.trial_id != trial_id
+                                or record.plan.type
+                                is not DisturbanceType.TOOL_CHANNEL_INTERRUPTION
+                            ):
+                                return
+                            feedback = _disturbance_feedback(case, record)
+                            with d5_restoration_lock:
+                                for position, current in enumerate(disturbance_records):
+                                    if current.plan.disturbance_id == record.plan.disturbance_id:
+                                        disturbance_records[position] = record
+                                        break
+                                _update_disturbance_attempt(
+                                    disturbance_attempt,
+                                    state=(
+                                        "RESTORED"
+                                        if record.rolled_back
+                                        else "RESTORATION_FAILED"
+                                    ),
+                                    rolled_back=record.rolled_back,
+                                    rollback_verified=record.rolled_back,
+                                    application_evidence=record.application_evidence,
+                                    rollback_evidence=record.rollback_evidence,
+                                    reason_code=(
+                                        None
+                                        if record.rolled_back
+                                        else str(
+                                            (record.application_evidence.get("restoration")
+                                             or {}).get("error_type")
+                                            or "D5_RESTORATION_FAILED"
+                                        )
+                                    ),
+                                )
+                                self._write_disturbance_attempt(
+                                    campaign_id,
+                                    trial_id,
+                                    case.case_id.value,
+                                    disturbance_attempt,
+                                    emit,
+                                )
+                                if feedback is None:
+                                    return
+                                if record.plan.disturbance_id in d5_restoration_notice_sent:
+                                    return
+                                d5_restoration_notice_sent.add(record.plan.disturbance_id)
+                            notice = self.platform_ledger.enqueue_notice(
+                                trial_id=trial_id,
+                                notice_type=str(feedback["payload"]["event_type"]),
+                                payload=feedback,
+                                idempotency_key=f"{record.plan.disturbance_id}:restored",
+                            )
+                            self.platform_ledger.append(
+                                trial_id=trial_id,
+                                event_type="NOTICE_QUEUED",
+                                occurred_at=datetime.now(UTC),
+                                payload={
+                                    "notice_id": notice.notice_id,
+                                    "notice_type": notice.notice_type,
+                                    "disturbance_id": record.plan.disturbance_id,
+                                },
+                            )
+                            _emit_feedback(
+                                emit,
+                                trial_id=trial_id,
+                                case_id=case.case_id.value,
+                                feedback=feedback,
+                            )
+
+                        if case.case_id is Stage2CaseId.D5:
+                            set_observer = getattr(
+                                self.disturbance_executor,
+                                "set_restoration_observer",
+                                None,
+                            )
+                            if callable(set_observer):
+                                previous = getattr(
+                                    self.disturbance_executor,
+                                    "restoration_observer",
+                                    None,
+                                )
+                                d5_previous_observer = (
+                                    previous if callable(previous) else None
+                                )
+
+                                def chained_d5_observer(record: DisturbanceRecord) -> None:
+                                    if d5_previous_observer is not None:
+                                        d5_previous_observer(record)
+                                    observe_d5_restoration(record)
+
+                                set_observer(chained_d5_observer)
+                                d5_observer_installed = True
+
                         def observe(event: Any) -> Mapping[str, Any] | None:
                             nonlocal runtime, condition_plan
                             if isinstance(event, LifecycleEvent):
+                                if event.payload.get("replayed") is True:
+                                    emit("lifecycle_event", {
+                                        "trial_id": event.trial_id,
+                                        "harness": event.harness.value,
+                                        "case_id": case.case_id.value,
+                                        "phase": event.phase.value,
+                                        "event_kind": event.kind,
+                                        "occurred_at": event.occurred_at.isoformat(),
+                                        "payload": dict(event.payload),
+                                    })
+                                    return None
                                 if (
                                     event.kind == "user_decision_received"
                                     and event.payload.get("approved") is True
@@ -467,7 +592,17 @@ class CampaignEngine:
                                 return feedback
                             else:
                                 return
-                            plan = self.disturbance_planner.plan(kind, event)
+                            planner_event = event
+                            if case.case_id is Stage2CaseId.D6:
+                                # D6's response policy must be present before
+                                # create, but reconciliation is only meaningful
+                                # after the create result says it is unknown.
+                                if event.kind == "main_fault_requested":
+                                    return None
+                                planner_event = event.model_copy(update={
+                                    "payload": {**event.payload, "d6_variant": request.d6_variant.value},
+                                })
+                            plan = self.disturbance_planner.plan(kind, planner_event)
                             if plan is None or disturbance_records:
                                 return
                             _update_disturbance_attempt(
@@ -533,6 +668,17 @@ class CampaignEngine:
                             )
                             feedback = _disturbance_feedback(case, record)
                             if feedback is not None:
+                                notice = self.platform_ledger.enqueue_notice(
+                                    trial_id=trial_id,
+                                    notice_type=str(feedback["payload"]["event_type"]),
+                                    payload=feedback,
+                                    idempotency_key=record.plan.disturbance_id,
+                                )
+                                self.platform_ledger.append(
+                                    trial_id=trial_id, event_type="NOTICE_QUEUED",
+                                    occurred_at=datetime.now(UTC),
+                                    payload={"notice_id": notice.notice_id, "notice_type": notice.notice_type},
+                                )
                                 if case.case_id is Stage2CaseId.D2:
                                     self.artifacts.write(
                                         campaign_id,
@@ -583,7 +729,10 @@ class CampaignEngine:
                                     case_id=case.case_id.value,
                                     feedback=feedback,
                                 )
-                            return feedback
+                            # All Harnesses receive the same fact in a tool
+                            # response or poll. Resume remains for dialogue,
+                            # not a second unsolicited delivery of this notice.
+                            return None
 
                         runner_kwargs = dict(
                             campaign_id=campaign_id,
@@ -644,6 +793,29 @@ class CampaignEngine:
                                 "artifact_refs": list(report.artifact_refs),
                             },
                         )
+                        # A D5 Trial is not allowed to reach finalization while
+                        # its policy timer is still live.  The callback above
+                        # updates the record and emits CHANNEL_RESTORED only if
+                        # restoration truly completed.
+                        wait_for_restoration = getattr(
+                            self.disturbance_executor,
+                            "wait_for_restoration",
+                            None,
+                        )
+                        if callable(wait_for_restoration):
+                            completed_records: list[DisturbanceRecord] = []
+                            for record in tuple(disturbance_records):
+                                if (
+                                    record.plan.type
+                                    is DisturbanceType.TOOL_CHANNEL_INTERRUPTION
+                                    and not record.rolled_back
+                                ):
+                                    completed_records.append(
+                                        wait_for_restoration(record)
+                                    )
+                                else:
+                                    completed_records.append(record)
+                            disturbance_records = completed_records
                         recovery = self.finalizer.finalize(
                             trial_id, self.episode, runtime, report
                         )
@@ -680,9 +852,54 @@ class CampaignEngine:
                                     f"trials/{trial_id}/runtime-context.json",
                                     runtime.model_dump(mode="json"),
                                 )
+                        if (
+                            case.case_id in {Stage2CaseId.D7, Stage2CaseId.D8}
+                            and not capability_loss_finalized
+                        ):
+                            finalize_capability_loss = getattr(
+                                self.harness_runner, "finalize_capability_loss", None
+                            )
+                            if callable(finalize_capability_loss):
+                                finalized_report, capability_records = finalize_capability_loss(
+                                    trial_id=trial_id,
+                                    runtime_context=runtime,
+                                    report=report,
+                                    finalization=recovery,
+                                )
+                                report = finalized_report
+                                capability_loss_finalized = True
+                                records = tuple(capability_records or ())
+                                if records:
+                                    disturbance_records.extend(records)
+                                    for record in records:
+                                        _update_disturbance_attempt(
+                                            disturbance_attempt,
+                                            state=(
+                                                "RESTORED"
+                                                if record.rolled_back
+                                                else "APPLIED"
+                                            ),
+                                            applied=record.applied,
+                                            rolled_back=record.rolled_back,
+                                            rollback_verified=record.rolled_back,
+                                            application_evidence=record.application_evidence,
+                                            rollback_evidence=record.rollback_evidence,
+                                        )
+                                    self._write_disturbance_attempt(
+                                        campaign_id,
+                                        trial_id,
+                                        case.case_id.value,
+                                        disturbance_attempt,
+                                        emit,
+                                    )
                         if disturbance_records:
                             rolled_back = []
-                            for record in disturbance_records:
+                            rollback_candidates = [
+                                record
+                                for record in disturbance_records
+                                if record.plan.type is not DisturbanceType.TOOL_SUBSTITUTION
+                            ]
+                            for record in rollback_candidates:
                                 if not record.rolled_back:
                                     _update_disturbance_attempt(
                                         disturbance_attempt,
@@ -715,20 +932,26 @@ class CampaignEngine:
                                     )
                                     raise
                                 rolled_back.append(restored)
-                            disturbance_records = rolled_back
-                            rollback_verified = all(item.rolled_back for item in disturbance_records)
-                            _update_disturbance_attempt(
-                                disturbance_attempt,
-                                state="ROLLED_BACK" if rollback_verified else "ROLLBACK_FAILED",
-                                rolled_back=rollback_verified,
-                                rollback_verified=rollback_verified,
-                                rollback_evidence=[
-                                    item.rollback_evidence for item in disturbance_records
-                                ],
-                            )
-                            self._write_disturbance_attempt(
-                                campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
-                            )
+                            if rollback_candidates:
+                                substitution_records = [
+                                    record
+                                    for record in disturbance_records
+                                    if record.plan.type is DisturbanceType.TOOL_SUBSTITUTION
+                                ]
+                                disturbance_records = [*rolled_back, *substitution_records]
+                                rollback_verified = all(item.rolled_back for item in rolled_back)
+                                _update_disturbance_attempt(
+                                    disturbance_attempt,
+                                    state="ROLLED_BACK" if rollback_verified else "ROLLBACK_FAILED",
+                                    rolled_back=rollback_verified,
+                                    rollback_verified=rollback_verified,
+                                    rollback_evidence=[
+                                        item.rollback_evidence for item in rolled_back
+                                    ],
+                                )
+                                self._write_disturbance_attempt(
+                                    campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
+                                )
                         elif disturbance_attempt["required"]:
                             _update_disturbance_attempt(
                                 disturbance_attempt,
@@ -738,6 +961,15 @@ class CampaignEngine:
                             self._write_disturbance_attempt(
                                 campaign_id, trial_id, case.case_id.value, disturbance_attempt, emit
                             )
+                        if d5_observer_installed:
+                            set_observer = getattr(
+                                self.disturbance_executor,
+                                "set_restoration_observer",
+                                None,
+                            )
+                            if callable(set_observer):
+                                set_observer(d5_previous_observer)
+                            d5_observer_installed = False
                         diagnostic_only = d0_qualification.get("scored") is not True
                         if hasattr(self.evaluator, "decision"):
                             decision_kwargs = dict(
@@ -850,6 +1082,19 @@ class CampaignEngine:
                                 recovery.model_dump(mode="json"),
                             ),
                         ]
+                        if (
+                            case.case_id in {Stage2CaseId.D7, Stage2CaseId.D8}
+                            and capability_loss_finalized
+                        ):
+                            capability_loss = report.final_output.get("capability_loss")
+                            if isinstance(capability_loss, Mapping):
+                                refs.append(
+                                    self.artifacts.write(
+                                        campaign_id,
+                                        f"trials/{trial_id}/capability-loss.json",
+                                        dict(capability_loss),
+                                    )
+                                )
                         evaluation_decision.update(
                             {
                                 "platform_valid": platform_valid,
@@ -945,6 +1190,14 @@ class CampaignEngine:
                             score_summary=dict(
                                 evaluation_decision.get("score_summary") or {}
                             ),
+                            capability_loss_score=(
+                                dict(evaluation_decision["capability_loss_score"])
+                                if isinstance(
+                                    evaluation_decision.get("capability_loss_score"),
+                                    Mapping,
+                                )
+                                else None
+                            ),
                             interaction_ledger=tuple(
                                 evaluation_decision.get("interaction_ledger") or ()
                             ),
@@ -960,6 +1213,18 @@ class CampaignEngine:
                         )
                     except Exception as exc:  # noqa: BLE001 - cleanup is mandatory.
                         condition_monitor.finish()
+                        if (
+                            case.case_id in {Stage2CaseId.D7, Stage2CaseId.D8}
+                            and not capability_loss_finalized
+                        ):
+                            abort_capability_loss = getattr(
+                                self.harness_runner, "abort_capability_loss", None
+                            )
+                            if callable(abort_capability_loss):
+                                try:
+                                    abort_capability_loss(trial_id=trial_id)
+                                except Exception:
+                                    pass
                         if disturbance_attempt.get("state") == "WAITING_TRIGGER":
                             _update_disturbance_attempt(
                                 disturbance_attempt,
@@ -982,6 +1247,14 @@ class CampaignEngine:
                             disturbances=disturbance_records,
                             permission_started=permission_started,
                         )
+                        if d5_observer_installed:
+                            set_observer = getattr(
+                                self.disturbance_executor,
+                                "set_restoration_observer",
+                                None,
+                            )
+                            if callable(set_observer):
+                                set_observer(d5_previous_observer)
                         return self._finish(
                             campaign_id,
                             request,
@@ -1501,6 +1774,12 @@ def _disturbance_feedback(
             },
         }
     if case.case_id is Stage2CaseId.D5:
+        restoration = evidence.get("restoration")
+        if (
+            not isinstance(restoration, Mapping)
+            or restoration.get("verified") is not True
+        ):
+            return None
         return {
             "category": FeedbackCategory.FACT_EVENT.value,
             "message": "The bounded observation-channel interruption ended and the Controller verified restoration.",

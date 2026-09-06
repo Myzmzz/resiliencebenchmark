@@ -7,7 +7,7 @@ from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.types import ToolAnnotations
 
-from mcp_servers.http_runtime import run_mcp_server
+from mcp_servers.http_runtime import PolicyGate, run_mcp_server
 
 from .core import SourceROError, SourceROIndex, error_envelope
 
@@ -48,6 +48,7 @@ def create_server(
         auth=auth,
         token_verifier=token_verifier,
     )
+    policy_gate = PolicyGate.from_env("source_ro")
 
     @server.tool(
         name="source_list_repositories",
@@ -56,6 +57,7 @@ def create_server(
         annotations=READ_ONLY_ANNOTATIONS,
         structured_output=True,
     )
+    @policy_gate.guard("source_list_repositories")
     def list_repositories(
         application: str | None = None,
         component: str | None = None,
@@ -80,6 +82,7 @@ def create_server(
         annotations=READ_ONLY_ANNOTATIONS,
         structured_output=True,
     )
+    @policy_gate.guard("source_list_files")
     def list_files(
         repo_id: str,
         path: str = ".",
@@ -106,6 +109,7 @@ def create_server(
         annotations=READ_ONLY_ANNOTATIONS,
         structured_output=True,
     )
+    @policy_gate.guard("source_search_text")
     def search_text(
         repo_id: str,
         query: str,
@@ -134,6 +138,7 @@ def create_server(
         annotations=READ_ONLY_ANNOTATIONS,
         structured_output=True,
     )
+    @policy_gate.guard("source_read_file")
     def read_file(
         repo_id: str,
         path: str,
@@ -158,6 +163,7 @@ def create_server(
         annotations=READ_ONLY_ANNOTATIONS,
         structured_output=True,
     )
+    @policy_gate.guard("source_show_commit")
     def show_commit(repo_id: str, format: str = "json") -> dict[str, Any]:
         return _call(lambda: _index().show_commit(repo_id, format=format))
 

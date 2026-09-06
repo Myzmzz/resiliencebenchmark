@@ -17,18 +17,15 @@ from .contracts import (
 from .condition_policy import CONDITION_POLICY
 from .request_observation import timestamp as evidence_timestamp
 from .reset_policy import classify_reset_policy
+from .trial_facts import assistance_level_from_report
 
 
 class ChaosCleanupBackend(Protocol):
-    def destroy(self, cleanup_handle: str) -> Mapping[str, Any]: ...
+    """Controller-only dual-executor contract; no Agent service is queried."""
 
-    def status(self, cleanup_handle: str) -> Mapping[str, Any]: ...
+    def inventory_trial(self, runtime: TrialRuntimeContext) -> Mapping[str, Any]: ...
 
-    def inventory(self, namespace: str) -> Mapping[str, Any]: ...
-
-    def external_status(self, runtime: TrialRuntimeContext) -> Mapping[str, Any]: ...
-
-    def cleanup_external(self, runtime: TrialRuntimeContext) -> Mapping[str, Any]: ...
+    def cleanup_owned(self, runtime: TrialRuntimeContext) -> Mapping[str, Any]: ...
 
 
 class RecoveryEvidenceProvider(Protocol):
@@ -79,15 +76,8 @@ class Stage2Finalizer:
         lifecycle_kinds = tuple(event.kind for event in report.lifecycle_events)
         agent_attempted = "recovery_requested" in lifecycle_kinds
         agent_cleanup_accepted = "recovery_accepted" in lifecycle_kinds
-        pre_status = self._safe(self.chaos.status, runtime.cleanup_handle)
-        external_managed = False
-        if pre_status.get("ever_active") is not True and hasattr(
-            self.chaos, "external_status"
-        ):
-            external_status = self._safe(self.chaos.external_status, runtime)
-            if external_status.get("ever_active") is True:
-                pre_status = external_status
-                external_managed = True
+        pre_inventory = self._safe(self.chaos.inventory_trial, runtime)
+        pre_status = self._trial_status(pre_inventory, runtime)
         pre_absent = pre_status.get("resource_absent") is True
         ever_active = pre_status.get("ever_active") is True
         agent_selected = (
@@ -124,11 +114,8 @@ class Stage2Finalizer:
                 self.sleep(
                     min(self.poll_seconds, timeout_wait_seconds or self.poll_seconds)
                 )
-                observed = (
-                    self._safe(self.chaos.external_status, runtime)
-                    if external_managed
-                    else self._safe(self.chaos.status, runtime.cleanup_handle)
-                )
+                observed_inventory = self._safe(self.chaos.inventory_trial, runtime)
+                observed = self._trial_status(observed_inventory, runtime)
                 if observed.get("resource_absent") is True:
                     pre_status = {**pre_status, **observed}
                     pre_absent = True
@@ -168,17 +155,13 @@ class Stage2Finalizer:
         if runtime_update:
             evidence_runtime = runtime.model_copy(update=runtime_update)
         destroy = (
-            self._safe(self.chaos.cleanup_external, runtime)
-            if external_managed
-            else self._safe(self.chaos.destroy, runtime.cleanup_handle)
+            {"verified_absent": True, "skipped": "already_absent"}
+            if pre_absent
+            else self._safe(self.chaos.cleanup_owned, runtime)
         )
-        status = (
-            self._safe(self.chaos.external_status, runtime)
-            if external_managed
-            else self._safe(self.chaos.status, runtime.cleanup_handle)
-        )
-        inventory = self._safe(self.chaos.inventory, runtime.target.namespace)
-        inventory_clear = inventory.get("global_chaosblade_count") == 0
+        post_inventory = self._safe(self.chaos.inventory_trial, runtime)
+        status = self._trial_status(post_inventory, runtime)
+        inventory_clear = post_inventory.get("inventory_clear") is True
         fault_contract["evidence_window"]["start"] = pre_status.get("started_at") or status.get("started_at")
         fault_contract["evidence_window"]["end"] = pre_status.get("ended_at") or status.get("ended_at")
         evidence_runtime = evidence_runtime.model_copy(update={"main_fault": fault_contract})
@@ -214,15 +197,11 @@ class Stage2Finalizer:
         }
         effect["timeout_recovery_observed"] = timeout_recovery_observed
         effect["timeout_wait_seconds"] = round(timeout_wait_seconds, 3)
-        effect["external_chaos_reconciled"] = external_managed
-        fault_absent = (
+        effect["fault_inventory"] = post_inventory
+        fault_absent = post_inventory.get("qualified") is True and (
             pre_absent
             or destroy.get("verified_absent") is True
-            or status.get("resource_absent") is True
-            or (
-                inventory.get("global_chaosblade_count") == 0
-                and inventory.get("active_owned_count") == 0
-            )
+            or post_inventory.get("owned_resources_absent") is True
         )
         try:
             evidence = dict(
@@ -252,6 +231,8 @@ class Stage2Finalizer:
         )
         effect["business_recovery_observation"] = evidence
         assistance = self._assistance_summary(report)
+        assistance["assistance_level"] = assistance_level_from_report(report).value
+        assistance["assisted"] = assistance["assistance_level"] != "NONE"
         mutation_evidence = {
             "schema_version": "stage2-mutation-evidence.v1",
             "main_fault_requested": "main_fault_requested" in lifecycle_kinds,
@@ -259,6 +240,9 @@ class Stage2Finalizer:
             "main_fault_target_verified": target_verified,
             "fault_absent": fault_absent,
             "fault_cleanup_verified": fault_absent,
+            "chaos_inventory_clear": inventory_clear,
+            "foreign_active_faults": int(post_inventory.get("foreign_active_count") or 0) > 0,
+            "fault_inventory_qualified": post_inventory.get("qualified") is True,
             "business_recovery_verified": business_recovered,
             "cleanup_attempted": True,
             "cleanup_verified": fault_absent,
@@ -336,7 +320,7 @@ class Stage2Finalizer:
             for event in report.lifecycle_events
         )
         agent_recovery_verified = queried_absence and business_observed_after_clear and business_recovered
-        controller_cleanup_verified = fault_absent
+        controller_cleanup_verified = fault_absent and post_inventory.get("qualified") is True
         ledger_state = str(
             pre_status.get("ledger_state") or pre_status.get("state") or ""
         )
@@ -371,6 +355,7 @@ class Stage2Finalizer:
                     or timer_cleaned
                     or (ever_active and not pre_absent)
                 ),
+                "cleanup_principal": destroy.get("principal", "CONTROLLER_FALLBACK"),
                 "business_verified_by": "ORACLE" if business_recovered else None,
             },
             main_fault_ever_active=ever_active,
@@ -402,6 +387,26 @@ class Stage2Finalizer:
             except ValueError:
                 pass
         return float(runtime.main_fault.get("duration_seconds") or 0) + 10
+
+    @staticmethod
+    def _trial_status(
+        inventory: Mapping[str, Any], runtime: TrialRuntimeContext
+    ) -> dict[str, Any]:
+        """Read Controller-reconciled Trial facts from the unified inventory.
+
+        Raw CR rows are deliberately insufficient for an absence claim: the
+        provider must also reconcile the Trial ledger and state this fact in
+        ``trial``.  This prevents a failed list operation from looking empty.
+        """
+        trial = inventory.get("trial")
+        if not isinstance(trial, Mapping) or inventory.get("qualified") is not True:
+            return {"resource_absent": False, "ever_active": False}
+        status = dict(trial)
+        status.setdefault("namespace", runtime.target.namespace)
+        status.setdefault("target_name", runtime.target.name)
+        status.setdefault("target_uid", runtime.target.uid)
+        status.setdefault("fault_type", runtime.main_fault.get("fault_type"))
+        return status
 
     @staticmethod
     def _safe(operation, *args) -> dict[str, Any]:
