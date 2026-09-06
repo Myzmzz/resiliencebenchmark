@@ -133,6 +133,20 @@ OPTIONAL_RUNTIME_ENV = {
     "RESBENCH_AUTHORIZED_RUN_ID",
     "RESBENCH_CODEX_AUTH_FILE",
 }
+AGENT_SHARED_RUNTIME_ENV = {
+    "RESBENCH_LLM_BASE_URL",
+    "RESBENCH_LLM_API_KEY",
+    "RESBENCH_MCP_TOKEN",
+    "RESBENCH_HARNESS_CHANNEL_MCP_URL",
+    "RESBENCH_HARNESS_CHANNEL_TOKEN",
+    "RESBENCH_K8S_MCP_URL",
+    "RESBENCH_TELEMETRY_MCP_URL",
+    "RESBENCH_SOURCE_MCP_URL",
+    "RESBENCH_CHAOS_CONTROL_MCP_URL",
+    "RESBENCH_COROOT_MCP_URL",
+    "RESBENCH_CHAOS_MESH_CONTROL_MCP_URL",
+    "RESBENCH_CODE_SANDBOX_MCP_URL",
+}
 ALLOWED_MCP_TOOLS = {
     "harness_channel": {"harness_consult", "harness_confirm", "harness_submit_result", "harness_poll_notices"},
     "k8s_ro": {
@@ -582,10 +596,10 @@ def child_env_for_harness(harness_name: str, parent_env: Mapping[str, str], home
             "RESBENCH_MCP_TOKEN": parent_env.get("RESBENCH_MCP_TOKEN", ""),
         }
     elif harness_name == "deepseek-harness":
-        child = {key: value for key, value in parent_env.items() if key in ALLOWED_RUNTIME_ENV and value}
+        child = {key: value for key, value in parent_env.items() if key in AGENT_SHARED_RUNTIME_ENV and value}
         child["DSH_TOOLS_MODE"] = "native"
     else:
-        child = {key: value for key, value in parent_env.items() if key in ALLOWED_RUNTIME_ENV and value}
+        child = {key: value for key, value in parent_env.items() if key in AGENT_SHARED_RUNTIME_ENV and value}
     child = {key: value for key, value in child.items() if value}
     for key in ("RESBENCH_HARNESS_CHANNEL_MCP_URL", "RESBENCH_HARNESS_CHANNEL_TOKEN"):
         if parent_env.get(key):

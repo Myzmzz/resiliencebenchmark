@@ -20,6 +20,7 @@ from threading import RLock
 from typing import Any
 
 from controller.safety import default_policy
+from harness.agent_exec.client import AgentExecClientError
 from mcp_servers.audit_bridge import AuditBridgeConfig, AuditBridgeListener
 from mcp_servers.bladeai_k8s_proxy.service import ProxyConfig
 
@@ -951,6 +952,14 @@ class NativeHarnessRunner:
                 harness_failure = {
                     "error_code": exc.error_code,
                     **dict(exc.diagnostic),
+                }
+            elif isinstance(exc, AgentExecClientError):
+                # A launch/transport rejection precedes any model request.
+                # Missing gateway evidence must not replace this primary cause.
+                harness_failure = {
+                    "error_code": "AGENT_EXEC_FAILED",
+                    "error_type": type(exc).__name__,
+                    "reason": redact_text(str(exc), env),
                 }
             result = CommandResult(
                 returncode=1, stdout=b"".join(captured_stdout),

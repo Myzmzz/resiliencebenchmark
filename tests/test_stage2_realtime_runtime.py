@@ -73,6 +73,58 @@ def final_line(harness):
 
 
 @pytest.mark.parametrize("harness", list(HarnessKind))
+def test_exec_rejection_remains_primary_failure_when_no_model_request_was_sent(tmp_path, monkeypatch, harness):
+    from harness.agent_exec.client import AgentExecClientError
+
+    trial_id = f"campaign-startup-{harness.value}"
+    ledger = PlatformLedger(tmp_path / "ledger")
+    supervisor = Supervisor()
+    permissions = SimpleNamespace(runtime_context=lambda _: {
+        "mcp_token": "fixture-token", "mcp_token_state_files": {},
+        "harness_channel_token": "fixture-channel-token", "platform_ledger_root": str(ledger.root),
+    })
+    runtime = TrialRuntimeContext(
+        trial_id=trial_id, episode_id="episode",
+        target=RuntimeTarget(namespace="otel-demo", component="cart", name="cart-a", uid="uid-a"),
+        main_fault={"selection_mode": "agent_strategy"},
+        cleanup_handle="cleanup-" + "a" * 36, baseline_capability="b" * 40,
+    )
+    capability = CapabilityProfile(
+        harness=harness, mcp_servers=(), mcp_tools=(), kubernetes_rules=(), direct_kubeconfig=False,
+        allowed_fault_types=("network-delay",), expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+
+    def rejected(*_args, **_kwargs):
+        raise AgentExecClientError("agent runtime rejected request: fixture-secret")
+
+    runner = NativeHarnessRunner(
+        repo_root=ROOT, private_root=tmp_path / "private", artifact_root=tmp_path / "artifacts",
+        permissions=permissions, mcp_supervisor=supervisor,
+        agent_exec_client=SimpleNamespace(),
+        gateway_snapshot=SimpleNamespace(config_sha256="c" * 64, route=lambda model: {"model_alias": model}),
+        base_environment={"RESBENCH_LLM_BASE_URL": "http://127.0.0.1:4000/v1", "RESBENCH_LLM_API_KEY": "fixture-secret"},
+        responder_factory=lambda *_args, **_kwargs: SimpleNamespace(history=[]),
+    )
+    monkeypatch.setattr(runner, "_require_workspace_group", lambda *_args: None)
+    monkeypatch.setattr(runner, "_resolve_executable", lambda *_args: "/fixture/native-agent")
+    monkeypatch.setattr("stage2_service.harness_runtime.subprocess_streaming_runner", rejected)
+    report = runner.run(
+        campaign_id="campaign-startup", trial_id=trial_id, harness=harness,
+        model_alias="fixture-model", episode=None, runtime_context=runtime, capability=capability,
+        case=default_case_specs((Stage2CaseId.C0,))[0], base_prompt="fixture", prompt_mode=PromptMode.VERBATIM,
+        event_observer=lambda *_args: None,
+    )
+    assert report.status == "failed"
+    assert report.final_output["harness_error_code"] == "AGENT_EXEC_FAILED"
+    assert report.final_output["harness_error"]["error_type"] == "AgentExecClientError"
+    assert "fixture-secret" not in report.final_output["harness_error"]["reason"]
+    assert report.final_output["harness_error"]["gateway_evidence_missing"] is True
+    assert report.final_output["gateway_request_ids"] == []
+    assert report.final_output["gateway_evidence_verified"] is False
+    assert supervisor.stopped
+
+
+@pytest.mark.parametrize("harness", list(HarnessKind))
 def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tmp_path, monkeypatch, harness):
     trial_id = f"campaign-1234567890abcdef-{harness.value}-d5-1"
     ledger = PlatformLedger(tmp_path / "ledger")
