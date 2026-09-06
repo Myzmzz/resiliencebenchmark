@@ -2,16 +2,24 @@
 # controller services, ClusterRole material, and the native ChaosBlade binary.
 FROM node:24.13.0-bookworm-slim AS node_runtime
 FROM bladeai-src AS bladeai_source
+FROM node:22.21.1-bookworm-slim AS bladeai_tui
+
+COPY --from=bladeai_source / /opt/blade-ai
+WORKDIR /opt/blade-ai/tui
+RUN npm install -g npm@10.9.2 \
+    && npm ci --ignore-scripts --no-audit --no-fund \
+    && ./node_modules/.bin/patch-package \
+    && npm run build \
+    && test -s /opt/blade-ai/tui/dist/cli.js \
+    && test -s /opt/blade-ai/tui/dist/package.json
 
 FROM python:3.12.13-slim-bookworm
 
 ARG UV_VERSION=0.10.9
-ARG SOURCE_HEAD=unknown
 ARG BLADEAI_RELEASE_TAG=blade-ai-v0.6.2
 ARG BLADEAI_RELEASE_COMMIT=d8c5473ccda329a3841f114f83a43881a2205ab5
 ARG BLADEAI_PACKAGE_VERSION=0.3.0
 ARG BLADEAI_MCP_VERSION=1.27.0
-LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
 LABEL resiliencebenchmark.io/bladeai-release-tag=${BLADEAI_RELEASE_TAG}
 LABEL resiliencebenchmark.io/bladeai-release-commit=${BLADEAI_RELEASE_COMMIT}
 LABEL resiliencebenchmark.io/bladeai-package-version=${BLADEAI_PACKAGE_VERSION}
@@ -53,8 +61,11 @@ RUN npm ci --prefix /opt/resiliencebenchmark/deepseek-harness --omit=dev --ignor
     && ln -s /opt/resiliencebenchmark/deepseek-harness/bin/dsh /usr/local/bin/dsh
 
 COPY --from=bladeai_source / /opt/blade-ai
+COPY --from=bladeai_tui /opt/blade-ai/tui/dist /opt/blade-ai/tui/dist
 RUN python -m venv /opt/bladeai-venv \
     && python -c 'import os, tomllib; from pathlib import Path; project = tomllib.loads(Path("/opt/blade-ai/pyproject.toml").read_text())["project"]; assert project["version"] == os.environ["BLADEAI_PACKAGE_VERSION"]; assert "mcp>=1.0,<2.0" in project["dependencies"]' \
+    && test -s /opt/blade-ai/tui/dist/cli.js \
+    && test -s /opt/blade-ai/tui/dist/package.json \
     && test ! -e /opt/blade-ai/vendor/chaosblade \
     && ! find /opt/blade-ai -type f -name blade -print -quit | grep .
 RUN /opt/bladeai-venv/bin/pip install --no-cache-dir "mcp[cli]==${BLADEAI_MCP_VERSION}" --editable /opt/blade-ai \
@@ -80,5 +91,7 @@ RUN install -d -m 0755 /app/stage2_service \
     && chmod 0755 /usr/local/bin/codex-eval \
     && ! command -v blade-native
 
+ARG SOURCE_HEAD=unknown
+LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
 WORKDIR /app
 ENTRYPOINT ["/opt/agent/.venv/bin/python", "-m", "harness.agent_exec"]

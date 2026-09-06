@@ -2,8 +2,6 @@ ARG STAGE2_RUNTIME_BASE
 
 FROM ${STAGE2_RUNTIME_BASE}
 
-ARG SOURCE_HEAD=unknown
-LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
 ENV RESBENCH_CODEX_EVAL_BIN=/app/runtime/bin/codex-eval
 
 USER root
@@ -34,4 +32,6 @@ RUN /app/.venv/bin/python -c "import httpx, zstandard, starlette; import stage2_
     && /app/.venv/bin/python /app/scripts/qualify_agent_channel.py --help \
     && /app/.venv/bin/python /app/scripts/qualify_execution_identities.py --help
 
+ARG SOURCE_HEAD=unknown
+LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
 USER 10001:10001

@@ -7,6 +7,8 @@ import pytest
 
 from scripts import build_stage2_image as build
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def _git(repo: Path, *args: str) -> str:
     completed = subprocess.run(
@@ -99,3 +101,31 @@ def test_bladeai_source_context_rejects_wrong_version_dependency_or_native_blade
 
     with pytest.raises(RuntimeError, match=match):
         build.prepare_bladeai_build_context(repo, tmp_path / "context")
+
+
+def test_agent_dockerfile_builds_official_bladeai_tui_bundle_before_editable_install() -> None:
+    dockerfile = (ROOT / "deploy/stage2/Dockerfile.agent").read_text(encoding="utf-8")
+
+    assert "FROM bladeai-src AS bladeai_source" in dockerfile
+    assert "FROM node:22.21.1-bookworm-slim AS bladeai_tui" in dockerfile
+    assert "COPY --from=bladeai_source / /opt/blade-ai\nWORKDIR /opt/blade-ai/tui" in dockerfile
+    assert "npm install -g npm@10.9.2" in dockerfile
+    assert "|| true" not in dockerfile
+    assert "npm ci --ignore-scripts --no-audit --no-fund" in dockerfile
+    assert "./node_modules/.bin/patch-package" in dockerfile
+    assert "npm run build" in dockerfile
+    assert "test -s /opt/blade-ai/tui/dist/cli.js" in dockerfile
+    assert "test -s /opt/blade-ai/tui/dist/package.json" in dockerfile
+    assert "COPY --from=bladeai_tui /opt/blade-ai/tui/dist /opt/blade-ai/tui/dist" in dockerfile
+    assert "--editable /opt/blade-ai" in dockerfile
+    assert "vendor/chaosblade" in dockerfile
+
+
+def test_source_head_label_does_not_bust_dependency_layers() -> None:
+    agent = (ROOT / "deploy/stage2/Dockerfile.agent").read_text(encoding="utf-8")
+    overlay = (ROOT / "deploy/stage2/Dockerfile.runtime-overlay").read_text(encoding="utf-8")
+
+    assert agent.index("RUN /opt/bladeai-venv/bin/pip install") < agent.index("ARG SOURCE_HEAD=unknown")
+    assert agent.index("COPY stage2_service/bladeai_read_cli.py") < agent.index("LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}")
+    assert overlay.index("RUN /app/.venv/bin/python -c") < overlay.index("ARG SOURCE_HEAD=unknown")
+    assert overlay.index("COPY --chown=10001:10001 frontend/dist /app/frontend-dist") < overlay.index("LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}")
