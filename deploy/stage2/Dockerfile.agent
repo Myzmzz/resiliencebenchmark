@@ -83,6 +83,8 @@ COPY stage2_service/bladeai_task.py /app/stage2_service/bladeai_task.py
 COPY stage2_service/bladeai_shim.py /app/stage2_service/bladeai_shim.py
 COPY stage2_service/bladeai_read_cli.py /app/stage2_service/bladeai_read_cli.py
 RUN install -d -m 0755 /app/stage2_service \
+    && install -d -m 0755 /run/resbench-host \
+    && touch /run/resbench-host/cgroupns \
     && touch /app/stage2_service/__init__.py \
     && cp /app/harness/bladeai/blade-shim/blade /usr/local/bin/blade \
     && sed -i '1c #!/opt/bladeai-venv/bin/python' /app/harness/bladeai/blade-shim/blade \

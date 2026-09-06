@@ -79,6 +79,56 @@ def test_privileged_firewall_runner_rejects_unrecognized_binary(monkeypatch):
         entrypoint._run_iptables(("/tmp/iptables", "-L"))
 
 
+def test_host_cgroup_namespace_fd_is_closed_after_setns(monkeypatch):
+    opened = []
+    monkeypatch.setattr(entrypoint.sys, "platform", "linux")
+    monkeypatch.setattr(entrypoint.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(entrypoint.os, "open", lambda *_args: opened.append(42) or 42)
+    closed = []
+    monkeypatch.setattr(entrypoint.os, "close", closed.append)
+    class Lib:
+        def setns(self, fd, flag):
+            assert (fd, flag) == (42, entrypoint.CLONE_NEWCGROUP)
+            return 0
+    monkeypatch.setattr(entrypoint.ctypes, "CDLL", lambda *_args, **_kwargs: Lib())
+    entrypoint.join_host_cgroup_namespace()
+    assert opened == [42] and closed == [42]
+
+
+def test_host_cgroup_namespace_setns_failure_closes_fd_and_fails(monkeypatch):
+    monkeypatch.setattr(entrypoint.sys, "platform", "linux")
+    monkeypatch.setattr(entrypoint.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(entrypoint.os, "open", lambda *_args: 9)
+    closed = []
+    monkeypatch.setattr(entrypoint.os, "close", closed.append)
+    class Lib:
+        def setns(self, *_args): return -1
+    monkeypatch.setattr(entrypoint.ctypes, "CDLL", lambda *_args, **_kwargs: Lib())
+    with pytest.raises(entrypoint.AgentExecNetworkError):
+        entrypoint.join_host_cgroup_namespace()
+    assert closed == [9]
+
+
+def test_host_cgroup_namespace_open_failure_never_calls_setns(monkeypatch):
+    monkeypatch.setattr(entrypoint.sys, "platform", "linux")
+    monkeypatch.setattr(entrypoint.os, "geteuid", lambda: 0)
+    def missing(path, flags):
+        assert path == entrypoint.HOST_CGROUP_NAMESPACE
+        assert flags & entrypoint.os.O_CLOEXEC
+        raise FileNotFoundError(path)
+    monkeypatch.setattr(entrypoint.os, "open", missing)
+    monkeypatch.setattr(entrypoint.ctypes, "CDLL", lambda *_a, **_k: pytest.fail("namespace not opened"))
+    with pytest.raises(FileNotFoundError):
+        entrypoint.join_host_cgroup_namespace()
+
+
+def test_help_does_not_enter_host_namespace_or_install_egress(monkeypatch):
+    monkeypatch.setattr(entrypoint, "join_host_cgroup_namespace", lambda: pytest.fail("no setns"))
+    monkeypatch.setattr(entrypoint, "configure_agent_egress", lambda **_kwargs: pytest.fail("no iptables"))
+    monkeypatch.setattr(entrypoint, "server_main", lambda: 0)
+    assert entrypoint.main(["--help"]) == 0
+
+
 def _root_socket_metadata(monkeypatch, target):
     original = Path.lstat
 

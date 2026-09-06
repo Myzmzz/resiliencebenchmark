@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -282,6 +283,7 @@ def test_initializer_joins_child_cgroup_before_uid_drop(monkeypatch, tmp_path: P
         allowed_env=set(),
     )
     monkeypatch.setattr(server_module, "_add_to_cgroup", lambda _path, _pid: events.append("cgroup"))
+    monkeypatch.setattr(server_module, "_unshare_cgroup_namespace", lambda: events.append("private_cgroup"))
     monkeypatch.setattr(server_module, "_set_no_new_privileges_and_drop_bounding_caps", lambda: events.append("caps"))
     monkeypatch.setattr(server_module.os, "setgroups", lambda _groups: events.append("groups"))
     monkeypatch.setattr(server_module.os, "setgid", lambda _gid: events.append("gid"))
@@ -290,7 +292,16 @@ def test_initializer_joins_child_cgroup_before_uid_drop(monkeypatch, tmp_path: P
 
     server_module._initialize_child(config, False, None, tmp_path / "child-cgroup")
 
-    assert events == ["cgroup", "caps", "groups", "gid", "uid", "umask"]
+    assert events == ["cgroup", "private_cgroup", "caps", "groups", "gid", "uid", "umask"]
+
+
+def test_private_cgroup_namespace_failure_is_fatal(monkeypatch):
+    import harness.agent_exec.server as server_module
+    class Lib:
+        def unshare(self, _flag): return -1
+    monkeypatch.setattr(server_module.ctypes, "CDLL", lambda *_args, **_kwargs: Lib())
+    with pytest.raises(OSError, match="private cgroup"):
+        server_module._unshare_cgroup_namespace()
 
 
 def test_parent_exit_with_open_pipe_clears_cgroup_before_terminal_event(monkeypatch, tmp_path: Path) -> None:
@@ -373,6 +384,52 @@ def test_parent_exit_with_open_pipe_clears_cgroup_before_terminal_event(monkeypa
 
     assert order.index("cgroup_cleared") < order.index("normalized") < order.index("exit")
     assert order.count("cgroup_cleared") == 1
+
+
+@pytest.mark.parametrize("chunks", [(59,), (59, 60), (64, 64), (100, 100)])
+def test_stream_counter_uses_actual_emitted_bytes_for_short_real_process_output(monkeypatch, tmp_path: Path, chunks):
+    """Calls production streaming code; old ``+= allowed`` kills this at 59B."""
+    import harness.agent_exec.server as server_module
+
+    daemon_sock, peer = socket.socketpair()
+    process = subprocess.Popen(
+        [sys.executable, "-c", f"import sys,time\nfor n in {chunks!r}:\n sys.stderr.write('x'*n);sys.stderr.flush();time.sleep(.03)\ntime.sleep(.1)"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+    )
+    monkeypatch.setattr(server_module, "_kill_and_remove_cgroup", lambda _path: None)
+    try:
+        AgentExecServer._stream_until_exit(
+            object(), daemon_sock, process, 5, max_output_bytes=128,
+            child_cgroup=tmp_path / "cgroup",
+        )
+        peer.settimeout(1)
+        frames = []
+        while True:
+            try:
+                frame = recv_frame(peer)
+            except TimeoutError:
+                break
+            if frame is None:
+                break
+            frames.append(frame)
+            if frame.get("type") == "exit":
+                break
+        stderr = b"".join(
+            __import__("base64").b64decode(frame["data"])
+            for frame in frames if frame.get("stream") == "stderr"
+        )
+        exit_frame = next(frame for frame in frames if frame.get("type") == "exit")
+        assert stderr == b"x" * min(sum(chunks), 128)
+        truncated = sum(chunks) >= 128
+        assert exit_frame["output_truncated"] is truncated
+        if not truncated:
+            assert exit_frame["returncode"] == 0
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=2)
+        daemon_sock.close()
+        peer.close()
 
 
 def test_server_rejects_same_uid_agent_configuration(tmp_path: Path) -> None:

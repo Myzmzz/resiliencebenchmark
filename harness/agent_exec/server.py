@@ -373,8 +373,9 @@ class AgentExecServer:
                         if allowed < len(data):
                             output_truncated = True
                         if allowed:
-                            send_frame(connection, stream_frame(str(key.data), data[:allowed]))
-                            output_bytes += allowed
+                            emitted = data[:allowed]
+                            send_frame(connection, stream_frame(str(key.data), emitted))
+                            output_bytes += len(emitted)
                         if output_bytes >= max_output_bytes and not cgroup_cleared:
                             # Reaching the contract maximum is an incomplete
                             # native result, not a successful truncated stream.
@@ -547,6 +548,7 @@ def _initialize_child(
 
     # Called only in the trusted single-threaded launcher, before Agent exec.
     _add_to_cgroup(child_cgroup, os.getpid())
+    _unshare_cgroup_namespace()
     if sandbox:
         assert sandbox_tmp is not None
         _isolate_sandbox_namespaces(sandbox_tmp)
@@ -555,6 +557,12 @@ def _initialize_child(
     os.setgid(effective_gid)
     os.setuid(uid)
     os.umask(0o077)
+
+
+def _unshare_cgroup_namespace() -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.unshare(0x02000000) != 0:
+        raise OSError(ctypes.get_errno(), "child requires private cgroup namespace")
 
 
 def _isolate_sandbox_namespaces(sandbox_tmp: Path) -> None:

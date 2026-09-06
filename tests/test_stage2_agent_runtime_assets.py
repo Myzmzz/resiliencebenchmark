@@ -89,6 +89,13 @@ def test_agent_runtime_daemon_has_distinct_identities_mandatory_cgroups_and_uid_
         assert args[args.index("--cgroup-root") + 1] == "/run/resbench-cgroups"
         cgroup = next(item for item in spec["volumes"] if item["name"] == "delegated-cgroup")
         assert cgroup["hostPath"] == {"path": "/sys/fs/cgroup/resbench-agent-exec", "type": "DirectoryOrCreate"}
+        namespace = next(item for item in spec["volumes"] if item["name"] == "host-cgroup-namespace")
+        assert namespace["hostPath"] == {"path": "/proc/1/ns/cgroup", "type": "File"}
+        assert {"name": "host-cgroup-namespace", "mountPath": "/run/resbench-host/cgroupns", "readOnly": True} in agent["volumeMounts"]
+        assert not spec.get("hostPID") and not spec.get("hostNetwork")
+        for container in spec["containers"]:
+            if container["name"] != "agent-runtime":
+                assert not any(v["name"] == "host-cgroup-namespace" for v in container.get("volumeMounts", []))
         assert "DAC_OVERRIDE" not in agent["securityContext"]["capabilities"]["add"]
         readiness = agent["readinessProbe"]
         assert readiness["exec"]["command"][:2] == ["/opt/agent/.venv/bin/python", "-c"]

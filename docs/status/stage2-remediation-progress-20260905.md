@@ -212,3 +212,7 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 `0492363`路径修复已推送，配对镜像已构建并预拉至旧节点。第二轮启动通过网络设置，但创建cgroup前缀失败；实查节点根目录为root:root、0555，受限daemon未获DAC_OVERRIDE。没有AppArmor拒绝日志，不将其归因于AppArmor。部署改为Kubelet预建并只挂载专用子目录，不改全局cgroup权限、不增daemon能力。另补Unix socket就绪检查：旧模板没有Agent readiness，rollout曾捕捉短暂容器启动而退出0，但后续仍为CrashLoop；不能据此写成功。三模板、重启逻辑与不变量27项定向测试通过，真实部署验证另记。
 
 `6b16736`部署资产修补已发布。Kubelet成功预建了host专用目录，但runc在只读的容器默认/sys/fs/cgroup下创建嵌套挂载点时失败，进程未启动、退出128。最终挂载位置改为容器 `/run/resbench-cgroups`，host仍仅委派原专用子树；daemon严格要求预挂载cgroup v2，不创建普通目录、不兼容旧挂载路径，并从实际委派根/leaf自身读取controller可用性。`cgroup-prefix-code-gate.xml`全量1407通过、9跳过、55.145秒；随后新增4个确定性文件系统模拟反例，最终专项31通过、2个Linux/root跳过。部署成功与实际子进程隔离资格仍需后续独立核实。
+
+`f1efe28`已推送、配对镜像已发布，integration达到3/3、零重启。首次真实AgentExec子进程资格仍失败，记录 `linux-agent-boundary-031745.json`；不能把Ready当成可评测。实际暴露两点：串流把剩余预算而非发送字节计入总量，59字节即被当作截断；另一次独立受限资源组诊断证明cgroup.procs存在、写入自己的子进程PID仍返回ENOENT，Docker private cgroup namespace与host委派范围不一致。诊断只启动3秒无任务子进程，资源组已确认空并删除，没有模型或故障调用。
+
+代码改为计实际发送字节；真实本地子进程/socket回归覆盖短包、多包、恰达及超过上限，临时在测试进程恢复旧错误后4项全部按预期失败，未改动磁盘生产源码。受信任daemon只读挂载host cgroup namespace描述符，启动时仅加入该namespace；每个Agent/Sandbox子进程先加入限额组，再创建自己的private cgroup namespace，最后降权。hostPID/hostNetwork不启用，不增加capabilities、不调整限额；加入失败仍拒绝启动。`cgroup-namespace-code-gate-final.xml`全量1418通过、9跳过、0失败/错误，51.235秒；真实资格待新版部署后复跑。

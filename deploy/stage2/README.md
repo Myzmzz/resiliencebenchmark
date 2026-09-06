@@ -48,6 +48,17 @@ its prefix. Per-Pod children and resource limits remain daemon-owned. A Unix
 socket readiness check runs only against the daemon endpoint, which is opened
 after network and cgroup setup; an initial process start is not readiness.
 
+Docker uses a private cgroup namespace. A visible host-delegated `cgroup.procs`
+can still reject a PID attachment across that namespace boundary with ENOENT.
+The trusted daemon therefore receives only the host cgroup namespace descriptor
+at `/run/resbench-host/cgroupns`, mounted read-only from `/proc/1/ns/cgroup`.
+It joins **only** that cgroup namespace before accepting work. After attaching
+each child to its bounded per-request group, the initializer creates a private
+cgroup namespace for that child, then drops capabilities and UID. The descriptor
+is closed before accepting requests; host PID/network sharing remains disabled.
+This does not change the Agent's network allowlist or resource limits. See the
+[kernel delegation and namespace contract](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#delegation).
+
 New Pods use `resbench-stage2-controller`; this avoids changing the ServiceAccount
 used by old deployments before they are rolled. Apply the base RBAC and
 `execution-identities.yaml` before starting a new image. The Controller creates

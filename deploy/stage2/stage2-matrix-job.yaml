@@ -181,6 +181,9 @@ spec:
               mountPath: /tmp
             - name: delegated-cgroup
               mountPath: /run/resbench-cgroups
+            - name: host-cgroup-namespace
+              mountPath: /run/resbench-host/cgroupns
+              readOnly: true
           readinessProbe:
             exec:
               command: ["/opt/agent/.venv/bin/python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect('/run/resbench/agent-exec.sock'); s.close()"]
@@ -243,6 +246,10 @@ spec:
           hostPath:
             path: /sys/fs/cgroup/resbench-agent-exec
             type: DirectoryOrCreate
+        - name: host-cgroup-namespace
+          hostPath:
+            path: /proc/1/ns/cgroup
+            type: File
         - name: litellm-config
           configMap:
             name: litellm-config

@@ -10,6 +10,7 @@ the isolation boundary.
 from __future__ import annotations
 
 import os
+import ctypes
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -30,6 +31,21 @@ DEFAULT_ALLOWED_LOOPBACK_PORTS = (
     18481,  # controlled Blade proxy
 )
 Runner = Callable[[Sequence[str], bytes | None], None]
+HOST_CGROUP_NAMESPACE = "/run/resbench-host/cgroupns"
+CLONE_NEWCGROUP = 0x02000000
+
+
+def join_host_cgroup_namespace() -> None:
+    """Enter only the host cgroup namespace before daemon startup."""
+    if sys.platform != "linux" or os.geteuid() != 0:
+        raise AgentExecNetworkError("host cgroup namespace join requires Linux root")
+    fd = os.open(HOST_CGROUP_NAMESPACE, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.setns(fd, CLONE_NEWCGROUP) != 0:
+            raise AgentExecNetworkError("unable to join host cgroup namespace")
+    finally:
+        os.close(fd)
 
 
 def configure_agent_egress(
@@ -108,13 +124,16 @@ def _ports_from_env() -> tuple[int, ...]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    del argv  # daemon's documented CLI parser consumes sys.argv directly.
+    values = tuple(sys.argv[1:] if argv is None else argv)
+    if "--help" in values or "-h" in values:
+        return server_main()
     if os.environ.get("RESBENCH_AGENT_EXEC_EGRESS_POLICY") != "required":
         raise AgentExecNetworkError("agent UID egress policy must be required")
     try:
         agent_uid = int(os.environ["RESBENCH_AGENT_EXEC_AGENT_UID"])
     except (KeyError, ValueError) as exc:
         raise AgentExecNetworkError("RESBENCH_AGENT_EXEC_AGENT_UID is required") from exc
+    join_host_cgroup_namespace()
     configure_agent_egress(agent_uid=agent_uid, allowed_loopback_ports=_ports_from_env())
     return server_main()
 
