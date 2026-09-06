@@ -58,7 +58,11 @@ def qualifications():
                     gateway_config_sha256=GATEWAY_HASH,
                     gateway_evidence_verified=True,
                     gateway_request_ids=(f"{model}-{harness.value}-req-1",),
-                    gateway_evidence_ref="gateway-requests.json",
+                    gateway_trial_id=f"{model}-{harness.value}-trial",
+                    gateway_evidence_ref=(
+                        f"native/d0-matrix/{model}-{harness.value}-trial/"
+                        "gateway-requests.json"
+                    ),
                 ),
                 True,
             )

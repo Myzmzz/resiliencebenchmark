@@ -556,13 +556,32 @@ class FixedEpisodeRef(ContractModel):
 class D0QualificationRef(ContractModel):
     campaign_id: str = Field(pattern=r"^d0-[a-z0-9-]{8,100}$")
     manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-    agent_status: str
+    agent_status: str = Field(min_length=1)
     model_alias: str = Field(min_length=1)
-    gateway_route: dict[str, Any] = Field(default_factory=dict)
-    gateway_config_sha256: str = Field(default="", pattern=r"^(|[a-f0-9]{64})$")
-    gateway_evidence_verified: bool = False
-    gateway_request_ids: tuple[str, ...] = ()
-    gateway_evidence_ref: str = ""
+    gateway_route: dict[str, Any] = Field(min_length=1)
+    gateway_config_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    gateway_evidence_verified: Literal[True]
+    gateway_request_ids: tuple[str, ...] = Field(min_length=1)
+    gateway_evidence_ref: str = Field(min_length=1)
+    gateway_trial_id: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_gateway_evidence_identity(self) -> D0QualificationRef:
+        if self.gateway_route.get("model_alias") != self.model_alias:
+            raise ValueError("gateway_route.model_alias must match model_alias")
+        if any(not value for value in self.gateway_request_ids) or len(
+            self.gateway_request_ids
+        ) != len(set(self.gateway_request_ids)):
+            raise ValueError("gateway_request_ids must be non-empty and unique")
+        evidence_parts = self.gateway_evidence_ref.split("/")
+        if (
+            self.gateway_evidence_ref.startswith("/")
+            or any(part in {"", ".", ".."} for part in evidence_parts)
+            or evidence_parts[0] != "native"
+            or evidence_parts[-1] != "gateway-requests.json"
+        ):
+            raise ValueError("gateway_evidence_ref must be a native gateway receipt path")
+        return self
 
 
 class CampaignRequest(ContractModel):
