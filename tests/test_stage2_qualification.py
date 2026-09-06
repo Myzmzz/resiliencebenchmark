@@ -36,6 +36,9 @@ def _write_qualified_campaign(
     gateway_route: dict[str, str] | None = None,
     gateway_config_sha256: str = GATEWAY_CONFIG_SHA256,
     finished_at: str = "2026-09-06T10:00:00Z",
+    campaign_status: str = "QUALIFIED",
+    agent_status: str = "PASS",
+    recovery_verified: bool = True,
 ) -> tuple[D0QualificationRef, Path]:
     root = tmp_path / campaign_id
     route = gateway_route or GATEWAY_ROUTE
@@ -62,14 +65,14 @@ def _write_qualified_campaign(
         json.dumps(
             {
                 "campaign_id": campaign_id,
-                "status": "QUALIFIED",
+                "status": campaign_status,
                 "finished_at": finished_at,
                 "host": {"verified": True},
                 "models": {agent: model_alias},
                 "results": [
                     {
                         "agent": agent,
-                        "status": "PASS",
+                        "status": agent_status,
                         "model_alias": model_alias,
                         "gateway_route": route,
                         "gateway_config_sha256": gateway_config_sha256,
@@ -77,7 +80,7 @@ def _write_qualified_campaign(
                         "gateway_request_ids": list(gateway_request_ids),
                         "gateway_evidence_ref": receipt_ref,
                         "gateway_trial_id": gateway_trial_id,
-                        "post_recovery_convergence": {"verified": True},
+                        "post_recovery_convergence": {"verified": recovery_verified},
                         "controller_deadline": {"agent_thread_stopped": True},
                         "adapter": {"failure_code": ""},
                         "foreign_crs_observed": [],
@@ -93,7 +96,7 @@ def _write_qualified_campaign(
         D0QualificationRef(
             campaign_id=campaign_id,
             manifest_sha256=digest,
-            agent_status="PASS",
+            agent_status=agent_status,
             model_alias=model_alias,
             gateway_route=route,
             gateway_config_sha256=gateway_config_sha256,
@@ -362,6 +365,68 @@ def test_select_verified_d0_ref_picks_latest_verified_candidate(tmp_path):
 
     assert selected == newer
     assert reason == "qualified"
+
+
+def test_select_verified_d0_ref_accepts_evaluation_ready_agent_failure(tmp_path):
+    snapshot = _gateway_snapshot(tmp_path)
+    ref, _root = _write_qualified_campaign(
+        tmp_path,
+        campaign_id="d0-otel-accounting-20260906-eval-ready",
+        gateway_trial_id="d0-trial-eval-ready",
+        gateway_request_ids=("eval-ready-req-1",),
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+        campaign_status="EVALUATION_READY",
+        agent_status="EFFECT_UNVERIFIED",
+    )
+
+    selected, reason = D0QualificationGate(tmp_path).select_verified_ref(
+        harness=HarnessKind.CODEX,
+        model_alias="gpt-5.5",
+        gateway=snapshot,
+    )
+    verified = D0QualificationGate(tmp_path).qualify(_request_for(ref))
+
+    assert selected == ref
+    assert reason == "qualified"
+    assert verified["formal_eligible"] is True
+    assert verified["agents"]["codex"]["campaign_status"] == "EVALUATION_READY"
+    assert verified["agents"]["codex"]["agent_status"] == "EFFECT_UNVERIFIED"
+
+
+@pytest.mark.parametrize(
+    ("campaign_status", "agent_status", "recovery_verified"),
+    [
+        ("STOPPED_RESET_FAILED", "RESET_FAILED", False),
+        ("QUALIFICATION_INVALID", "CASE_INVALID", True),
+    ],
+)
+def test_select_verified_d0_ref_rejects_invalid_or_unclean_d0_records(
+    tmp_path, campaign_status, agent_status, recovery_verified
+):
+    snapshot = _gateway_snapshot(tmp_path)
+    ref, _root = _write_qualified_campaign(
+        tmp_path,
+        campaign_id=f"d0-otel-accounting-20260906-{agent_status.lower().replace('_', '-')}",
+        gateway_trial_id=f"d0-trial-{agent_status.lower().replace('_', '-')}",
+        gateway_request_ids=(f"{agent_status.lower().replace('_', '-')}-req-1",),
+        gateway_route=snapshot.route("gpt-5.5"),
+        gateway_config_sha256=snapshot.config_sha256,
+        campaign_status=campaign_status,
+        agent_status=agent_status,
+        recovery_verified=recovery_verified,
+    )
+
+    selected, reason = D0QualificationGate(tmp_path).select_verified_ref(
+        harness=HarnessKind.CODEX,
+        model_alias="gpt-5.5",
+        gateway=snapshot,
+    )
+    verified = D0QualificationGate(tmp_path).qualify(_request_for(ref))
+
+    assert selected is None
+    assert reason == "no verified D0 qualification matches current gateway route"
+    assert verified["formal_eligible"] is False
 
 
 def test_select_verified_d0_ref_returns_none_when_no_current_verified_record(tmp_path):

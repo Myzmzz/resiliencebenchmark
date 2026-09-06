@@ -15,6 +15,9 @@ from .gateway_config import GatewayConfigError, GatewayConfigSnapshot
 from .gateway_evidence import read_gateway_artifact
 
 
+D0_SELECTABLE_CAMPAIGN_STATUSES = frozenset({"QUALIFIED", "EVALUATION_READY"})
+
+
 class D0QualificationGate:
     def __init__(self, artifact_root: Path | None):
         self.artifact_root = artifact_root.resolve() if artifact_root else None
@@ -184,7 +187,10 @@ def _ref_from_campaign(
         manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     except (OSError, json.JSONDecodeError, UnicodeError):
         return None, None
-    if not isinstance(campaign, dict) or campaign.get("status") != "QUALIFIED":
+    if (
+        not isinstance(campaign, dict)
+        or campaign.get("status") not in D0_SELECTABLE_CAMPAIGN_STATUSES
+    ):
         return None, None
 
     finished_at = _parse_finished_at(campaign.get("finished_at"))
@@ -322,6 +328,9 @@ def verify_d0_ref(
         return _failure(
             ref, "D0 campaign id does not match the qualification reference"
         )
+    campaign_status = campaign.get("status")
+    if campaign_status not in D0_SELECTABLE_CAMPAIGN_STATUSES:
+        return _failure(ref, "D0 campaign status is not evaluation-ready")
 
     results = campaign.get("results")
     if not isinstance(results, list):
@@ -398,11 +407,11 @@ def verify_d0_ref(
         return _failure(ref, "D0 gateway receipt artifact did not revalidate")
 
     host_verified = (campaign.get("host") or {}).get("verified") is True
-    verified = host_verified and campaign.get("status") == "QUALIFIED"
+    verified = host_verified and campaign_status in D0_SELECTABLE_CAMPAIGN_STATUSES
     return {
         "verified": verified,
         "campaign_id": ref.campaign_id,
-        "campaign_status": campaign.get("status"),
+        "campaign_status": campaign_status,
         "agent_status": status,
         "qualified_model": qualified_model,
         "requested_model": requested_model,
