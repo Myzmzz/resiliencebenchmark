@@ -199,3 +199,21 @@ def test_agent_image_checks_privileged_network_commands_at_their_installed_paths
         assert f"/usr/sbin/{command} --version" in dockerfile
     path_line = next(line for line in dockerfile.splitlines() if line.strip().startswith("PATH="))
     assert "/usr/sbin" not in path_line
+
+
+def test_dedicated_apparmor_profile_never_disables_enforcement_or_allows_arbitrary_mounts():
+    profile = (DEPLOY / "apparmor/resbench-agent-runtime").read_text()
+    assert "profile resbench-agent-runtime" in profile
+    mount_rules = [line.strip() for line in profile.splitlines() if line.strip().startswith(("mount ", "remount "))]
+    assert len(mount_rules) == 4
+    assert "mount," not in [line.strip() for line in profile.splitlines()] and "complain" not in profile
+    assert "deny /sys/kernel/security/** rwklx," in profile
+    assert "mount options=(rw,rprivate) -> /," in mount_rules
+    assert "remount options=(ro) /," in mount_rules
+    for rule in mount_rules[2:]:
+        assert "/var/lib/resbench-stage2/sandbox-trials/*/.sandbox-tmp/" in rule
+    for filename in ("stage2.yaml", "stage2-integration.yaml", "stage2-matrix-job.yaml"):
+        workload = next(d for d in yaml.safe_load_all((DEPLOY / filename).read_text()) if d and d.get("kind") in {"Deployment", "Job"})
+        annotations = workload["spec"]["template"]["metadata"]["annotations"]
+        assert annotations["container.apparmor.security.beta.kubernetes.io/agent-runtime"] == "localhost/resbench-agent-runtime"
+        assert all("unconfined" not in str(value).lower() for value in annotations.values())

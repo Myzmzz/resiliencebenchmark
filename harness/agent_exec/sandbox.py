@@ -1,10 +1,10 @@
 """Narrow ``agent_exec`` adapter for controlled Python sandbox requests.
 
 This module is deliberately not a general subprocess helper.  The only
-request it emits is ``python3 -I -`` in agent-exec's ``sandbox`` mode with an
-empty environment.  The source receives a tiny ``mcp_call`` function that can
-reach the per-run Unix broker; it never receives a URL, bearer token, Trial
-identifier, or other controller configuration.
+request it emits is ``/opt/agent/.venv/bin/python -I -`` in agent-exec's
+``sandbox`` mode with an empty environment.  The source receives a tiny
+``mcp_call`` function that can reach the per-run Unix broker; it never receives
+a URL, bearer token, Trial identifier, or other controller configuration.
 """
 
 from __future__ import annotations
@@ -18,6 +18,9 @@ from mcp_servers.code_sandbox.service import SandboxRunResult
 from .client import AgentExecClient
 
 
+AGENT_EXEC_SANDBOX_PYTHON = "/opt/agent/.venv/bin/python"
+
+
 class AgentExecSandboxError(RuntimeError):
     """The isolated agent-exec invocation could not be completed."""
 
@@ -25,8 +28,13 @@ class AgentExecSandboxError(RuntimeError):
 @dataclass(frozen=True)
 class AgentExecSandboxConfig:
     cwd: str = "."
-    interpreter: str = "python3"
+    interpreter: str = AGENT_EXEC_SANDBOX_PYTHON
     request_id_prefix: str = "code-sandbox"
+
+    def __post_init__(self) -> None:
+        path = PurePosixPath(self.interpreter)
+        if not path.is_absolute() or not path.name:
+            raise AgentExecSandboxError("sandbox interpreter must be an absolute installed path")
 
 
 class AgentExecSandboxExecutor:

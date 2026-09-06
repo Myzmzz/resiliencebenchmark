@@ -216,3 +216,7 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 `f1efe28`已推送、配对镜像已发布，integration达到3/3、零重启。首次真实AgentExec子进程资格仍失败，记录 `linux-agent-boundary-031745.json`；不能把Ready当成可评测。实际暴露两点：串流把剩余预算而非发送字节计入总量，59字节即被当作截断；另一次独立受限资源组诊断证明cgroup.procs存在、写入自己的子进程PID仍返回ENOENT，Docker private cgroup namespace与host委派范围不一致。诊断只启动3秒无任务子进程，资源组已确认空并删除，没有模型或故障调用。
 
 代码改为计实际发送字节；真实本地子进程/socket回归覆盖短包、多包、恰达及超过上限，临时在测试进程恢复旧错误后4项全部按预期失败，未改动磁盘生产源码。受信任daemon只读挂载host cgroup namespace描述符，启动时仅加入该namespace；每个Agent/Sandbox子进程先加入限额组，再创建自己的private cgroup namespace，最后降权。hostPID/hostNetwork不启用，不增加capabilities、不调整限额；加入失败仍拒绝启动。`cgroup-namespace-code-gate-final.xml`全量1418通过、9跳过、0失败/错误，51.235秒；真实资格待新版部署后复跑。
+
+`db8e03e`已推送并部署旧integration，三容器稳定就绪。真实UID10002子进程的11项基础边界检查和Controller/executor/finalizer的80项实际身份/RBAC检查通过；六个模型网关接口探针均supported。证据与范围详见 `docs/deploy/stage2-old-cluster-qualification-20260906.md`，不升级为四家原生资格或正式扰动结果。
+
+代码沙箱首次实际初始化失败，独立诊断定位到私有mount propagation的EACCES。Docker默认AppArmor明确禁止mount；为本项目增加保留默认proc/sys保护且只放行四类沙箱操作的专用强制策略，在旧tcse-v100-03实际加载成功，不改全局docker-default、不使用unconfined。另修复空环境下相对python3定位，默认固定 `/opt/agent/.venv/bin/python`。`sandbox-startup-code-gate.xml`全量1420通过、9跳过、49.091秒，0失败/错误；待该补丁部署后复跑sandbox。Coroot登录变更再次以非阻塞问题向用户请求确认，目前未修改。

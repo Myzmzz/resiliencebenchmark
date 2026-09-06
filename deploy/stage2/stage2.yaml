@@ -173,6 +173,8 @@ spec:
       app.kubernetes.io/name: resbench-stage2
   template:
     metadata:
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/agent-runtime: localhost/resbench-agent-runtime
       labels:
         app.kubernetes.io/name: resbench-stage2
         app.kubernetes.io/managed-by: resiliencebenchmark

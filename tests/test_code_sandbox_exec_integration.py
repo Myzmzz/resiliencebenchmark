@@ -16,7 +16,11 @@ from pathlib import Path
 import pytest
 
 from harness.agent_exec.client import ExecutionResult
-from harness.agent_exec.sandbox import AgentExecSandboxConfig, AgentExecSandboxExecutor
+from harness.agent_exec.sandbox import (
+    AGENT_EXEC_SANDBOX_PYTHON,
+    AgentExecSandboxConfig,
+    AgentExecSandboxExecutor,
+)
 from mcp_servers.code_sandbox.executor import (
     ControlledSandboxConfig,
     ControlledSandboxExecutor,
@@ -26,7 +30,7 @@ from stage2_service.platform_ledger import PlatformLedger
 
 
 class FakeAgentExecClient:
-    def __init__(self) -> None:
+    def __init__(self, *_args, **_kwargs) -> None:
         self.calls = []
 
     def run(self, argv, stdin, env, timeout_seconds, **kwargs):
@@ -103,7 +107,7 @@ def test_controlled_executor_uses_agent_exec_sandbox_without_guest_credentials(t
     assert result.exit_code == 0
     assert len(client.calls) == 1
     call = client.calls[0]
-    assert call["argv"] == ("python3", "-I", "-")
+    assert call["argv"] == (AGENT_EXEC_SANDBOX_PYTHON, "-I", "-")
     assert call["env"] == {}
     assert call["sandbox"] is True
     assert call["cwd"] == "s/1234abcd"
@@ -157,6 +161,48 @@ def test_env_configuration_rejects_non_loopback_mcp_endpoint_and_never_accepts_u
 
     with pytest.raises(CodeSandboxError, match="loopback MCP URL"):
         ControlledSandboxConfig.from_env(env)
+
+
+def test_env_executor_invokes_agent_exec_with_installed_absolute_python_and_empty_env(monkeypatch, tmp_path: Path):
+    import mcp_servers.code_sandbox.executor as executor_module
+
+    clients = []
+
+    class ConstructedAgentExecClient(FakeAgentExecClient):
+        def __init__(self, socket_path, *, expected_server_uid):
+            super().__init__()
+            self.socket_path = Path(socket_path)
+            self.expected_server_uid = expected_server_uid
+            clients.append(self)
+
+    env = {
+        "RESBENCH_AUTHORIZED_RUN_ID": "campaign-1234567890abcdef-codex-d7-a-1",
+        "RESBENCH_CODE_SANDBOX_GUEST_UID": "10003",
+        "RESBENCH_CODE_SANDBOX_GUEST_GID": "10003",
+        "RESBENCH_CODE_SANDBOX_BROKER_ROOT": str(Path("/tmp") / f"rb-{os.getpid()}-env" / ".sandbox-tmp"),
+        "RESBENCH_CODE_SANDBOX_AGENT_EXEC_CWD": "s/1234abcd",
+        "RESBENCH_CODE_SANDBOX_ALLOWED_TOOLS": json.dumps(["coroot_ro.coroot_metrics_range"]),
+        "RESBENCH_CODE_SANDBOX_MCP_ENDPOINTS_JSON": json.dumps({"coroot_ro": "http://127.0.0.1:18086/mcp"}),
+        "RESBENCH_CODE_SANDBOX_MCP_TOKEN": "t" * 40,
+        "RESBENCH_AGENT_EXEC_SOCKET": str(tmp_path / "agent-exec.sock"),
+        "RESBENCH_AGENT_EXEC_SERVER_UID": "0",
+    }
+    monkeypatch.setattr(executor_module, "AgentExecClient", ConstructedAgentExecClient)
+    executor = ControlledSandboxExecutor.from_env(
+        ledger=PlatformLedger(tmp_path / "ledger"),
+        env=env,
+    )
+    executor.broker_factory = FakeBroker
+    executor.invoker = lambda tool, args: {"tool": tool, "args": dict(args)}
+
+    executor.run("print(1)", 1)
+
+    assert len(clients) == 1
+    assert clients[0].socket_path == tmp_path / "agent-exec.sock"
+    assert clients[0].expected_server_uid == 0
+    assert clients[0].calls[0]["argv"] == (AGENT_EXEC_SANDBOX_PYTHON, "-I", "-")
+    assert clients[0].calls[0]["env"] == {}
+    assert clients[0].calls[0]["sandbox"] is True
 
 
 def test_broker_socket_path_fails_before_bind_when_controller_cwd_layout_is_too_long(tmp_path: Path):

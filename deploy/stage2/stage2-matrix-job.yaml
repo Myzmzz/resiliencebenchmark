@@ -11,6 +11,8 @@ spec:
   activeDeadlineSeconds: 86400
   template:
     metadata:
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/agent-runtime: localhost/resbench-agent-runtime
       labels:
         app.kubernetes.io/name: resbench-stage2-matrix
         app.kubernetes.io/managed-by: resiliencebenchmark
