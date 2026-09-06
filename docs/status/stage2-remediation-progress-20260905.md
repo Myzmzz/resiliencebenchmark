@@ -224,3 +224,7 @@ UTC 2026-09-06 02:55开始仅切换integration；保留tcse-v100-03、integratio
 `ed9314f`已提交推送，配对镜像最终构建成功；期间Docker凭据助手曾等待，未中断或重复构建。专用AppArmor策略应用到integration后，实际sandbox以UID10003成功执行、断网、通过Unix broker调用诊断echo并拒绝未授权工具；但新增文件反例发现/tmp和共享目录仍可写，因此 `sqc07933` 仍判失败，不算资格通过。
 
 根因是只读remount只覆盖根文件系统而不覆盖嵌套emptyDir/tmpfs。改为新命名空间内通过libc的mount_setattr递归只读，然后只bind本次临时目录为可写，缺少内核/libc支持即拒绝，不保留不完整旧路径。旧节点实际运行提取自生产代码的初始化函数，确认三处越界写均EROFS、专属临时目录可写；没有扩大AppArmor策略。全量 `sandbox-recursive-mount-full.xml` 为1423通过、9跳过、52.328秒，0失败/错误；真实完整sandbox链路待新镜像复跑。
+
+`5d7a498`已推送、成对镜像已构建并部署integration。实际`sq460f4d`完成UID10003、禁网、临时目录正反写入、诊断echo代理和未授权工具拒绝，6项全部通过且无socket残留。这不是原生Agent/真实MCP资格。
+
+真实sandbox→broker→带Bearer的harness_channel MCP通知/回执检查`smb603cf`暴露剩余SDK属性错误。按mcp-builder检查流程及当前官方SDK v2文档，代理改用is_error/structured_content，不添加v1兼容路径；BladeAI隔离venv仍为受上游约束的MCP1.x，其原生适配字段不改。新增实际SDK CallToolResult类型回归，以及后台异常不泄漏正文、授权调用失败不当越权的socket测试。全量结果和真实复验另行记录。

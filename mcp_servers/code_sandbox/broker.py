@@ -100,29 +100,35 @@ class SandboxBroker:
 
     def _serve(self, connection: socket.socket) -> None:
         with connection:
+            tool: str | None = None
+            authorized = False
             try:
                 _assert_guest_peer(connection, self.config.guest_uid)
                 payload = recv_frame(connection)
                 if payload is None:
                     return
                 tool, args = _parse_call(payload, self.config.allowed_tools)
+                authorized = True
                 response = dict(self.invoker(tool, args))
                 self.ledger.append(
                     trial_id=self.config.trial_id,
                     event_type="SANDBOX_TOOL_CALL",
                     occurred_at=_utc_now(),
-                    payload={"code_sha256": self.config.code_sha256, "tool": tool, "allowed": True},
+                    payload={"code_sha256": self.config.code_sha256, "tool": tool, "allowed": True, "status": "completed"},
                 )
                 send_frame(connection, {"ok": True, "result": response})
-            except (BrokerError, ProtocolError, OSError, ValueError) as exc:
+            except Exception as exc:
+                # This is the worker-thread boundary: report SDK/transport
+                # failures rather than silently disconnecting the guest. An
+                # authorized call failing is not an authorization violation.
                 self.ledger.append(
                     trial_id=self.config.trial_id,
                     event_type="SANDBOX_TOOL_CALL",
                     occurred_at=_utc_now(),
-                    payload={"code_sha256": self.config.code_sha256, "tool": None, "allowed": False, "error_type": type(exc).__name__},
+                    payload={"code_sha256": self.config.code_sha256, "tool": tool, "allowed": authorized, "status": "failed", "error_type": type(exc).__name__},
                 )
                 try:
-                    send_frame(connection, {"ok": False, "error": "broker request rejected"})
+                    send_frame(connection, {"ok": False, "error": "authorized MCP call failed" if authorized else "broker request rejected"})
                 except OSError:
                     pass
 

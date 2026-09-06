@@ -114,9 +114,9 @@ class HttpMcpBrokerInvoker:
                     async with ClientSession(*streams) as session:
                         await session.initialize()
                         result = await session.call_tool(tool_name, arguments)
-        if result.isError:
+        if result.is_error:
             raise CodeSandboxError("authorized MCP tool rejected sandbox call")
-        structured = getattr(result, "structuredContent", None)
+        structured = result.structured_content
         if isinstance(structured, Mapping):
             return dict(structured)
         text = "".join(
