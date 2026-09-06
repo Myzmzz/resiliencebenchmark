@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from stage2_service.channel_qualification import (
     ALL_CHANNEL_HARNESSES,
     ChannelQualificationRunner,
+    PROFILE_CHOICES,
     collective_equality_check,
     write_collective_check,
 )
@@ -30,6 +31,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Qualify real native Harness MCP channel behavior without creating chaos faults.",
     )
     parser.add_argument("--model", required=True, help="Model alias passed to every selected Harness.")
+    parser.add_argument(
+        "--profile",
+        required=True,
+        choices=PROFILE_CHOICES,
+        help=(
+            "Qualification profile: base verifies foundational C0-D6 channel "
+            "evidence only; substitution runs the full WP11 D7/D8 channel check."
+        ),
+    )
     parser.add_argument(
         "--harness",
         action="append",
@@ -72,10 +82,12 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         harnesses=harnesses,
         output_dir=output_dir,
+        profile=args.profile,
     )
-    collective_path = output_dir / "channel-qualification-collective.json"
+    prefix = "base-channel-qualification" if args.profile == "base" else "channel-qualification"
+    collective_path = output_dir / f"{prefix}-collective.json"
     if not collective_path.is_file():
-        collective_path = write_collective_check(output_dir)
+        collective_path = write_collective_check(output_dir, profile=args.profile)
     result = {
         "records": [record.as_dict() for record in records],
         "collective": (

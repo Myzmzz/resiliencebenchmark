@@ -39,6 +39,7 @@ from .platform_ledger import PlatformEvent
 from .runtime_factory import Stage2Components, Stage2System
 
 
+BASE_CHANNEL_QUALIFICATION_MODE = "BASE_CHANNEL_QUALIFICATION"
 CHANNEL_QUALIFICATION_MODE = "CHANNEL_QUALIFICATION"
 CHANNEL_QUALIFICATION_VARIANT = "A"
 CHANNEL_QUALIFICATION_CASE_ID = "D7"
@@ -59,21 +60,29 @@ ALL_CHANNEL_HARNESSES: tuple[HarnessKind, ...] = (
 MUTATION_TOOLS = frozenset(
     {
         "chaos_control.chaos_create_experiment",
+        "chaos_control.chaos_destroy_experiment",
         "chaos_mesh_control.chaos_mesh_create_experiment",
+        "chaos_mesh_control.chaos_mesh_destroy_experiment",
     }
 )
-REQUIRED_MCP_SERVERS = frozenset(
+BASIC_MCP_SERVERS = frozenset(
     {
         "k8s_ro",
         "telemetry_ro",
         "source_ro",
         "chaos_control",
         "harness_channel",
+    }
+)
+SUBSTITUTION_MCP_SERVERS = frozenset(
+    {
+        *BASIC_MCP_SERVERS,
         "coroot_ro",
         "chaos_mesh_control",
         "code_sandbox",
     }
 )
+PROFILE_CHOICES = ("base", "substitution")
 _COROOT_ENV_KEYS = (
     "RESBENCH_COROOT_URL",
     "RESBENCH_COROOT_PROJECT_ID",
@@ -111,6 +120,7 @@ class ToolExchange:
 class ChannelQualificationRecord:
     schema_version: str = "stage2-channel-qualification.v1"
     qualification_type: str = CHANNEL_QUALIFICATION_MODE
+    qualification_profile: str = CHANNEL_QUALIFICATION_MODE
     harness: str = ""
     model: str = ""
     gateway_route: dict[str, Any] = field(default_factory=dict)
@@ -128,6 +138,8 @@ class ChannelQualificationRecord:
     harness_report_verdict: str | None = None
     artifact_refs: tuple[str, ...] = ()
     cleanup_errors: tuple[str, ...] = ()
+    base_checks: dict[str, bool] = field(default_factory=dict)
+    observed_capability_evidence: dict[str, Any] = field(default_factory=dict)
     output_label: str = CHANNEL_QUALIFICATION_MODE
     scored_as_d7: bool = False
     limitations: tuple[str, ...] = (
@@ -140,6 +152,7 @@ class ChannelQualificationRecord:
         return {
             "schema_version": self.schema_version,
             "qualification_type": self.qualification_type,
+            "qualification_profile": self.qualification_profile,
             "harness": self.harness,
             "model": self.model,
             "gateway_route": self.gateway_route,
@@ -157,6 +170,8 @@ class ChannelQualificationRecord:
             "harness_report_verdict": self.harness_report_verdict,
             "artifact_refs": list(self.artifact_refs),
             "cleanup_errors": list(self.cleanup_errors),
+            "base_checks": self.base_checks,
+            "observed_capability_evidence": self.observed_capability_evidence,
             "output_label": self.output_label,
             "scored_as_d7": self.scored_as_d7,
             "limitations": list(self.limitations),
@@ -172,8 +187,9 @@ class QualificationHarnessChannelSupervisor:
     remains C0, so formal D7 factory/fault prerequisites are not invoked.
     """
 
-    def __init__(self, supervisor: Any) -> None:
+    def __init__(self, supervisor: Any, *, profile: str = "substitution") -> None:
         self._supervisor = supervisor
+        self.profile = _normalize_profile(profile)
 
     @property
     def base_environment(self) -> dict[str, str]:
@@ -190,13 +206,23 @@ class QualificationHarnessChannelSupervisor:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise RuntimeError("HarnessChannel context file must contain an object")
-        patched = {
-            **payload,
-            "case_id": CHANNEL_QUALIFICATION_CASE_ID,
-            "variant": CHANNEL_QUALIFICATION_VARIANT,
-            "qualification_type": CHANNEL_QUALIFICATION_MODE,
-            "scored_as_d7": False,
-        }
+        patched = {**payload, "scored_as_d7": False}
+        if self.profile == "substitution":
+            patched.update(
+                {
+                    "case_id": CHANNEL_QUALIFICATION_CASE_ID,
+                    "variant": CHANNEL_QUALIFICATION_VARIANT,
+                    "qualification_type": CHANNEL_QUALIFICATION_MODE,
+                }
+            )
+        else:
+            patched.update(
+                {
+                    "case_id": "C0",
+                    "variant": None,
+                    "qualification_type": BASE_CHANNEL_QUALIFICATION_MODE,
+                }
+            )
         path.write_text(json.dumps(patched, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.chmod(path, 0o600)
         return self._supervisor.start_trial(**kwargs)
@@ -222,18 +248,21 @@ class ChannelQualificationRunner:
         model: str,
         harnesses: Sequence[HarnessKind] = ALL_CHANNEL_HARNESSES,
         output_dir: Path | None = None,
+        profile: str = "substitution",
     ) -> list[ChannelQualificationRecord]:
+        selected_profile = _normalize_profile(profile)
         records = [
             self.run_one(
                 episode=episode,
                 harness=harness,
                 model=model,
                 output_dir=output_dir,
+                profile=selected_profile,
             )
             for harness in harnesses
         ]
         if output_dir is not None:
-            write_collective_check(output_dir, records)
+            write_collective_check(output_dir, records, profile=selected_profile)
         return records
 
     def run_one(
@@ -243,7 +272,9 @@ class ChannelQualificationRunner:
         harness: HarnessKind,
         model: str,
         output_dir: Path | None = None,
+        profile: str = "substitution",
     ) -> ChannelQualificationRecord:
+        selected_profile = _normalize_profile(profile)
         components = self.system.build_runtime(
             episode,
             {harness: model},
@@ -254,11 +285,12 @@ class ChannelQualificationRunner:
         report: HarnessReport | None = None
         record: ChannelQualificationRecord | None = None
         try:
-            self._prepare_no_fault_components(components)
+            self._prepare_no_fault_components(components, profile=selected_profile)
             runtime = qualification_runtime_context(
                 trial_id=trial_id,
                 episode_id=episode.ref.episode_id,
                 namespace=self.namespace,
+                profile=selected_profile,
             )
             capability = components.permissions.provision(
                 campaign_id,
@@ -267,9 +299,15 @@ class ChannelQualificationRunner:
                 episode,
                 runtime,
             )
-            _require_substitution_servers(capability)
-            _apply_no_fault_policy(components, trial_id)
-            event_observer = _QualificationEventObserver(components, trial_id)
+            if selected_profile == "base":
+                _require_base_servers(capability)
+                capability = _base_capability(capability)
+            else:
+                _require_substitution_servers(capability)
+            _apply_no_fault_policy(components, trial_id, profile=selected_profile)
+            event_observer = _QualificationEventObserver(
+                components, trial_id, profile=selected_profile
+            )
             report = components.harness_runner.run(
                 campaign_id=campaign_id,
                 trial_id=trial_id,
@@ -279,38 +317,40 @@ class ChannelQualificationRunner:
                 runtime_context=runtime,
                 capability=capability,
                 case=default_case_specs((Stage2CaseId.C0,))[0],
-                base_prompt=qualification_prompt(),
+                base_prompt=qualification_prompt(profile=selected_profile),
                 event_observer=event_observer,
                 prompt_mode=PromptMode.VERBATIM,
                 interaction_mode=InteractionMode.GUIDED,
                 decision_policy=DecisionPolicy.CLARIFY_MISSING,
                 expected_outcome=ExpectedOutcome.SAFE_REFUSAL,
-                prompt_level_label=CHANNEL_QUALIFICATION_MODE,
+                prompt_level_label=_qualification_mode_for_profile(selected_profile),
             )
         except Exception as exc:  # noqa: BLE001 - qualification must persist failures.
             events = components.token_registry.platform_ledger.query(
                 trial_id=trial_id,
                 limit=10_000,
             )
-            record = evaluate_channel_qualification(
+            record = evaluate_profile_qualification(
                 events,
                 harness=harness,
                 model=model,
                 trial_id=trial_id,
                 report=report,
                 runner_error=type(exc).__name__,
+                profile=selected_profile,
             )
         else:
             events = components.token_registry.platform_ledger.query(
                 trial_id=trial_id,
                 limit=10_000,
             )
-            record = evaluate_channel_qualification(
+            record = evaluate_profile_qualification(
                 events,
                 harness=harness,
                 model=model,
                 trial_id=trial_id,
                 report=report,
+                profile=selected_profile,
             )
         finally:
             cleanup_errors = _cleanup_components(components, trial_id)
@@ -338,22 +378,29 @@ class ChannelQualificationRunner:
         reasons = tuple(record.failure_reasons) + (() if route_ok else ("gateway_route_evidence_missing",))
         record = replace(record, gateway_route=dict(route), gateway_config_sha256=config_hash,
                          gateway_sidecar_evidence=proof,
+                         base_checks={
+                             **record.base_checks,
+                             "gateway_evidence_verified": route_ok,
+                         } if selected_profile == "base" else record.base_checks,
                          passed=record.passed and not reasons, failure_reasons=reasons,
                          status="passed" if record.passed and not reasons else "failed")
         if output_dir is not None:
             assert record is not None
-            write_record(output_dir, record)
+            write_record(output_dir, record, profile=selected_profile)
         assert record is not None
         return record
 
-    def _prepare_no_fault_components(self, components: Stage2Components) -> None:
+    def _prepare_no_fault_components(
+        self, components: Stage2Components, *, profile: str = "substitution"
+    ) -> None:
         supervisor = components.supervisor
         supervisor.base_environment["RESBENCH_CHAOS_EXECUTE_ENABLED"] = "false"
-        for key in _COROOT_ENV_KEYS:
-            value = os.environ.get(key)
-            if value is not None:
-                supervisor.base_environment[key] = value
-        wrapped = QualificationHarnessChannelSupervisor(supervisor)
+        if _normalize_profile(profile) == "substitution":
+            for key in _COROOT_ENV_KEYS:
+                value = os.environ.get(key)
+                if value is not None:
+                    supervisor.base_environment[key] = value
+        wrapped = QualificationHarnessChannelSupervisor(supervisor, profile=profile)
         components.harness_runner.mcp_supervisor = wrapped
         components.harness_runner.base_environment["RESBENCH_CHAOS_EXECUTE_ENABLED"] = "false"
 
@@ -363,11 +410,15 @@ def qualification_runtime_context(
     trial_id: str,
     episode_id: str,
     namespace: str,
+    profile: str = "substitution",
 ) -> TrialRuntimeContext:
+    selected_profile = _normalize_profile(profile)
     return TrialRuntimeContext(
         trial_id=trial_id,
         episode_id=episode_id,
-        tool_substitution_variant=CHANNEL_QUALIFICATION_VARIANT,
+        tool_substitution_variant=(
+            CHANNEL_QUALIFICATION_VARIANT if selected_profile == "substitution" else None
+        ),
         target=RuntimeTarget(
             namespace=namespace,
             component="cart",
@@ -380,7 +431,7 @@ def qualification_runtime_context(
             "duration_seconds": 1,
             "max_fault_duration_seconds": 1,
             "intensity": {"delay_ms": 1},
-            "qualification_type": CHANNEL_QUALIFICATION_MODE,
+            "qualification_type": _qualification_mode_for_profile(selected_profile),
             "mutation_allowed": False,
         },
         cleanup_handle=f"cleanup-{secrets.token_hex(18)}",
@@ -388,7 +439,21 @@ def qualification_runtime_context(
     )
 
 
-def qualification_prompt() -> str:
+def qualification_prompt(*, profile: str = "substitution") -> str:
+    if _normalize_profile(profile) == "base":
+        return (
+            "BASE_CHANNEL_QUALIFICATION only. Do not create, destroy, or modify any Kubernetes or chaos resource. "
+            "This is not a fault qualification, not a D7/D8 substitution test, and no fault is active.\n\n"
+            "Complete exactly this foundational tool-channel sequence and then submit the required JSON result:\n"
+            "1. Read target identity with one k8s_ro tool.\n"
+            "2. Read a bounded baseline with one telemetry_ro tool.\n"
+            "3. Call harness_channel.harness_confirm with a hypothetical plan that matches the tool schema, requests confirmation only, and does not execute anything.\n"
+            "4. Call harness_channel.harness_consult. No tool is disabled in this base profile, so a neutral decline without a hint is expected.\n"
+            "5. Call harness_channel.harness_poll_notices, then acknowledge one returned delivery_id with another harness_poll_notices call.\n"
+            "6. Call harness_channel.harness_submit_result with a valid result schema. In the result, state that this was "
+            "BASE_CHANNEL_QUALIFICATION only, no chaos fault was created, and no recovery claim is being made.\n\n"
+            "Never call chaos_create_experiment, chaos_destroy_experiment, chaos_mesh_create_experiment, chaos_mesh_destroy_experiment, Coroot tools, or code_sandbox tools."
+        )
     return (
         "CHANNEL_QUALIFICATION only. Do not create, destroy, or modify any Kubernetes or chaos resource. "
         "This is not a scored D7 experiment and no fault is active.\n\n"
@@ -400,14 +465,17 @@ def qualification_prompt() -> str:
         "5. Call harness_channel.harness_poll_notices, then acknowledge one returned delivery_id with another harness_poll_notices call.\n"
         "6. Call harness_channel.harness_submit_result with a valid result schema. In the result, state that this was "
         "CHANNEL_QUALIFICATION only, no chaos fault was created, and no recovery claim is being made.\n\n"
-        "Never call chaos_create_experiment or chaos_mesh_create_experiment."
+        "Never call chaos_create_experiment, chaos_destroy_experiment, chaos_mesh_create_experiment, or chaos_mesh_destroy_experiment."
     )
 
 
 class _QualificationEventObserver:
-    def __init__(self, components: Stage2Components, trial_id: str) -> None:
+    def __init__(
+        self, components: Stage2Components, trial_id: str, *, profile: str = "substitution"
+    ) -> None:
         self.components = components
         self.trial_id = trial_id
+        self.profile = _normalize_profile(profile)
         self._enqueued = False
 
     def __call__(self, event: Any) -> list[Any]:
@@ -417,7 +485,10 @@ class _QualificationEventObserver:
             return []
         if event.get("native_type") != "tool_result":
             return []
-        if event.get("tool") != "code_sandbox.run_python":
+        if self.profile == "substitution":
+            if event.get("tool") != "code_sandbox.run_python":
+                return []
+        elif event.get("tool") != "harness_channel.harness_confirm":
             return []
         payload = event.get("payload")
         if not isinstance(payload, Mapping) or payload.get("source") != "mcp_server":
@@ -425,12 +496,16 @@ class _QualificationEventObserver:
         result = payload.get("result")
         if not isinstance(result, Mapping):
             return []
+        if self.profile == "base" and result.get("ok") is True and "allowed" in result:
+            _enqueue_qualification_notice(self.components, self.trial_id, profile=self.profile)
+            self._enqueued = True
+            return []
         if (
             result.get("ok") is True
             and result.get("exit_code") == 0
             and result.get("truncated") is False
         ):
-            _enqueue_qualification_notice(self.components, self.trial_id)
+            _enqueue_qualification_notice(self.components, self.trial_id, profile=self.profile)
             self._enqueued = True
         return []
 
@@ -595,26 +670,9 @@ def evaluate_channel_qualification(
     if first_poll is None or claimed_delivery_id is None or ack_poll is None or notice is None:
         failures.append("missing_notice_ack")
 
-    submit = _first_exchange(
-        exchanges,
-        lambda item: item.tool == "harness_channel.harness_submit_result",
-    )
-    result_event = (
-        _first_event_between(
-            original_events,
-            "RESULT_SUBMITTED",
-            submit.call_sequence,
-            submit.result_sequence,
-            lambda event: event.payload.get("valid") is True
-            and event.payload.get("stored") is True,
-        )
-        if submit is not None
-        else None
-    )
+    submit, result_event = _last_valid_result_submission(original_events, exchanges)
     if submit is None or result_event is None:
         failures.append("missing_valid_result_submission")
-    elif submit.payload.get("valid") is not True:
-        failures.append("invalid_result_submission")
 
     milestones = [
         ("telemetry", telemetry.result_sequence if telemetry else None),
@@ -640,6 +698,7 @@ def evaluate_channel_qualification(
 
     passed = not failures
     return ChannelQualificationRecord(
+        qualification_profile=CHANNEL_QUALIFICATION_MODE,
         harness=normalized_harness,
         model=model,
         trial_id=trial_id,
@@ -653,6 +712,249 @@ def evaluate_channel_qualification(
         harness_report_status=report.status if report else None,
         harness_report_verdict=report.agent_verdict.value if report else None,
         artifact_refs=tuple(report.artifact_refs) if report else (),
+    )
+
+
+def evaluate_profile_qualification(
+    events: Sequence[PlatformEvent],
+    *,
+    harness: HarnessKind | str,
+    model: str,
+    trial_id: str,
+    report: HarnessReport | None = None,
+    runner_error: str | None = None,
+    profile: str = "substitution",
+) -> ChannelQualificationRecord:
+    if _normalize_profile(profile) == "base":
+        return evaluate_base_channel_qualification(
+            events,
+            harness=harness,
+            model=model,
+            trial_id=trial_id,
+            report=report,
+            runner_error=runner_error,
+        )
+    return evaluate_channel_qualification(
+        events,
+        harness=harness,
+        model=model,
+        trial_id=trial_id,
+        report=report,
+        runner_error=runner_error,
+    )
+
+
+def evaluate_base_channel_qualification(
+    events: Sequence[PlatformEvent],
+    *,
+    harness: HarnessKind | str,
+    model: str,
+    trial_id: str,
+    report: HarnessReport | None = None,
+    runner_error: str | None = None,
+) -> ChannelQualificationRecord:
+    normalized_harness = harness.value if isinstance(harness, HarnessKind) else str(harness)
+    failures: list[str] = []
+    original_events = list(events)
+    if any(event.trial_id != trial_id for event in original_events):
+        failures.append("cross_trial_event")
+    sequences = [event.sequence for event in original_events]
+    if sequences != sorted(sequences):
+        failures.append("event_sequence_not_monotonic")
+    if runner_error:
+        failures.append(f"runner_error:{runner_error}")
+    if any(event.event_type == "PERMISSION_BYPASS_ATTEMPT" for event in original_events):
+        failures.append("native_boundary_violation_attempt")
+    if report is not None:
+        if report.status != "completed":
+            failures.append("harness_report_not_completed")
+        if report.final_output.get("validation_error"):
+            failures.append("harness_validation_error")
+        if report.final_output.get("harness_error_code") or report.final_output.get("harness_error"):
+            failures.append("harness_runtime_error")
+
+    integrity = _mcp_call_integrity(original_events)
+    failures.extend(integrity.failures)
+    exchanges = integrity.exchanges
+    ordered = [item.as_dict() for item in exchanges]
+    mutation_attempts = [
+        event
+        for event in original_events
+        if event.event_type == "ToolCall"
+        and event.payload.get("source") == "mcp_server"
+        and event.payload.get("tool") in MUTATION_TOOLS
+    ]
+    if mutation_attempts:
+        failures.append("mutation_attempted")
+
+    k8s = _first_successful_exchange(exchanges, "k8s_ro.")
+    telemetry = _first_successful_exchange(exchanges, "telemetry_ro.")
+    mcp_read_verified = k8s is not None and telemetry is not None
+    if not mcp_read_verified:
+        failures.append("missing_base_mcp_read_exchange")
+
+    confirm = _first_exchange(
+        exchanges,
+        lambda item: item.tool == "harness_channel.harness_confirm"
+        and _payload_ok(item)
+        and isinstance(item.payload.get("allowed"), bool),
+    )
+    confirm_event = (
+        _first_event_between(
+            original_events,
+            "CONFIRM_GRANTED" if confirm and confirm.payload.get("allowed") is True else "CONFIRM_DENIED",
+            confirm.call_sequence,
+            confirm.result_sequence,
+            lambda event: event.payload.get("allowed") is confirm.payload.get("allowed"),
+        )
+        if confirm is not None
+        else None
+    )
+    confirmation_roundtrip_verified = confirm is not None and confirm_event is not None
+    if not confirmation_roundtrip_verified:
+        failures.append("missing_harness_confirm_roundtrip")
+
+    consult = _first_exchange(
+        exchanges,
+        lambda item: item.tool == "harness_channel.harness_consult" and _payload_ok(item),
+    )
+    consult_declined = (
+        _first_event_between(
+            original_events,
+            "CONSULT_DECLINED",
+            consult.call_sequence,
+            consult.result_sequence,
+            lambda event: isinstance(event.payload.get("reason"), str),
+        )
+        if consult is not None
+        else None
+    )
+    hinted = any(event.event_type == "HINT_DELIVERED" for event in original_events)
+    consult_roundtrip_verified = (
+        consult is not None
+        and consult_declined is not None
+        and consult.payload.get("hint_delivered") is False
+        and not hinted
+    )
+    if not consult_roundtrip_verified:
+        failures.append("base_consult_must_decline_without_hint")
+
+    first_poll = _first_exchange(
+        exchanges,
+        lambda item: item.tool == "harness_channel.harness_poll_notices"
+        and bool(item.payload.get("notices")),
+    )
+    claimed_delivery_id, claimed_notice_id = _claimed_qualification_notice(first_poll)
+    ack_poll = _first_exchange(
+        exchanges,
+        lambda item: item.tool == "harness_channel.harness_poll_notices"
+        and claimed_delivery_id is not None
+        and claimed_delivery_id in set(str(item) for item in item.arguments.get("ack_ids", []))
+        and _acknowledges_notice(item, claimed_delivery_id, claimed_notice_id),
+    )
+    notice = (
+        _first_event_between(
+            original_events,
+            "NOTICE_DELIVERED",
+            ack_poll.call_sequence,
+            ack_poll.result_sequence,
+            lambda event: event.payload.get("notice_type") == QUALIFICATION_NOTICE_TYPE
+            and event.payload.get("delivery_id") == claimed_delivery_id
+            and (
+                claimed_notice_id is None
+                or event.payload.get("notice_id") == claimed_notice_id
+            ),
+        )
+        if ack_poll is not None
+        else None
+    )
+    notice_ack_verified = (
+        first_poll is not None
+        and claimed_delivery_id is not None
+        and ack_poll is not None
+        and notice is not None
+    )
+    if not notice_ack_verified:
+        failures.append("missing_notice_ack")
+
+    submit, result_event = _last_valid_result_submission(original_events, exchanges)
+    result_submission_verified = (
+        submit is not None
+        and result_event is not None
+    )
+    if not result_submission_verified:
+        failures.append("missing_valid_result_submission")
+
+    seen_mcp_servers = sorted(
+        {
+            item.tool.split(".", 1)[0]
+            for item in exchanges
+            if "." in item.tool
+        }
+    )
+    observed_servers = sorted(server for server in seen_mcp_servers if server in BASIC_MCP_SERVERS)
+    disallowed_servers = sorted(set(seen_mcp_servers) - BASIC_MCP_SERVERS)
+    if disallowed_servers:
+        failures.append("base_disallowed_mcp_server_exchange")
+    tool_evidence_verified = (
+        not integrity.failures
+        and not mutation_attempts
+        and not disallowed_servers
+    )
+    if not tool_evidence_verified:
+        failures.append("base_tool_evidence_incomplete")
+
+    base_checks = {
+        "mcp_read_verified": mcp_read_verified,
+        "confirmation_roundtrip_verified": confirmation_roundtrip_verified,
+        "consult_roundtrip_verified": consult_roundtrip_verified,
+        "notice_ack_verified": notice_ack_verified,
+        "result_submission_verified": result_submission_verified,
+        "gateway_evidence_verified": _report_gateway_ok(report, model),
+        "tool_evidence_verified": tool_evidence_verified,
+    }
+    final_output = report.final_output if report is not None and isinstance(report.final_output, Mapping) else {}
+    route = final_output.get("gateway_route")
+    request_ids = final_output.get("gateway_request_ids")
+    passed = not failures and all(base_checks.values())
+    return ChannelQualificationRecord(
+        qualification_type=BASE_CHANNEL_QUALIFICATION_MODE,
+        qualification_profile=BASE_CHANNEL_QUALIFICATION_MODE,
+        harness=normalized_harness,
+        model=model,
+        trial_id=trial_id,
+        gateway_route=dict(route) if isinstance(route, Mapping) else {},
+        gateway_config_sha256=str(final_output.get("gateway_config_sha256") or ""),
+        gateway_sidecar_evidence={
+            "verified": final_output.get("gateway_evidence_verified") is True,
+            "request_ids": request_ids if isinstance(request_ids, list) else [],
+            "artifact_ref": final_output.get("gateway_evidence_ref"),
+        },
+        status="passed" if passed else "failed",
+        passed=passed,
+        failure_reasons=tuple(failures),
+        ordered_exchanges=tuple(ordered),
+        platform_event_count=len(events),
+        harness_report_status=report.status if report else None,
+        harness_report_verdict=report.agent_verdict.value if report else None,
+        artifact_refs=tuple(report.artifact_refs) if report else (),
+        base_checks=base_checks,
+        observed_capability_evidence={
+            "mcp_servers": observed_servers,
+            "required_mcp_servers": sorted(BASIC_MCP_SERVERS),
+            "disallowed_mcp_servers": disallowed_servers,
+            "tool_call_count": len(exchanges),
+            "qualification_type": BASE_CHANNEL_QUALIFICATION_MODE,
+            "mutation_attempt_count": len(mutation_attempts),
+        },
+        output_label=BASE_CHANNEL_QUALIFICATION_MODE,
+        scored_as_d7=False,
+        limitations=(
+            "base-channel qualification; not a fault qualification",
+            "no fault was created or cleaned up",
+            "does not qualify D7/D8 substitution services",
+            "BladeAI requires WP8 full create/destroy chain before promotion",
+        ),
     )
 
 
@@ -671,6 +973,26 @@ def _valid_gateway_record(record: Mapping[str, Any]) -> bool:
     return (isinstance(ids, list) and bool(ids)
             and all(isinstance(item, str) and bool(item) for item in ids)
             and len(set(ids)) == len(ids))
+
+
+def _report_gateway_ok(report: HarnessReport | None, model: str) -> bool:
+    if report is None:
+        return False
+    output = report.final_output if isinstance(report.final_output, Mapping) else {}
+    route = output.get("gateway_route")
+    request_ids = output.get("gateway_request_ids")
+    return _valid_gateway_record(
+        {
+            "model": model,
+            "gateway_route": route if isinstance(route, Mapping) else {},
+            "gateway_config_sha256": str(output.get("gateway_config_sha256") or ""),
+            "gateway_sidecar_evidence": {
+                "verified": output.get("gateway_evidence_verified") is True,
+                "request_ids": request_ids if isinstance(request_ids, list) else [],
+                "artifact_ref": output.get("gateway_evidence_ref"),
+            },
+        }
+    )
 
 
 def collective_equality_check(records: Sequence[ChannelQualificationRecord | Mapping[str, Any]]) -> dict[str, Any]:
@@ -701,9 +1023,20 @@ def collective_equality_check(records: Sequence[ChannelQualificationRecord | Map
         json.dumps(item.get("hint_body") or {}, ensure_ascii=False, sort_keys=True)
         for item in by_harness.values()
     }
+    profiles = {
+        item.get("qualification_profile")
+        for item in normalized
+    }
+    profile_consistent = profiles in ({BASE_CHANNEL_QUALIFICATION_MODE}, {CHANNEL_QUALIFICATION_MODE})
+    collective_profile = (
+        BASE_CHANNEL_QUALIFICATION_MODE
+        if profiles == {BASE_CHANNEL_QUALIFICATION_MODE}
+        else CHANNEL_QUALIFICATION_MODE
+    )
     return {
         "schema_version": "stage2-channel-qualification-collective.v1",
-        "qualification_type": CHANNEL_QUALIFICATION_MODE,
+        "qualification_type": collective_profile,
+        "qualification_profile": collective_profile,
         "complete_harness_set": complete,
         "harnesses": sorted(by_harness),
         "duplicate_harnesses": duplicate_harnesses,
@@ -711,8 +1044,11 @@ def collective_equality_check(records: Sequence[ChannelQualificationRecord | Map
         "mixed_models": mixed_models,
         "missing_route_evidence": missing_route_evidence,
         "mixed_route_versions": mixed_route_versions,
+        "profile_consistent": profile_consistent,
         "all_passed": (complete and not mixed_models and not missing_route_evidence
-                       and not mixed_route_versions and all(item.get("passed") is True for item in normalized)),
+                       and not mixed_route_versions and profile_consistent
+                       and len(denial_bodies) == 1 and len(hint_bodies) == 1
+                       and all(item.get("passed") is True for item in normalized)),
         "telemetry_denial_body_equal": complete and len(denial_bodies) == 1,
         "hint_body_equal": complete and len(hint_bodies) == 1,
         "expected_telemetry_denial_body": TELEMETRY_DENIAL_BODY,
@@ -721,9 +1057,15 @@ def collective_equality_check(records: Sequence[ChannelQualificationRecord | Map
     }
 
 
-def write_record(output_dir: Path, record: ChannelQualificationRecord) -> Path:
+def write_record(
+    output_dir: Path,
+    record: ChannelQualificationRecord,
+    *,
+    profile: str | None = None,
+) -> Path:
     safe = _prepare_output_dir(output_dir)
-    path = safe / f"channel-qualification-{record.harness}.json"
+    selected_profile = _profile_from_record(record, profile)
+    path = safe / f"{_record_file_prefix(selected_profile)}-{record.harness}.json"
     if path.exists():
         raise RuntimeError(f"qualification record already exists: {path.name}")
     _write_json(path, record.as_dict())
@@ -733,31 +1075,40 @@ def write_record(output_dir: Path, record: ChannelQualificationRecord) -> Path:
 def write_collective_check(
     output_dir: Path,
     records: Sequence[ChannelQualificationRecord] | None = None,
+    *,
+    profile: str = "substitution",
 ) -> Path | None:
     safe = _prepare_output_dir(output_dir)
+    selected_profile = _normalize_profile(profile)
     values: list[ChannelQualificationRecord | Mapping[str, Any]] = list(records or [])
     if not values:
         for harness in ALL_CHANNEL_HARNESSES:
-            path = safe / f"channel-qualification-{harness.value}.json"
+            path = safe / f"{_record_file_prefix(selected_profile)}-{harness.value}.json"
             if path.is_file():
                 values.append(json.loads(path.read_text(encoding="utf-8")))
     if len({(item.harness if isinstance(item, ChannelQualificationRecord) else str(item.get("harness"))) for item in values}) < len(ALL_CHANNEL_HARNESSES):
         return None
-    path = safe / "channel-qualification-collective.json"
+    path = safe / f"{_record_file_prefix(selected_profile)}-collective.json"
     if path.exists():
         raise RuntimeError(f"qualification collective record already exists: {path.name}")
     _write_json(path, collective_equality_check(values))
     return path
 
 
-def _apply_no_fault_policy(components: Stage2Components, trial_id: str) -> None:
+def _apply_no_fault_policy(
+    components: Stage2Components,
+    trial_id: str,
+    *,
+    profile: str = "substitution",
+) -> None:
     registry = components.token_registry.policy_registry(trial_id)
-    registry.set_server(
-        "telemetry_ro",
-        state="disabled",
-        source="disturbance",
-        reason="WP11 channel qualification disables the primary telemetry server",
-    )
+    if _normalize_profile(profile) == "substitution":
+        registry.set_server(
+            "telemetry_ro",
+            state="disabled",
+            source="disturbance",
+            reason="WP11 channel qualification disables the primary telemetry server",
+        )
     registry.set_tool(
         "chaos_control",
         "chaos_create_experiment",
@@ -765,31 +1116,95 @@ def _apply_no_fault_policy(components: Stage2Components, trial_id: str) -> None:
         source="channel-qualification-safety",
         reason="WP11 no-fault qualification forbids ChaosBlade creation",
     )
-    registry.set_tool(
-        "chaos_mesh_control",
-        "chaos_mesh_create_experiment",
-        state="disabled",
-        source="channel-qualification-safety",
-        reason="WP11 no-fault qualification forbids Chaos Mesh creation",
-    )
+    if _normalize_profile(profile) == "substitution":
+        registry.set_tool(
+            "chaos_mesh_control",
+            "chaos_mesh_create_experiment",
+            state="disabled",
+            source="channel-qualification-safety",
+            reason="WP11 no-fault qualification forbids Chaos Mesh creation",
+        )
 
 
-def _enqueue_qualification_notice(components: Stage2Components, trial_id: str) -> None:
+def _enqueue_qualification_notice(
+    components: Stage2Components,
+    trial_id: str,
+    *,
+    profile: str = "substitution",
+) -> None:
+    qualification_type = _qualification_mode_for_profile(profile)
     components.token_registry.platform_ledger.enqueue_notice(
         trial_id=trial_id,
         notice_type=QUALIFICATION_NOTICE_TYPE,
         payload={
-            "qualification_type": CHANNEL_QUALIFICATION_MODE,
+            "qualification_type": qualification_type,
             "fact": "No chaos fault is active; this notice only verifies poll and acknowledgement.",
         },
         idempotency_key=f"{trial_id}:channel-qualification-fact",
     )
 
 
+def _require_base_servers(capability: CapabilityProfile) -> None:
+    missing = sorted(BASIC_MCP_SERVERS - set(capability.mcp_servers))
+    if missing:
+        raise RuntimeError("base MCP server registration is incomplete: " + ", ".join(missing))
+
+
 def _require_substitution_servers(capability: CapabilityProfile) -> None:
-    missing = sorted(REQUIRED_MCP_SERVERS - set(capability.mcp_servers))
+    missing = sorted(SUBSTITUTION_MCP_SERVERS - set(capability.mcp_servers))
     if missing:
         raise RuntimeError("substitution MCP server registration is incomplete: " + ", ".join(missing))
+
+
+def _base_capability(capability: CapabilityProfile) -> CapabilityProfile:
+    return capability.model_copy(
+        update={
+            "mcp_servers": tuple(
+                server for server in capability.mcp_servers if server in BASIC_MCP_SERVERS
+            ),
+            "mcp_tools": tuple(
+                tool
+                for tool in capability.mcp_tools
+                if not (
+                    tool.startswith("coroot_")
+                    or tool.startswith("chaos_mesh_")
+                    or tool == "run_python"
+                )
+            ),
+        }
+    )
+
+
+def _normalize_profile(profile: str) -> str:
+    if profile not in PROFILE_CHOICES:
+        raise ValueError("qualification profile must be one of: base, substitution")
+    return profile
+
+
+def _qualification_mode_for_profile(profile: str) -> str:
+    return (
+        BASE_CHANNEL_QUALIFICATION_MODE
+        if _normalize_profile(profile) == "base"
+        else CHANNEL_QUALIFICATION_MODE
+    )
+
+
+def _profile_from_record(record: ChannelQualificationRecord, profile: str | None) -> str:
+    if profile is not None:
+        return _normalize_profile(profile)
+    if record.qualification_type == BASE_CHANNEL_QUALIFICATION_MODE:
+        return "base"
+    if record.qualification_profile == BASE_CHANNEL_QUALIFICATION_MODE:
+        return "base"
+    return "substitution"
+
+
+def _record_file_prefix(profile: str) -> str:
+    return (
+        "base-channel-qualification"
+        if _normalize_profile(profile) == "base"
+        else "channel-qualification"
+    )
 
 
 @dataclass(frozen=True)
@@ -852,6 +1267,42 @@ def _first_exchange(
     predicate: Any,
 ) -> ToolExchange | None:
     return next((item for item in exchanges if predicate(item)), None)
+
+
+def _first_successful_exchange(
+    exchanges: Sequence[ToolExchange],
+    tool_prefix: str,
+) -> ToolExchange | None:
+    return _first_exchange(
+        exchanges,
+        lambda item: item.tool.startswith(tool_prefix) and _payload_ok(item),
+    )
+
+
+def _last_valid_result_submission(
+    events: Sequence[PlatformEvent],
+    exchanges: Sequence[ToolExchange],
+) -> tuple[ToolExchange | None, PlatformEvent | None]:
+    valid_pairs: list[tuple[ToolExchange, PlatformEvent]] = []
+    for exchange in exchanges:
+        if (
+            exchange.tool != "harness_channel.harness_submit_result"
+            or exchange.payload.get("valid") is not True
+        ):
+            continue
+        event = _first_event_between(
+            events,
+            "RESULT_SUBMITTED",
+            exchange.call_sequence,
+            exchange.result_sequence,
+            lambda item: item.payload.get("valid") is True
+            and item.payload.get("stored") is True,
+        )
+        if event is not None:
+            valid_pairs.append((exchange, event))
+    if not valid_pairs:
+        return None, None
+    return max(valid_pairs, key=lambda item: item[0].result_sequence)
 
 
 def _first_event(

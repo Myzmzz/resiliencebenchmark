@@ -78,6 +78,7 @@ def source_digest() -> str:
             REPO_ROOT / "scripts/build_stage2_qualification_matrix.py",
             REPO_ROOT / "scripts/probe_models.py",
             REPO_ROOT / "scripts/qualify_agent_channel.py",
+            REPO_ROOT / "scripts/publish_harness_capabilities.py",
             REPO_ROOT / "scripts/qualify_execution_identities.py",
             REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay",
             REPO_ROOT / "deploy/stage2/Dockerfile.agent",

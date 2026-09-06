@@ -8,8 +8,12 @@ import pytest
 
 from mcp_servers.harness_channel.hints import D7_A_DEFAULT
 from mcp_servers.http_runtime import TOOL_DISABLED_RESPONSE
+from stage2_service.capability_policy import read_policy_file
+from stage2_service.capability_preflight import harness_capabilities_from_qualification
+from stage2_service.capability_qualification import publish_capabilities
 from stage2_service.channel_qualification import (
     ALL_CHANNEL_HARNESSES,
+    BASE_CHANNEL_QUALIFICATION_MODE,
     CHANNEL_QUALIFICATION_MODE,
     EXPECTED_HINT_BODY,
     MUTATION_TOOLS,
@@ -19,6 +23,9 @@ from stage2_service.channel_qualification import (
     QualificationHarnessChannelSupervisor,
     collective_equality_check,
     evaluate_channel_qualification,
+    evaluate_base_channel_qualification,
+    qualification_runtime_context,
+    write_collective_check,
     write_record,
 )
 from stage2_service.contracts import (
@@ -31,6 +38,7 @@ from stage2_service.contracts import (
     Stage2CaseId,
 )
 from stage2_service.episode import load_fixed_episode
+from stage2_service.gateway_config import GatewayConfigSnapshot
 from stage2_service.matrix import fixed_otel_episode_ref
 from stage2_service.permissions import Stage2PermissionManager
 from stage2_service.platform_ledger import PlatformLedger
@@ -64,6 +72,28 @@ def _fake_gateway_output(model: str = "gpt-5.5") -> dict:
         **fields, "model_alias": model, "gateway_evidence_verified": proof["verified"],
         "gateway_request_ids": proof["request_ids"], "gateway_evidence_ref": proof["artifact_ref"],
     }
+
+
+def _gateway_snapshot(tmp_path: Path, model: str = "gpt-5.5") -> GatewayConfigSnapshot:
+    path = tmp_path / "gateway.json"
+    path.write_text(
+        json.dumps(
+            {
+                "model_list": [
+                    {
+                        "model_name": model,
+                        "litellm_params": {
+                            "model": f"openai/{model}",
+                            "api_base": "https://provider.example/v1",
+                            "api_key": "os.environ/PROBE_KEY",
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return GatewayConfigSnapshot.from_file(path, required_aliases=(model,))
 
 
 def test_channel_rejects_native_bypass_even_after_successful_mcp_sequence(tmp_path):
@@ -112,6 +142,55 @@ def _append_pair(
     )
 
 
+def _append_submit_exchange(
+    ledger: PlatformLedger,
+    call_id: str,
+    *,
+    valid: bool,
+    stored: bool | None = None,
+    include_result_event: bool = True,
+    trial_id: str = TRIAL_ID,
+    source: str = "mcp_server",
+) -> None:
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolCall",
+        occurred_at=NOW,
+        payload={
+            "source": source,
+            "call_id": call_id,
+            "tool": "harness_channel.harness_submit_result",
+            "arguments": {"result": {"status": "completed"}},
+        },
+    )
+    if include_result_event:
+        ledger.append(
+            trial_id=trial_id,
+            event_type="RESULT_SUBMITTED",
+            occurred_at=NOW,
+            payload={
+                "valid": valid,
+                "stored": valid if stored is None else stored,
+                "errors": [] if valid else ["schema violation"],
+            },
+        )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolResult",
+        occurred_at=NOW,
+        payload={
+            "source": source,
+            "call_id": call_id,
+            "status": "completed" if valid else "failed",
+            "payload": {
+                "ok": valid,
+                "valid": valid,
+                "errors": [] if valid else ["schema violation"],
+            },
+        },
+    )
+
+
 def _append_policy_and_denial(ledger: PlatformLedger, *, trial_id: str = TRIAL_ID) -> None:
     ledger.append(
         trial_id=trial_id,
@@ -149,6 +228,7 @@ def _append_success_events(
     sandbox_exit_code: int = 0,
     sandbox_truncated: bool = False,
     include_sandbox_run: bool = True,
+    invalid_submit_before_valid: bool = False,
 ) -> None:
     _append_policy_and_denial(ledger, trial_id=trial_id)
     _append_pair(
@@ -355,22 +435,66 @@ def _append_success_events(
         },
     )
     if include_submit:
+        if invalid_submit_before_valid:
+            _append_submit_exchange(
+                ledger,
+                "submit-invalid",
+                valid=False,
+                trial_id=trial_id,
+                source=source,
+            )
+        _append_submit_exchange(
+            ledger,
+            "submit",
+            valid=True,
+            trial_id=trial_id,
+            source=source,
+        )
+
+
+def _append_base_success_events(
+    ledger: PlatformLedger,
+    *,
+    trial_id: str = TRIAL_ID,
+    source: str = "mcp_server",
+    include_confirm: bool = True,
+    include_notice_ack: bool = True,
+    include_submit: bool = True,
+    invalid_submit_before_valid: bool = False,
+) -> None:
+    _append_pair(
+        ledger,
+        "k8s",
+        "k8s_ro.k8s_list_resources",
+        {"ok": True, "items": [{"kind": "Pod", "metadata": {"name": "cart"}}]},
+        trial_id=trial_id,
+        source=source,
+    )
+    _append_pair(
+        ledger,
+        "telemetry",
+        "telemetry_ro.telemetry_prom_metric_range",
+        {"ok": True, "window": {"seconds": 30}},
+        trial_id=trial_id,
+        source=source,
+    )
+    if include_confirm:
         ledger.append(
             trial_id=trial_id,
             event_type="ToolCall",
             occurred_at=NOW,
             payload={
                 "source": source,
-                "call_id": "submit",
-                "tool": "harness_channel.harness_submit_result",
-                "arguments": {"result": {"status": "completed"}},
+                "call_id": "confirm",
+                "tool": "harness_channel.harness_confirm",
+                "arguments": {"plan": {"action": "no_mutation_channel_check"}},
             },
         )
         ledger.append(
             trial_id=trial_id,
-            event_type="RESULT_SUBMITTED",
+            event_type="CONFIRM_DENIED",
             occurred_at=NOW,
-            payload={"valid": True, "stored": True, "errors": []},
+            payload={"allowed": False, "reason": "no mutation authorized"},
         )
         ledger.append(
             trial_id=trial_id,
@@ -378,10 +502,128 @@ def _append_success_events(
             occurred_at=NOW,
             payload={
                 "source": source,
-                "call_id": "submit",
+                "call_id": "confirm",
                 "status": "completed",
-                "payload": {"ok": True, "valid": True, "errors": []},
+                "payload": {
+                    "ok": True,
+                    "allowed": False,
+                    "reason": "no mutation authorized",
+                    "message": "No mutation is authorized for base channel qualification.",
+                },
             },
+        )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolCall",
+        occurred_at=NOW,
+        payload={
+            "source": source,
+            "call_id": "consult",
+            "tool": "harness_channel.harness_consult",
+            "arguments": {"question": "Any extra hint for a no-fault base channel qualification?"},
+        },
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="CONSULT_DECLINED",
+        occurred_at=NOW,
+        payload={
+            "reason": "no_disturbance_observed",
+            "question": "Any extra hint for a no-fault base channel qualification?",
+            "message": "No additional information is available.",
+        },
+    )
+    ledger.append(
+        trial_id=trial_id,
+        event_type="ToolResult",
+        occurred_at=NOW,
+        payload={
+            "source": source,
+            "call_id": "consult",
+            "status": "completed",
+            "payload": {
+                "ok": True,
+                "message": "No additional information is available.",
+                "hint_delivered": False,
+            },
+        },
+    )
+    if include_notice_ack:
+        _append_pair(
+            ledger,
+            "poll-1",
+            "harness_channel.harness_poll_notices",
+            {
+                "ok": True,
+                "notices": [
+                    {
+                        "delivery_id": "delivery-1",
+                        "notice": {
+                            "notice_type": QUALIFICATION_NOTICE_TYPE,
+                            "notice_id": 1,
+                            "payload": {"fact": "Base channel qualification notice."},
+                        },
+                    }
+                ],
+                "acknowledged": [],
+                "ack_errors": [],
+            },
+            trial_id=trial_id,
+            source=source,
+        )
+        ledger.append(
+            trial_id=trial_id,
+            event_type="ToolCall",
+            occurred_at=NOW,
+            payload={
+                "source": source,
+                "call_id": "poll-2",
+                "tool": "harness_channel.harness_poll_notices",
+                "arguments": {"ack_ids": ["delivery-1"]},
+            },
+        )
+        ledger.append(
+            trial_id=trial_id,
+            event_type="NOTICE_DELIVERED",
+            occurred_at=NOW,
+            payload={
+                "delivery_id": "delivery-1",
+                "notice_id": 1,
+                "notice_type": QUALIFICATION_NOTICE_TYPE,
+                "path": "poll",
+            },
+        )
+        ledger.append(
+            trial_id=trial_id,
+            event_type="ToolResult",
+            occurred_at=NOW,
+            payload={
+                "source": source,
+                "call_id": "poll-2",
+                "status": "completed",
+                "payload": {
+                    "ok": True,
+                    "notices": [],
+                    "acknowledged": [{"delivery_id": "delivery-1", "notice_id": 1}],
+                    "ack_errors": [],
+                },
+            },
+    )
+    if include_submit:
+        if invalid_submit_before_valid:
+            _append_submit_exchange(
+                ledger,
+                "submit-invalid",
+                valid=False,
+                trial_id=trial_id,
+                source=source,
+            )
+        _append_submit_exchange(
+            ledger,
+            "submit",
+            valid=True,
+            trial_id=trial_id,
+            source=source,
         )
 
 
@@ -413,6 +655,350 @@ def test_evaluator_accepts_exact_mcp_server_sequence(tmp_path: Path) -> None:
         "harness_channel.harness_poll_notices",
         "harness_channel.harness_submit_result",
     ]
+
+
+def test_evaluator_accepts_invalid_result_then_last_valid_submission(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_success_events(ledger, invalid_submit_before_valid=True)
+
+    record = _evaluate(ledger)
+
+    assert record.passed is True
+    assert [item["call_id"] for item in record.ordered_exchanges if item["tool"] == "harness_channel.harness_submit_result"] == [
+        "submit-invalid",
+        "submit",
+    ]
+
+
+def test_evaluator_rejects_valid_result_without_matching_result_submitted_event(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_success_events(ledger, include_submit=False)
+    _append_submit_exchange(ledger, "submit", valid=True, include_result_event=False)
+
+    record = _evaluate(ledger)
+
+    assert record.passed is False
+    assert "missing_valid_result_submission" in record.failure_reasons
+
+
+def test_base_evaluator_accepts_foundational_channel_sequence(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_success_events(ledger)
+
+    record = evaluate_base_channel_qualification(
+        ledger.query(trial_id=TRIAL_ID, limit=10_000),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            artifact_refs=("base-channel-qualification/trial/stdout.txt",),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is True
+    assert record.qualification_type == BASE_CHANNEL_QUALIFICATION_MODE
+    assert record.qualification_profile == BASE_CHANNEL_QUALIFICATION_MODE
+    assert record.scored_as_d7 is False
+    assert record.base_checks == {
+        "mcp_read_verified": True,
+        "confirmation_roundtrip_verified": True,
+        "consult_roundtrip_verified": True,
+        "notice_ack_verified": True,
+        "result_submission_verified": True,
+        "gateway_evidence_verified": True,
+        "tool_evidence_verified": True,
+    }
+    assert record.observed_capability_evidence["mcp_servers"] == [
+        "harness_channel",
+        "k8s_ro",
+        "telemetry_ro",
+    ]
+    assert record.observed_capability_evidence["required_mcp_servers"] == [
+        "chaos_control",
+        "harness_channel",
+        "k8s_ro",
+        "source_ro",
+        "telemetry_ro",
+    ]
+    assert "base-channel qualification; not a fault qualification" in record.limitations
+
+
+def test_base_record_publishes_into_preflight_from_real_evaluator_output(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    archive = artifact_root / "codex-base"
+    archive.mkdir(parents=True)
+    gateway = _gateway_snapshot(tmp_path)
+    model = "gpt-5.5"
+    trial_id = TRIAL_ID
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_success_events(ledger, trial_id=trial_id)
+    report = HarnessReport(
+        status="completed",
+        agent_verdict=AgentVerdict.INCONCLUSIVE,
+        lifecycle_events=(),
+        artifact_refs=(
+            "codex-base/gateway-requests.json",
+            "codex-base/canonical-events.jsonl",
+        ),
+        final_output={
+            **_fake_gateway_output(model),
+            "gateway_route": gateway.route(model),
+            "gateway_config_sha256": gateway.config_sha256,
+        },
+    )
+    record = evaluate_base_channel_qualification(
+        ledger.query(trial_id=trial_id, limit=10_000),
+        harness=HarnessKind.CODEX,
+        model=model,
+        trial_id=trial_id,
+        report=report,
+    )
+    assert record.passed is True
+    record_path = write_record(tmp_path / "records", record)
+    record_payload = json.loads(record_path.read_text(encoding="utf-8"))
+    exchanges = record_payload["ordered_exchanges"]
+
+    gateway_receipts = [
+        {
+            "trial_id": trial_id,
+            "harness": "codex",
+            "model_alias": model,
+            "gateway_config_sha256": gateway.config_sha256,
+            "request_id": "offline-request-1",
+            "outcome": "received",
+        }
+    ]
+    (archive / "gateway-requests.json").write_text(
+        json.dumps(gateway_receipts),
+        encoding="utf-8",
+    )
+    native_tools = [
+        "k8s_ro.k8s_list_resources",
+        "telemetry_ro.telemetry_prom_metric_range",
+        "harness_channel.harness_confirm",
+        "harness_channel.harness_consult",
+        "harness_channel.harness_poll_notices",
+        "harness_channel.harness_submit_result",
+    ]
+    rows: list[dict[str, object]] = []
+    for index, tool in enumerate(native_tools):
+        call_id = f"native-{index}"
+        rows.append(
+            {
+                "event_type": "ToolCall",
+                "source": "native",
+                "replayed": False,
+                "call_id": call_id,
+                "tool": tool,
+            }
+        )
+        rows.append(
+            {
+                "event_type": "ToolResult",
+                "source": "native",
+                "replayed": False,
+                "call_id": call_id,
+                "status": "completed",
+                "payload": {"ok": True},
+            }
+        )
+    for exchange in exchanges:
+        rows.append(
+            {
+                "event_type": "ToolCall",
+                "source": "mcp_server",
+                "replayed": False,
+                "call_id": exchange["call_id"],
+                "tool": exchange["tool"],
+            }
+        )
+        rows.append(
+            {
+                "event_type": "ToolResult",
+                "source": "mcp_server",
+                "replayed": False,
+                "call_id": exchange["call_id"],
+                "status": exchange["status"],
+                "payload": {"ok": True},
+            }
+        )
+    (archive / "canonical-events.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "private" / "capabilities.json"
+    publish_capabilities(
+        [record_path],
+        artifact_root=artifact_root,
+        output=output,
+        gateway=gateway,
+    )
+    descriptors, source = harness_capabilities_from_qualification(output)
+
+    assert source["status"] == "qualification_records_loaded"
+    assert descriptors["codex"]["qualification_passed"] is True
+    assert descriptors["codex"]["feedback_channels"] == ["in_band_mcp"]
+    assert descriptors["codex"]["probe"]["qualification_profile"] == BASE_CHANNEL_QUALIFICATION_MODE
+
+
+def test_base_evaluator_accepts_invalid_result_then_last_valid_submission(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_success_events(ledger, invalid_submit_before_valid=True)
+
+    record = evaluate_base_channel_qualification(
+        ledger.query(trial_id=TRIAL_ID, limit=10_000),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is True
+    assert record.base_checks["result_submission_verified"] is True
+    assert [item["call_id"] for item in record.ordered_exchanges if item["tool"] == "harness_channel.harness_submit_result"] == [
+        "submit-invalid",
+        "submit",
+    ]
+
+
+def test_base_evaluator_rejects_valid_result_without_matching_result_submitted_event(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_success_events(ledger, include_submit=False)
+    _append_submit_exchange(ledger, "submit", valid=True, include_result_event=False)
+
+    record = evaluate_base_channel_qualification(
+        ledger.query(trial_id=TRIAL_ID, limit=10_000),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is False
+    assert record.base_checks["result_submission_verified"] is False
+    assert "missing_valid_result_submission" in record.failure_reasons
+
+
+@pytest.mark.parametrize(
+    "damage,reason,check",
+    [
+        ("native", "missing_base_mcp_read_exchange", "mcp_read_verified"),
+        ("no_confirm", "missing_harness_confirm_roundtrip", "confirmation_roundtrip_verified"),
+        ("fake_hint", "base_consult_must_decline_without_hint", "consult_roundtrip_verified"),
+        ("no_ack", "missing_notice_ack", "notice_ack_verified"),
+        ("no_submit", "missing_valid_result_submission", "result_submission_verified"),
+        ("d7_tool", "base_disallowed_mcp_server_exchange", "tool_evidence_verified"),
+    ],
+)
+def test_base_evaluator_rejects_missing_or_forged_platform_evidence(
+    tmp_path: Path,
+    damage: str,
+    reason: str,
+    check: str,
+) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_success_events(
+        ledger,
+        source="native_stream" if damage == "native" else "mcp_server",
+        include_confirm=damage != "no_confirm",
+        include_notice_ack=damage != "no_ack",
+        include_submit=damage != "no_submit",
+    )
+    if damage == "d7_tool":
+        _append_pair(
+            ledger,
+            "sandbox",
+            "code_sandbox.run_python",
+            {"ok": True, "exit_code": 0, "truncated": False},
+            trial_id=TRIAL_ID,
+            source="mcp_server",
+        )
+    if damage == "fake_hint":
+        events = ledger.query(trial_id=TRIAL_ID, limit=10_000)
+        for event in events:
+            if event.event_type == "ToolResult" and event.payload.get("call_id") == "consult":
+                event.payload["payload"]["hint_delivered"] = True
+        record = evaluate_base_channel_qualification(
+            events,
+            harness=HarnessKind.CODEX,
+            model="gpt-5.5",
+            trial_id=TRIAL_ID,
+            report=HarnessReport(
+                status="completed",
+                agent_verdict=AgentVerdict.INCONCLUSIVE,
+                lifecycle_events=(),
+                final_output=_fake_gateway_output(),
+            ),
+        )
+    else:
+        record = evaluate_base_channel_qualification(
+            ledger.query(trial_id=TRIAL_ID, limit=10_000),
+            harness=HarnessKind.CODEX,
+            model="gpt-5.5",
+            trial_id=TRIAL_ID,
+            report=HarnessReport(
+                status="completed",
+                agent_verdict=AgentVerdict.INCONCLUSIVE,
+                lifecycle_events=(),
+                final_output=_fake_gateway_output(),
+            ),
+        )
+
+    assert record.passed is False
+    assert reason in record.failure_reasons
+    assert record.base_checks[check] is False
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "chaos_control.chaos_destroy_experiment",
+        "chaos_mesh_control.chaos_mesh_destroy_experiment",
+    ],
+)
+def test_base_evaluator_rejects_destroy_attempts(tmp_path: Path, tool: str) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_base_success_events(ledger)
+    _append_pair(
+        ledger,
+        "destroy",
+        tool,
+        {"ok": False, "error": {"code": "TOOL_DISABLED"}},
+        source="mcp_server",
+        status="failed",
+    )
+
+    record = evaluate_base_channel_qualification(
+        ledger.query(trial_id=TRIAL_ID, limit=10_000),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is False
+    assert "mutation_attempted" in record.failure_reasons
+    assert record.base_checks["tool_evidence_verified"] is False
 
 
 def test_evaluator_rejects_forged_native_stream_evidence(tmp_path: Path) -> None:
@@ -520,6 +1106,31 @@ def test_evaluator_requires_sandbox_run_ledger_evidence(tmp_path: Path) -> None:
 def test_evaluator_rejects_mutation_attempt(tmp_path: Path) -> None:
     ledger = PlatformLedger(tmp_path / "ledger")
     _append_success_events(ledger, include_mutation=True)
+
+    record = _evaluate(ledger)
+
+    assert record.passed is False
+    assert "mutation_attempted" in record.failure_reasons
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "chaos_control.chaos_destroy_experiment",
+        "chaos_mesh_control.chaos_mesh_destroy_experiment",
+    ],
+)
+def test_evaluator_rejects_destroy_attempts(tmp_path: Path, tool: str) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_success_events(ledger)
+    _append_pair(
+        ledger,
+        "destroy",
+        tool,
+        {"ok": False, "error": {"code": "TOOL_DISABLED"}},
+        source="mcp_server",
+        status="failed",
+    )
 
     record = _evaluate(ledger)
 
@@ -814,6 +1425,205 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
     assert (tmp_path / "out" / "channel-qualification-codex.json").is_file()
 
 
+def test_base_runner_uses_only_foundational_servers_and_separate_record_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    policy_calls: list[tuple[str, str, str | None, str]] = []
+    restored: list[str] = []
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("RESBENCH_COROOT_URL", "https://coroot.invalid")
+    monkeypatch.setenv("RESBENCH_COROOT_PROJECT_ID", "project-that-base-must-not-read")
+
+    class PolicyRegistry:
+        def set_server(self, server_name, *, state=None, source="controller", reason=None, **_kwargs):
+            policy_calls.append(("server", server_name, None, source))
+
+        def set_tool(self, server_name, tool_name, *, state=None, source="controller", reason=None):
+            policy_calls.append(("tool", server_name, tool_name, source))
+
+    class TokenRegistry:
+        platform_ledger = ledger
+
+        def policy_registry(self, trial_id):
+            assert trial_id.startswith("campaign-")
+            assert trial_id.endswith("-codex-d0-1")
+            return PolicyRegistry()
+
+    class Permissions:
+        token_registry = TokenRegistry()
+
+        def provision(self, campaign_id, trial_id, harness, episode, runtime):
+            assert runtime.tool_substitution_variant is None
+            assert runtime.main_fault["qualification_type"] == BASE_CHANNEL_QUALIFICATION_MODE
+            assert "RESBENCH_COROOT_URL" not in supervisor.base_environment
+            assert "RESBENCH_COROOT_PROJECT_ID" not in supervisor.base_environment
+            return CapabilityProfile(
+                harness=harness,
+                mcp_servers=(
+                    "k8s_ro",
+                    "telemetry_ro",
+                    "source_ro",
+                    "chaos_control",
+                    "harness_channel",
+                ),
+                mcp_tools=(
+                    "harness_consult",
+                    "harness_confirm",
+                    "harness_submit_result",
+                    "harness_poll_notices",
+                    "k8s_list_resources",
+                    "telemetry_workload_current",
+                    "source_list_files",
+                    "chaos_validate_plan",
+                    "chaos_create_experiment",
+                ),
+                kubernetes_rules=(),
+                direct_kubeconfig=False,
+                allowed_fault_types=("network-delay",),
+                expires_at="2026-09-05T13:00:00Z",
+            )
+
+        def restore(self, trial_id):
+            restored.append(trial_id)
+
+    class Supervisor:
+        def __init__(self):
+            self.base_environment = {"RESBENCH_CHAOS_EXECUTE_ENABLED": "true"}
+
+        def stop(self):
+            pass
+
+    class HarnessRunner:
+        def __init__(self):
+            self.mcp_supervisor = None
+            self.base_environment = {}
+
+        def run(self, **kwargs):
+            captured["prompt"] = kwargs["base_prompt"]
+            captured["capability_servers"] = kwargs["capability"].mcp_servers
+            captured["capability_tools"] = kwargs["capability"].mcp_tools
+            assert "coroot_ro" not in kwargs["capability"].mcp_servers
+            assert "chaos_mesh_control" not in kwargs["capability"].mcp_servers
+            assert "code_sandbox" not in kwargs["capability"].mcp_servers
+            assert kwargs["prompt_level_label"] == BASE_CHANNEL_QUALIFICATION_MODE
+            assert "Never call chaos_create_experiment" in kwargs["base_prompt"]
+            assert "Coroot tools" in kwargs["base_prompt"]
+            assert "chaos_validate_plan" not in kwargs["base_prompt"]
+            assert "source_ro" not in kwargs["base_prompt"]
+            kwargs["event_observer"](
+                {
+                    "event_type": "TOOL_INTERACTION",
+                    "native_type": "tool_result",
+                    "tool": "harness_channel.harness_confirm",
+                    "payload": {
+                        "source": "mcp_server",
+                        "result": {
+                            "ok": True,
+                            "allowed": False,
+                            "reason": "no mutation authorized",
+                        },
+                    },
+                }
+            )
+            pending = ledger.pending_notices(
+                trial_id=kwargs["trial_id"],
+                include_claimed=True,
+            )
+            assert pending[0].notice_type == QUALIFICATION_NOTICE_TYPE
+            _append_base_success_events(ledger, trial_id=kwargs["trial_id"])
+            return HarnessReport(
+                status="completed",
+                agent_verdict=AgentVerdict.INCONCLUSIVE,
+                lifecycle_events=(),
+                artifact_refs=("base-channel-qualification/trial/stdout.txt",),
+                final_output=_fake_gateway_output(),
+            )
+
+    supervisor = Supervisor()
+    harness_runner = HarnessRunner()
+    components = SimpleNamespace(
+        permissions=Permissions(),
+        token_registry=Permissions.token_registry,
+        supervisor=supervisor,
+        harness_runner=harness_runner,
+    )
+
+    class System:
+        def build_runtime(self, episode, request_model_by_harness, *, namespace):
+            assert request_model_by_harness == {HarnessKind.CODEX: "gpt-5.5"}
+            assert namespace == "otel-demo"
+            return components
+
+    record = ChannelQualificationRunner(System()).run_one(
+        episode=_episode_fixture(),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        output_dir=tmp_path / "out",
+        profile="base",
+    )
+
+    assert record.passed is True
+    assert record.qualification_type == BASE_CHANNEL_QUALIFICATION_MODE
+    assert record.base_checks["gateway_evidence_verified"] is True
+    assert captured["capability_servers"] == (
+        "k8s_ro",
+        "telemetry_ro",
+        "source_ro",
+        "chaos_control",
+        "harness_channel",
+    )
+    assert policy_calls == [
+        ("tool", "chaos_control", "chaos_create_experiment", "channel-qualification-safety"),
+    ]
+    assert len(restored) == 1
+    assert "RESBENCH_COROOT_URL" not in supervisor.base_environment
+    assert "RESBENCH_COROOT_PROJECT_ID" not in supervisor.base_environment
+    assert (tmp_path / "out" / "base-channel-qualification-codex.json").is_file()
+    assert not (tmp_path / "out" / "channel-qualification-codex.json").exists()
+
+
+def test_real_permission_provision_for_base_does_not_enable_substitution_servers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RESBENCH_COROOT_URL", "https://coroot.invalid")
+    manager = Stage2PermissionManager(
+        private_root=tmp_path / "private",
+        token_registry=McpTokenStateRegistry(tmp_path / "tokens"),
+    )
+    trial_id = "campaign-1234567890abcdef-bladeai-d0-1"
+    runtime = qualification_runtime_context(
+        trial_id=trial_id,
+        episode_id="episode-1",
+        namespace="otel-demo",
+        profile="base",
+    )
+
+    profile = manager.provision(
+        "campaign-1234567890abcdef",
+        trial_id,
+        HarnessKind.BLADEAI,
+        _episode_fixture(),
+        runtime,
+    )
+    context = manager.runtime_context(trial_id)
+    policy = read_policy_file(Path(context["mcp_policy_file"]))
+
+    optional = {"coroot_ro", "chaos_mesh_control", "code_sandbox"}
+    assert runtime.tool_substitution_variant is None
+    assert set(profile.mcp_servers) == {
+        "k8s_ro",
+        "telemetry_ro",
+        "source_ro",
+        "chaos_control",
+        "harness_channel",
+    }
+    assert optional.isdisjoint(set(context["mcp_token_files"]))
+    assert optional.isdisjoint(set(policy.servers))
+
+
 def test_runner_provisions_real_token_registry_with_campaign_trial_identity(tmp_path: Path) -> None:
     token_registry = McpTokenStateRegistry(tmp_path / "tokens")
     permissions = Stage2PermissionManager(
@@ -1023,6 +1833,8 @@ def test_collective_equality_requires_all_four_harnesses() -> None:
 
     result = collective_equality_check(records)
 
+    assert result["qualification_type"] == "CHANNEL_QUALIFICATION"
+    assert result["qualification_profile"] == "CHANNEL_QUALIFICATION"
     assert result["complete_harness_set"] is True
     assert result["all_passed"] is True
     assert result["telemetry_denial_body_equal"] is True
@@ -1056,6 +1868,20 @@ def test_collective_rejects_duplicate_harnesses_and_mixed_models() -> None:
     assert result["all_passed"] is False
     assert result["duplicate_harnesses"] == ["codex"]
     assert result["mixed_models"] is True
+
+
+@pytest.mark.parametrize("damage", ["mixed_profile", "missing_profile", "different_hint"])
+def test_collective_cannot_mix_qualification_profiles_or_help(damage: str) -> None:
+    records = [ChannelQualificationRecord(harness=h.value, model="gpt-5.5", passed=True,
+                                         **_fake_gateway_fields()).as_dict()
+               for h in ALL_CHANNEL_HARNESSES]
+    if damage == "mixed_profile":
+        records[0]["qualification_profile"] = BASE_CHANNEL_QUALIFICATION_MODE
+    elif damage == "missing_profile":
+        records[0].pop("qualification_profile")
+    else:
+        records[0]["hint_body"] = {"message": "different help"}
+    assert collective_equality_check(records)["all_passed"] is False
 
 
 @pytest.mark.parametrize("damage", ["missing_version", "mixed_version", "wrong_route", "missing_proof"])
@@ -1092,6 +1918,53 @@ def test_write_record_fails_on_existing_file_and_symlink_parent(tmp_path: Path) 
         write_record(link / "child", ChannelQualificationRecord(harness="bladeai"))
 
 
+def test_base_and_substitution_records_use_separate_files(tmp_path: Path) -> None:
+    output = tmp_path / "out"
+    substitution = ChannelQualificationRecord(harness="codex", model="gpt-5.5", trial_id="trial-sub")
+    base = ChannelQualificationRecord(
+        harness="codex",
+        model="gpt-5.5",
+        trial_id="trial-base",
+        qualification_type=BASE_CHANNEL_QUALIFICATION_MODE,
+        qualification_profile=BASE_CHANNEL_QUALIFICATION_MODE,
+    )
+
+    substitution_path = write_record(output, substitution)
+    base_path = write_record(output, base)
+
+    assert substitution_path.name == "channel-qualification-codex.json"
+    assert base_path.name == "base-channel-qualification-codex.json"
+    assert substitution_path.read_text(encoding="utf-8") != base_path.read_text(encoding="utf-8")
+
+
+def test_base_collective_uses_base_prefix_and_profile(tmp_path: Path) -> None:
+    output = tmp_path / "out"
+    records = [
+        ChannelQualificationRecord(
+            **_fake_gateway_fields(),
+            harness=harness.value,
+            model="gpt-5.5",
+            trial_id=f"trial-{harness.value}",
+            status="passed",
+            passed=True,
+            qualification_type=BASE_CHANNEL_QUALIFICATION_MODE,
+            qualification_profile=BASE_CHANNEL_QUALIFICATION_MODE,
+        )
+        for harness in ALL_CHANNEL_HARNESSES
+    ]
+    for record in records:
+        write_record(output, record)
+
+    collective_path = write_collective_check(output, profile="base")
+
+    assert collective_path == output / "base-channel-qualification-collective.json"
+    collective = json.loads(collective_path.read_text(encoding="utf-8"))
+    assert collective["qualification_type"] == BASE_CHANNEL_QUALIFICATION_MODE
+    assert collective["qualification_profile"] == BASE_CHANNEL_QUALIFICATION_MODE
+    assert collective["complete_harness_set"] is True
+    assert collective["all_passed"] is True
+
+
 def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatch, capsys) -> None:
     from scripts import qualify_agent_channel as cli
 
@@ -1106,7 +1979,8 @@ def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatc
             self.system = system
             self.namespace = namespace
 
-        def run_all(self, *, episode, model, harnesses, output_dir):
+        def run_all(self, *, episode, model, harnesses, output_dir, profile):
+            assert profile == "substitution"
             calls.append(tuple(harness.value for harness in harnesses))
             records = [
                 ChannelQualificationRecord(
@@ -1135,6 +2009,8 @@ def test_cli_runs_runner_and_writes_collective_record(tmp_path: Path, monkeypatc
         [
             "--model",
             "gpt-5.5",
+            "--profile",
+            "substitution",
             "--output-dir",
             str(tmp_path / "out"),
             "--protected-root",
@@ -1165,6 +2041,8 @@ def test_cli_rejects_mismatched_protected_root(tmp_path: Path, monkeypatch) -> N
             [
                 "--model",
                 "gpt-5.5",
+                "--profile",
+                "substitution",
                 "--output-dir",
                 str(tmp_path / "out"),
                 "--protected-root",
@@ -1181,6 +2059,8 @@ def test_cli_rejects_non_otel_namespace() -> None:
             [
                 "--model",
                 "gpt-5.5",
+                "--profile",
+                "base",
                 "--output-dir",
                 "/tmp/channel-qualification",
                 "--namespace",
