@@ -1,8 +1,10 @@
 # 旧集群环境资格记录（UTC 2026-09-06）
 
+> 本文保留早期环境检查的历史快照。后续真实智能体运行及当前缺口见[四智能体原生入口实测记录](stage2-native-entrypoint-20260906.md)。
+
 范围固定为 `coroot-config`、`kubernetes-admin@kubernetes`，节点 `tcse-v100-03`；新集群未部署、未测试。不是正式扰动评测结果。
 
-当前运行版本 `bb08326`，integration Pod `resbench-stage2-integration-758d48fc58-ctmpg` 三容器就绪、零重启；主服务/e2e仍为旧版本。下面初次记录来自`db8e03e`，随后修复结果单列，不覆盖失败历史。
+当时运行版本 `bb08326`，integration Pod `resbench-stage2-integration-758d48fc58-ctmpg` 三容器就绪、零重启；当时主服务/e2e仍为旧版本。下面初次记录来自`db8e03e`，随后修复结果单列，不覆盖失败历史。
 
 | 实际检查 | 结果 | 原始证据 |
 | --- | --- | --- |
@@ -17,7 +19,7 @@ integration已切至`5d7a498`，采用专用强制AppArmor策略和递归只读�
 
 随后用生产`CodeSandboxService.from_env`连接真实`harness_channel` MCP服务，验证Bearer认证、通知读取和回执。`smb603cf`失败：MCP已经返回，但代理仍读取SDK v1属性isError而非当前SDK v2属性is_error；这是平台接口缺陷，不是Agent失败。修复同时使用structured_content，并将线程中的SDK异常转成脱敏、可审计的失败；授权调用失败与权限拒绝分别记账。修复后的真实复验结果待补。
 
-## bb08326真实复验（当前）
+## bb08326真实复验（历史快照）
 
 | 检查 | 结果 | 原始证据 |
 | --- | --- | --- |
