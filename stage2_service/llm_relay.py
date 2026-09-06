@@ -112,7 +112,11 @@ def create_trial_relay_app(
     async def infer(request: Request) -> Response:
         if not _authorized(request, config.relay_token):
             return JSONResponse({"error": {"message": "unauthorized"}}, status_code=401)
-        if request.url.query:
+        # The pinned Claude client uses this exact inference URL. This is not
+        # permission to forward arbitrary query-based routing or credentials.
+        if request.url.query and not (
+            request.url.path == "/v1/messages" and request.url.query == "beta=true"
+        ):
             return _error(400, "query_parameters_not_allowed")
         content_length = request.headers.get("content-length")
         if content_length is not None:
@@ -141,6 +145,8 @@ def create_trial_relay_app(
         if _has_forbidden_routing_field(payload):
             return _error(403, "request_routing_parameter_forbidden")
         upstream_url = _upstream_url(config.upstream_base_url, request.url.path)
+        if request.url.query:
+            upstream_url += "?beta=true"
         request_id = secrets.token_hex(16)
         config.request_ids.append(request_id)
         headers = {
@@ -153,6 +159,10 @@ def create_trial_relay_app(
             "x-resbench-request-id": request_id,
             "x-resbench-gateway-config-sha256": config.gateway_config_sha256,
         }
+        if request.url.path == "/v1/messages":
+            for name in ("anthropic-version", "anthropic-beta"):
+                if name in request.headers:
+                    headers[name] = request.headers[name]
         client = factory()
         try:
             upstream = await client.send(

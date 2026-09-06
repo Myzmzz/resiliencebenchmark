@@ -95,6 +95,36 @@ def test_relay_rejects_cross_trial_token_model_and_admin_or_history_paths():
     assert client.post("/v1/responses?model=gateway-admin", headers={"Authorization": "Bearer trial-only-token"}, json=payload).status_code == 400
 
 
+def test_relay_preserves_claude_messages_beta_query_and_protocol_headers():
+    captured = []
+    _config, client = relay(lambda request: captured.append(request) or httpx.Response(200, stream=_Stream(_one_chunk(b"{}"))))
+    response = client.post(
+        "/v1/messages?beta=true",
+        headers={"Authorization": "Bearer trial-only-token", "X-API-Key": "agent-key", "anthropic-version": "2023-06-01",
+                 "anthropic-beta": "fixture-beta", "x-private-agent-header": "must-not-forward"},
+        json={"model": "gpt-5.5", "messages": []},
+    )
+    assert response.status_code == 200
+    assert str(captured[0].url) == "http://private-gateway:4000/v1/messages?beta=true"
+    assert captured[0].headers["anthropic-version"] == "2023-06-01"
+    assert captured[0].headers["anthropic-beta"] == "fixture-beta"
+    assert captured[0].headers["authorization"] == "Bearer upstream-master-secret"
+    assert "x-api-key" not in captured[0].headers
+    assert "x-private-agent-header" not in captured[0].headers
+
+
+@pytest.mark.parametrize("path", ["/v1/messages?beta=false", "/v1/messages?beta=true&beta=true",
+    "/v1/messages?beta=true&model=other", "/v1/messages?api_key=stolen", "/v1/responses?beta=true",
+    "/v1/chat/completions?beta=true"])
+def test_relay_beta_support_does_not_open_other_queries(path):
+    calls = []
+    config, client = relay(lambda request: calls.append(request) or httpx.Response(200))
+    response = client.post(path, headers={"Authorization": "Bearer trial-only-token"},
+                           json={"model": "gpt-5.5", "messages": []})
+    assert response.status_code == 400
+    assert calls == [] and config.request_ids == []
+
+
 @pytest.mark.parametrize("harness", ["codex", "claude-code", "deepseek-harness", "bladeai"])
 def test_relay_owns_audit_identity_and_never_forwards_forged_agent_headers(harness):
     received = []
