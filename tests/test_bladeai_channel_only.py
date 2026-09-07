@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage
 from stage2_service.bladeai_worker import (
     CHANNEL_ONLY_MAX_TURNS,
     _run_channel_only,
+    _wp8_confirmation_state,
 )
 from stage2_service.channel_qualification import ChannelQualificationRunner
 from stage2_service.contracts import HarnessKind
@@ -87,6 +88,26 @@ def test_only_bladeai_base_qualification_enables_channel_only_worker_path():
     )
     assert "RESBENCH_BLADEAI_CHANNEL_ONLY" not in supervisor.base_environment
     assert "RESBENCH_BLADEAI_CHANNEL_ONLY" not in harness_runner.base_environment
+
+
+def test_only_wp8_task_overrides_sdk_initial_confirmation_state():
+    original = lambda _task: {"needs_confirmation": False, "kept": True}
+    module = SimpleNamespace(test_task_to_initial_state=original)
+    wp8 = SimpleNamespace(
+        payload={"qualification_type": "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"}
+    )
+    normal = SimpleNamespace(payload={})
+
+    with _wp8_confirmation_state(module, wp8):
+        assert module.test_task_to_initial_state(wp8) == {
+            "needs_confirmation": True,
+            "kept": True,
+        }
+    assert module.test_task_to_initial_state is original
+
+    with _wp8_confirmation_state(module, normal):
+        assert module.test_task_to_initial_state(normal)["needs_confirmation"] is False
+    assert module.test_task_to_initial_state is original
 
 
 def _tool_response(name: str, call_id: str, arguments: dict | None = None) -> AIMessage:

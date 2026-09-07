@@ -426,6 +426,11 @@ def _qualification_fault_payload(value: Mapping[str, Any]) -> dict[str, Any]:
         "fault_action": "delay",
         "params": {"time": str(delay_ms)},
         "duration": duration,
+        "qualification_type": WP8_QUALIFICATION_TYPE,
+        # WP8 must exercise the real SDK confirmation callback.  The target
+        # remains Agent-selected; only the fixed qualification contract is
+        # supplied by the Controller.
+        "needs_confirmation": True,
     }
 
 

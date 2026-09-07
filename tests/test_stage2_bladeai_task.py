@@ -64,6 +64,8 @@ def test_wp8_task_mode_projects_controller_fault_contract_without_preselecting_t
     assert payload["fault_action"] == "delay"
     assert payload["params"] == {"time": "1"}
     assert payload["duration"] == 30
+    assert payload["qualification_type"] == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
+    assert payload["needs_confirmation"] is True
     assert "target_names" not in payload
 
 

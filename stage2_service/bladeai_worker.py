@@ -55,6 +55,35 @@ def _channel_only_enabled() -> bool:
     return os.environ.get("RESBENCH_BLADEAI_CHANNEL_ONLY", "").strip().lower() == "true"
 
 
+@contextmanager
+def _wp8_confirmation_state(l4_module: Any, task: Any):
+    """Force the fixed WP8 task through BladeAI's real confirmation gate.
+
+    BladeAI 0.6.2's L4 adapter hard-codes ``needs_confirmation=False`` when
+    converting every task.  WP8 must verify the SDK ``require_approval`` hook,
+    so only the explicitly tagged qualification task overrides that single
+    state field.  The isolated worker restores the upstream function on exit.
+    """
+    payload = getattr(task, "payload", None)
+    if not isinstance(payload, dict) or payload.get("qualification_type") != (
+        "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
+    ):
+        yield
+        return
+    original = l4_module.test_task_to_initial_state
+
+    def build_state(value: Any) -> dict[str, Any]:
+        state = original(value)
+        state["needs_confirmation"] = True
+        return state
+
+    l4_module.test_task_to_initial_state = build_state
+    try:
+        yield
+    finally:
+        l4_module.test_task_to_initial_state = original
+
+
 def _mcp_operation_name(tool_name: str) -> str:
     """Convert the BladeAI MCP adapter name to ``server.operation`` form."""
     value = str(tool_name or "").strip()
@@ -666,7 +695,8 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
                     if runtime is not None and hasattr(runtime, "finish"):
                         runtime.finish(status=result.status)
                     return result
-                return await self._async_execute(pool, runtime, task)
+                with _wp8_confirmation_state(l4_module, task):
+                    return await self._async_execute(pool, runtime, task)
             finally:
                 await pool.close()
 
