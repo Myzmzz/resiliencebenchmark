@@ -92,21 +92,22 @@ blade create k8s pod-network delay --time 1 --timeout 30
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, str]] = {}
 
 
-def _record_wp8_discovery(payload: Mapping[str, Any]) -> None:
-    """Retain target names/UIDs returned by Agent read-only MCP calls."""
+def _targets_from_wp8_discovery(payload: Mapping[str, Any]) -> dict[tuple[str, str], dict[str, str]]:
+    """Extract only uniquely eligible WP8 targets from one MCP response."""
+    discovered: dict[tuple[str, str], dict[str, str]] = {}
     if not _wp8_enabled():
-        return
+        return discovered
     tool = str(payload.get("tool") or "")
     if not tool.endswith(("k8s_get_resource", "k8s_list_resources")):
-        return
+        return discovered
     raw = payload.get("result")
     if isinstance(raw, str):
         try:
             raw = json.loads(raw)
         except json.JSONDecodeError:
-            return
+            return discovered
     if not isinstance(raw, Mapping):
-        return
+        return discovered
     objects: list[Any] = []
     obj = raw.get("object")
     if isinstance(obj, Mapping):
@@ -129,14 +130,27 @@ def _record_wp8_discovery(payload: Mapping[str, Any]) -> None:
         name = str(metadata.get("name") or "").strip()
         uid = str(metadata.get("uid") or "").strip()
         if namespace and name:
-            _WP8_DISCOVERED_TARGETS[(namespace, name)] = {
+            discovered[(namespace, name)] = {
                 "namespace": namespace,
                 "name": name,
                 "uid": uid,
             }
+    return discovered
 
 
-def _augment_wp8_proposal_target(proposal: Mapping[str, Any]) -> dict[str, Any]:
+def _record_wp8_discovery(payload: Mapping[str, Any], *, target_store=None) -> None:
+    """Retain target names/UIDs returned by Agent read-only MCP calls."""
+    discovered = _targets_from_wp8_discovery(payload)
+    _WP8_DISCOVERED_TARGETS.update(discovered)
+    if target_store is not None:
+        target_store.update(discovered)
+
+
+def _augment_wp8_proposal_target(
+    proposal: Mapping[str, Any],
+    *,
+    discovered_targets: Mapping[tuple[str, str], Mapping[str, str]] | None = None,
+) -> dict[str, Any]:
     """Bind one uniquely observed target when SDK proposal names are empty."""
     value = dict(proposal)
     target = value.get("target")
@@ -146,7 +160,8 @@ def _augment_wp8_proposal_target(proposal: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(names, list) and len(names) == 1 and str(names[0]).strip():
         return value
     namespace = str(target.get("namespace") or "").strip()
-    candidates = [item for (ns, _name), item in _WP8_DISCOVERED_TARGETS.items()
+    source = discovered_targets if discovered_targets is not None else _WP8_DISCOVERED_TARGETS
+    candidates = [item for (ns, _name), item in source.items()
                   if not namespace or ns == namespace]
     if len(candidates) != 1:
         return value
@@ -452,6 +467,7 @@ class Runtime:
         self.proposal_capture = proposal_capture
         self.target_uid_resolver = target_uid_resolver
         self._approval_sequence = 0
+        self._wp8_discovered_targets: dict[tuple[str, str], dict[str, str]] = {}
 
     @contextmanager
     def step(self, name: str, attrs: dict | None = None):
@@ -465,6 +481,8 @@ class Runtime:
     def emit_event(self, kind: str, payload: dict):
         # Do not reduce native events to a local lifecycle vocabulary here.
         # ``BladeAIHarnessAdapter`` is the single normalizer for all harnesses.
+        if kind in {"runtime_tool_end", "tool_end"}:
+            _record_wp8_discovery(payload, target_store=self._wp8_discovered_targets)
         emit(kind, dict(payload))
 
     def require_approval(self, risk_level: str) -> bool:
@@ -477,13 +495,23 @@ class Runtime:
                 raise BladeTaskError("BladeAI proposal capture or controlled target discovery is unavailable")
             proposal = self.proposal_capture.take()
             if _wp8_enabled():
-                proposal = _augment_wp8_proposal_target(proposal)
+                proposal = _augment_wp8_proposal_target(
+                    proposal, discovered_targets=self._wp8_discovered_targets
+                )
             emit(
                 "sdk_confirmation_proposed",
                 {
                     "sdk_confirmation_id": sdk_confirmation_id,
                     "risk_level": risk_level,
                     "proposal_fields": sorted(str(key) for key in proposal),
+                    "wp8_discovered_target_count": (
+                        len(self._wp8_discovered_targets) if _wp8_enabled() else None
+                    ),
+                    "wp8_bound_target_name": (
+                        ((proposal.get("target") or {}).get("names") or [None])[0]
+                        if _wp8_enabled() and isinstance(proposal.get("target"), Mapping)
+                        else None
+                    ),
                 },
             )
             plan = partial_plan_from_native_proposal(
