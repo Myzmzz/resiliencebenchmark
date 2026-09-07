@@ -22,6 +22,7 @@ from stage2_service.simulated_user import HarnessResponder, SimulatedUserPolicy
 from stage2_service.bladeai_worker import (
     Runtime,
     _WP8_DISCOVERED_TARGETS,
+    _WP8_LABEL_LISTING_NAMESPACES,
     _augment_wp8_proposal_target,
     _record_wp8_discovery,
 )
@@ -41,6 +42,16 @@ def _task_request(**extra):
 def test_wp8_target_is_bound_only_from_a_unique_read_only_discovery(monkeypatch):
     monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
     _WP8_DISCOVERED_TARGETS.clear()
+    _WP8_LABEL_LISTING_NAMESPACES.clear()
+    _record_wp8_discovery({
+        "tool": "k8s_ro__k8s_list_resources",
+        "input": {"namespace": "otel-demo", "resource": "pods",
+                   "label_selector": "resiliencebenchmark.io/qualification=bladeai-wp8"},
+    })
+    _record_wp8_discovery({
+        "tool": "k8s_ro__k8s_get_resource",
+        "input": {"namespace": "otel-demo", "resource": "pods", "name": "canary"},
+    })
     _record_wp8_discovery({
         "tool": "k8s_ro__k8s_get_resource",
         "result": json.dumps({
@@ -65,6 +76,7 @@ def test_wp8_target_is_bound_only_from_a_unique_read_only_discovery(monkeypatch)
 def test_wp8_target_is_not_guessed_when_discovery_is_ambiguous(monkeypatch):
     monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
     _WP8_DISCOVERED_TARGETS.clear()
+    _WP8_LABEL_LISTING_NAMESPACES.clear()
     _record_wp8_discovery({
         "tool": "k8s_ro__k8s_list_resources",
         "result": json.dumps({

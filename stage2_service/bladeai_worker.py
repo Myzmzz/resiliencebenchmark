@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import asyncio
+import ast
 from contextlib import contextmanager
 from collections.abc import Mapping
 from pathlib import Path
@@ -31,8 +32,8 @@ from .bladeai_task import (
 
 
 def emit(kind: str, payload: dict) -> None:
-    if kind in {"runtime_tool_end", "tool_end"}:
-        _record_wp8_discovery(payload)
+    if kind in {"runtime_tool_start", "tool_start", "runtime_tool_end", "tool_end"}:
+        _record_wp8_discovery(payload, listing_namespaces=_WP8_LABEL_LISTING_NAMESPACES)
     print(
         json.dumps(
             {"type": "stage2_bladeai_event", "kind": kind, "payload": payload},
@@ -90,16 +91,57 @@ blade create k8s pod-network delay --time 1 --timeout 30
 """
 
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, str]] = {}
+_WP8_LABEL_LISTING_NAMESPACES: set[str] = set()
 
 
-def _targets_from_wp8_discovery(payload: Mapping[str, Any]) -> dict[tuple[str, str], dict[str, str]]:
-    """Extract only uniquely eligible WP8 targets from one MCP response."""
+def _input_mapping(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    raw = payload.get("input") or payload.get("arguments") or payload.get("args")
+    if isinstance(raw, Mapping):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            try:
+                parsed = ast.literal_eval(raw)
+            except (ValueError, SyntaxError):
+                return {}
+        return parsed if isinstance(parsed, Mapping) else {}
+    return {}
+
+
+def _targets_from_wp8_discovery(
+    payload: Mapping[str, Any],
+    *,
+    listing_namespaces: set[str] | None = None,
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Extract only eligible WP8 targets from an MCP call or result."""
     discovered: dict[tuple[str, str], dict[str, str]] = {}
     if not _wp8_enabled():
         return discovered
     tool = str(payload.get("tool") or "")
     if not tool.endswith(("k8s_get_resource", "k8s_list_resources")):
         return discovered
+    arguments = _input_mapping(payload)
+    namespace_arg = str(arguments.get("namespace") or "").strip()
+    resource_arg = str(arguments.get("resource") or "").strip().lower()
+    if resource_arg == "pods" and "resiliencebenchmark.io/qualification=bladeai-wp8" in str(
+        arguments.get("label_selector") or ""
+    ):
+        if namespace_arg:
+            (listing_namespaces if listing_namespaces is not None else _WP8_LABEL_LISTING_NAMESPACES).add(namespace_arg)
+    # The full get-resource response can be truncated by the SDK event bridge.
+    # A name from a get call is admissible only after the Agent itself listed
+    # the WP8 qualification label in the same namespace.
+    if tool.endswith("k8s_get_resource") and resource_arg == "pods":
+        name_arg = str(arguments.get("name") or "").strip()
+        known_namespaces = listing_namespaces if listing_namespaces is not None else _WP8_LABEL_LISTING_NAMESPACES
+        if name_arg and namespace_arg in known_namespaces:
+            discovered[(namespace_arg, name_arg)] = {
+                "namespace": namespace_arg,
+                "name": name_arg,
+                "uid": "",
+            }
     raw = payload.get("result")
     if isinstance(raw, str):
         try:
@@ -138,9 +180,14 @@ def _targets_from_wp8_discovery(payload: Mapping[str, Any]) -> dict[tuple[str, s
     return discovered
 
 
-def _record_wp8_discovery(payload: Mapping[str, Any], *, target_store=None) -> None:
+def _record_wp8_discovery(
+    payload: Mapping[str, Any],
+    *,
+    target_store=None,
+    listing_namespaces: set[str] | None = None,
+) -> None:
     """Retain target names/UIDs returned by Agent read-only MCP calls."""
-    discovered = _targets_from_wp8_discovery(payload)
+    discovered = _targets_from_wp8_discovery(payload, listing_namespaces=listing_namespaces)
     _WP8_DISCOVERED_TARGETS.update(discovered)
     if target_store is not None:
         target_store.update(discovered)
@@ -468,6 +515,7 @@ class Runtime:
         self.target_uid_resolver = target_uid_resolver
         self._approval_sequence = 0
         self._wp8_discovered_targets: dict[tuple[str, str], dict[str, str]] = {}
+        self._wp8_listing_namespaces: set[str] = set()
 
     @contextmanager
     def step(self, name: str, attrs: dict | None = None):
@@ -481,8 +529,12 @@ class Runtime:
     def emit_event(self, kind: str, payload: dict):
         # Do not reduce native events to a local lifecycle vocabulary here.
         # ``BladeAIHarnessAdapter`` is the single normalizer for all harnesses.
-        if kind in {"runtime_tool_end", "tool_end"}:
-            _record_wp8_discovery(payload, target_store=self._wp8_discovered_targets)
+        if kind in {"runtime_tool_start", "tool_start", "runtime_tool_end", "tool_end"}:
+            _record_wp8_discovery(
+                payload,
+                target_store=self._wp8_discovered_targets,
+                listing_namespaces=self._wp8_listing_namespaces,
+            )
         emit(kind, dict(payload))
 
     def require_approval(self, risk_level: str) -> bool:
@@ -602,6 +654,7 @@ def main(argv: list[str] | None = None) -> int:
     emit("task_started", {"mode": request.mode, "target": task.target, "namespace": request.namespace})
     if _wp8_enabled():
         _WP8_DISCOVERED_TARGETS.clear()
+        _WP8_LABEL_LISTING_NAMESPACES.clear()
     proposal_capture = NativeProposalCapture() if request.mode == "task" else None
     runtime = Runtime(
         confirmation_client,
