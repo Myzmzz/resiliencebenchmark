@@ -836,6 +836,7 @@ def subprocess_streaming_runner(
     record_observer: Callable[[Mapping[str, Any]], None] | None = None,
     activity_provider: Callable[[], bool] | None = None,
     turn_executor=None,
+    retry_classifier=None,
 ) -> CommandResult:
     """Run a harness and forward stdout JSONL before process completion."""
 
@@ -856,6 +857,7 @@ def subprocess_streaming_runner(
         record_observer=record_observer,
         activity_provider=activity_provider,
         turn_executor=turn_executor,
+        retry_classifier=retry_classifier,
     ).start().wait()
     return CommandResult(
         returncode=session_result.returncode,

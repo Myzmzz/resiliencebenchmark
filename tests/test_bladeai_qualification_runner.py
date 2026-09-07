@@ -12,6 +12,7 @@ from stage2_service.artifacts import ArtifactStore
 from stage2_service.bladeai_qualification_runner import (
     BladeAIQualificationRunner,
     prepare_output_dir,
+    qualification_prompt,
 )
 from stage2_service.contracts import (
     AgentVerdict,
@@ -27,6 +28,13 @@ from stage2_service.platform_ledger import PlatformLedger
 MODEL = "gpt-5.5"
 CANARY_POD = "bladeai-canary"
 CANARY_UID = "11111111-2222-4333-8444-555555555555"
+
+
+def test_wp8_prompt_does_not_request_large_builtin_skill_activation():
+    prompt = qualification_prompt(canary_pod=CANARY_POD)
+
+    assert "Do not call activate_skill" in prompt
+    assert "connected MCP tools directly" in prompt
 
 
 def _pod(*, labels=None, ready: bool = True) -> dict:

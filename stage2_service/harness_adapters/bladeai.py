@@ -51,6 +51,14 @@ _TOOL_END_EVENTS = frozenset({"tool_end", "runtime_tool_end", "runtime_tool_erro
 class BladeAIHarnessAdapter(BaseHarnessAdapter):
     kind = HarnessKind.BLADEAI
 
+    def __init__(self) -> None:
+        super().__init__()
+        # Keep the SDK's terminal envelope separate from the Agent's optional
+        # structured assessment.  In particular, a model/provider failure can
+        # be emitted with an empty summary; dropping that envelope makes the
+        # subsequent qualification failure impossible to diagnose.
+        self.terminal_result: dict[str, Any] | None = None
+
     def capability(self) -> HarnessCapability:
         return HarnessCapability(
             kind=self.kind,
@@ -71,6 +79,7 @@ class BladeAIHarnessAdapter(BaseHarnessAdapter):
         if isinstance(value, str):
             return [extract_agent_message(value, parse_occurred_at({}))]
         if value.get("type") == "stage2_bladeai_result":
+            self.terminal_result = dict(value)
             return [self._result_message(value)]
         if value.get("type") != "stage2_bladeai_event":
             return []

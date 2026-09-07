@@ -66,6 +66,7 @@ Observer = Callable[[bytes], Any]
 Redactor = Callable[[Any], Any]
 TurnCompleteObserver = Callable[[Mapping[str, Any]], Any]
 TurnExecutor = Callable[..., "SessionCommandResult"]
+RetryClassifier = Callable[[SessionCommandResult], tuple[bool, str, Mapping[str, Any]]]
 
 
 @dataclass
@@ -117,6 +118,7 @@ class HarnessSession:
         record_observer: Callable[[Mapping[str, Any]], None] | None = None,
         activity_provider: Callable[[], bool] | None = None,
         turn_executor: TurnExecutor | None = None,
+        retry_classifier: RetryClassifier | None = None,
     ):
         self.argv = list(argv)
         self.stdin = bytes(stdin)
@@ -135,6 +137,7 @@ class HarnessSession:
         self.record_observer = record_observer
         self.activity_provider = activity_provider
         self.turn_executor = turn_executor
+        self.retry_classifier = retry_classifier
         self._pending_feedback: list[StructuredFeedback] = []
         self._lock = threading.Lock()
         self._session_id: str | None = None
@@ -324,6 +327,13 @@ class HarnessSession:
                 "selected model is at capacity", "rate limit exceeded", "service unavailable",
                 "connection refused", "connection reset", "stream disconnected before completion",
             ))
+            classified = (
+                self.retry_classifier(result)
+                if self.retry_classifier is not None
+                else (False, "", {})
+            )
+            classified_retry, classified_reason, classified_details = classified
+            retry_details: dict[str, Any] = {}
             # Native format knowledge belongs to the Harness adapter. With no
             # activity evidence, stdout is conservatively treated as activity.
             acted = self.activity_provider() if self.activity_provider is not None else bool(result.stdout.strip())
@@ -333,10 +343,24 @@ class HarnessSession:
                 and not result.timed_out
                 and not result.output_truncated
             )
+            # A harness-specific classifier may establish a stronger safety
+            # condition than the generic "no stdout activity" check.  This is
+            # used by BladeAI WP8 to retry a provider failure after a
+            # read/planning-only turn, but only while no confirmation or write
+            # operation has occurred.
+            if classified_retry:
+                can_retry = (
+                    not result.cancelled
+                    and not result.timed_out
+                    and not result.output_truncated
+                )
             if schema_error and "--output-schema" in current_argv and can_retry:
                 index = current_argv.index("--output-schema")
                 del current_argv[index:index + 2]
                 repair = "invalid native output constraint removed"
+            elif classified_retry and not schema_error and can_retry:
+                repair = classified_reason or "classified transient native provider failure"
+                retry_details = dict(classified_details)
             elif transient and not schema_error and can_retry:
                 repair = "transient native startup failure before Agent activity"
             else:
@@ -345,10 +369,27 @@ class HarnessSession:
                     stdout=stdout, stderr=stderr, timed_out=result.timed_out,
                     cancelled=result.cancelled, output_truncated=result.output_truncated,
                 )
-            if not self.retry_budget.consume("native_startup", repair):
+            retry_metadata = dict(retry_details) if classified_retry else None
+            if not self.retry_budget.consume("native_startup", repair, retry_metadata):
                 self._record("RETRY_BUDGET_EXHAUSTED", {"kind": "native_startup", "reason": repair})
                 return SessionCommandResult(1, stdout, stderr, output_truncated=result.output_truncated)
             self._record("NATIVE_RETRY", self.retry_budget.retries[-1])
+            if classified_retry:
+                backoff = min(10, 5 * len(self.retry_budget.retries))
+                if time.monotonic() + backoff >= deadline:
+                    return SessionCommandResult(
+                        returncode=result.returncode,
+                        stdout=stdout,
+                        stderr=stderr,
+                        timed_out=False,
+                        cancelled=False,
+                        output_truncated=result.output_truncated,
+                    )
+                self._record(
+                    "NATIVE_RETRY_BACKOFF",
+                    {"seconds": backoff, "turn": turn_kind},
+                )
+                time.sleep(backoff)
 
     def cancel(self) -> None:
         self._transport_cancelled.set()

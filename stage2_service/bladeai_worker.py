@@ -55,6 +55,52 @@ def _channel_only_enabled() -> bool:
     return os.environ.get("RESBENCH_BLADEAI_CHANNEL_ONLY", "").strip().lower() == "true"
 
 
+def _wp8_enabled() -> bool:
+    return os.environ.get("RESBENCH_BLADEAI_WP8", "").strip().lower() == "true"
+
+
+def _apply_wp8_skill_guard(factory_module: Any, registry: Any) -> None:
+    """Keep the WP8 planning surface focused on the connected MCP tools.
+
+    The upstream BladeAI skill tool advertises a mandatory full-catalogue
+    activation.  That is useful for ordinary user tasks, but it adds a large
+    response and an avoidable model turn to the fixed WP8 qualification.  The
+    marker is set only by the WP8 launch adapter; normal L4 tasks retain the
+    upstream tool and behaviour unchanged.
+    """
+    if not _wp8_enabled():
+        return
+    activate = getattr(registry, "activate", None)
+    if callable(activate):
+        def disabled_activate(_skill_name: str) -> str:
+            return (
+                "WP8 qualification: built-in skill activation is disabled. "
+                "Use the connected read-only MCP tools and the fixed qualification contract."
+            )
+
+        # The registry is process-local to this isolated worker.  Replacing
+        # this bound method prevents a fallback skill call from returning the
+        # full catalogue even if a model ignores the tool description.
+        registry.activate = disabled_activate
+
+    original_builder = getattr(factory_module, "_build_skill_tools", None)
+    if not callable(original_builder) or getattr(original_builder, "_resbench_wp8_guard", False):
+        return
+
+    def build_tools(value: Any):
+        tools = original_builder(value)
+        for tool in tools:
+            if getattr(tool, "name", None) == "activate_skill":
+                tool.description = (
+                    "WP8 qualification only: do not call this built-in skill tool. "
+                    "Use the connected MCP tools directly."
+                )
+        return tools
+
+    build_tools._resbench_wp8_guard = True
+    factory_module._build_skill_tools = build_tools
+
+
 @contextmanager
 def _wp8_confirmation_state(l4_module: Any, task: Any):
     """Force the fixed WP8 task through BladeAI's real confirmation gate.
@@ -567,6 +613,7 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
             from langgraph.checkpoint.memory import MemorySaver
 
             from chaos_agent.agent.factory import create_agent
+            import chaos_agent.agent.factory as factory_module
             from chaos_agent.config.settings import settings
             from chaos_agent.skills.loader import get_skills_dir
             from chaos_agent.skills.registry import SkillRegistry
@@ -624,6 +671,7 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
                     inject_graph = None
                     recover_graph = None
                 else:
+                    _apply_wp8_skill_guard(factory_module, registry)
                     agents = await create_agent(
                         registry,
                         checkpointer=checkpointer,

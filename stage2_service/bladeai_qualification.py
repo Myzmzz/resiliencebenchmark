@@ -64,6 +64,20 @@ def evaluate_bladeai_full_chain(
     failures: list[str] = []
     checks = {key: False for key in CHECK_KEYS}
 
+    terminal_result = _safe_mapping(report.final_output.get("bladeai_result"))
+    terminal_error = _safe_mapping(terminal_result.get("error"))
+    terminal_error_code = str(terminal_error.get("code") or "").strip()
+    terminal_error_message = str(terminal_error.get("message") or "").strip()
+    if terminal_error_code or terminal_error_message:
+        # Preserve the SDK/provider failure as a first-class qualification
+        # reason.  It is intentionally separate from MCP evidence: the model
+        # may fail before making any tool call, and that is not a permission
+        # or mutation result.
+        failures.append(
+            "bladeai_terminal_error:"
+            + (terminal_error_code or "UNKNOWN")
+        )
+
     same_trial = (
         bool(trial_id)
         and report.final_output.get("trial_id") == trial_id
@@ -226,6 +240,11 @@ def evaluate_bladeai_full_chain(
             "artifact_ref": report.final_output.get("gateway_evidence_ref"),
         },
         "bladeai_launch": launch,
+        "terminal_agent_error": (
+            {"code": terminal_error_code, "message": terminal_error_message}
+            if terminal_error_code or terminal_error_message
+            else None
+        ),
         "artifact_refs": list(report.artifact_refs),
         "recovery_evidence_refs": list(recovery.evidence_refs),
         "evidence": {

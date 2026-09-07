@@ -323,3 +323,31 @@ def test_bladeai_full_chain_rejects_agent_visible_write_mcp_in_launch_contract()
 
     assert record["passed"] is False
     assert "invalid_bladeai_launch_contract" in record["failure_reasons"]
+
+
+def test_bladeai_full_chain_preserves_terminal_provider_error():
+    report = _report().model_copy(
+        update={
+            "final_output": {
+                **_report().final_output,
+                "bladeai_result": {
+                    "type": "stage2_bladeai_result",
+                    "status": "failed",
+                    "error": {
+                        "code": "UNKNOWN",
+                        "message": "Too many pending requests, please retry later",
+                        "recoverable": False,
+                    },
+                },
+            }
+        }
+    )
+
+    record = _evaluate(report=report)
+
+    assert record["passed"] is False
+    assert "bladeai_terminal_error:UNKNOWN" in record["failure_reasons"]
+    assert record["terminal_agent_error"] == {
+        "code": "UNKNOWN",
+        "message": "Too many pending requests, please retry later",
+    }

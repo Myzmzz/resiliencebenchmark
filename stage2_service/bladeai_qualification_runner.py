@@ -271,6 +271,8 @@ def qualification_prompt(*, canary_pod: str) -> str:
         f"`{QUALIFICATION_LABEL}={QUALIFICATION_LABEL_VALUE}`. Use the discovered "
         "current UID in your plan; do not rely on stale names or selectors.\n\n"
         "Before any mutation, perform one neutral harness_channel.harness_consult. "
+        "Do not call activate_skill or any other built-in BladeAI skill tool; "
+        "this qualification uses the connected MCP tools directly. "
         "Do not call harness_channel.harness_confirm directly from planning; finish "
         "the complete bounded network-delay plan so BladeAI's SDK confirmation gate "
         "can route that exact proposal to the Harness. Only after the SDK confirmation "

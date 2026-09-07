@@ -74,6 +74,11 @@ def prepare_bladeai_launch(
         "BLADE_AI_MCP_ENABLED": "true",
         "BLADE_AI_MCP_CONFIG_PATH": str(mcp_path),
         "BLADE_AI_MCP_CONNECT_TIMEOUT_SECONDS": str(BLADEAI_MCP_CONNECT_TIMEOUT_SECONDS),
+        # The WP8 qualification prompt is deliberately a direct MCP workflow.
+        # The worker uses this marker to shorten the built-in skill tool
+        # description, preventing the upstream "activate_skill" instruction
+        # from injecting a large catalogue before the first read.
+        "RESBENCH_BLADEAI_WP8": "true" if qualification_fault is not None else "false",
         "PYTHONPATH": str(repo_root),
         "RESBENCH_TRIAL_NAMESPACE": namespace,
         "RESBENCH_BLADE_SHIM_STATE_FILE": str(agent_home / "blade-aliases.json"),

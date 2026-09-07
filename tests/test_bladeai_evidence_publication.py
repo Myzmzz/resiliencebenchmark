@@ -137,3 +137,20 @@ def test_wp8_cannot_publish_forged_or_detached_proof(tmp_path, corruption):
     with pytest.raises(ValueError):
         publish_capabilities([path], artifact_root=root, output=output, gateway=gateway)
     assert output.read_text() == "existing publication"
+
+
+def test_wp8_evaluator_keeps_pre_mutation_failure_when_shim_artifact_is_absent(tmp_path):
+    root, gateway, refs = _artifacts(tmp_path)
+    shim = root / "trial/bladeai-shim-evidence.json"
+    shim.unlink()
+    refs.remove("trial/bladeai-shim-evidence.json")
+    report_path = root / "trial/harness-report.json"
+    report = json.loads(report_path.read_text())
+    report["artifact_refs"].remove("trial/bladeai-shim-evidence.json")
+    report["final_output"]["bladeai_shim_evidence"] = []
+    _write(report_path, report)
+
+    record = evaluate_wp8_artifacts(refs, artifact_root=root, gateway=gateway)
+
+    assert record["passed"] is False
+    assert "missing_controlled_shim_evidence" in record["failure_reasons"]

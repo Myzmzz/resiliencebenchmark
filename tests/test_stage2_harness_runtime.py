@@ -18,6 +18,7 @@ from stage2_service.harness_runtime import (
     _clarification_request_from_item,
     _extract_recorded_feedback,
     _runtime_public_episode,
+    _bladeai_wp8_retry_classifier,
 )
 from stage2_service.contracts import (
     CapabilityProfile,
@@ -37,6 +38,38 @@ from scripts.run_harness_trial import CommandResult, DEFAULT_TIMEOUT_SECONDS, wr
 
 class DummySupervisor:
     pass
+
+
+def test_bladeai_wp8_retry_classifier_requires_transient_error_and_no_write_path():
+    result = CommandResult(
+        returncode=0,
+        stdout=(
+            b'{"type":"stage2_bladeai_event","kind":"llm_thought","payload":{}}\n'
+            b'{"type":"stage2_bladeai_result","status":"failed","error":{"code":"UNKNOWN","message":"Too many pending requests, please retry later"}}\n'
+        ),
+        stderr=b"",
+    )
+
+    retry, reason, details = _bladeai_wp8_retry_classifier(result)
+
+    assert retry is True
+    assert reason == "transient BladeAI provider failure before mutation"
+    assert details["retry_scope"] == "bladeai_wp8_pre_mutation"
+
+
+def test_bladeai_wp8_retry_classifier_rejects_any_confirmation_or_write_attempt():
+    result = CommandResult(
+        returncode=0,
+        stdout=(
+            b'{"type":"stage2_bladeai_event","kind":"runtime_tool_start","payload":{"tool":"chaos_control.chaos_create_experiment"}}\n'
+            b'{"type":"stage2_bladeai_result","status":"failed","error":{"code":"UNKNOWN","message":"Too many pending requests, please retry later"}}\n'
+        ),
+        stderr=b"",
+    )
+
+    retry, _reason, _details = _bladeai_wp8_retry_classifier(result)
+
+    assert retry is False
 
 
 def runner(tmp_path: Path):

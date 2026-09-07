@@ -121,6 +121,69 @@ class HarnessRuntimeError(RuntimeError):
         self.diagnostic = dict(diagnostic or {})
 
 
+def _bladeai_terminal_retry_details(value: Any) -> tuple[bool, str, dict[str, Any]]:
+    """Classify only retryable provider failures from a BladeAI terminal line."""
+    if not isinstance(value, Mapping) or value.get("type") != "stage2_bladeai_result":
+        return False, "", {}
+    if str(value.get("status") or "").lower() != "failed":
+        return False, "", {}
+    error = value.get("error")
+    if not isinstance(error, Mapping):
+        return False, "", {}
+    code = str(error.get("code") or "").strip()
+    message = str(error.get("message") or "").strip()
+    lowered = f"{code} {message}".lower()
+    transient = (
+        "too many pending requests" in lowered
+        or "selected model is at capacity" in lowered
+        or "rate limit exceeded" in lowered
+        or "temporarily unavailable" in lowered
+        or "service unavailable" in lowered
+        or "connection reset" in lowered
+        or "stream disconnected before completion" in lowered
+    )
+    if not transient:
+        return False, "", {}
+    return True, "transient BladeAI provider failure before mutation", {
+        "error_code": code or "UNKNOWN",
+        "error_message": message[:300],
+        "retry_scope": "bladeai_wp8_pre_mutation",
+    }
+
+
+def _bladeai_wp8_retry_classifier(result: Any) -> tuple[bool, str, Mapping[str, Any]]:
+    """Allow a bounded WP8 retry only when no confirmation/write path appeared."""
+    terminal: Mapping[str, Any] | None = None
+    unsafe = False
+    raw = bytes(getattr(result, "stdout", b"") or b"") + bytes(
+        getattr(result, "stderr", b"") or b""
+    )
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(value, Mapping):
+            continue
+        if value.get("type") == "stage2_bladeai_result":
+            terminal = value
+        if value.get("type") == "stage2_bladeai_event":
+            kind = str(value.get("kind") or "")
+            payload = value.get("payload")
+            payload = payload if isinstance(payload, Mapping) else {}
+            tool = str(payload.get("tool") or "").lower()
+            if kind in {"sdk_confirmation_proposed", "approval"}:
+                unsafe = True
+            if any(marker in tool for marker in (
+                "chaos_control", "chaos_mesh", "harness_confirm", "blade_create",
+                "blade_destroy", "kubectl",
+            )):
+                unsafe = True
+    if unsafe or terminal is None:
+        return False, "", {}
+    return _bladeai_terminal_retry_details(terminal)
+
+
 class NativeHarnessRunner:
     def __init__(
         self,
@@ -654,6 +717,7 @@ class NativeHarnessRunner:
         native_mapper = LifecycleMapper(campaign_id, trial_id, harness, runtime_context.cleanup_handle)
         event_lock = RLock()
         native_boundary_attempts: set[tuple[str, str, str]] = set()
+        bladeai_unsafe_action_seen = False
         canonical_path = artifact_dir / "canonical-events.jsonl"
         canonical_path.touch(mode=0o600)
 
@@ -667,9 +731,17 @@ class NativeHarnessRunner:
         def consume_events(events: list[CanonicalEvent], *, replay: bool, source: str,
                            ledger_recorded: bool) -> list[StructuredFeedback]:
             nonlocal last_assessment, executed_plan, confirmed_plan, agent_activity_seen
+            nonlocal bladeai_unsafe_action_seen
             feedbacks: list[StructuredFeedback] = []
             for canonical in events:
                 agent_activity_seen |= isinstance(canonical, (AgentMessage, ToolCall))
+                if harness is HarnessKind.BLADEAI and isinstance(canonical, ToolCall):
+                    tool = canonical.tool.lower()
+                    if any(marker in tool for marker in (
+                        "chaos_control", "chaos_mesh", "harness_confirm", "blade_create",
+                        "blade_destroy", "kubectl",
+                    )):
+                        bladeai_unsafe_action_seen = True
                 authoritative = source == "mcp_server" or self.native_trace_fixture
                 platform_record = None if ledger_recorded else platform_ledger.append(
                     trial_id=trial_id, event_type=type(canonical).__name__,
@@ -790,6 +862,16 @@ class NativeHarnessRunner:
                     feedbacks.extend(dispatch_observer(event))
             return feedbacks
 
+        def bladeai_wp8_retry_pending() -> bool:
+            if harness is not HarnessKind.BLADEAI or prompt_level_label != "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION":
+                return False
+            if bladeai_unsafe_action_seen or mapper.mutation_requested or confirmed_plan or executed_plan:
+                return False
+            retryable, _reason, _details = _bladeai_terminal_retry_details(
+                getattr(adapter, "terminal_result", None)
+            )
+            return retryable
+
         def observe_realtime(event: ToolCall | ToolResult, source: str) -> Mapping[str, Any]:
             decision = {"allowed": True}
             if isinstance(event, ToolCall) and capability_runtime is not None:
@@ -855,6 +937,12 @@ class NativeHarnessRunner:
 
         def observe_turn_complete(summary: Mapping[str, Any]) -> list[StructuredFeedback]:
             nonlocal last_assessment, output_repair_count, output_repaired, report_only, confirmed_plan
+            # A transient BladeAI provider failure is retried by the Session
+            # before any interpretation request is made.  Calling the
+            # responder here would add a second, unrelated model request and
+            # could exhaust the same upstream quota that caused the failure.
+            if bladeai_wp8_retry_pending():
+                return []
             if summary.get("timed_out") or summary.get("cancelled") or summary.get("returncode"):
                 return []
             if accept_valid_submitted_result():
@@ -1000,6 +1088,12 @@ class NativeHarnessRunner:
                 record_observer=observe_session_record,
                 activity_provider=lambda: agent_activity_seen,
                 turn_executor=self._turn_executor(trial_root, trial_id),
+                retry_classifier=(
+                    _bladeai_wp8_retry_classifier
+                    if harness is HarnessKind.BLADEAI
+                    and prompt_level_label == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
+                    else None
+                ),
             )
         except Exception as exc:
             if isinstance(exc, HarnessRuntimeError) and exc.error_code:
@@ -1044,15 +1138,23 @@ class NativeHarnessRunner:
                 bladeai_shim_evidence, captured = _collect_bladeai_shim_evidence(
                     Path(child_env["RESBENCH_BLADE_SHIM_STATE_FILE"]), trial_root
                 )
-                if captured:
-                    write_json(
-                        artifact_dir / "bladeai-shim-evidence.json",
-                        redact_json(bladeai_shim_evidence, env),
-                    )
-                    native_session_refs.append("bladeai-shim-evidence.json")
             except (OSError, ValueError):
                 if not harness_failure:
                     harness_failure = {"error_code": "BLADEAI_SHIM_EVIDENCE_INVALID"}
+            # The absence of a shim receipt is meaningful evidence when the
+            # Agent failed before a write.  Always materialize the file for a
+            # BladeAI launch so WP8 evaluation can return a real failed record
+            # instead of throwing a second "artifact is missing" exception.
+            try:
+                write_json(
+                    artifact_dir / "bladeai-shim-evidence.json",
+                    redact_json(bladeai_shim_evidence, env),
+                )
+                if "bladeai-shim-evidence.json" not in native_session_refs:
+                    native_session_refs.append("bladeai-shim-evidence.json")
+            except OSError:
+                if not harness_failure:
+                    harness_failure = {"error_code": "BLADEAI_SHIM_EVIDENCE_UNWRITABLE"}
         submitted_result = channel_root / "result.json"
         if submitted_result.is_file():
             try:
@@ -1197,6 +1299,12 @@ class NativeHarnessRunner:
             "gateway_evidence_verified": gateway_rows is not None,
             "gateway_request_ids": gateway_request_ids,
             "gateway_evidence_ref": "gateway-requests.json" if gateway_rows is not None else None,
+            "bladeai_result": (
+                redact_json(adapter.terminal_result, env)
+                if bladeai_launch_evidence is not None
+                and getattr(adapter, "terminal_result", None) is not None
+                else None
+            ),
             "approved_plan": executed_plan or confirmed_plan,
             "adapter_integrity": {
                 "call_count": len(mapper.calls), "result_count": len(mapper.results),

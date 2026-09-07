@@ -171,6 +171,51 @@ def test_sidecar_transport_preserves_shared_retry_budget_and_recording() -> None
     assert any(row["event"] == "NATIVE_RETRY" for row in records)
 
 
+def test_classifier_can_retry_a_transient_terminal_result_after_native_output() -> None:
+    calls = 0
+    records: list[dict[str, object]] = []
+
+    def transport(
+        _argv: Sequence[str], _stdin: bytes, _env: Mapping[str, str], _timeout: int,
+        _observe: Callable[[bytes], object], _cancel: Callable[[], bool], **_kwargs,
+    ) -> SessionCommandResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return SessionCommandResult(
+                0,
+                b'{"type":"stage2_bladeai_event","kind":"llm_thought","payload":{}}\n'
+                b'{"type":"stage2_bladeai_result","status":"failed","error":{"code":"UNKNOWN","message":"Too many pending requests, please retry later"}}\n',
+                b"",
+            )
+        return SessionCommandResult(0, b"finished\n", b"")
+
+    def classifier(result: SessionCommandResult):
+        if b"Too many pending requests" in result.stdout:
+            return True, "transient BladeAI provider failure before mutation", {
+                "error_code": "UNKNOWN",
+            }
+        return False, "", {}
+
+    budget = RetryBudget(max_attempts=2)
+    result = HarnessSession(
+        argv=["agent"], stdin=b"", env={}, timeout_seconds=30,
+        stdout_line_observer=lambda _line: None,
+        retry_budget=budget,
+        retry_classifier=classifier,
+        record_observer=records.append,
+        turn_executor=transport,
+    ).start().wait()
+
+    assert result.returncode == 0
+    assert calls == 2
+    assert budget.retries[0]["kind"] == "native_startup"
+    assert budget.retries[0]["reason"] == "transient BladeAI provider failure before mutation"
+    assert budget.retries[0]["attempt"] == 2
+    assert budget.retries[0]["error_code"] == "UNKNOWN"
+    assert any(row["event"] == "NATIVE_RETRY_BACKOFF" for row in records)
+
+
 def test_native_output_budget_is_shared_across_resume_turns(monkeypatch) -> None:
     import stage2_service.session as session_module
 

@@ -231,8 +231,28 @@ def evaluate_wp8_artifacts(
     root = _no_links(artifact_root)
     refs = {"artifact_refs": list(artifact_refs)}
 
-    def document(name: str) -> Any:
-        return json.loads(_read(_artifact(refs, root, name)))
+    def artifact_path(
+        name: str,
+        *,
+        record: dict[str, Any] = refs,
+        optional: bool = False,
+    ) -> Path | None:
+        matches = [Path(ref) for ref in record.get("artifact_refs", [])
+                   if isinstance(ref, str) and Path(ref).name == name]
+        if optional and name == "bladeai-shim-evidence.json" and not matches:
+            # A model/provider failure can happen before the first write.
+            # Missing shim evidence is then a measured "no mutation" outcome,
+            # not an evaluator exception.  Ambiguous or malformed references
+            # remain hard failures below.
+            return None
+        try:
+            return _artifact(record, root, name)
+        except ValueError:
+            raise
+
+    def document(name: str, *, optional: bool = False) -> Any:
+        path = artifact_path(name, optional=optional)
+        return [] if path is None else json.loads(_read(path))
 
     report = HarnessReport.model_validate(document("harness-report.json"))
     recovery = RecoveryResult.model_validate(document("recovery.json"))
@@ -258,7 +278,13 @@ def evaluate_wp8_artifacts(
             raise ValueError("runtime and recovery evidence must belong to one Trial directory")
     if document("bladeai-launch.json") != report.final_output.get("bladeai_launch"):
         raise ValueError("BladeAI launch facts differ from the Controller artifact")
-    if document("bladeai-shim-evidence.json") != report.final_output.get("bladeai_shim_evidence"):
+    shim_path = artifact_path("bladeai-shim-evidence.json", optional=True)
+    shim_document = [] if shim_path is None else json.loads(_read(shim_path))
+    reported_shim = report.final_output.get("bladeai_shim_evidence")
+    if shim_path is None:
+        if reported_shim not in (None, []):
+            raise ValueError("BladeAI shim receipts are claimed but the artifact is missing")
+    elif shim_document != reported_shim:
         raise ValueError("BladeAI shim receipts differ from their captured artifact")
 
     event_rows = report.final_output.get("platform_events")
@@ -277,11 +303,20 @@ def evaluate_wp8_artifacts(
     native_parent = canonical_path.parent
     for name in ("gateway-requests.json", "bladeai-launch.json", "bladeai-shim-evidence.json",
                  "harness-report.json", "runtime-context.json", "recovery.json", "canary-evidence.json"):
-        if _artifact(refs, root, name).parent != native_parent:
+        path = artifact_path(name, optional=name == "bladeai-shim-evidence.json")
+        if path is not None and path.parent != native_parent:
             raise ValueError("all BladeAI WP8 evidence must belong to one Trial archive")
     reported_refs = {"artifact_refs": list(report.artifact_refs)}
     for name in ("canonical-events.jsonl", "gateway-requests.json", "bladeai-launch.json", "bladeai-shim-evidence.json"):
-        if _artifact(reported_refs, root, name) != _artifact(refs, root, name):
+        actual = artifact_path(name, optional=name == "bladeai-shim-evidence.json")
+        reported = artifact_path(
+            name,
+            record=reported_refs,
+            optional=name == "bladeai-shim-evidence.json",
+        )
+        if (actual is None) != (reported is None) or (
+            actual is not None and reported is not None and actual != reported
+        ):
             raise ValueError("WP8 references differ from the actual Harness archive references")
     model = report.final_output.get("model_alias")
     route = report.final_output.get("gateway_route")

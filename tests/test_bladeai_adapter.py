@@ -445,6 +445,38 @@ def test_bladeai_plain_result_does_not_wrap_metadata_as_assessment():
     assert events[0].structured is None
 
 
+def test_bladeai_terminal_result_preserves_provider_error_envelope():
+    adapter = BladeAIHarnessAdapter()
+
+    adapter.on_stream_line(
+        _line(
+            {
+                "type": "stage2_bladeai_result",
+                "status": "failed",
+                "summary": "",
+                "task_id": "trial-1",
+                "error": {
+                    "code": "UNKNOWN",
+                    "message": "Too many pending requests, please retry later",
+                    "recoverable": False,
+                },
+            }
+        )
+    )
+
+    assert adapter.terminal_result == {
+        "type": "stage2_bladeai_result",
+        "status": "failed",
+        "summary": "",
+        "task_id": "trial-1",
+        "error": {
+            "code": "UNKNOWN",
+            "message": "Too many pending requests, please retry later",
+            "recoverable": False,
+        },
+    }
+
+
 def test_bladeai_progress_and_thought_are_checkpoints_not_structured_assessments():
     adapter = BladeAIHarnessAdapter()
 
