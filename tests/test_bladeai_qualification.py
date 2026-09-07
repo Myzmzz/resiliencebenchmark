@@ -677,3 +677,27 @@ def test_bladeai_full_chain_preserves_terminal_provider_error():
         "code": "UNKNOWN",
         "message": "Too many pending requests, please retry later",
     }
+
+
+def test_bladeai_full_chain_prefers_stable_quota_diagnostic_code():
+    report = _report().model_copy(
+        update={
+            "final_output": {
+                **_report().final_output,
+                "harness_error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED",
+                "bladeai_result": {
+                    "type": "stage2_bladeai_result",
+                    "status": "failed",
+                    "error": {
+                        "code": "PERMISSION_DENIED",
+                        "message": "token quota is not enough",
+                    },
+                },
+            }
+        }
+    )
+
+    record = _evaluate(report=report)
+
+    assert record["passed"] is False
+    assert "bladeai_terminal_error:BLADEAI_MODEL_QUOTA_EXHAUSTED" in record["failure_reasons"]

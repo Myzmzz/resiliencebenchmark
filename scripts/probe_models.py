@@ -199,6 +199,53 @@ def extract_tool_calls(data: Any) -> list[dict[str, Any]]:
     return tool_calls if isinstance(tool_calls, list) else []
 
 
+def extract_error_message(data: Any) -> str | None:
+    """Extract a bounded provider error without retaining credentials or URLs."""
+
+    if not isinstance(data, dict):
+        return None
+    error = data.get("error")
+    if isinstance(error, dict):
+        for key in ("message", "detail", "error"):
+            value = error.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:500]
+    for key in ("message", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:500]
+    return None
+
+
+def provider_failure_class(message: str | None, *, http_status: int | None = None) -> str | None:
+    """Classify known upstream failures for preflight and bounded retry policy."""
+
+    lowered = (message or "").lower()
+    if any(marker in lowered for marker in (
+        "token quota is not enough",
+        "insufficient_quota",
+        "quota is not enough",
+        "quota exceeded",
+        "insufficient credit",
+        "billing hard limit",
+    )):
+        return "quota_exhausted"
+    if any(marker in lowered for marker in (
+        "too many pending requests",
+        "selected model is at capacity",
+        "temporarily unavailable",
+        "service unavailable",
+    )):
+        return "capacity_transient"
+    if http_status == 429 or "rate limit exceeded" in lowered:
+        return "rate_limited"
+    if http_status in {401, 403} and any(marker in lowered for marker in (
+        "invalid api key", "authentication", "unauthorized", "permission denied",
+    )):
+        return "authentication_or_permission"
+    return None
+
+
 def decode_sse_chunks(body: bytes) -> list[Any]:
     text = body.decode("utf-8", errors="replace")
     chunks: list[Any] = []
@@ -259,6 +306,7 @@ def model_alias_probe(
         }
     data, error = decode_json(response)
     ids = extract_model_ids(data) if error is None else []
+    message = error or extract_error_message(data)
     resolved = alias in ids or upstream_model in ids
     status = probe_status_for_http(response.status)
     if status == "supported" and not resolved:
@@ -273,7 +321,12 @@ def model_alias_probe(
         "resolved": resolved,
         "matchedModel": upstream_model if upstream_model in ids else alias if alias in ids else None,
         "modelCount": len(ids),
-        "message": error if error else None,
+        "message": message,
+        **(
+            {"failureClass": provider_failure_class(message, http_status=response.status)}
+            if status != "supported" and provider_failure_class(message, http_status=response.status)
+            else {}
+        ),
     }
 
 
@@ -301,7 +354,7 @@ def openai_chat_probe(
     status = probe_status_for_http(response.status)
     data, error = decode_json(response)
     content = extract_message_content(data)
-    message = error
+    message = error or extract_error_message(data)
     detail: dict[str, Any] = {}
 
     if check == "openai_chat_completions_basic":
@@ -335,6 +388,11 @@ def openai_chat_probe(
         "latencyMs": response.elapsed_ms,
         "providerReportedModel": data.get("model") if isinstance(data, dict) else None,
         "message": message,
+        **(
+            {"failureClass": provider_failure_class(message, http_status=response.status)}
+            if status != "supported" and provider_failure_class(message, http_status=response.status)
+            else {}
+        ),
         **detail,
     }
 
@@ -366,9 +424,14 @@ def openai_stream_probe(
             "message": transport_error_message(exc),
         }
     status = probe_status_for_http(response.status)
+    data, error = decode_json(response)
+    message = error or extract_error_message(data)
     chunks = decode_sse_chunks(response.body) if 200 <= response.status < 300 else []
+    if chunks:
+        message = None
     if status == "supported" and not chunks:
         status = "unsupported"
+        message = message or "no parseable server-sent event chunks observed"
     return {
         "check": "streaming",
         "protocol": "openai_chat_completions",
@@ -377,7 +440,12 @@ def openai_stream_probe(
         "httpStatus": response.status,
         "latencyMs": response.elapsed_ms,
         "eventCount": len(chunks),
-        "message": None if chunks else "no parseable server-sent event chunks observed",
+        "message": message,
+        **(
+            {"failureClass": provider_failure_class(message, http_status=response.status)}
+            if status != "supported" and provider_failure_class(message, http_status=response.status)
+            else {}
+        ),
     }
 
 
@@ -415,6 +483,7 @@ def anthropic_messages_probe(
         }
     status = probe_status_for_http(response.status)
     data, error = decode_json(response)
+    message = error or extract_error_message(data)
     return {
         "check": "anthropic_messages_basic",
         "protocol": "anthropic_messages",
@@ -424,7 +493,12 @@ def anthropic_messages_probe(
         "httpStatus": response.status,
         "latencyMs": response.elapsed_ms,
         "providerReportedModel": data.get("model") if isinstance(data, dict) else None,
-        "message": error,
+        "message": message,
+        **(
+            {"failureClass": provider_failure_class(message, http_status=response.status)}
+            if status != "supported" and provider_failure_class(message, http_status=response.status)
+            else {}
+        ),
     }
 
 
@@ -641,6 +715,11 @@ def probe_model(
         "displayName": spec.get("display_name"),
         "protocolCandidates": candidates,
         "overallStatus": overall,
+        "failureClasses": sorted({
+            str(probe["failureClass"])
+            for probe in probes
+            if isinstance(probe, Mapping) and probe.get("failureClass")
+        }),
         "capabilities": capabilities,
         "probes": probes,
     }

@@ -151,6 +151,50 @@ def _bladeai_terminal_retry_details(value: Any) -> tuple[bool, str, dict[str, An
     }
 
 
+def _bladeai_terminal_failure_details(value: Any) -> dict[str, Any]:
+    """Map non-retryable upstream failures to stable Harness diagnostics."""
+
+    if not isinstance(value, Mapping) or value.get("type") != "stage2_bladeai_result":
+        return {}
+    if str(value.get("status") or "").lower() != "failed":
+        return {}
+    error = value.get("error")
+    if not isinstance(error, Mapping):
+        return {}
+    code = str(error.get("code") or "").strip()
+    message = str(error.get("message") or "").strip()
+    lowered = f"{code} {message}".lower()
+    if any(marker in lowered for marker in (
+        "token quota is not enough",
+        "insufficient_quota",
+        "quota is not enough",
+        "quota exceeded",
+        "insufficient credit",
+        "billing hard limit",
+    )):
+        return {
+            "error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED",
+            "provider_error_code": code or "UNKNOWN",
+            "provider_error_message": message[:300],
+            "retryable": False,
+            "retry_scope": "bladeai_wp8_pre_mutation",
+        }
+    if any(marker in lowered for marker in (
+        "too many pending requests",
+        "selected model is at capacity",
+        "temporarily unavailable",
+        "service unavailable",
+    )):
+        return {
+            "error_code": "BLADEAI_PROVIDER_CAPACITY_EXHAUSTED",
+            "provider_error_code": code or "UNKNOWN",
+            "provider_error_message": message[:300],
+            "retryable": False,
+            "retry_scope": "bladeai_wp8_pre_mutation",
+        }
+    return {}
+
+
 def _bladeai_wp8_retry_classifier(result: Any) -> tuple[bool, str, Mapping[str, Any]]:
     """Allow a bounded WP8 retry only when no confirmation/write path appeared."""
     terminal: Mapping[str, Any] | None = None
@@ -1230,6 +1274,11 @@ class NativeHarnessRunner:
                 "native_output_limit_exceeded",
                 harness_failure,
             )
+        terminal_failure = _bladeai_terminal_failure_details(
+            getattr(adapter, "terminal_result", None)
+        )
+        if terminal_failure and not harness_failure:
+            harness_failure = terminal_failure
         (artifact_dir / "stdout.txt").write_text(
             redact_text(result.stdout, env), encoding="utf-8"
         )

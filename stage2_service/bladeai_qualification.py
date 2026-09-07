@@ -196,9 +196,10 @@ def evaluate_bladeai_full_chain(
         # claim that the effect was verified.  This exception never applies to
         # provider capacity errors, missing evidence, or any other Trial.
         if not _honest_wp8_ttl_safe_stop(report, recovery, mutation):
+            stable_code = str(report.final_output.get("harness_error_code") or "").strip()
             failures.append(
                 "bladeai_terminal_error:"
-                + (terminal_error_code or "UNKNOWN")
+                + (stable_code or terminal_error_code or "UNKNOWN")
             )
 
     if report.status != "completed":

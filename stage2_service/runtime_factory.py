@@ -93,6 +93,20 @@ def _probe_report_has_error(report: Mapping[str, Any]) -> bool:
     ) if isinstance(issues, list) else False
 
 
+def _model_probe_failure_reason(failure_classes: tuple[str, ...]) -> str:
+    """Expose a stable, actionable reason without echoing provider secrets."""
+
+    if "quota_exhausted" in failure_classes:
+        return "upstream model quota exhausted"
+    if "authentication_or_permission" in failure_classes:
+        return "upstream model authentication or permission rejected"
+    if "capacity_transient" in failure_classes:
+        return "upstream model capacity temporarily unavailable"
+    if "rate_limited" in failure_classes:
+        return "upstream model rate limited"
+    return "gateway model capability probe failed"
+
+
 @dataclass
 class GatewayReadinessEntry:
     key: tuple[str, str, tuple[str, ...]]
@@ -1494,6 +1508,15 @@ class Stage2System:
                 if isinstance(model_probe, Mapping) and model_probe.get("overallStatus")
                 else "missing"
             )
+            failure_classes = tuple(
+                str(value)
+                for value in (
+                    model_probe.get("failureClasses", ())
+                    if isinstance(model_probe, Mapping)
+                    else ()
+                )
+                if value
+            )
             visible = alias in available_models
             runnable = (
                 visible
@@ -1501,18 +1524,21 @@ class Stage2System:
                 and not has_error_issue
                 and probe_status == "supported"
             )
-            result[alias] = {
+            row: dict[str, Any] = {
                 "runnable": runnable,
                 "visible_in_gateway_models": visible,
                 "probe_status": probe_status,
                 "route": snapshot.route(alias) if snapshot else None,
                 "probe": dict(model_probe) if isinstance(model_probe, Mapping) else None,
             }
+            if failure_classes:
+                row["failure_classes"] = list(failure_classes)
+                row["reason"] = _model_probe_failure_reason(failure_classes)
+            result[alias] = row
         if has_error_issue:
             for alias in result:
                 result[alias]["probe_error"] = True
         return result
-
     def _gateway_models(self) -> tuple[set[str], str | None]:
         endpoint = self.config.llm_base_url.rstrip("/") + "/models"
         request = urllib.request.Request(

@@ -19,6 +19,7 @@ from stage2_service.harness_runtime import (
     _extract_recorded_feedback,
     _runtime_public_episode,
     _bladeai_wp8_retry_classifier,
+    _bladeai_terminal_failure_details,
 )
 from stage2_service.contracts import (
     CapabilityProfile,
@@ -70,6 +71,23 @@ def test_bladeai_wp8_retry_classifier_rejects_any_confirmation_or_write_attempt(
     retry, _reason, _details = _bladeai_wp8_retry_classifier(result)
 
     assert retry is False
+
+
+def test_bladeai_quota_failure_is_non_retryable_and_has_stable_diagnostic():
+    details = _bladeai_terminal_failure_details(
+        {
+            "type": "stage2_bladeai_result",
+            "status": "failed",
+            "error": {
+                "code": "PERMISSION_DENIED",
+                "message": "token quota is not enough; request id secret-request-id",
+            },
+        }
+    )
+
+    assert details["error_code"] == "BLADEAI_MODEL_QUOTA_EXHAUSTED"
+    assert details["retryable"] is False
+    assert details["provider_error_code"] == "PERMISSION_DENIED"
 
 
 def runner(tmp_path: Path):

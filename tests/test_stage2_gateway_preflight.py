@@ -532,6 +532,24 @@ def test_model_probe_statuses_require_real_gateway_snapshot_even_without_config_
     assert all(row["probe_status"] == "supported" for row in result.values())
 
 
+def test_model_probe_statuses_expose_provider_quota_reason():
+    system = object.__new__(Stage2System)
+    report = _probe_report()
+    report["models"][0]["overallStatus"] = "probed_with_failures"
+    report["models"][0]["failureClasses"] = ["quota_exhausted"]
+
+    result = system._model_probe_statuses(
+        snapshot=SimpleNamespace(route=lambda alias: {"model_alias": alias}),
+        available_models=set(STAGE2_SUPPORTED_MODELS),
+        probe_report=report,
+    )
+
+    alias = STAGE2_SUPPORTED_MODELS[0]
+    assert result[alias]["runnable"] is False
+    assert result[alias]["failure_classes"] == ["quota_exhausted"]
+    assert result[alias]["reason"] == "upstream model quota exhausted"
+
+
 def test_preflight_requires_current_config_file_not_an_old_snapshot(tmp_path: Path):
     snapshot = GatewayConfigSnapshot.from_file(
         _gateway_config(tmp_path), required_aliases=STAGE2_SUPPORTED_MODELS
