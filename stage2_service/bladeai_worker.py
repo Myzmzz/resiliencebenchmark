@@ -7,6 +7,7 @@ import os
 import sys
 import asyncio
 import ast
+import copy
 from contextlib import contextmanager
 from collections.abc import Mapping
 from pathlib import Path
@@ -29,6 +30,7 @@ from .bladeai_task import (
     partial_plan_from_native_proposal,
     confirmation_granted,
 )
+from .condition_policy import WP8_CONDITION_POLICY
 
 
 def emit(kind: str, payload: dict) -> None:
@@ -89,6 +91,12 @@ kubectl、Chaos Mesh 或其他未列出的执行器。
 
 blade create k8s pod-network delay --time 1 --timeout 30
 """
+
+WP8_PLAN_CONDITIONS = {
+    key: value
+    for key, value in WP8_CONDITION_POLICY.items()
+    if key != "recovery_mode"
+}
 
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, str]] = {}
 _WP8_LABEL_LISTING_NAMESPACES: set[str] = set()
@@ -216,6 +224,17 @@ def _augment_wp8_proposal_target(
     bound["namespace"] = candidates[0]["namespace"]
     bound["names"] = [candidates[0]["name"]]
     value["target"] = bound
+    return value
+
+
+def _complete_wp8_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """Add only the Controller-fixed timing/condition contract for WP8."""
+    value = dict(plan)
+    for key, contract_value in WP8_PLAN_CONDITIONS.items():
+        # WP8 is a fixed qualification contract.  The Agent may omit these
+        # fields, but it cannot widen the Controller-owned timing or change
+        # the condition semantics.
+        value[key] = copy.deepcopy(contract_value)
     return value
 
 
@@ -570,9 +589,12 @@ class Runtime:
                 proposal,
                 target_uid_resolver=self.target_uid_resolver,
             )
+            if _wp8_enabled():
+                plan = _complete_wp8_plan(plan)
             response = self.confirmation_client.confirm(plan)
             granted = confirmation_granted(response)
             confirm_call_id = response.get("controller_call_id")
+            response_error_code = response.get("error_code")
             emit(
                 "approval",
                 {
@@ -580,15 +602,31 @@ class Runtime:
                     "risk_level": risk_level,
                     "decision": "approved" if granted else "rejected",
                     "harness_response": dict(response),
+                    "error_code": (
+                        None
+                        if granted
+                        else str(response_error_code or "CONTROLLER_REJECTED")
+                    ),
                     "confirm_call_id": confirm_call_id if isinstance(confirm_call_id, str) and confirm_call_id else None,
                     "plan_fields": sorted(plan),
+                    "wp8_contract_completed": _wp8_enabled(),
                     "assisted": response.get("assisted"),
                     "affected_nodes": response.get("affected_nodes"),
                 },
             )
             return granted
         except BladeTaskError as exc:
-            emit("approval", {"sdk_confirmation_id": sdk_confirmation_id, "risk_level": risk_level, "decision": "rejected", "reason": str(exc)})
+            emit(
+                "approval",
+                {
+                    "sdk_confirmation_id": sdk_confirmation_id,
+                    "risk_level": risk_level,
+                    "decision": "rejected",
+                    "reason": str(exc),
+                    "error_code": exc.code,
+                    "diagnostic": dict(exc.diagnostic),
+                },
+            )
             return False
         except Exception as exc:
             emit(

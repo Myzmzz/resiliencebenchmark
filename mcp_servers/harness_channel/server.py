@@ -115,12 +115,16 @@ async def _call(operation) -> dict[str, Any]:
     try:
         return await asyncio.to_thread(operation)
     except HarnessChannelError as exc:
+        error = {
+            "code": getattr(exc, "code", "HARNESS_CHANNEL_ERROR"),
+            "message": str(exc),
+        }
+        diagnostic = getattr(exc, "diagnostic", None)
+        if isinstance(diagnostic, dict) and diagnostic:
+            error["diagnostic"] = diagnostic
         return {
             "ok": False,
-            "error": {
-                "code": "HARNESS_CHANNEL_ERROR",
-                "message": str(exc),
-            },
+            "error": error,
         }
 
 

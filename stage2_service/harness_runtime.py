@@ -27,7 +27,7 @@ from harness.agent_exec.client import AgentExecClientError
 from mcp_servers.audit_bridge import AuditBridgeConfig, AuditBridgeListener
 from mcp_servers.bladeai_k8s_proxy.service import ProxyConfig
 
-from .condition_policy import condition_policy_summary
+from .condition_policy import WP8_CONDITION_POLICY, condition_policy_summary
 from .canonical_interactions import public_interaction, public_tool_evidence
 from .harness_adapters import create_adapter
 from .harness_adapters.base import AgentMessage, CanonicalEvent, ToolCall, ToolResult
@@ -317,6 +317,12 @@ class NativeHarnessRunner:
         channel_root = control_root / "harness-channel"
         channel_root.mkdir(mode=0o700)
         channel_context_file = channel_root / "context.json"
+        wp8_condition_policy = (
+            copy.deepcopy(WP8_CONDITION_POLICY)
+            if runtime_context.main_fault.get("qualification_type")
+            == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
+            else None
+        )
         write_json(channel_context_file, {
             "trial_id": trial_id, "trial_dir": str(channel_root),
             "user_decision_file": str(decision_file), "case_id": case.case_id.value,
@@ -328,6 +334,11 @@ class NativeHarnessRunner:
             "expected_outcome": expected_outcome.value,
             "decision_policy": decision_policy.value, "prompt_level": prompt_level.value,
             "model_alias": model_alias, "original_prompt": base_prompt,
+            **(
+                {"condition_policy": wp8_condition_policy}
+                if wp8_condition_policy is not None
+                else {}
+            ),
         })
         channel_context_file.chmod(0o600)
         proxy_config = ProxyConfig.new(runtime_context.target.namespace) if harness is HarnessKind.BLADEAI else None

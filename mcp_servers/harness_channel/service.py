@@ -23,7 +23,12 @@ from stage2_service.capability_policy import (
 )
 from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutcome
 from stage2_service.platform_ledger import PlatformLedger
-from stage2_service.simulated_user import HarnessResponder, SimulatedUserPolicy
+from stage2_service.simulated_user import (
+    ConversationError,
+    HarnessModelTimeout,
+    HarnessResponder,
+    SimulatedUserPolicy,
+)
 
 from .hints import NEUTRAL_NO_INFORMATION, render_hint
 
@@ -44,6 +49,17 @@ DISABLE_EVENTS = frozenset({"TOOL_CALL_DENIED_DISABLED", "DECOY_INVOKED"})
 
 class HarnessChannelError(RuntimeError):
     """Raised when the platform-owned Harness channel is misconfigured."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "HARNESS_CHANNEL_ERROR",
+        diagnostic: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.diagnostic = dict(diagnostic or {})
 
 
 @dataclass(frozen=True)
@@ -71,6 +87,7 @@ class HarnessChannelConfig:
     prompt_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
     model_alias: str | None = None
     original_prompt: str | None = None
+    condition_policy: dict[str, Any] | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "HarnessChannelConfig":
@@ -120,6 +137,11 @@ class HarnessChannelConfig:
             prompt_level=AutonomyLevel(context.get("prompt_level", AutonomyLevel.L0_COMPLETE_TASK.value)),
             model_alias=_optional_text(context.get("model_alias")),
             original_prompt=_optional_text(context.get("original_prompt")),
+            condition_policy=(
+                dict(context["condition_policy"])
+                if isinstance(context.get("condition_policy"), Mapping)
+                else None
+            ),
         )
 
 
@@ -198,15 +220,24 @@ class HarnessChannelService:
             "recommendation": raw_plan,
         }
         self._append("CONFIRM_REQUESTED", {"plan": raw_plan})
-        answer = self.responder.reply(
-            question,
-            {
-                "source": "harness_channel",
-                "trial_id": self.config.trial_id,
-                "case_id": self.config.case_id,
-                "variant": self.config.variant,
-            },
-        )
+        try:
+            answer = self.responder.reply(
+                question,
+                {
+                    "source": "harness_channel",
+                    "trial_id": self.config.trial_id,
+                    "case_id": self.config.case_id,
+                    "variant": self.config.variant,
+                },
+            )
+        except Exception as exc:
+            failure = _confirmation_failure(exc)
+            self._append("CONFIRM_FAILED", {"plan": raw_plan, **failure})
+            raise HarnessChannelError(
+                failure["message"],
+                code=str(failure["error_code"]),
+                diagnostic=failure["diagnostic"],
+            ) from exc
         allowed = (
             answer.get("approved") is True
             and bool(answer.get("approved_plan"))
@@ -214,6 +245,7 @@ class HarnessChannelService:
         )
         assisted = allowed and answer.get("decision_supplied") is True
         event_type = "CONFIRM_GRANTED" if allowed else "CONFIRM_DENIED"
+        error_code = None if allowed else _confirmation_denial_code(answer)
         if allowed:
             decision = {
                 "schema_version": "stage2-user-decision.v1",
@@ -231,6 +263,7 @@ class HarnessChannelService:
             event_type,
             {
                 "allowed": allowed,
+                "error_code": error_code,
                 "reason": answer.get("reason"),
                 "answer_mode": answer.get("answer_mode"),
                 "approved_plan": answer.get("approved_plan"),
@@ -239,6 +272,7 @@ class HarnessChannelService:
         return {
             "ok": True,
             "allowed": allowed,
+            "error_code": error_code,
             "reason": answer.get("reason"),
             "message": answer.get("message"),
             "approved_plan": answer.get("approved_plan"),
@@ -331,6 +365,7 @@ class HarnessChannelService:
                 os.environ, self.config.model_alias, self.config.namespace,
                 self.config.max_fault_seconds, self.config.max_observation_seconds,
                 policy=policy, context={"original_prompt": self.config.original_prompt},
+                condition_policy=self.config.condition_policy,
             )
         return HarnessResponder(
             model_call=_model_unavailable,
@@ -339,6 +374,7 @@ class HarnessChannelService:
             max_observation_seconds=self.config.max_observation_seconds,
             policy=policy,
             context={"source": "harness_channel"},
+            condition_policy=self.config.condition_policy,
         )
 
     def _consult_eligibility(self) -> dict[str, Any]:
@@ -454,6 +490,73 @@ def _schema_errors(
         }
         for error in errors
     ]
+
+
+def _confirmation_failure(exc: BaseException) -> dict[str, Any]:
+    diagnostic: dict[str, Any] = {"error_type": type(exc).__name__}
+    message = _safe_detail(str(exc)) or type(exc).__name__
+    if isinstance(exc, HarnessModelTimeout):
+        diagnostic.update(
+            {
+                str(key): value
+                for key, value in exc.diagnostic.items()
+                if key
+                in {
+                    "attempt",
+                    "request_id",
+                    "upstream_request_id",
+                    "started_at",
+                    "ended_at",
+                    "duration_ms",
+                    "timeout_seconds",
+                    "timeout_layer",
+                    "model",
+                    "input_characters",
+                    "input_bytes",
+                }
+                and value is not None
+            }
+        )
+        return {
+            "error_code": HarnessModelTimeout.error_code,
+            "message": f"Harness model timed out during confirmation: {message}",
+            "diagnostic": diagnostic,
+        }
+    if isinstance(exc, ConversationError):
+        return {
+            "error_code": "HARNESS_MODEL_COMPLETION_FAILED",
+            "message": f"Harness model completion failed during confirmation: {message}",
+            "diagnostic": diagnostic,
+        }
+    return {
+        "error_code": "HARNESS_CONFIRM_INTERNAL_ERROR",
+        "message": f"Harness confirmation failed: {message}",
+        "diagnostic": diagnostic,
+    }
+
+
+def _confirmation_denial_code(answer: Mapping[str, Any]) -> str:
+    reason = str(answer.get("reason") or "").strip()
+    if reason == "plan_schema_invalid":
+        return "PLAN_SCHEMA_INVALID"
+    if reason in {
+        "simulated_user_not_allowed_to_supply_decision",
+        "simulated_user_policy_violation",
+    }:
+        return "HARNESS_POLICY_REJECTED"
+    if reason == "safe_refusal_expected":
+        return "EXPECTED_SAFE_REFUSAL"
+    return "CONTROLLER_REJECTED"
+
+
+def _safe_detail(value: str, *, limit: int = 300) -> str:
+    text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+    for marker in ("Bearer ", "api_key=", "token=", "password=", "secret="):
+        index = text.lower().find(marker.lower())
+        if index >= 0:
+            text = text[:index] + marker + "<redacted>"
+            break
+    return text[:limit]
 
 
 def _model_unavailable(_instructions: str, _context: Mapping[str, Any]) -> Mapping[str, Any]:

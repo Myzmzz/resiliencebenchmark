@@ -14,6 +14,7 @@ from stage2_service.bladeai_task import (
     NativeProposalCapture,
     confirmation_granted,
     partial_plan_from_native_proposal,
+    _run_coroutine_in_thread,
 )
 from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutcome
 from stage2_service.plan_schema import PlanSafetyEnvelope
@@ -231,6 +232,7 @@ def test_rejected_harness_confirmation_returns_false_and_emits_rejection(monkeyp
         "fault_type": "network-delay", "intensity": {"delay_ms": 300.0}, "safety_ttl_seconds": 600,
     }
     assert emitted[-1][1]["decision"] == "rejected"
+    assert emitted[-1][1]["error_code"] == "CONTROLLER_REJECTED"
 
 
 def test_sdk_confirmation_event_chain_carries_sdk_and_controller_call_ids(monkeypatch):
@@ -250,6 +252,79 @@ def test_sdk_confirmation_event_chain_carries_sdk_and_controller_call_ids(monkey
     assert approvals[0]["confirm_call_id"] == "controller-confirm-1"
 
 
+def test_wp8_confirmation_completes_fixed_contract_before_harness_call(monkeypatch):
+    emitted = []
+    monkeypatch.setattr(
+        "stage2_service.bladeai_worker.emit",
+        lambda kind, payload: emitted.append((kind, payload)),
+    )
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    capture = NativeProposalCapture()
+    capture.record(
+        {
+            "target": {"namespace": "otel-demo", "names": ["cart-a"]},
+            "fault_intent": {
+                "scope": "pod",
+                "target": "network",
+                "action": "delay",
+            },
+            "params": {"time": "1", "timeout": "30"},
+        }
+    )
+    client = _Confirm(
+        {
+            "ok": True,
+            "allowed": True,
+            "controller_call_id": "controller-wp8-confirm",
+        }
+    )
+
+    assert Runtime(
+        client,
+        proposal_capture=capture,
+        target_uid_resolver=_UID(),
+    ).require_approval("high") is True
+
+    assert client.plans == [
+        {
+            "target": {
+                "namespace": "otel-demo",
+                "name": "cart-a",
+                "uid": "11111111-2222-4333-8444-555555555555",
+            },
+            "fault_type": "network-delay",
+            "intensity": {"delay_ms": 1.0},
+            "safety_ttl_seconds": 30,
+            "effect_condition": {
+                "metric": "target_latency_ms",
+                "operator": "increase_by_at_least",
+                "threshold": 0.5,
+            },
+            "recovery_condition": {
+                "metric": "target_success_rate",
+                "operator": "at_or_above",
+                "threshold": 0.95,
+            },
+            "stop_conditions": (
+                "target UID or Ready status changes",
+                "controller revokes the capability",
+                "success rate falls below 0.95",
+                "cleanup cannot be independently verified",
+            ),
+            "effect_observation_seconds": 30,
+            "effect_sustain_seconds": 0,
+            "agent_cleanup_seconds": 30,
+            "recovery_observation_seconds": 30,
+            "recovery_sustain_seconds": 0,
+        }
+    ]
+    approval = [payload for kind, payload in emitted if kind == "approval"][-1]
+    assert approval["error_code"] is None
+    assert approval["wp8_contract_completed"] is True
+
+    monkeypatch.delenv("RESBENCH_BLADEAI_WP8", raising=False)
+
+
 def test_confirmation_client_exception_is_a_safe_rejection(monkeypatch):
     emitted = []
     monkeypatch.setattr("stage2_service.bladeai_worker.emit", lambda kind, payload: emitted.append((kind, payload)))
@@ -266,6 +341,20 @@ def test_confirmation_client_exception_is_a_safe_rejection(monkeypatch):
     assert emitted[-1][1]["decision"] == "rejected"
     assert emitted[-1][1]["reason"] == "harness_confirmation_error:RuntimeError"
     assert "transport detail" not in json.dumps(emitted[-1][1])
+
+
+def test_async_confirmation_bridge_preserves_typed_error():
+    async def failed():
+        raise BladeTaskError(
+            "controller denied the plan",
+            code="CONTROLLER_REJECTED",
+            diagnostic={"reason": "scope_mismatch"},
+        )
+
+    with pytest.raises(BladeTaskError) as caught:
+        _run_coroutine_in_thread(failed())
+    assert caught.value.code == "CONTROLLER_REJECTED"
+    assert caught.value.diagnostic == {"reason": "scope_mismatch"}
 
 
 def test_current_sdk_partial_plan_flows_to_channel_and_assistance_is_visible(monkeypatch, tmp_path):

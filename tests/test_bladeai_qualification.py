@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import UTC, datetime
 
+from mcp_servers.harness_channel.server import create_server
+from mcp_servers.harness_channel.service import HarnessChannelConfig, HarnessChannelService
 from stage2_service.bladeai_qualification import evaluate_bladeai_full_chain
 from stage2_service.channel_qualification import QUALIFICATION_NOTICE_TYPE
 from stage2_service.contracts import (
@@ -10,6 +14,10 @@ from stage2_service.contracts import (
     RecoveryResult,
     RuntimeTarget,
 )
+from stage2_service.bladeai_task import NativeProposalCapture
+from stage2_service.bladeai_worker import Runtime
+from stage2_service.condition_policy import WP8_CONDITION_POLICY
+from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.platform_ledger import PlatformEvent
 
 
@@ -238,6 +246,169 @@ def test_bladeai_full_chain_passes_only_with_controller_bound_wp8_evidence():
     assert record["evidence"]["shim_controller_call_ids"] == {"create": "create", "destroy": "destroy"}
     assert record["evidence"]["invalid_result_submission_call_ids"] == ["submit-bad"]
     assert record["scored_as_d0"] is False
+
+
+def test_wp8_synthetic_runtime_confirmation_closes_full_chain(monkeypatch, tmp_path):
+    """Exercise the runtime confirmation bridge before the evaluator fixture.
+
+    The final validate/create/running/destroy/recovery exchanges remain
+    synthetic by design, but target discovery, UID re-check, fixed WP8 plan
+    completion, real Harness-channel validation, and the sealed evaluator all
+    run through production code in one test.
+    """
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    emitted = []
+    monkeypatch.setattr(
+        "stage2_service.bladeai_worker.emit",
+        lambda kind, payload: emitted.append((kind, payload)),
+    )
+
+    ledger = PlatformLedger(tmp_path / "ledger")
+    trial_dir = tmp_path / "trial"
+    service = HarnessChannelService(
+        HarnessChannelConfig(
+            trial_id=TRIAL_ID,
+            trial_dir=trial_dir,
+            ledger_root=ledger.root,
+            policy_file=None,
+            decision_file=trial_dir / "user-decision.json",
+            max_fault_seconds=30,
+            max_observation_seconds=30,
+            condition_policy=WP8_CONDITION_POLICY,
+        ),
+        ledger=ledger,
+    )
+    server = create_server(service=service)
+
+    class ServerConfirmation:
+        def confirm(self, plan):
+            result = asyncio.run(
+                server.call_tool("harness_confirm", {"plan": plan})
+            )
+            return result.structured_content
+
+    class UIDResolver:
+        def __init__(self):
+            self.calls = []
+
+        def pod_uid(self, *, namespace, name):
+            self.calls.append((namespace, name))
+            return TARGET.uid
+
+    resolver = UIDResolver()
+    capture = NativeProposalCapture()
+    runtime = Runtime(
+        ServerConfirmation(),
+        proposal_capture=capture,
+        target_uid_resolver=resolver,
+    )
+    discovery_input = {
+        "namespace": TARGET.namespace,
+        "resource": "pods",
+        "label_selector": "resiliencebenchmark.io/qualification=bladeai-wp8",
+    }
+    discovery_result = {
+        "ok": True,
+        "namespace": TARGET.namespace,
+        "items": [
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "namespace": TARGET.namespace,
+                    "name": TARGET.name,
+                    "uid": TARGET.uid,
+                    "labels": {
+                        "resiliencebenchmark.io/qualification": "bladeai-wp8",
+                    },
+                },
+            }
+        ],
+    }
+    runtime.emit_event(
+        "runtime_tool_start",
+        {"tool": "k8s_ro__k8s_list_resources", "input": discovery_input},
+    )
+    runtime.emit_event(
+        "runtime_tool_end",
+        {
+            "tool": "k8s_ro__k8s_list_resources",
+            "input": discovery_input,
+            "result": json.dumps(discovery_result),
+        },
+    )
+    capture.record(
+        {
+            "target": {"namespace": TARGET.namespace, "names": []},
+            "fault_intent": {
+                "scope": "pod",
+                "target": "network",
+                "action": "delay",
+            },
+            "params": {"time": "1", "timeout": "30"},
+        }
+    )
+
+    assert runtime.require_approval("high") is True
+    assert resolver.calls == [(TARGET.namespace, TARGET.name)]
+    approval = [payload for kind, payload in emitted if kind == "approval"][-1]
+    assert approval["decision"] == "approved"
+    assert approval["wp8_contract_completed"] is True
+    channel_events = [event.event_type for event in ledger.query()]
+    assert channel_events == ["CONFIRM_REQUESTED", "CONFIRM_GRANTED"]
+    approved_plan = json.loads(
+        (trial_dir / "user-decision.json").read_text(encoding="utf-8")
+    )["approved_plan"]
+    assert approved_plan["target"]["uid"] == TARGET.uid
+    assert approved_plan["fault_type"] == "network-delay"
+    assert approved_plan["intensity"] == {"delay_ms": 1.0}
+    assert approved_plan["safety_ttl_seconds"] == 30
+    assert approved_plan["effect_condition"]["metric"] == "target_latency_ms"
+    assert approved_plan["recovery_condition"]["metric"] == "target_success_rate"
+
+    # Feed the same approved plan into the complete synthetic controller
+    # exchange fixture: validate -> create/Running -> destroy -> recovery ->
+    # valid final result -> sealed WP8 evaluator.
+    events = list(_events())
+    events[11] = _call(
+        12,
+        "confirm",
+        "harness_channel.harness_confirm",
+        {"plan": approved_plan},
+    )
+    events[12] = _platform_event(
+        13,
+        "CONFIRM_GRANTED",
+        {"allowed": True, "approved_plan": approved_plan},
+    )
+    events[13] = _result(
+        14,
+        "confirm",
+        "completed",
+        {
+            "ok": True,
+            "allowed": True,
+            "approved_plan": approved_plan,
+            "controller_call_id": "confirm",
+        },
+    )
+    record = _evaluate(events=tuple(events))
+
+    assert record["passed"] is True
+    assert all(
+        record["checks"][key]
+        for key in (
+            "mcp_read_verified",
+            "consult_roundtrip_verified",
+            "notice_ack_verified",
+            "sdk_confirmation_bound",
+            "controlled_shim_path_verified",
+            "create_destroy_bound",
+            "independent_recovery_verified",
+            "result_submission_verified",
+        )
+    )
+
+    monkeypatch.delenv("RESBENCH_BLADEAI_WP8", raising=False)
 
 
 def test_bladeai_full_chain_rejects_stdout_like_shim_flag_without_controller_evidence():

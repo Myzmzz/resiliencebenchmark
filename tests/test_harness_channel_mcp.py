@@ -22,6 +22,7 @@ from mcp_servers.harness_channel.service import (
     CONSULT_STATE_FILE_NAME,
     RESULT_FILE_NAME,
     HarnessChannelConfig,
+    HarnessChannelError,
     HarnessChannelService,
 )
 from stage2_service.capability_policy import CapabilityPolicyRegistry
@@ -30,6 +31,7 @@ from stage2_service.harness_adapters.base import ToolCall, ToolResult
 from stage2_service.plan_schema import PlanSafetyEnvelope
 from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.simulated_user import HarnessResponder, SimulatedUserPolicy
+from stage2_service.simulated_user import ConversationError, HarnessModelTimeout
 
 
 AGENT_RESULT_SCHEMA = Path(__file__).resolve().parents[1] / "harness" / "schemas" / "agent-result.schema.json"
@@ -407,6 +409,75 @@ def test_confirm_denies_incomplete_plan_without_writing_decision_file(tmp_path: 
         "CONFIRM_REQUESTED",
         "CONFIRM_DENIED",
     ]
+    assert result.structured_content["error_code"] == "HARNESS_POLICY_REJECTED"
+    assert ledger.query()[-1].payload["error_code"] == "HARNESS_POLICY_REJECTED"
+
+
+def test_confirm_preserves_harness_model_completion_failure(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    config = HarnessChannelConfig(
+        trial_id="trial-1",
+        trial_dir=tmp_path / "trial",
+        ledger_root=ledger.root,
+        policy_file=None,
+        decision_file=tmp_path / "trial" / "decision.json",
+    )
+
+    class ExplodingResponder:
+        def reply(self, _question, _context):
+            raise ConversationError("response was not JSON")
+
+    service = HarnessChannelService(
+        config,
+        ledger=ledger,
+        responder=ExplodingResponder(),
+    )
+    server = create_server(service=service)
+
+    result = run(server.call_tool("harness_confirm", {"plan": {"fault_type": "network-delay"}}))
+
+    assert result.structured_content["ok"] is False
+    assert result.structured_content["error"]["code"] == "HARNESS_MODEL_COMPLETION_FAILED"
+    assert "response was not JSON" in result.structured_content["error"]["message"]
+    failed = ledger.query()[-1]
+    assert failed.event_type == "CONFIRM_FAILED"
+    assert failed.payload["error_code"] == "HARNESS_MODEL_COMPLETION_FAILED"
+
+
+def test_confirm_preserves_harness_model_timeout_diagnostic(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    config = HarnessChannelConfig(
+        trial_id="trial-1",
+        trial_dir=tmp_path / "trial",
+        ledger_root=ledger.root,
+        policy_file=None,
+        decision_file=tmp_path / "trial" / "decision.json",
+    )
+
+    class ExplodingResponder:
+        def reply(self, _question, _context):
+            raise HarnessModelTimeout(
+                {
+                    "request_id": "request-1",
+                    "upstream_request_id": "upstream-1",
+                    "timeout_seconds": 180,
+                    "timeout_layer": "gateway.response",
+                }
+            )
+
+    service = HarnessChannelService(
+        config,
+        ledger=ledger,
+        responder=ExplodingResponder(),
+    )
+    # A timeout is surfaced as a typed channel error while retaining only
+    # bounded request metadata for the caller and ledger.
+    with pytest.raises(HarnessChannelError) as caught:
+        service.confirm({"fault_type": "network-delay"})
+    assert caught.value.code == "HARNESS_MODEL_TIMEOUT"
+    assert caught.value.diagnostic["request_id"] == "request-1"
+    assert caught.value.diagnostic["timeout_seconds"] == 180
+    assert ledger.query()[-1].payload["error_code"] == "HARNESS_MODEL_TIMEOUT"
 
 
 def test_submit_result_validates_schema_and_invalid_submission_does_not_overwrite(tmp_path: Path) -> None:

@@ -26,6 +26,17 @@ _ALLOWED_MODES = frozenset({TASK_MODE, MANAGED_MODE})
 class BladeTaskError(ValueError):
     """A Worker request would violate the BladeAI task-mode boundary."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "BLADE_TASK_ERROR",
+        diagnostic: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.diagnostic = dict(diagnostic or {})
+
 
 class HarnessConfirmationClient(Protocol):
     """Minimal synchronous bridge used from the L4 SDK interrupt callback."""
@@ -340,24 +351,59 @@ async def _mcp_json_call(
     from mcp import ClientSession
     from mcp.client.sse import sse_client
 
-    async with sse_client(url, headers={"Authorization": f"Bearer {token}"}) as streams:
-        read_stream, write_stream = streams
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            result = await session.call_tool(tool, dict(arguments))
+    try:
+        async with sse_client(url, headers={"Authorization": f"Bearer {token}"}) as streams:
+            read_stream, write_stream = streams
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool(tool, dict(arguments))
+    except Exception as exc:
+        raise BladeTaskError(
+            f"{tool} MCP transport failed: {_safe_exception_detail(exc)}",
+            code="MCP_TRANSPORT_ERROR",
+            diagnostic={"tool": tool, "error_type": type(exc).__name__},
+        ) from exc
+    text = _mcp_text_content(result)
     if result.isError:
-        raise BladeTaskError(f"{tool} MCP call failed")
-    text = "".join(
-        str(item.text)
-        for item in result.content
-        if getattr(item, "type", None) == "text" and hasattr(item, "text")
-    )
+        raise BladeTaskError(
+            f"{tool} MCP call failed: {_safe_detail(text) or 'empty error response'}",
+            code="MCP_TOOL_ERROR",
+            diagnostic={"tool": tool, "mcp_error": _safe_detail(text)},
+        )
     try:
         value = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise BladeTaskError(f"{tool} returned non-JSON MCP content") from exc
+        raise BladeTaskError(
+            f"{tool} returned non-JSON MCP content: {_safe_detail(text)}",
+            code="MCP_NON_JSON_RESPONSE",
+            diagnostic={"tool": tool},
+        ) from exc
     if not isinstance(value, Mapping):
-        raise BladeTaskError(f"{tool} returned an invalid response")
+        raise BladeTaskError(
+            f"{tool} returned an invalid response",
+            code="MCP_INVALID_RESPONSE",
+            diagnostic={"tool": tool, "response_type": type(value).__name__},
+        )
+    if value.get("ok") is False:
+        error = value.get("error")
+        error = error if isinstance(error, Mapping) else {}
+        response_code = str(error.get("code") or f"{tool.upper()}_ERROR")
+        message = _safe_detail(str(error.get("message") or "MCP response reported failure"))
+        diagnostic = {
+            "tool": tool,
+            "response_error_code": response_code,
+            "response_error_message": message,
+        }
+        nested = error.get("diagnostic")
+        if isinstance(nested, Mapping):
+            diagnostic["response_diagnostic"] = {
+                str(key): _safe_detail(str(val)) for key, val in nested.items()
+            }
+        raise BladeTaskError(
+            f"{tool} returned error: {response_code}: {message}",
+            code=response_code,
+            diagnostic=diagnostic,
+        )
     return value
 
 
@@ -377,8 +423,42 @@ def _run_coroutine_in_thread(coro):
     thread.start()
     thread.join()
     if error:
-        raise BladeTaskError(f"harness_confirm unavailable: {type(error[0]).__name__}") from error[0]
+        exc = error[0]
+        if isinstance(exc, BladeTaskError):
+            raise exc
+        raise BladeTaskError(
+            f"async MCP bridge failed: {_safe_exception_detail(exc)}",
+            code="ASYNC_MCP_BRIDGE_FAILED",
+            diagnostic={"error_type": type(exc).__name__},
+        ) from exc
+    if not result:
+        raise BladeTaskError(
+            "async MCP bridge returned no result",
+            code="ASYNC_MCP_BRIDGE_EMPTY_RESULT",
+        )
     return result[0]
+
+
+def _mcp_text_content(result: Any) -> str:
+    return "".join(
+        str(item.text)
+        for item in getattr(result, "content", ())
+        if getattr(item, "type", None) == "text" and hasattr(item, "text")
+    )
+
+
+def _safe_exception_detail(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {_safe_detail(str(exc))}"
+
+
+def _safe_detail(value: str, *, limit: int = 300) -> str:
+    text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+    for marker in ("Bearer ", "api_key=", "token=", "password=", "secret="):
+        index = text.lower().find(marker.lower())
+        if index >= 0:
+            text = text[:index] + marker + "<redacted>"
+            break
+    return text[:limit]
 
 
 def _required_text(value: object, field: str) -> str:

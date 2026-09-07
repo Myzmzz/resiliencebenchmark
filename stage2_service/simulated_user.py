@@ -130,6 +130,7 @@ class HarnessResponder:
         model_timeout_seconds: int = HARNESS_MODEL_TIMEOUT_SECONDS,
         policy: SimulatedUserPolicy | None = None,
         context: Mapping[str, Any] | None = None,
+        condition_policy: Mapping[str, Any] | None = None,
     ):
         self.model_call = model_call
         self.namespace = namespace
@@ -143,6 +144,11 @@ class HarnessResponder:
             max_observation_seconds=max_observation_seconds,
         )
         self.context = dict(context or {})
+        self.condition_policy = (
+            {**CONDITION_POLICY, **dict(condition_policy)}
+            if condition_policy is not None
+            else None
+        )
         self.interpretation_error: str | None = None
         self.reply_errors: dict[str, str] = {}
         self.history: list[dict[str, Any]] = []
@@ -158,6 +164,7 @@ class HarnessResponder:
         *,
         policy: SimulatedUserPolicy | None = None,
         context: Mapping[str, Any] | None = None,
+        condition_policy: Mapping[str, Any] | None = None,
     ):
         from langchain_openai import ChatOpenAI
 
@@ -212,6 +219,7 @@ class HarnessResponder:
             model_timeout_seconds=HARNESS_MODEL_TIMEOUT_SECONDS,
             policy=policy,
             context=context,
+            condition_policy=condition_policy,
         )
 
     def interpret(self, messages: list[str], evidence: list[dict[str, Any]]) -> dict[str, Any]:
@@ -269,7 +277,10 @@ class HarnessResponder:
         question_id = str(question["question_id"])
         question_version = question.get("version", 1)
         request_kind = str(question.get("request_kind") or "confirmation")
-        original_raw = _attach_condition_policy(_plan(question.get("recommendation")))
+        original_raw = _attach_condition_policy(
+            _plan(question.get("recommendation")),
+            condition_policy=self.condition_policy,
+        )
         original_result = validate_agent_plan(original_raw, self.policy.envelope)
         needs_help = request_kind in {"decision_help", "fact"}
 
@@ -284,8 +295,12 @@ class HarnessResponder:
                 "answer_mode": "approve_recommendation",
                 "approved": True,
                 "feedback_category": "USER_DECISION",
-                "approved_plan": _dump_execution_plan(plan),
-                "supplied_plan": _dump_execution_plan(plan),
+                "approved_plan": _dump_execution_plan(
+                    plan, condition_policy=self.condition_policy
+                ),
+                "supplied_plan": _dump_execution_plan(
+                    plan, condition_policy=self.condition_policy
+                ),
                 "message": _append_condition_policy_message(
                     "同意按你提出的方案执行；以本次确认的目标、参数和停止条件为准。",
                     plan,
@@ -314,7 +329,8 @@ class HarnessResponder:
             raise ConversationError("Harness answer has no message")
         supplied_patch = _plan(proposed.get("plan"))
         supplied_raw = _attach_condition_policy(
-            {**original_raw, **supplied_patch} if supplied_patch else original_raw
+            {**original_raw, **supplied_patch} if supplied_patch else original_raw,
+            condition_policy=self.condition_policy,
         )
         supplied_result = validate_agent_plan(supplied_raw, self.policy.envelope)
 
@@ -390,8 +406,12 @@ class HarnessResponder:
             "answer_mode": mode,
             "approved": True,
             "feedback_category": "USER_DECISION",
-            "approved_plan": _dump_execution_plan(supplied_plan),
-            "supplied_plan": _dump_execution_plan(supplied_plan),
+            "approved_plan": _dump_execution_plan(
+                supplied_plan, condition_policy=self.condition_policy
+            ),
+            "supplied_plan": _dump_execution_plan(
+                supplied_plan, condition_policy=self.condition_policy
+            ),
             "message": _append_condition_policy_message(message, supplied_plan),
             "affected_nodes": [] if mode == "approve_recommendation" else affected,
             "reason": "agent_plan_confirmed" if mode == "approve_recommendation" else "harness_supplied_decision",
@@ -579,12 +599,19 @@ def _plan(value: Any) -> dict[str, Any]:
     return plan
 
 
-def _attach_condition_policy(plan: Mapping[str, Any]) -> dict[str, Any]:
+def _attach_condition_policy(
+    plan: Mapping[str, Any],
+    *,
+    condition_policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     value = deepcopy(dict(plan))
     value.pop("duration_seconds", None)
     value.pop("maximum_observation_seconds", None)
+    overrides = dict(condition_policy or {})
     for key in ("effect_condition", "recovery_condition"):
-        if isinstance(value.get(key), Mapping):
+        if isinstance(overrides.get(key), Mapping):
+            value[key] = deepcopy(dict(overrides[key]))
+        elif isinstance(value.get(key), Mapping):
             condition = dict(value[key])
             condition.pop("minimum_requests", None)
             condition.pop("threshold_tolerance_ratio", None)
@@ -592,7 +619,10 @@ def _attach_condition_policy(plan: Mapping[str, Any]) -> dict[str, Any]:
     for key, policy_value in CONDITION_POLICY.items():
         if key == "recovery_mode":
             continue
-        value.setdefault(key, policy_value)
+        if key in overrides:
+            value[key] = deepcopy(overrides[key])
+        else:
+            value.setdefault(key, policy_value)
     return value
 
 
@@ -661,10 +691,25 @@ def _dump_plan(plan: AgentPlan) -> dict[str, Any]:
     return plan.model_dump(mode="json")
 
 
-def _dump_execution_plan(plan: AgentPlan) -> dict[str, Any]:
+def _dump_execution_plan(
+    plan: AgentPlan,
+    *,
+    condition_policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Add Controller-owned condition policy after AgentPlan validation."""
 
-    return apply_condition_policy(_dump_plan(plan))
+    value = _dump_plan(plan)
+    if condition_policy is None:
+        return apply_condition_policy(value)
+    policy = {**CONDITION_POLICY, **dict(condition_policy)}
+    value.update(
+        {
+            key: deepcopy(policy_value)
+            for key, policy_value in policy.items()
+            if key != "recovery_mode"
+        }
+    )
+    return value
 
 
 def _has_blocking_issues(result) -> bool:
