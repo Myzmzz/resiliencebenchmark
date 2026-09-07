@@ -7,6 +7,7 @@ import os
 import sys
 import asyncio
 from contextlib import contextmanager
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -30,6 +31,8 @@ from .bladeai_task import (
 
 
 def emit(kind: str, payload: dict) -> None:
+    if kind in {"runtime_tool_end", "tool_end"}:
+        _record_wp8_discovery(payload)
     print(
         json.dumps(
             {"type": "stage2_bladeai_event", "kind": kind, "payload": payload},
@@ -85,6 +88,73 @@ kubectl、Chaos Mesh 或其他未列出的执行器。
 
 blade create k8s pod-network delay --time 1 --timeout 30
 """
+
+_WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, str]] = {}
+
+
+def _record_wp8_discovery(payload: Mapping[str, Any]) -> None:
+    """Retain target names/UIDs returned by Agent read-only MCP calls."""
+    if not _wp8_enabled():
+        return
+    tool = str(payload.get("tool") or "")
+    if not tool.endswith(("k8s_get_resource", "k8s_list_resources")):
+        return
+    raw = payload.get("result")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+    if not isinstance(raw, Mapping):
+        return
+    objects: list[Any] = []
+    obj = raw.get("object")
+    if isinstance(obj, Mapping):
+        objects.append(obj)
+    items = raw.get("items")
+    if isinstance(items, list):
+        objects.extend(items)
+    for item in objects:
+        if not isinstance(item, Mapping):
+            continue
+        metadata = item.get("metadata")
+        if not isinstance(metadata, Mapping):
+            continue
+        labels = metadata.get("labels")
+        if not isinstance(labels, Mapping) or labels.get(
+            "resiliencebenchmark.io/qualification"
+        ) != "bladeai-wp8":
+            continue
+        namespace = str(metadata.get("namespace") or raw.get("namespace") or "").strip()
+        name = str(metadata.get("name") or "").strip()
+        uid = str(metadata.get("uid") or "").strip()
+        if namespace and name:
+            _WP8_DISCOVERED_TARGETS[(namespace, name)] = {
+                "namespace": namespace,
+                "name": name,
+                "uid": uid,
+            }
+
+
+def _augment_wp8_proposal_target(proposal: Mapping[str, Any]) -> dict[str, Any]:
+    """Bind one uniquely observed target when SDK proposal names are empty."""
+    value = dict(proposal)
+    target = value.get("target")
+    if not isinstance(target, Mapping):
+        return value
+    names = target.get("names")
+    if isinstance(names, list) and len(names) == 1 and str(names[0]).strip():
+        return value
+    namespace = str(target.get("namespace") or "").strip()
+    candidates = [item for (ns, _name), item in _WP8_DISCOVERED_TARGETS.items()
+                  if not namespace or ns == namespace]
+    if len(candidates) != 1:
+        return value
+    bound = dict(target)
+    bound["namespace"] = candidates[0]["namespace"]
+    bound["names"] = [candidates[0]["name"]]
+    value["target"] = bound
+    return value
 
 
 def _apply_wp8_skill_guard(factory_module: Any, registry: Any) -> None:
@@ -406,6 +476,8 @@ class Runtime:
             if self.proposal_capture is None or self.target_uid_resolver is None:
                 raise BladeTaskError("BladeAI proposal capture or controlled target discovery is unavailable")
             proposal = self.proposal_capture.take()
+            if _wp8_enabled():
+                proposal = _augment_wp8_proposal_target(proposal)
             emit(
                 "sdk_confirmation_proposed",
                 {
@@ -500,6 +572,8 @@ def main(argv: list[str] | None = None) -> int:
         payload=request.l4_payload(),
     )
     emit("task_started", {"mode": request.mode, "target": task.target, "namespace": request.namespace})
+    if _wp8_enabled():
+        _WP8_DISCOVERED_TARGETS.clear()
     proposal_capture = NativeProposalCapture() if request.mode == "task" else None
     runtime = Runtime(
         confirmation_client,

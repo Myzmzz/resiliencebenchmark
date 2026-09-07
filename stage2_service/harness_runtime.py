@@ -1269,6 +1269,15 @@ class NativeHarnessRunner:
             if validation_error
             else AgentVerdict.FAIL
         )
+        platform_events = redact_json(all_trial_events(platform_ledger, trial_id), env)
+        # Trial identity is a correlation key, not a credential.  The generic
+        # redactor sees RESBENCH_AUTHORIZED_RUN_ID in the child environment and
+        # would otherwise replace it with ``<redacted>``; WP8's sealed
+        # evaluator must be able to correlate the ledger back to this Trial.
+        if isinstance(platform_events, list):
+            for event in platform_events:
+                if isinstance(event, dict):
+                    event["trial_id"] = trial_id
         final_output: dict[str, Any] = {
             "trial_id": trial_id,
             "returncode": result.returncode,
@@ -1313,7 +1322,7 @@ class NativeHarnessRunner:
                 "native_unclosed_calls": native_unclosed_calls,
                 "unmatched_results": sorted(set(mapper.results) - set(mapper.calls)),
             },
-            "platform_events": redact_json(all_trial_events(platform_ledger, trial_id), env),
+            "platform_events": platform_events,
         }
         if bladeai_launch_evidence is not None:
             final_output["bladeai_launch"] = bladeai_launch_evidence

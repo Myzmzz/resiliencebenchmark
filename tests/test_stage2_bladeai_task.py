@@ -19,7 +19,12 @@ from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutc
 from stage2_service.plan_schema import PlanSafetyEnvelope
 from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.simulated_user import HarnessResponder, SimulatedUserPolicy
-from stage2_service.bladeai_worker import Runtime
+from stage2_service.bladeai_worker import (
+    Runtime,
+    _WP8_DISCOVERED_TARGETS,
+    _augment_wp8_proposal_target,
+    _record_wp8_discovery,
+)
 
 
 def _task_request(**extra):
@@ -31,6 +36,51 @@ def _task_request(**extra):
         "mode": "task",
         **extra,
     }
+
+
+def test_wp8_target_is_bound_only_from_a_unique_read_only_discovery(monkeypatch):
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    _WP8_DISCOVERED_TARGETS.clear()
+    _record_wp8_discovery({
+        "tool": "k8s_ro__k8s_get_resource",
+        "result": json.dumps({
+            "namespace": "otel-demo",
+            "object": {"metadata": {
+                "namespace": "otel-demo",
+                "name": "canary",
+                "uid": "uid-1",
+                "labels": {"resiliencebenchmark.io/qualification": "bladeai-wp8"},
+            }},
+        }),
+    })
+
+    proposal = _augment_wp8_proposal_target({
+        "target": {"namespace": "otel-demo", "names": []},
+    })
+
+    assert proposal["target"]["names"] == ["canary"]
+    assert proposal["target"]["namespace"] == "otel-demo"
+
+
+def test_wp8_target_is_not_guessed_when_discovery_is_ambiguous(monkeypatch):
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    _WP8_DISCOVERED_TARGETS.clear()
+    _record_wp8_discovery({
+        "tool": "k8s_ro__k8s_list_resources",
+        "result": json.dumps({
+            "namespace": "otel-demo",
+            "items": [
+                {"metadata": {"namespace": "otel-demo", "name": "canary-a"}},
+                {"metadata": {"namespace": "otel-demo", "name": "canary-b"}},
+            ],
+        }),
+    })
+
+    proposal = _augment_wp8_proposal_target({
+        "target": {"namespace": "otel-demo", "names": []},
+    })
+
+    assert proposal["target"]["names"] == []
 
 
 def test_task_mode_uses_verbatim_intent_without_preselected_target_or_fault():
