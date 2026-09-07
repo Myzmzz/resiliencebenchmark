@@ -84,6 +84,7 @@ COPY stage2_service/bladeai_events.py /app/stage2_service/bladeai_events.py
 COPY stage2_service/bladeai_mcp_guard.py /app/stage2_service/bladeai_mcp_guard.py
 COPY stage2_service/bladeai_duration.py /app/stage2_service/bladeai_duration.py
 COPY stage2_service/bladeai_task.py /app/stage2_service/bladeai_task.py
+COPY stage2_service/condition_policy.py /app/stage2_service/condition_policy.py
 COPY stage2_service/bladeai_shim.py /app/stage2_service/bladeai_shim.py
 COPY stage2_service/bladeai_read_cli.py /app/stage2_service/bladeai_read_cli.py
 RUN install -d -m 0755 /app/stage2_service \
