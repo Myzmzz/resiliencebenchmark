@@ -554,6 +554,28 @@ def test_options_reports_gateway_check_in_progress_without_admitting_task(tmp_pa
     assert supervisor.list_runs() == []
 
 
+def test_task_rejection_preserves_model_probe_failure_reason(tmp_path):
+    snapshot = preflight()
+    snapshot["model_matrix"]["codex"]["gpt-5.5"] = False
+    snapshot["model_probes"] = {
+        "gpt-5.5": {
+            "runnable": False,
+            "probe_status": "probed_with_failures",
+            "failure_classes": ["quota_exhausted"],
+            "reason": "upstream model quota exhausted",
+        }
+    }
+    service, supervisor, _controls = task_service(
+        tmp_path, CountingRunner(), preflight_provider=lambda: snapshot
+    )
+    client = TestClient(create_app(supervisor, task_service=service))
+
+    response = client.post("/api/v1/stage2/tasks", json=request().model_dump(mode="json"))
+
+    assert response.status_code == 422
+    assert "upstream model quota exhausted" in response.text
+
+
 def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     service, supervisor, _controls = task_service(tmp_path, Runner())
     client = TestClient(create_app(supervisor, task_service=service))

@@ -607,8 +607,19 @@ class Stage2TaskService:
                     "gateway_probe_in_progress: model readiness is being checked; "
                     "read /api/v1/stage2/options before submitting"
                 )
+            model_probe = (
+                preflight.get("model_probes", {}).get(request.model)
+                if isinstance(preflight.get("model_probes"), Mapping)
+                else None
+            )
+            probe_reason = (
+                model_probe.get("reason")
+                if isinstance(model_probe, Mapping) and model_probe.get("reason")
+                else None
+            )
             raise TaskValidationError(
                 f"model/Harness combination is unavailable: {request.harness.value}/{request.model}"
+                + (f" ({probe_reason})" if probe_reason else "")
             )
         selected_cases = self._request_cases(request.model_dump(mode="json"))
         runnable_reason = self._runnable_request_reason(
