@@ -445,6 +445,12 @@ class NativeHarnessRunner:
                 namespace=runtime_context.target.namespace, prompt=prompt, model_alias=model_alias,
                 environment=agent_env, proxy_config=proxy_config,
                 python_executable=self.base_environment.get("STAGE2_BLADEAI_PYTHON", "/opt/bladeai-venv/bin/python"),
+                qualification_fault=(
+                    runtime_context.main_fault
+                    if runtime_context.main_fault.get("qualification_type")
+                    == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
+                    else None
+                ),
             )
             # Controller-authored launch facts are distinct from SDK stdout.
             # WP8 must compare these with actual MCP calls and independent

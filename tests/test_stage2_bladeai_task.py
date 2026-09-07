@@ -45,6 +45,28 @@ def test_task_mode_uses_verbatim_intent_without_preselected_target_or_fault():
     }
 
 
+def test_wp8_task_mode_projects_controller_fault_contract_without_preselecting_target():
+    request = BladeTaskRequest.from_mapping(
+        _task_request(
+            qualification_fault={
+                "qualification_type": "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION",
+                "fault_type": "network-delay",
+                "duration_seconds": 30,
+                "intensity": {"delay_ms": 1},
+            }
+        )
+    )
+
+    payload = request.l4_payload()
+    assert request.l4_target() is None
+    assert payload["fault_scope"] == "pod"
+    assert payload["fault_target"] == "network"
+    assert payload["fault_action"] == "delay"
+    assert payload["params"] == {"time": "1"}
+    assert payload["duration"] == 30
+    assert "target_names" not in payload
+
+
 def test_task_mode_rejects_controller_selected_target_and_managed_fault():
     for extra in (
         {"target": {"name": "cart-123", "namespace": "otel-demo"}},

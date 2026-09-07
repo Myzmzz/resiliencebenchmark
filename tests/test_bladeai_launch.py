@@ -62,6 +62,34 @@ def test_agent_visible_mcp_excludes_execution_servers_but_shim_env_keeps_chaos_u
     assert child_env["BLADE_AI_MCP_CONNECT_TIMEOUT_SECONDS"] == "120"
 
 
+def test_wp8_launch_carries_only_controller_fault_contract(tmp_path: Path) -> None:
+    _argv, _stdin, child_env = prepare_bladeai_launch(
+        repo_root=REPO_ROOT,
+        trial_root=tmp_path / "trial",
+        trial_id="campaign-1234567890abcdef-bladeai-wp8-1",
+        namespace="otel-demo",
+        prompt="qualification prompt",
+        model_alias="gpt-5.5",
+        environment=_env(),
+        proxy_config=ProxyConfig(
+            namespace="otel-demo",
+            token="proxy-token-for-kubeconfig-only-0001",
+        ),
+        python_executable="/opt/bladeai-venv/bin/python",
+        qualification_fault={
+            "qualification_type": "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION",
+            "fault_type": "network-delay",
+            "duration_seconds": 30,
+            "intensity": {"delay_ms": 1},
+        },
+    )
+    task = json.loads((Path(child_env["HOME"]) / "task.json").read_text())
+    assert task["mode"] == "task"
+    assert task.get("target") is None
+    assert task["qualification_fault"]["fault_type"] == "network-delay"
+    assert task["qualification_fault"]["duration_seconds"] == 30
+
+
 def test_missing_required_shim_endpoint_fails_even_when_agent_mcp_is_read_only(tmp_path: Path) -> None:
     environment = _env(RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL="")
 

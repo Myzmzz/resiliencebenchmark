@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 TASK_MODE = "task"
 MANAGED_MODE = "managed"
+WP8_QUALIFICATION_TYPE = "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
 _ALLOWED_MODES = frozenset({TASK_MODE, MANAGED_MODE})
 
 
@@ -84,6 +85,7 @@ class BladeTaskRequest:
     mode: str = TASK_MODE
     managed_fault: dict[str, Any] | None = None
     target: dict[str, Any] | None = None
+    qualification_fault: dict[str, Any] | None = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "BladeTaskRequest":
@@ -98,6 +100,9 @@ class BladeTaskRequest:
             mode=mode,
             managed_fault=_mapping_or_none(value.get("managed_fault"), "managed_fault"),
             target=_mapping_or_none(value.get("target"), "target"),
+            qualification_fault=_mapping_or_none(
+                value.get("qualification_fault"), "qualification_fault"
+            ),
         )
         request._validate()
         return request
@@ -108,6 +113,12 @@ class BladeTaskRequest:
                 raise BladeTaskError("task mode must not preselect target")
             if self.managed_fault is not None:
                 raise BladeTaskError("task mode must not inject managed_fault")
+            if self.qualification_fault is not None and self.qualification_fault.get(
+                "qualification_type"
+            ) != WP8_QUALIFICATION_TYPE:
+                raise BladeTaskError(
+                    "task mode qualification_fault is reserved for BladeAI WP8 qualification"
+                )
         elif self.managed_fault is None:
             raise BladeTaskError("managed mode requires managed_fault")
         elif self.target is None:
@@ -124,6 +135,8 @@ class BladeTaskRequest:
             assert self.target is not None
             payload["target_names"] = [_required_text(self.target.get("name"), "target.name")]
             payload.update(self.managed_fault or {})
+        elif self.qualification_fault is not None:
+            payload.update(_qualification_fault_payload(self.qualification_fault))
         return payload
 
     def l4_target(self) -> str | None:
@@ -387,6 +400,33 @@ def _mapping_or_none(value: object, field: str) -> dict[str, Any] | None:
     if not isinstance(value, Mapping):
         raise BladeTaskError(f"{field} must be an object")
     return dict(value)
+
+
+def _qualification_fault_payload(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the controller-fixed WP8 contract into L4 FaultSpec fields.
+
+    This supplies only the fault type/intensity/duration.  The Agent still
+    discovers and binds the target Pod by name and current UID.
+    """
+    fault_type = _required_text(value.get("fault_type"), "qualification_fault.fault_type")
+    if fault_type != "network-delay":
+        raise BladeTaskError("WP8 qualification currently supports network-delay only")
+    intensity = value.get("intensity")
+    if not isinstance(intensity, Mapping):
+        raise BladeTaskError("qualification_fault.intensity is required")
+    delay_ms = intensity.get("delay_ms")
+    if isinstance(delay_ms, bool) or delay_ms is None:
+        raise BladeTaskError("qualification_fault.intensity.delay_ms is required")
+    duration = value.get("duration_seconds")
+    if isinstance(duration, bool) or not isinstance(duration, int) or duration < 1:
+        raise BladeTaskError("qualification_fault.duration_seconds must be positive")
+    return {
+        "fault_scope": "pod",
+        "fault_target": "network",
+        "fault_action": "delay",
+        "params": {"time": str(delay_ms)},
+        "duration": duration,
+    }
 
 
 def _namespace_from_target(value: Mapping[str, Any]) -> object:

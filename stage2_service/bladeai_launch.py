@@ -22,6 +22,7 @@ def prepare_bladeai_launch(
     *, repo_root: Path, trial_root: Path, trial_id: str, namespace: str,
     prompt: str, model_alias: str, environment: Mapping[str, str],
     proxy_config: ProxyConfig, python_executable: str,
+    qualification_fault: Mapping[str, object] | None = None,
 ) -> tuple[list[str], bytes, dict[str, str]]:
     """Use current SDK HOME loader and never supply a preselected experiment."""
     agent_home = trial_root / "bladeai-home"
@@ -31,10 +32,13 @@ def prepare_bladeai_launch(
     write_json(kubeconfig, proxy_kubeconfig(proxy_config))
     kubeconfig.chmod(0o600)
     request_path = agent_home / "task.json"
-    write_json(request_path, {
+    request = {
         "mode": "task", "trial_id": trial_id, "intent": prompt,
         "namespace": namespace, "kubeconfig": str(kubeconfig),
-    })
+    }
+    if qualification_fault is not None:
+        request["qualification_fault"] = dict(qualification_fault)
+    write_json(request_path, request)
     request_path.chmod(0o600)
 
     template = json.loads((repo_root / "harness/bladeai/mcp.json.template").read_text())
