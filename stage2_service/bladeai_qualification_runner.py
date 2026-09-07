@@ -255,6 +255,8 @@ class BladeAIQualificationRunner:
                 model=model,
                 failure_reasons=(*failure_reasons, *cleanup_errors),
                 artifact_refs=refs,
+                report=report,
+                recovery=recovery,
             )
         write_record(output_path, record)
         return BladeAIQualificationResult(
@@ -482,7 +484,38 @@ def _failure_record(
     model: str,
     failure_reasons: tuple[str, ...],
     artifact_refs: list[str],
+    report: HarnessReport | None = None,
+    recovery: RecoveryResult | None = None,
 ) -> dict[str, Any]:
+    final_output = report.final_output if report is not None else {}
+    terminal_result = final_output.get("bladeai_result")
+    terminal_error = terminal_result.get("error") if isinstance(terminal_result, Mapping) else None
+    terminal_error = terminal_error if isinstance(terminal_error, Mapping) else {}
+    terminal_agent_error = (
+        {
+            "code": str(terminal_error.get("code") or ""),
+            "message": str(terminal_error.get("message") or ""),
+        }
+        if terminal_error.get("code") or terminal_error.get("message")
+        else None
+    )
+    platform_events = final_output.get("platform_events")
+    event_types: dict[str, int] = {}
+    native_tool_result_present = False
+    if isinstance(platform_events, list):
+        for event in platform_events:
+            if not isinstance(event, Mapping):
+                continue
+            event_type = str(event.get("event_type") or "")
+            if event_type:
+                event_types[event_type] = event_types.get(event_type, 0) + 1
+            payload = event.get("payload")
+            if (
+                event_type == "ToolResult"
+                and isinstance(payload, Mapping)
+                and payload.get("source") == "native"
+            ):
+                native_tool_result_present = True
     return {
         "schema_version": "stage2-bladeai-wp8-qualification.v1",
         "qualification_type": "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION",
@@ -496,6 +529,38 @@ def _failure_record(
         "candidate_capability": None,
         "scored_as_d0": False,
         "d7_d8_qualified": False,
+        "harness_report_status": report.status if report is not None else None,
+        "agent_verdict": report.agent_verdict.value if report is not None else None,
+        "harness_error_code": final_output.get("harness_error_code"),
+        "harness_error": final_output.get("harness_error"),
+        "terminal_agent_error": terminal_agent_error,
+        "recovery_evidence_refs": list(recovery.evidence_refs) if recovery is not None else [],
+        "model_alias": final_output.get("model_alias") or model,
+        "gateway_route": final_output.get("gateway_route") or {},
+        "gateway_config_sha256": final_output.get("gateway_config_sha256"),
+        "gateway_evidence_verified": final_output.get("gateway_evidence_verified"),
+        "gateway_request_ids": final_output.get("gateway_request_ids") or [],
+        "gateway_evidence_ref": final_output.get("gateway_evidence_ref"),
+        "bladeai_launch": final_output.get("bladeai_launch"),
+        "evidence": {
+            "controller_platform_event_count": len(platform_events)
+            if isinstance(platform_events, list)
+            else 0,
+            "controller_platform_event_types": dict(sorted(event_types.items())),
+            "live_native_tool_result": native_tool_result_present,
+            "recovery_verified": recovery is not None
+            and recovery.controller_cleanup_verified
+            and recovery.fault_absent
+            and recovery.chaos_inventory_clear,
+        },
+        "evaluation_error_type": next(
+            (
+                reason.removeprefix("evaluation_error:")
+                for reason in failure_reasons
+                if reason.startswith("evaluation_error:")
+            ),
+            None,
+        ),
     }
 
 

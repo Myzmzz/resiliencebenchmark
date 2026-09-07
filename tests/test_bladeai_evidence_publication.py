@@ -93,10 +93,97 @@ def _artifacts(tmp_path):
     return root, gateway, refs
 
 
+def _pre_mutation_provider_failure_artifacts(tmp_path):
+    """Build the evidence shape produced when the model fails before MCP use."""
+    root, gateway, refs = _artifacts(tmp_path)
+    trial = root / "trial"
+    report_path = trial / "harness-report.json"
+    report = json.loads(report_path.read_text())
+
+    # The native stream still contains the Controller-visible lifecycle
+    # checkpoint, but no ToolCall/ToolResult was emitted before the provider
+    # rejected the first model request.
+    events = [_events()[0]]
+    rows = []
+    for event in events:
+        row = {"event_type": event.event_type, **event.payload}
+        if row.get("source") in {"native", "mcp_server"}:
+            row["replayed"] = False
+        rows.append(row)
+    (trial / "canonical-events.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows)
+    )
+
+    final_output = report["final_output"]
+    final_output.update(
+        {
+            "platform_events": [event.as_dict() for event in events],
+            "bladeai_shim_evidence": [],
+            "bladeai_result": {
+                "type": "stage2_bladeai_result",
+                "status": "failed",
+                "error": {
+                    "code": "PERMISSION_DENIED",
+                    "message": "token quota is not enough",
+                    "recoverable": False,
+                },
+            },
+            "harness_error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED",
+            "harness_error": {
+                "error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED",
+                "provider_error_code": "PERMISSION_DENIED",
+                "retry_scope": "bladeai_wp8_pre_mutation",
+                "retryable": False,
+            },
+            "harness_model_request_count": 1,
+            "process_succeeded": True,
+            "returncode": 0,
+            "cancelled": False,
+            "validation_error": None,
+            "adapter_integrity": {
+                "call_count": 0,
+                "result_count": 0,
+                "unclosed_calls": [],
+                "live_unclosed_calls": [],
+                "native_unclosed_calls": [],
+                "unmatched_results": [],
+            },
+        }
+    )
+    _write(trial / "bladeai-shim-evidence.json", [])
+    report["agent_verdict"] = "FAIL"
+    _write(report_path, report)
+
+    recovery_path = trial / "recovery.json"
+    recovery = json.loads(recovery_path.read_text())
+    recovery.update(
+        {
+            "agent_attempted": False,
+            "agent_recovery_verified": False,
+            "main_fault_ever_active": False,
+            "main_fault_target_verified": False,
+            "fault_effect_verified": False,
+            "recovery_attribution": {
+                "trial_id": TRIAL_ID,
+                "cleanup_handle": None,
+                "target_uid": None,
+                "cleanup_principal": "NOT_APPLICABLE",
+                "cleanup_executor": "NOT_APPLICABLE",
+            },
+        }
+    )
+    _write(recovery_path, recovery)
+    return root, gateway, refs
+
+
 def test_wp8_publication_recomputes_artifacts_and_only_grants_base_execution(tmp_path):
     root, gateway, refs = _artifacts(tmp_path)
     record = evaluate_wp8_artifacts(refs, artifact_root=root, gateway=gateway)
     assert record["passed"] is True, record["failure_reasons"]
+    assert record["evidence"]["canonical_stream"] == {
+        "controller_ledger_verified": True,
+        "live_native_tool_result": True,
+    }
     path = tmp_path / "wp8.json"
     _write(path, record)
     output = tmp_path / "capabilities.json"
@@ -154,3 +241,36 @@ def test_wp8_evaluator_keeps_pre_mutation_failure_when_shim_artifact_is_absent(t
 
     assert record["passed"] is False
     assert "missing_controlled_shim_evidence" in record["failure_reasons"]
+
+
+def test_wp8_evaluator_keeps_provider_failure_without_native_tool_result(tmp_path):
+    root, gateway, refs = _pre_mutation_provider_failure_artifacts(tmp_path)
+
+    record = evaluate_wp8_artifacts(refs, artifact_root=root, gateway=gateway)
+
+    assert record["passed"] is False
+    assert record["status"] == "failed"
+    assert record["terminal_agent_error"] == {
+        "code": "PERMISSION_DENIED",
+        "message": "token quota is not enough",
+    }
+    assert "bladeai_terminal_error:BLADEAI_MODEL_QUOTA_EXHAUSTED" in record["failure_reasons"]
+    assert "missing_k8s_read" in record["failure_reasons"]
+    assert "missing_telemetry_read" in record["failure_reasons"]
+    assert record["evidence"]["canonical_stream"] == {
+        "controller_ledger_verified": True,
+        "live_native_tool_result": False,
+    }
+
+    qualification_path = tmp_path / "failed-wp8.json"
+    _write(qualification_path, record)
+    publication_path = tmp_path / "capabilities.json"
+    publication_path.write_text("existing publication")
+    with pytest.raises(ValueError):
+        publish_capabilities(
+            [qualification_path],
+            artifact_root=root,
+            output=publication_path,
+            gateway=gateway,
+        )
+    assert publication_path.read_text() == "existing publication"

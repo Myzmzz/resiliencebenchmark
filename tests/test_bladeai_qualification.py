@@ -701,3 +701,4 @@ def test_bladeai_full_chain_prefers_stable_quota_diagnostic_code():
 
     assert record["passed"] is False
     assert "bladeai_terminal_error:BLADEAI_MODEL_QUOTA_EXHAUSTED" in record["failure_reasons"]
+    assert record["harness_error_code"] == "BLADEAI_MODEL_QUOTA_EXHAUSTED"

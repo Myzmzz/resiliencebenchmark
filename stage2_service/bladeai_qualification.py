@@ -214,6 +214,8 @@ def evaluate_bladeai_full_chain(
 
     failure_reasons = tuple(dict.fromkeys(failures))
     passed = all(checks.values()) and not failure_reasons
+    stable_error_code = str(report.final_output.get("harness_error_code") or "").strip()
+    harness_error = _safe_mapping(report.final_output.get("harness_error"))
     return {
         "schema_version": SCHEMA_VERSION,
         "qualification_type": QUALIFICATION_TYPE,
@@ -238,6 +240,8 @@ def evaluate_bladeai_full_chain(
         "expected_canary": expected_canary.model_dump(mode="json"),
         "gateway_route": gateway_route,
         "gateway_config_sha256": str(report.final_output.get("gateway_config_sha256") or ""),
+        "harness_error_code": stable_error_code or None,
+        "harness_error": harness_error or None,
         "gateway_sidecar_evidence": {
             "verified": report.final_output.get("gateway_evidence_verified") is True,
             "request_ids": report.final_output.get("gateway_request_ids") or [],

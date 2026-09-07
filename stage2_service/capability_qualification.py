@@ -299,7 +299,7 @@ def evaluate_wp8_artifacts(
         raise ValueError("Controller platform event fields are invalid") from error
     canonical_path = _artifact(refs, root, "canonical-events.jsonl")
     canonical = [json.loads(line) for line in _read(canonical_path).splitlines() if line.strip()]
-    _verify_wp8_canonical_events(canonical, event_rows)
+    native_stream_verified = _verify_wp8_canonical_events(canonical, event_rows)
     native_parent = canonical_path.parent
     for name in ("gateway-requests.json", "bladeai-launch.json", "bladeai-shim-evidence.json",
                  "harness-report.json", "runtime-context.json", "recovery.json", "canary-evidence.json"):
@@ -335,6 +335,19 @@ def evaluate_wp8_artifacts(
         trial_id=runtime.trial_id, model=model, report=report, recovery=recovery,
         runtime_target=runtime.target, events=events, expected_canary=expected,
     )
+    # A provider/SDK failure can happen before BladeAI emits its first native
+    # tool result.  That is a valid failed qualification outcome, not a
+    # corrupted archive.  Preserve the strict live-stream requirement for any
+    # record that otherwise claims a passing WP8 chain.
+    if evaluated.get("passed") is True and not native_stream_verified:
+        raise ValueError("WP8 terminal success requires a live native BladeAI ToolResult")
+    evaluated["evidence"] = {
+        **dict(evaluated.get("evidence") or {}),
+        "canonical_stream": {
+            "controller_ledger_verified": True,
+            "live_native_tool_result": native_stream_verified,
+        },
+    }
     if evaluated.get("passed") is True:
         result = report.final_output.get("agent_result")
         schema_path = Path(__file__).resolve().parents[1] / "harness/schemas/agent-result.schema.json"
@@ -356,7 +369,14 @@ def evaluate_wp8_artifacts(
     }
 
 
-def _verify_wp8_canonical_events(rows: list[Any], platform: list[dict[str, Any]]) -> None:
+def _verify_wp8_canonical_events(rows: list[Any], platform: list[dict[str, Any]]) -> bool:
+    """Verify canonical events against the Controller ledger.
+
+    Return whether a live native ``ToolResult`` is present.  A missing native
+    result is expected when a model/provider fails before the first tool call;
+    callers decide whether that absence is acceptable for the outcome.  Any
+    mismatch between events that do exist remains a hard evidence error.
+    """
     fields = {
         "ToolCall": ("call_id", "tool", "arguments"),
         "ToolResult": ("call_id", "status", "payload"),
@@ -384,8 +404,9 @@ def _verify_wp8_canonical_events(rows: list[Any], platform: list[dict[str, Any]]
         for row in platform if row.get("event_type") in fields
         and row.get("payload", {}).get("source") in {"native", "mcp_server"}
     )
-    if not streamed or not recorded or recorded != original:
+    if recorded != original:
         raise ValueError("BladeAI canonical stream does not match the Controller ledger")
+    return streamed
 
 
 def _wp8_entry(path: Path, record: dict[str, Any], root: Path,

@@ -195,6 +195,7 @@ class _Finalizer:
             main_fault_ever_active=True,
             main_fault_target_verified=True,
             fault_effect_verified=False,
+            evidence_refs=("controller://cleanup",),
         )
 
 
@@ -326,6 +327,67 @@ def test_bladeai_wp8_runner_finalizes_before_restore_after_harness_exception(tmp
 
     assert result.record["passed"] is False
     assert log.index("finalize") < log.index("restore") < log.index("stop") < log.index("traffic-close")
+
+
+def test_bladeai_wp8_runner_preserves_provider_error_when_evaluation_fails(tmp_path, monkeypatch):
+    log: list[str] = []
+    components = _components(tmp_path, log)
+    monkeypatch.setattr(
+        "stage2_service.bladeai_qualification_runner.load_fixed_episode",
+        lambda ref, *, root: SimpleNamespace(ref=SimpleNamespace(episode_id="EPI-TEST-BLADEAI-WP8")),
+    )
+    monkeypatch.setattr(
+        "stage2_service.bladeai_qualification_runner.fixed_otel_episode_ref",
+        lambda repo_root: SimpleNamespace(episode_id="EPI-TEST-BLADEAI-WP8"),
+    )
+
+    def provider_failed_report(**kwargs):
+        trial_id = kwargs["trial_id"]
+        return HarnessReport(
+            status="failed",
+            agent_verdict=AgentVerdict.FAIL,
+            lifecycle_events=(),
+            artifact_refs=(),
+            final_output={
+                "trial_id": trial_id,
+                "model_alias": MODEL,
+                "harness_error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED",
+                "harness_error": {"error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED"},
+                "bladeai_result": {
+                    "type": "stage2_bladeai_result",
+                    "status": "failed",
+                    "error": {"code": "PERMISSION_DENIED", "message": "token quota is not enough"},
+                },
+            },
+        )
+
+    components.harness_runner.run = provider_failed_report
+    def evaluation_failed(refs, *, artifact_root, gateway):
+        del refs, artifact_root, gateway
+        raise ValueError("canonical stream mismatch")
+
+    monkeypatch.setattr(
+        "stage2_service.bladeai_qualification_runner.evaluate_wp8_artifacts",
+        evaluation_failed,
+    )
+
+    result = BladeAIQualificationRunner(
+        _system(tmp_path, components),
+        artifact_store=ArtifactStore(tmp_path / "artifacts"),
+        runtime_lock=_Lock(log),
+    ).run(model=MODEL, canary_pod=CANARY_POD, output_dir=tmp_path / "out")
+
+    assert result.record["passed"] is False
+    assert "evaluation_error:ValueError" in result.record["failure_reasons"]
+    assert result.record["harness_error_code"] == "BLADEAI_MODEL_QUOTA_EXHAUSTED"
+    assert result.record["harness_error"] == {"error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED"}
+    assert result.record["terminal_agent_error"] == {
+        "code": "PERMISSION_DENIED",
+        "message": "token quota is not enough",
+    }
+    assert result.record["harness_report_status"] == "failed"
+    assert result.record["recovery_evidence_refs"]
+    assert result.record["evaluation_error_type"] == "ValueError"
 
 
 def test_bladeai_wp8_output_dir_must_not_overwrite_existing_files(tmp_path):
