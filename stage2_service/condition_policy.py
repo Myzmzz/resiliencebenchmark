@@ -39,11 +39,15 @@ WP8_CONDITION_POLICY = {
         "success rate falls below 0.95",
         "cleanup cannot be independently verified",
     ),
-    "safety_ttl_seconds": 30,
-    "effect_observation_seconds": 30,
+    # The TTL is an emergency ceiling, not the normal verification window.
+    # BladeAI's verifier can spend more than one model turn after the
+    # Controller reports Running; 30 seconds expired before the recovery graph
+    # could issue its idempotent destroy in the previous live trial.
+    "safety_ttl_seconds": 120,
+    "effect_observation_seconds": 120,
     "effect_sustain_seconds": 0,
-    "agent_cleanup_seconds": 30,
-    "recovery_observation_seconds": 30,
+    "agent_cleanup_seconds": 60,
+    "recovery_observation_seconds": 60,
     "recovery_sustain_seconds": 0,
 }
 EFFECT_THRESHOLD_TOLERANCE_RATIO = 0.60

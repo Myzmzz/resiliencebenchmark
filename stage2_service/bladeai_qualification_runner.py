@@ -49,7 +49,11 @@ from .runtime_lock import RuntimeLock
 QUALIFICATION_LABEL = "resiliencebenchmark.io/qualification"
 QUALIFICATION_LABEL_VALUE = "bladeai-wp8"
 NETWORK_DELAY_FAULT = "network-delay"
-QUALIFICATION_DURATION_SECONDS = 30
+# This is the Controller safety ceiling, not the expected fault lifetime.
+# BladeAI may need several verifier turns after the first Running observation;
+# the previous 30-second ceiling expired during that hand-off and prevented
+# the native recovery graph from issuing its idempotent destroy.
+QUALIFICATION_DURATION_SECONDS = 120
 QUALIFICATION_DELAY_MS = 1
 _POD_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 

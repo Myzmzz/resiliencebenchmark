@@ -112,17 +112,14 @@ class ConditionRecoveryMonitor:
             return
         baseline = dict(self.workload.baseline(str(self._trial_id)))
         condition = dict(plan.get("effect_condition") or {})
-        observation_seconds = int(
-            plan.get("effect_observation_seconds")
-            or CONDITION_POLICY["effect_observation_seconds"]
+        observation_seconds = _plan_seconds(
+            plan, "effect_observation_seconds", CONDITION_POLICY["effect_observation_seconds"]
         )
-        sustain_seconds = int(
-            plan.get("effect_sustain_seconds")
-            or CONDITION_POLICY["effect_sustain_seconds"]
+        sustain_seconds = _plan_seconds(
+            plan, "effect_sustain_seconds", CONDITION_POLICY["effect_sustain_seconds"]
         )
-        cleanup_seconds = int(
-            plan.get("agent_cleanup_seconds")
-            or CONDITION_POLICY["agent_cleanup_seconds"]
+        cleanup_seconds = _plan_seconds(
+            plan, "agent_cleanup_seconds", CONDITION_POLICY["agent_cleanup_seconds"]
         )
         started = time.monotonic()
         matched_since: float | None = None
@@ -241,3 +238,12 @@ class ConditionRecoveryMonitor:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _plan_seconds(plan: Mapping[str, Any], name: str, default: int) -> int:
+    """Read an approved duration without treating an explicit zero as absent."""
+
+    value = plan.get(name)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return int(default)
+    return max(0, int(value))

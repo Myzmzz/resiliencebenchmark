@@ -114,7 +114,7 @@ def test_wp8_task_mode_projects_controller_fault_contract_without_preselecting_t
             qualification_fault={
                 "qualification_type": "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION",
                 "fault_type": "network-delay",
-                "duration_seconds": 30,
+                "duration_seconds": 120,
                 "intensity": {"delay_ms": 1},
             }
         )
@@ -126,7 +126,7 @@ def test_wp8_task_mode_projects_controller_fault_contract_without_preselecting_t
     assert payload["fault_target"] == "network"
     assert payload["fault_action"] == "delay"
     assert payload["params"] == {"time": "1"}
-    assert payload["duration"] == 30
+    assert payload["duration"] == 120
     assert payload["qualification_type"] == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
     assert payload["needs_confirmation"] is True
     assert "target_names" not in payload
@@ -268,7 +268,7 @@ def test_wp8_confirmation_completes_fixed_contract_before_harness_call(monkeypat
                 "target": "network",
                 "action": "delay",
             },
-            "params": {"time": "1", "timeout": "30"},
+            "params": {"time": "1", "timeout": "120"},
         }
     )
     client = _Confirm(
@@ -294,7 +294,7 @@ def test_wp8_confirmation_completes_fixed_contract_before_harness_call(monkeypat
             },
             "fault_type": "network-delay",
             "intensity": {"delay_ms": 1.0},
-            "safety_ttl_seconds": 30,
+            "safety_ttl_seconds": 120,
             "effect_condition": {
                 "metric": "target_latency_ms",
                 "operator": "increase_by_at_least",
@@ -311,10 +311,10 @@ def test_wp8_confirmation_completes_fixed_contract_before_harness_call(monkeypat
                 "success rate falls below 0.95",
                 "cleanup cannot be independently verified",
             ),
-            "effect_observation_seconds": 30,
+            "effect_observation_seconds": 120,
             "effect_sustain_seconds": 0,
-            "agent_cleanup_seconds": 30,
-            "recovery_observation_seconds": 30,
+            "agent_cleanup_seconds": 60,
+            "recovery_observation_seconds": 60,
             "recovery_sustain_seconds": 0,
         }
     ]

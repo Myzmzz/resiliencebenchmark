@@ -79,7 +79,7 @@ def test_wp8_launch_carries_only_controller_fault_contract(tmp_path: Path) -> No
         qualification_fault={
             "qualification_type": "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION",
             "fault_type": "network-delay",
-            "duration_seconds": 30,
+            "duration_seconds": 120,
             "intensity": {"delay_ms": 1},
         },
     )
@@ -87,7 +87,7 @@ def test_wp8_launch_carries_only_controller_fault_contract(tmp_path: Path) -> No
     assert task["mode"] == "task"
     assert task.get("target") is None
     assert task["qualification_fault"]["fault_type"] == "network-delay"
-    assert task["qualification_fault"]["duration_seconds"] == 30
+    assert task["qualification_fault"]["duration_seconds"] == 120
 
 
 def test_missing_required_shim_endpoint_fails_even_when_agent_mcp_is_read_only(tmp_path: Path) -> None:

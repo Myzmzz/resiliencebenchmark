@@ -89,7 +89,7 @@ kubectl、Chaos Mesh 或其他未列出的执行器。
 
 使用同一 cleanup handle 销毁并确认实验资源不存在，随后提交完整终态 JSON。
 
-blade create k8s pod-network delay --time 1 --timeout 30
+blade create k8s pod-network delay --time 1 --timeout 120
 """
 
 WP8_PLAN_CONDITIONS = {
@@ -973,7 +973,23 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
                         runtime.finish(status=result.status)
                     return result
                 with _wp8_confirmation_state(l4_module, task):
-                    return await self._async_execute(pool, runtime, task)
+                    result = await self._async_execute(pool, runtime, task)
+                    # The upstream L4 adapter returns immediately when its
+                    # verification graph reports a failure.  That bypasses
+                    # the normal auto-recovery branch even though the
+                    # controlled shim has already created a fault.  WP8 must
+                    # still close that exact operation before the worker exits;
+                    # this is a worker-local safety repair and does not alter
+                    # ordinary L0-L4 execution.
+                    if (
+                        _wp8_enabled()
+                        and result.status == "failed"
+                        and _wp8_task_has_fault(task, pool)
+                    ):
+                        result = await _recover_wp8_after_failed_inject(
+                            self, pool, runtime, task, result
+                        )
+                    return result
             finally:
                 await pool.close()
 
@@ -992,6 +1008,64 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
     agent_cls.prepare = _patched_prepare
     agent_cls.execute = _patched_execute
     agent_cls._resbench_worker_mcp_runtime = True
+
+
+def _wp8_task_has_fault(task: Any, pool: Any) -> bool:
+    payload = getattr(task, "payload", None)
+    if not isinstance(payload, Mapping) or payload.get(
+        "qualification_type"
+    ) != "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION":
+        return False
+    graph = getattr(pool, "inject_graph", None)
+    if graph is None or not hasattr(graph, "aget_state"):
+        return False
+    return True
+
+
+async def _recover_wp8_after_failed_inject(
+    agent: Any, pool: Any, runtime: Any, task: Any, result: Any
+) -> Any:
+    """Run the native recovery graph after a failed WP8 verification.
+
+    ``L4ResilienceAgent._async_execute`` normally recovers only when the
+    injection graph returns a non-failed result.  A verifier failure after a
+    real ``blade_create`` is exactly the case where recovery is most needed.
+    The state check prevents a destroy call when no controlled UID was created.
+    """
+
+    config = {
+        "configurable": {"thread_id": task.task_id},
+        "recursion_limit": 150,
+    }
+    try:
+        state = await pool.inject_graph.aget_state(config)
+        values = getattr(state, "values", {})
+        if not isinstance(values, Mapping) or not values.get("blade_uid"):
+            return result
+        recovered = await agent._run_recover_with_runtime(
+            pool,
+            runtime,
+            config,
+            task,
+            str(getattr(result, "trajectory_id", "")),
+            result,
+        )
+        extras = getattr(recovered, "extras", None)
+        if isinstance(extras, dict):
+            extras["wp8_failed_inject_recovery_attempted"] = True
+        return recovered
+    except Exception as exc:  # noqa: BLE001 - preserve primary Agent result.
+        extras = getattr(result, "extras", None)
+        if isinstance(extras, dict):
+            extras["wp8_failed_inject_recovery_error"] = type(exc).__name__
+        emit(
+            "cleanup_error",
+            {
+                "error": f"WP8 recovery graph failed: {type(exc).__name__}",
+                "integration_status": "recovery_incomplete",
+            },
+        )
+        return result
 
 
 @contextmanager

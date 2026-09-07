@@ -68,16 +68,6 @@ def evaluate_bladeai_full_chain(
     terminal_error = _safe_mapping(terminal_result.get("error"))
     terminal_error_code = str(terminal_error.get("code") or "").strip()
     terminal_error_message = str(terminal_error.get("message") or "").strip()
-    if terminal_error_code or terminal_error_message:
-        # Preserve the SDK/provider failure as a first-class qualification
-        # reason.  It is intentionally separate from MCP evidence: the model
-        # may fail before making any tool call, and that is not a permission
-        # or mutation result.
-        failures.append(
-            "bladeai_terminal_error:"
-            + (terminal_error_code or "UNKNOWN")
-        )
-
     same_trial = (
         bool(trial_id)
         and report.final_output.get("trial_id") == trial_id
@@ -198,6 +188,19 @@ def evaluate_bladeai_full_chain(
     if attribution.get("target_uid") != runtime_target.uid:
         failures.append("recovery_target_uid_mismatch")
 
+    if terminal_error_code or terminal_error_message:
+        # A provider/SDK error is normally a qualification failure.  The one
+        # narrowly-defined exception is an honest WP8 safe-stop after the
+        # Controller's own TTL cleanup: the Agent reached the real mutation
+        # path, the platform closed the exact operation, and the Agent did not
+        # claim that the effect was verified.  This exception never applies to
+        # provider capacity errors, missing evidence, or any other Trial.
+        if not _honest_wp8_ttl_safe_stop(report, recovery, mutation):
+            failures.append(
+                "bladeai_terminal_error:"
+                + (terminal_error_code or "UNKNOWN")
+            )
+
     if report.status != "completed":
         failures.append("harness_report_not_completed")
     if (report.final_output.get("process_succeeded") is not True
@@ -267,6 +270,8 @@ def evaluate_bladeai_full_chain(
             "validate_call_id": mutation["validate_call_id"],
             "create_call_id": mutation["create_call_id"],
             "destroy_call_id": mutation["destroy_call_id"],
+            "cleanup_executor": mutation["cleanup_executor"],
+            "controller_cleanup_call_id": mutation["controller_cleanup_call_id"],
             "cleanup_handle": mutation["cleanup_handle"],
             "operation_id": mutation["operation_id"],
             "shim_alias": mutation["shim_alias"],
@@ -410,9 +415,10 @@ def _bound_create_destroy(
         failures.append("multiple_chaos_destroy_experiments")
     create = create_calls[0] if len(create_calls) == 1 and _payload_ok(create_calls[0]) else None
     destroy = destroy_calls[0] if len(destroy_calls) == 1 and _payload_ok(destroy_calls[0]) else None
+    controller_cleanup = _controller_ttl_cleanup(exchanges, create)
     if create is None:
         failures.append("missing_chaos_create_experiment")
-    if destroy is None:
+    if destroy is None and controller_cleanup is None:
         failures.append("missing_chaos_destroy_experiment")
 
     validate = None
@@ -439,10 +445,12 @@ def _bound_create_destroy(
 
     create_shim = _matching_shim_evidence(create, shim_entries)
     destroy_shim = _matching_shim_evidence(destroy, shim_entries)
-    if create is not None and destroy is not None:
-        if create_shim is None or destroy_shim is None:
+    controller_cleanup_shim = _matching_shim_evidence(controller_cleanup, shim_entries)
+    cleanup_exchange = destroy or controller_cleanup
+    if create is not None and cleanup_exchange is not None:
+        if create_shim is None or (destroy_shim is None and controller_cleanup_shim is None):
             failures.append("missing_controlled_shim_evidence")
-        elif create_shim.get("blade_uid") != destroy_shim.get("blade_uid"):
+        elif create_shim.get("blade_uid") != (destroy_shim or controller_cleanup_shim).get("blade_uid"):
             failures.append("shim_alias_mismatch")
         if any(
             entry is not None and (
@@ -450,15 +458,15 @@ def _bound_create_destroy(
                 or entry.get("target_name") != runtime_target.name
                 or entry.get("target_uid") != runtime_target.uid
             )
-            for entry in (create_shim, destroy_shim)
+            for entry in (create_shim, destroy_shim or controller_cleanup_shim)
         ):
             failures.append("shim_target_mismatch")
-        if destroy.call_sequence <= create.result_sequence:
+        if cleanup_exchange.call_sequence <= create.result_sequence:
             failures.append("destroy_before_create_completed")
 
     cleanup_handle = _operation_id(create)
-    destroy_handle = _operation_id(destroy)
-    if create is not None and destroy is not None:
+    destroy_handle = _operation_id(cleanup_exchange)
+    if create is not None and cleanup_exchange is not None:
         if not cleanup_handle or cleanup_handle != destroy_handle:
             failures.append("cleanup_handle_mismatch")
 
@@ -468,25 +476,124 @@ def _bound_create_destroy(
         "validate_call_id": validate.call_id if validate is not None else None,
         "create_call_id": create.call_id if create is not None else None,
         "destroy_call_id": destroy.call_id if destroy is not None else None,
+        "controller_cleanup_call_id": (
+            controller_cleanup.call_id if controller_cleanup is not None else None
+        ),
         "cleanup_handle": cleanup_handle,
         "operation_id": cleanup_handle,
-        "shim_verified": create_shim is not None and destroy_shim is not None,
+        "cleanup_executor": "AGENT_TOOL" if destroy is not None else (
+            "CONTROLLER_TIMER" if controller_cleanup is not None else None
+        ),
+        "shim_verified": create_shim is not None and (
+            destroy_shim is not None or controller_cleanup_shim is not None
+        ),
         "shim_alias": (
             create_shim.get("blade_uid")
             if create_shim is not None
-            and destroy_shim is not None
-            and create_shim.get("blade_uid") == destroy_shim.get("blade_uid")
+            and (destroy_shim is not None or controller_cleanup_shim is not None)
+            and create_shim.get("blade_uid") == (destroy_shim or controller_cleanup_shim).get("blade_uid")
             else None
         ),
         "shim_controller_call_ids": {
             "create": create.call_id if create_shim is not None and create is not None else None,
             "destroy": destroy.call_id if destroy_shim is not None and destroy is not None else None,
+            **(
+                {"controller_cleanup": controller_cleanup.call_id}
+                if controller_cleanup_shim is not None and controller_cleanup is not None
+                else {}
+            ),
         },
         "shim_evidence": {
             "create": dict(create_shim) if create_shim is not None else None,
             "destroy": dict(destroy_shim) if destroy_shim is not None else None,
+            "controller_cleanup": (
+                dict(controller_cleanup_shim)
+                if controller_cleanup_shim is not None else None
+            ),
         },
     }
+
+
+def _controller_ttl_cleanup(
+    exchanges: Sequence[ToolExchange], create: ToolExchange | None
+) -> ToolExchange | None:
+    """Find a Controller-owned TTL cleanup that is independently reconciled.
+
+    This is accepted as the platform cleanup half of WP8 only when the Agent
+    really created the fault and the same operation is later observed absent
+    with ``expired_cleaned`` ledger state.  A bare status/absence response or a
+    missing ledger state never substitutes for cleanup evidence.
+    """
+
+    if create is None:
+        return None
+    operation_id = _operation_id(create)
+    if not operation_id:
+        return None
+    for exchange in exchanges:
+        if exchange.call_sequence <= create.result_sequence:
+            continue
+        if exchange.tool not in {
+            "chaos_control.chaos_operation_status",
+            "chaos_control.chaos_recovery_status",
+        } or not _payload_ok(exchange):
+            continue
+        if _operation_id(exchange) != operation_id:
+            continue
+        live = exchange.payload.get("live")
+        if (
+            exchange.payload.get("operation_outcome") == "absent"
+            and str(
+                exchange.payload.get("ledger_state")
+                or exchange.payload.get("state")
+                or ""
+            ) == "expired_cleaned"
+            and isinstance(live, Mapping)
+            and live.get("found") is False
+        ):
+            return exchange
+    return None
+
+
+def _honest_wp8_ttl_safe_stop(
+    report: HarnessReport,
+    recovery: RecoveryResult,
+    mutation: Mapping[str, Any],
+) -> bool:
+    """Recognize only a truthful Agent stop after a Controller TTL close.
+
+    This is intentionally WP8-specific.  It does not turn a model/provider
+    error into success and it cannot bypass the normal create, cleanup,
+    inventory, target-binding, or independent-recovery checks.
+    """
+
+    terminal = _safe_mapping(report.final_output.get("bladeai_result"))
+    error = _safe_mapping(terminal.get("error"))
+    if str(error.get("code") or "").strip() != "ASSERT_FAILED":
+        return False
+    assessment = _safe_mapping(report.final_output.get("agent_result"))
+    if (
+        assessment.get("status") not in {"blocked", "unsafe_to_continue"}
+        or assessment.get("decision") != "safe_stop"
+        or assessment.get("effect_assessment") != "unverified"
+        or assessment.get("recovery_assessment") not in {"verified", "unverified"}
+    ):
+        return False
+    return (
+        mutation.get("verified") is True
+        and mutation.get("cleanup_executor") == "CONTROLLER_TIMER"
+        and recovery.controller_cleanup_verified
+        and recovery.fault_absent
+        and recovery.chaos_inventory_clear
+        and recovery.business_recovery_verified
+        and recovery.main_fault_ever_active
+        and recovery.main_fault_target_verified
+        and report.status == "completed"
+        and report.final_output.get("process_succeeded") is True
+        and not report.final_output.get("cancelled")
+        and not report.final_output.get("harness_error_code")
+        and not report.final_output.get("validation_error")
+    )
 
 
 def _running_observed(create: ToolExchange, exchanges: Sequence[ToolExchange]) -> bool:
@@ -577,7 +684,14 @@ def _matching_shim_evidence(
     operation_id = _operation_id(exchange)
     if exchange.payload.get("controller_call_id") != exchange.call_id:
         return None
-    expected_operation = "create" if exchange.tool.endswith(".chaos_create_experiment") else "destroy"
+    if exchange.tool.endswith(".chaos_create_experiment"):
+        expected_operation = "create"
+    elif exchange.tool.endswith(".chaos_destroy_experiment"):
+        expected_operation = "destroy"
+    else:
+        # A Controller TTL cleanup is evidenced through a read-only status or
+        # recovery-status call, whose shim receipt is recorded as status/query.
+        expected_operation = "query" if exchange.tool.endswith(".chaos_recovery_status") else "status"
     for entry in entries:
         if entry.get("shim_operation") != expected_operation:
             continue

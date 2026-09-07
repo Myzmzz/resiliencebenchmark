@@ -115,6 +115,28 @@ def test_controller_cleanup_does_not_credit_agent_when_fault_was_not_absent_befo
     assert traffic.recovery_kwargs["stability_samples"] == 7
 
 
+def test_approved_recovery_window_overrides_shared_policy_for_wp8():
+    traffic = Traffic()
+    harness_report = report().model_copy(
+        update={
+            "final_output": {
+                "approved_plan": {
+                    "recovery_observation_seconds": 60,
+                    "recovery_sustain_seconds": 0,
+                }
+            }
+        }
+    )
+
+    result = Stage2Finalizer(Chaos(absent_before=True), traffic).finalize(
+        "trial", object(), context(), harness_report
+    )
+
+    assert result.controller_cleanup_verified is True
+    assert traffic.recovery_kwargs["timeout_seconds"] == 60
+    assert traffic.recovery_kwargs["stability_samples"] == 1
+
+
 def test_agent_recovery_requires_agent_observation_not_only_oracle_health():
     result = Stage2Finalizer(Chaos(absent_before=True), Traffic()).finalize(
         "trial", object(), context(), report()

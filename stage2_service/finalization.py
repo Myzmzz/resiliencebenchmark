@@ -204,12 +204,23 @@ class Stage2Finalizer:
             or post_inventory.get("owned_resources_absent") is True
         )
         try:
+            # The recovery window is part of the approved Trial contract.  The
+            # old implementation always derived the required sample count
+            # from the shared six-level policy, which silently changed WP8's
+            # explicit ``recovery_sustain_seconds=0`` into seven samples.
+            # That made a successfully recovered canary look unverified after
+            # a TTL cleanup.  Keep the shared default for ordinary trials, but
+            # honor a controller-approved per-Trial sustain value when one is
+            # present.
+            recovery_sustain_seconds = _recovery_sustain_seconds(approved_plan)
+            recovery_observation_seconds = _recovery_observation_seconds(
+                approved_plan,
+                default=self.recovery_timeout_seconds,
+            )
             evidence = dict(
                 self.recovery_evidence.reset_and_wait_healthy(
-                    timeout_seconds=self.recovery_timeout_seconds,
-                    stability_samples=(
-                        CONDITION_POLICY["recovery_sustain_seconds"] // 10 + 1
-                    ),
+                    timeout_seconds=recovery_observation_seconds,
+                    stability_samples=max(1, recovery_sustain_seconds // 10 + 1),
                     baseline=self.recovery_evidence.baseline(trial_id),
                     recovery_condition=(
                         approved_plan.get("recovery_condition")
@@ -522,3 +533,26 @@ def _assistance_category(event_type: str) -> str | None:
     if event_type in {"guided_prompt", "harness_prompt", "followup_prompt"}:
         return "guided_prompt"
     return None
+
+
+def _recovery_sustain_seconds(approved_plan: Mapping[str, Any]) -> int:
+    """Return the Controller-approved recovery sustain budget.
+
+    A missing value is deliberately different from an explicit zero: ordinary
+    L0-L4 trials retain the shared policy, while a qualification such as WP8
+    may explicitly require only one valid post-cleanup sample.
+    """
+
+    value = approved_plan.get("recovery_sustain_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return int(CONDITION_POLICY["recovery_sustain_seconds"])
+    return max(0, int(value))
+
+
+def _recovery_observation_seconds(
+    approved_plan: Mapping[str, Any], *, default: int
+) -> int:
+    value = approved_plan.get("recovery_observation_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return int(default)
+    return max(1, int(value))

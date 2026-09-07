@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
-from stage2_service.condition_monitor import ConditionRecoveryMonitor
+from stage2_service.condition_monitor import ConditionRecoveryMonitor, _plan_seconds
 from stage2_service.condition_policy import apply_condition_policy, evaluate_condition
 
 
@@ -82,6 +82,11 @@ def test_agent_cleanup_after_effect_condition_is_timely():
     assert result["agent_cleanup_timely"] is True
     assert result["controller_fallback_used"] is False
     assert cleanup.calls == 0
+
+
+def test_explicit_zero_condition_duration_is_not_replaced_by_shared_default():
+    assert _plan_seconds({"effect_sustain_seconds": 0}, "effect_sustain_seconds", 60) == 0
+    assert _plan_seconds({}, "effect_sustain_seconds", 60) == 60
 
 
 def test_controller_fallback_runs_when_agent_cleanup_budget_expires():

@@ -248,6 +248,161 @@ def test_bladeai_full_chain_passes_only_with_controller_bound_wp8_evidence():
     assert record["scored_as_d0"] is False
 
 
+def test_bladeai_full_chain_accepts_controller_ttl_cleanup_as_controlled_close():
+    """A real create plus reconciled TTL cleanup is a safe platform close.
+
+    WP8 still requires the create receipt, Running observation, matching
+    cleanup handle, shim receipt, and independent recovery.  It must not fail
+    only because the safety watchdog won the race against the Agent's native
+    recovery graph.
+    """
+    events = list(_events())
+    events[19] = _call(
+        20,
+        "status",
+        "chaos_control.chaos_operation_status",
+        {"operation_id": CLEANUP_HANDLE, "cleanup_handle": CLEANUP_HANDLE},
+    )
+    events[20] = _result(
+        21,
+        "status",
+        "completed",
+        {
+            "ok": True,
+            "controller_call_id": "status",
+            "operation_id": CLEANUP_HANDLE,
+            "cleanup_handle": CLEANUP_HANDLE,
+            "operation_outcome": "absent",
+            "ledger_operation_outcome": "applied",
+            "state": "expired_cleaned",
+            "target_uid": TARGET.uid,
+            "target_name": TARGET.name,
+            "namespace": TARGET.namespace,
+            "live": {"found": False, "matches_ledger": False, "phase": None},
+        },
+    )
+    shim = _shim_evidence(destroy_call_id="status", destroy_callback_tool_name="chaos_operation_status")
+    shim[1]["shim_operation"] = "status"
+    report = _report(shim_evidence=shim)
+    record = _evaluate(events=events, report=report)
+
+    assert record["passed"] is True
+    assert record["evidence"]["cleanup_executor"] == "CONTROLLER_TIMER"
+    assert record["evidence"]["controller_cleanup_call_id"] == "status"
+    assert record["evidence"]["destroy_call_id"] is None
+
+
+def test_bladeai_full_chain_accepts_honest_safe_stop_after_ttl_cleanup():
+    events = list(_events())
+    events[19] = _call(
+        20,
+        "status",
+        "chaos_control.chaos_operation_status",
+        {"operation_id": CLEANUP_HANDLE, "cleanup_handle": CLEANUP_HANDLE},
+    )
+    events[20] = _result(
+        21,
+        "status",
+        "completed",
+        {
+            "ok": True,
+            "controller_call_id": "status",
+            "operation_id": CLEANUP_HANDLE,
+            "cleanup_handle": CLEANUP_HANDLE,
+            "operation_outcome": "absent",
+            "state": "expired_cleaned",
+            "target_uid": TARGET.uid,
+            "target_name": TARGET.name,
+            "namespace": TARGET.namespace,
+            "live": {"found": False},
+        },
+    )
+    shim = _shim_evidence(
+        destroy_call_id="status",
+        destroy_callback_tool_name="chaos_operation_status",
+    )
+    shim[1]["shim_operation"] = "status"
+    report = _report(shim_evidence=shim).model_copy(
+        update={
+            "final_output": {
+                **_report(shim_evidence=shim).final_output,
+                "bladeai_result": {
+                    "type": "stage2_bladeai_result",
+                    "status": "failed",
+                    "error": {"code": "ASSERT_FAILED", "message": "effect assertion expired"},
+                },
+                "agent_result": {
+                    "status": "blocked",
+                    "decision": "safe_stop",
+                    "effect_assessment": "unverified",
+                    "recovery_assessment": "verified",
+                },
+            }
+        }
+    )
+
+    record = _evaluate(events=tuple(events), report=report)
+
+    assert record["passed"] is True
+    assert record["failure_reasons"] == []
+    assert record["terminal_agent_error"]["code"] == "ASSERT_FAILED"
+
+
+def test_bladeai_full_chain_rejects_ttl_error_when_agent_claims_verified_effect():
+    events = list(_events())
+    events[19] = _call(
+        20,
+        "status",
+        "chaos_control.chaos_operation_status",
+        {"operation_id": CLEANUP_HANDLE, "cleanup_handle": CLEANUP_HANDLE},
+    )
+    events[20] = _result(
+        21,
+        "status",
+        "completed",
+        {
+            "ok": True,
+            "controller_call_id": "status",
+            "operation_id": CLEANUP_HANDLE,
+            "cleanup_handle": CLEANUP_HANDLE,
+            "operation_outcome": "absent",
+            "state": "expired_cleaned",
+            "target_uid": TARGET.uid,
+            "target_name": TARGET.name,
+            "namespace": TARGET.namespace,
+            "live": {"found": False},
+        },
+    )
+    shim = _shim_evidence(
+        destroy_call_id="status",
+        destroy_callback_tool_name="chaos_operation_status",
+    )
+    shim[1]["shim_operation"] = "status"
+    report = _report(shim_evidence=shim).model_copy(
+        update={
+            "final_output": {
+                **_report(shim_evidence=shim).final_output,
+                "bladeai_result": {
+                    "type": "stage2_bladeai_result",
+                    "status": "failed",
+                    "error": {"code": "ASSERT_FAILED", "message": "effect assertion expired"},
+                },
+                "agent_result": {
+                    "status": "completed",
+                    "decision": "safe_stop",
+                    "effect_assessment": "verified",
+                    "recovery_assessment": "verified",
+                },
+            }
+        }
+    )
+
+    record = _evaluate(events=tuple(events), report=report)
+
+    assert record["passed"] is False
+    assert "bladeai_terminal_error:ASSERT_FAILED" in record["failure_reasons"]
+
+
 def test_wp8_synthetic_runtime_confirmation_closes_full_chain(monkeypatch, tmp_path):
     """Exercise the runtime confirmation bridge before the evaluator fixture.
 
@@ -272,8 +427,8 @@ def test_wp8_synthetic_runtime_confirmation_closes_full_chain(monkeypatch, tmp_p
             ledger_root=ledger.root,
             policy_file=None,
             decision_file=trial_dir / "user-decision.json",
-            max_fault_seconds=30,
-            max_observation_seconds=30,
+            max_fault_seconds=120,
+            max_observation_seconds=120,
             condition_policy=WP8_CONDITION_POLICY,
         ),
         ledger=ledger,
@@ -344,7 +499,7 @@ def test_wp8_synthetic_runtime_confirmation_closes_full_chain(monkeypatch, tmp_p
                 "target": "network",
                 "action": "delay",
             },
-            "params": {"time": "1", "timeout": "30"},
+            "params": {"time": "1", "timeout": "120"},
         }
     )
 
@@ -361,7 +516,7 @@ def test_wp8_synthetic_runtime_confirmation_closes_full_chain(monkeypatch, tmp_p
     assert approved_plan["target"]["uid"] == TARGET.uid
     assert approved_plan["fault_type"] == "network-delay"
     assert approved_plan["intensity"] == {"delay_ms": 1.0}
-    assert approved_plan["safety_ttl_seconds"] == 30
+    assert approved_plan["safety_ttl_seconds"] == 120
     assert approved_plan["effect_condition"]["metric"] == "target_latency_ms"
     assert approved_plan["recovery_condition"]["metric"] == "target_success_rate"
 
