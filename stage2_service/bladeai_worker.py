@@ -1194,8 +1194,22 @@ def _capture_native_confirmation_proposal(runtime: Runtime):
         return original(value)
 
     async def capture_gate(state):
-        if isinstance(state, dict):
+        if isinstance(state, Mapping):
             runtime.proposal_capture.record_state(state)
+        else:
+            # LangGraph may pass an AddableValuesDict/SDK state object rather
+            # than a plain dict.  Project only the known fields so the Capture
+            # retains the same typed plan without accepting arbitrary data.
+            values = {
+                key: getattr(state, key)
+                for key in (
+                    "fault_spec", "namespace", "names", "labels", "scope",
+                    "blade_scope", "blade_target", "blade_action", "params",
+                    "params_flags", "duration_seconds", "duration",
+                )
+                if hasattr(state, key)
+            }
+            runtime.proposal_capture.record_state(values)
         return await original_gate(state)
 
     module.interrupt = capture
