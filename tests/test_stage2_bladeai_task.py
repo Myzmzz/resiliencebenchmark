@@ -716,15 +716,28 @@ def test_captured_legacy_state_fields_fill_short_confirmation_payload():
 
 def test_planning_tool_fields_fill_short_sdk_confirmation_and_survive_state_replay():
     capture = NativeProposalCapture()
+    canonical_plan = (
+        (chr(96) * 3) + "stage2\n"
+        "scope: pod\n"
+        "target: network\n"
+        "action: delay\n"
+        "namespace: otel-demo\n"
+        "names: cart-a\n"
+        "time: 1000\n"
+        "timeout: 180\n"
+        + (chr(96) * 3)
+    )
     capture.record_tool_event(
         "bladeai.save_fault_plan",
-        {"input": {"plan_content": "blade create k8s pod-network delay --time 1000 --timeout 180"}},
+        {"input": {"plan_content": canonical_plan}},
     )
     # The SDK replays the confirmation node and clears its transient state;
     # tool-derived fields must remain available for the same gate.
     capture.record_state({"fault_spec": {
         "namespace": "otel-demo", "names": ["cart-a"],
-        "scope": "pod", "blade_target": "network", "blade_action": "delay",
+        # Simulate the stale system intent that previously overwrote the
+        # Agent's explicit network-delay plan.
+        "scope": "pod", "blade_target": "cpu", "blade_action": "fullload",
         "params": {"delay_ms": "999", "timeout": "1"},
         "duration_seconds": 1,
     }})
