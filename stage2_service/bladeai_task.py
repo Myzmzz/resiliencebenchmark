@@ -308,6 +308,29 @@ class NativeProposalCapture:
         self._tool_fields = {}
         return proposal
 
+    def audit_snapshot(self) -> dict[str, Any]:
+        """Return non-secret capture state for a confirmation audit event."""
+        def scalar_map(value: Any) -> dict[str, Any]:
+            if not isinstance(value, Mapping):
+                return {}
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                if isinstance(item, Mapping):
+                    result[str(key)] = scalar_map(item)
+                elif isinstance(item, (str, int, float, bool)) or item is None:
+                    result[str(key)] = item
+            return result
+
+        return {
+            "proposal_keys": sorted(self._proposal or {}),
+            "proposal_params": scalar_map((self._proposal or {}).get("params")),
+            "state_params": scalar_map(self._state_fields.get("params")),
+            "tool_params": scalar_map(self._tool_fields.get("params")),
+            "proposal_duration_seconds": (self._proposal or {}).get("duration_seconds"),
+            "state_duration_seconds": self._state_fields.get("duration_seconds"),
+            "tool_duration_seconds": self._tool_fields.get("duration_seconds"),
+        }
+
 
 @dataclass(frozen=True)
 class BladeTaskRequest:
