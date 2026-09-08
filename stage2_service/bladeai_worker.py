@@ -8,6 +8,7 @@ import sys
 import asyncio
 import ast
 import copy
+import weakref
 from contextlib import contextmanager
 from collections.abc import Mapping
 from pathlib import Path
@@ -36,6 +37,16 @@ from .condition_policy import WP8_CONDITION_POLICY
 def emit(kind: str, payload: dict) -> None:
     if kind in {"runtime_tool_start", "tool_start", "runtime_tool_end", "tool_end"}:
         _record_wp8_discovery(payload, listing_namespaces=_WP8_LABEL_LISTING_NAMESPACES)
+        # The SDK graph is created before the Runtime object and may retain a
+        # callback bound to this module-level emitter. Mirror discovery into
+        # the active Trial Runtime so confirmation consumes the same evidence
+        # regardless of which SDK event path delivered it.
+        for runtime in tuple(_WP8_ACTIVE_RUNTIMES):
+            _record_wp8_discovery(
+                payload,
+                target_store=runtime._wp8_discovered_targets,
+                listing_namespaces=runtime._wp8_listing_namespaces,
+            )
     print(
         json.dumps(
             {"type": "stage2_bladeai_event", "kind": kind, "payload": payload},
@@ -59,6 +70,23 @@ _CHANNEL_ONLY_MUTATION_OPERATIONS = frozenset(
 
 def _channel_only_enabled() -> bool:
     return os.environ.get("RESBENCH_BLADEAI_CHANNEL_ONLY", "").strip().lower() == "true"
+
+
+def _stage2_repo_root() -> Path:
+    """Locate the immutable Stage-2 root when this module is overlaid."""
+    try:
+        import stage2_service
+
+        for package_path in reversed(tuple(stage2_service.__path__)):
+            root = Path(package_path).resolve().parent
+            if (root / "harness" / "mcp-tools.yaml").is_file():
+                return root
+    except (AttributeError, OSError):
+        pass
+    root = Path(__file__).resolve().parents[1]
+    if (root / "harness" / "mcp-tools.yaml").is_file():
+        return root
+    raise BladeTaskError("Stage-2 harness policy file is unavailable")
 
 
 def _wp8_enabled() -> bool:
@@ -100,6 +128,7 @@ WP8_PLAN_CONDITIONS = {
 
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, str]] = {}
 _WP8_LABEL_LISTING_NAMESPACES: set[str] = set()
+_WP8_ACTIVE_RUNTIMES: weakref.WeakSet[Any] = weakref.WeakSet()
 
 
 def _input_mapping(payload: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -138,9 +167,9 @@ def _targets_from_wp8_discovery(
     ):
         if namespace_arg:
             (listing_namespaces if listing_namespaces is not None else _WP8_LABEL_LISTING_NAMESPACES).add(namespace_arg)
-    # The full get-resource response can be truncated by the SDK event bridge.
-    # A name from a get call is admissible only after the Agent itself listed
-    # the WP8 qualification label in the same namespace.
+    # A name-only get call is admissible only after the Agent itself listed the
+    # WP8 qualification label in the same namespace.  A complete get response
+    # is handled below and is independently checked for that exact label.
     if tool.endswith("k8s_get_resource") and resource_arg == "pods":
         name_arg = str(arguments.get("name") or "").strip()
         known_namespaces = listing_namespaces if listing_namespaces is not None else _WP8_LABEL_LISTING_NAMESPACES
@@ -535,6 +564,7 @@ class Runtime:
         self._approval_sequence = 0
         self._wp8_discovered_targets: dict[tuple[str, str], dict[str, str]] = {}
         self._wp8_listing_namespaces: set[str] = set()
+        _WP8_ACTIVE_RUNTIMES.add(self)
 
     @contextmanager
     def step(self, name: str, attrs: dict | None = None):
@@ -566,8 +596,13 @@ class Runtime:
                 raise BladeTaskError("BladeAI proposal capture or controlled target discovery is unavailable")
             proposal = self.proposal_capture.take()
             if _wp8_enabled():
+                discovered_targets = (
+                    self._wp8_discovered_targets
+                    if self._wp8_discovered_targets
+                    else _WP8_DISCOVERED_TARGETS
+                )
                 proposal = _augment_wp8_proposal_target(
-                    proposal, discovered_targets=self._wp8_discovered_targets
+                    proposal, discovered_targets=discovered_targets
                 )
             emit(
                 "sdk_confirmation_proposed",
@@ -880,7 +915,7 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
                         + ", ".join(missing)
                     )
                 policy_path = (
-                    Path(__file__).resolve().parents[1] / "harness/mcp-tools.yaml"
+                    _stage2_repo_root() / "harness/mcp-tools.yaml"
                 )
                 try:
                     allowed_guard_tools = build_allowed_mcp_guard_tool_names(
@@ -966,6 +1001,13 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
 
         async def _run_once():
             await pool.ensure_initialized_async()
+            # Graphs are initialized before the per-task Runtime exists. Bind
+            # their event sink here so WP8 discovery is retained in the same
+            # Trial-local store consumed by ``require_approval``.
+            if runtime is not None:
+                for graph in (pool.inject_graph, pool.recover_graph):
+                    if graph is not None and hasattr(graph, "set_emit"):
+                        graph.set_emit(runtime.emit_event)
             try:
                 if _channel_only_enabled():
                     result = await _run_channel_only(pool, runtime, task)

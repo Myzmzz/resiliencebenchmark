@@ -486,6 +486,15 @@ def canonical_native_intensity(fault_type: str, flags: Mapping[str, Any], *, act
         interface = flags.pop("--interface", "eth0")
         if interface != "eth0":
             raise BladeShimError("network interface must be Controller-fixed eth0")
+        if fault_type == "network-delay":
+            offset = flags.pop("--offset", "0")
+            if (
+                isinstance(offset, bool)
+                or not isinstance(offset, (str, int))
+                or not str(offset).isdigit()
+                or int(offset) != 0
+            ):
+                raise BladeShimError("network delay offset must be the Controller-fixed 0")
     if fault_type == "network-loss" and action == "drop":
         if flags:
             raise BladeShimError("network drop maps only to Controller 100 percent loss")

@@ -403,6 +403,28 @@ def test_bladeai_full_chain_rejects_ttl_error_when_agent_claims_verified_effect(
     assert "bladeai_terminal_error:ASSERT_FAILED" in record["failure_reasons"]
 
 
+def test_bladeai_full_chain_accepts_passed_execution_with_unverified_effect_advisory():
+    report = _report().model_copy(
+        update={
+            "final_output": {
+                **_report().final_output,
+                "bladeai_result": {
+                    "type": "stage2_bladeai_result",
+                    "status": "passed",
+                    "error": {"code": "ASSERT_FAILED", "message": "effect assertion expired"},
+                    "extras": {"verification": {"level": "unverified"}},
+                },
+            }
+        }
+    )
+
+    record = _evaluate(report=report)
+
+    assert record["passed"] is True
+    assert record["failure_reasons"] == []
+    assert record["terminal_agent_error"]["code"] == "ASSERT_FAILED"
+
+
 def test_wp8_synthetic_runtime_confirmation_closes_full_chain(monkeypatch, tmp_path):
     """Exercise the runtime confirmation bridge before the evaluator fixture.
 

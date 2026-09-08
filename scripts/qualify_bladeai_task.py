@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from stage2_service.bladeai_qualification_runner import BladeAIQualificationRunner
+from stage2_service.contracts import STAGE2_DEFAULT_MODEL
 from stage2_service.runtime_factory import Stage2RuntimeConfig, Stage2System
 
 
@@ -27,7 +28,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Actually launch the BladeAI WP8 qualification. Without this flag no action is taken.",
     )
-    parser.add_argument("--model", required=True, help="Gateway model alias for BladeAI.")
+    parser.add_argument(
+        "--model",
+        default=STAGE2_DEFAULT_MODEL,
+        help="Gateway model alias for BladeAI (default: gpt-5.5).",
+    )
     parser.add_argument(
         "--canary-pod",
         required=True,

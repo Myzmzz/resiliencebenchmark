@@ -50,6 +50,7 @@ def evaluate_bladeai_full_chain(
     runtime_target: RuntimeTarget,
     events: Sequence[PlatformEvent],
     expected_canary: RuntimeTarget,
+    expected_cleanup_handle: str | None = None,
 ) -> dict[str, Any]:
     """Return a JSON-serializable WP8 qualification record for BladeAI.
 
@@ -151,11 +152,17 @@ def evaluate_bladeai_full_chain(
     checks["sdk_confirmation_bound"] = confirm["verified"]
     failures.extend(confirm["failures"])
 
+    cleanup_handle_contract = expected_cleanup_handle or str(
+        recovery.recovery_attribution.get("cleanup_handle")
+        or recovery.recovery_attribution.get("operation_id")
+        or ""
+    )
     mutation = _bound_create_destroy(
         exchanges,
         runtime_target=runtime_target,
         confirm_sequence=confirm["confirm_granted_sequence"],
         shim_entries=_shim_evidence_entries(report.final_output.get("bladeai_shim_evidence")),
+        expected_cleanup_handle=cleanup_handle_contract,
     )
     checks["create_destroy_bound"] = mutation["verified"]
     checks["controlled_shim_path_verified"] = bool(launch_contract and mutation["shim_verified"])
@@ -190,12 +197,16 @@ def evaluate_bladeai_full_chain(
 
     if terminal_error_code or terminal_error_message:
         # A provider/SDK error is normally a qualification failure.  The one
-        # narrowly-defined exception is an honest WP8 safe-stop after the
-        # Controller's own TTL cleanup: the Agent reached the real mutation
-        # path, the platform closed the exact operation, and the Agent did not
-        # claim that the effect was verified.  This exception never applies to
-        # provider capacity errors, missing evidence, or any other Trial.
-        if not _honest_wp8_ttl_safe_stop(report, recovery, mutation):
+        # narrowly-defined exception is a completed WP8 execution whose SDK
+        # effect assertion became unverified after the fixed TTL. WP8 is an
+        # execution-channel qualification; effect scoring belongs to D0. The
+        # exception requires a passed SDK status plus every independent create,
+        # cleanup, and recovery check, and never applies to provider errors or
+        # missing evidence.
+        if not (
+            _wp8_terminal_verification_advisory(report, recovery, mutation)
+            or _honest_wp8_ttl_safe_stop(report, recovery, mutation)
+        ):
             stable_code = str(report.final_output.get("harness_error_code") or "").strip()
             failures.append(
                 "bladeai_terminal_error:"
@@ -410,6 +421,7 @@ def _bound_create_destroy(
     runtime_target: RuntimeTarget,
     confirm_sequence: int | None,
     shim_entries: Sequence[Mapping[str, Any]],
+    expected_cleanup_handle: str,
 ) -> dict[str, Any]:
     failures: list[str] = []
     create_calls = [item for item in exchanges if item.tool == "chaos_control.chaos_create_experiment"]
@@ -420,7 +432,9 @@ def _bound_create_destroy(
         failures.append("multiple_chaos_destroy_experiments")
     create = create_calls[0] if len(create_calls) == 1 and _payload_ok(create_calls[0]) else None
     destroy = destroy_calls[0] if len(destroy_calls) == 1 and _payload_ok(destroy_calls[0]) else None
-    controller_cleanup = _controller_ttl_cleanup(exchanges, create)
+    controller_cleanup = _controller_ttl_cleanup(
+        exchanges, create, expected_cleanup_handle=expected_cleanup_handle
+    )
     if create is None:
         failures.append("missing_chaos_create_experiment")
     if destroy is None and controller_cleanup is None:
@@ -469,8 +483,8 @@ def _bound_create_destroy(
         if cleanup_exchange.call_sequence <= create.result_sequence:
             failures.append("destroy_before_create_completed")
 
-    cleanup_handle = _operation_id(create)
-    destroy_handle = _operation_id(cleanup_exchange)
+    cleanup_handle = _evidence_operation_id(create, expected_cleanup_handle)
+    destroy_handle = _evidence_operation_id(cleanup_exchange, expected_cleanup_handle)
     if create is not None and cleanup_exchange is not None:
         if not cleanup_handle or cleanup_handle != destroy_handle:
             failures.append("cleanup_handle_mismatch")
@@ -520,7 +534,10 @@ def _bound_create_destroy(
 
 
 def _controller_ttl_cleanup(
-    exchanges: Sequence[ToolExchange], create: ToolExchange | None
+    exchanges: Sequence[ToolExchange],
+    create: ToolExchange | None,
+    *,
+    expected_cleanup_handle: str,
 ) -> ToolExchange | None:
     """Find a Controller-owned TTL cleanup that is independently reconciled.
 
@@ -532,7 +549,7 @@ def _controller_ttl_cleanup(
 
     if create is None:
         return None
-    operation_id = _operation_id(create)
+    operation_id = _evidence_operation_id(create, expected_cleanup_handle)
     if not operation_id:
         return None
     for exchange in exchanges:
@@ -543,7 +560,7 @@ def _controller_ttl_cleanup(
             "chaos_control.chaos_recovery_status",
         } or not _payload_ok(exchange):
             continue
-        if _operation_id(exchange) != operation_id:
+        if _evidence_operation_id(exchange, expected_cleanup_handle) != operation_id:
             continue
         live = exchange.payload.get("live")
         if (
@@ -587,6 +604,35 @@ def _honest_wp8_ttl_safe_stop(
     return (
         mutation.get("verified") is True
         and mutation.get("cleanup_executor") == "CONTROLLER_TIMER"
+        and recovery.controller_cleanup_verified
+        and recovery.fault_absent
+        and recovery.chaos_inventory_clear
+        and recovery.business_recovery_verified
+        and recovery.main_fault_ever_active
+        and recovery.main_fault_target_verified
+        and report.status == "completed"
+        and report.final_output.get("process_succeeded") is True
+        and not report.final_output.get("cancelled")
+        and not report.final_output.get("harness_error_code")
+        and not report.final_output.get("validation_error")
+    )
+
+
+def _wp8_terminal_verification_advisory(
+    report: HarnessReport,
+    recovery: RecoveryResult,
+    mutation: Mapping[str, Any],
+) -> bool:
+    """Accept a passed WP8 chain when only the SDK effect assertion is unverified."""
+    terminal = _safe_mapping(report.final_output.get("bladeai_result"))
+    error = _safe_mapping(terminal.get("error"))
+    extras = _safe_mapping(terminal.get("extras"))
+    verification = _safe_mapping(extras.get("verification"))
+    return (
+        str(error.get("code") or "").strip() == "ASSERT_FAILED"
+        and str(terminal.get("status") or "").strip() == "passed"
+        and str(verification.get("level") or "").strip() in {"unverified", "inconclusive"}
+        and mutation.get("verified") is True
         and recovery.controller_cleanup_verified
         and recovery.fault_absent
         and recovery.chaos_inventory_clear
@@ -710,6 +756,10 @@ def _matching_shim_evidence(
         ):
             continue
         entry_operation = entry.get("cleanup_handle") or entry.get("operation_id")
+        if entry_operation == "<redacted>" and operation_id:
+            # Report and shim artifacts redact the owner-scoped handle.  The
+            # sealed runtime context supplies the exact value for this Trial.
+            entry_operation = operation_id
         if not isinstance(entry_operation, str) or not entry_operation or entry_operation != operation_id:
             continue
         shim_alias = entry.get("blade_uid")
@@ -741,6 +791,13 @@ def _operation_id(exchange: ToolExchange | None) -> str | None:
             if isinstance(value, str) and value:
                 return value
     return None
+
+
+def _evidence_operation_id(
+    exchange: ToolExchange | None, expected_cleanup_handle: str
+) -> str | None:
+    value = _operation_id(exchange)
+    return expected_cleanup_handle if value == "<redacted>" else value
 
 
 def _target_uid_from_plan(plan: Mapping[str, Any]) -> str | None:

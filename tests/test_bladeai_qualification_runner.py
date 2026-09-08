@@ -37,6 +37,18 @@ def test_wp8_prompt_does_not_request_large_builtin_skill_activation():
     assert "connected MCP tools directly" in prompt
 
 
+def test_bladeai_wp8_cli_defaults_model_to_stage2_default():
+    args = qualify_bladeai_task.parse_args([
+        "--execute",
+        "--canary-pod",
+        CANARY_POD,
+        "--output-dir",
+        "out",
+    ])
+
+    assert args.model == "gpt-5.5"
+
+
 def _pod(*, labels=None, ready: bool = True) -> dict:
     return {
         "apiVersion": "v1",
@@ -378,7 +390,7 @@ def test_bladeai_wp8_runner_preserves_provider_error_when_evaluation_fails(tmp_p
     ).run(model=MODEL, canary_pod=CANARY_POD, output_dir=tmp_path / "out")
 
     assert result.record["passed"] is False
-    assert "evaluation_error:ValueError" in result.record["failure_reasons"]
+    assert any(reason.startswith("evaluation_error:ValueError") for reason in result.record["failure_reasons"])
     assert result.record["harness_error_code"] == "BLADEAI_MODEL_QUOTA_EXHAUSTED"
     assert result.record["harness_error"] == {"error_code": "BLADEAI_MODEL_QUOTA_EXHAUSTED"}
     assert result.record["terminal_agent_error"] == {
@@ -388,6 +400,7 @@ def test_bladeai_wp8_runner_preserves_provider_error_when_evaluation_fails(tmp_p
     assert result.record["harness_report_status"] == "failed"
     assert result.record["recovery_evidence_refs"]
     assert result.record["evaluation_error_type"] == "ValueError"
+    assert result.record["evaluation_error_message"] == "canonical stream mismatch"
 
 
 def test_bladeai_wp8_output_dir_must_not_overwrite_existing_files(tmp_path):

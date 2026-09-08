@@ -410,10 +410,12 @@ def test_d6_unknown_create_persists_operation_id_for_status_query_and_destroy(tm
 
 def test_network_delay_accepts_only_inert_loopback_kubeconfig_and_fixed_interface():
     parsed = parse_create(
-        ["create", "k8s", "pod-network", "delay", "--names", "cart", "--timeout", "42", "--time", "30", "--interface", "eth0", "--kubeconfig", "/loopback/kubeconfig"],
+        ["create", "k8s", "pod-network", "delay", "--names", "cart", "--timeout", "42", "--time", "30", "--offset", "0", "--interface", "eth0", "--kubeconfig", "/loopback/kubeconfig"],
         namespace="otel-demo", max_duration_seconds=1200, expected_kubeconfig="/loopback/kubeconfig",
     )
     assert parsed.intensity == {"delay_ms": 30}
+    with pytest.raises(Exception):
+        parse_create(["create", "k8s", "pod-network", "delay", "--names", "cart", "--timeout", "42", "--time", "30", "--offset", "1"], namespace="otel-demo", max_duration_seconds=1200)
     for value in ("/etc/kubernetes/admin.conf",):
         with pytest.raises(Exception):
             parse_create(["create", "k8s", "pod-network", "delay", "--names", "cart", "--timeout", "42", "--time", "30", "--kubeconfig", value], namespace="otel-demo", max_duration_seconds=1200)

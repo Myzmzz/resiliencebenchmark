@@ -248,7 +248,11 @@ class BladeAIQualificationRunner:
                     raise ValueError("Stage-2 gateway snapshot is required")
                 record = evaluate_wp8_artifacts(refs, artifact_root=self.artifact_store.root, gateway=gateway)
             except Exception as exc:  # noqa: BLE001 - preserve failed qualification as a record.
-                failure_reasons.append(f"evaluation_error:{type(exc).__name__}")
+                message = str(exc).replace("\n", " ").strip()
+                failure_reasons.append(
+                    f"evaluation_error:{type(exc).__name__}"
+                    + (f":{message}" if message else "")
+                )
         if record is None:
             record = _failure_record(
                 trial_id=trial_id,
@@ -516,6 +520,21 @@ def _failure_record(
                 and payload.get("source") == "native"
             ):
                 native_tool_result_present = True
+    evaluation_error_detail = next(
+        (
+            reason.removeprefix("evaluation_error:")
+            for reason in failure_reasons
+            if reason.startswith("evaluation_error:")
+        ),
+        None,
+    )
+    evaluation_error_type = None
+    evaluation_error_message = None
+    if evaluation_error_detail is not None:
+        evaluation_error_type, _, evaluation_error_message = evaluation_error_detail.partition(":")
+        if not evaluation_error_message:
+            evaluation_error_message = None
+
     return {
         "schema_version": "stage2-bladeai-wp8-qualification.v1",
         "qualification_type": "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION",
@@ -553,14 +572,8 @@ def _failure_record(
             and recovery.fault_absent
             and recovery.chaos_inventory_clear,
         },
-        "evaluation_error_type": next(
-            (
-                reason.removeprefix("evaluation_error:")
-                for reason in failure_reasons
-                if reason.startswith("evaluation_error:")
-            ),
-            None,
-        ),
+        "evaluation_error_type": evaluation_error_type,
+        "evaluation_error_message": evaluation_error_message,
     }
 
 

@@ -74,6 +74,106 @@ def test_wp8_target_is_bound_only_from_a_unique_read_only_discovery(monkeypatch)
     assert proposal["target"]["namespace"] == "otel-demo"
 
 
+def test_wp8_target_binds_from_complete_get_with_qualification_label(monkeypatch):
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    _WP8_DISCOVERED_TARGETS.clear()
+    _WP8_LABEL_LISTING_NAMESPACES.clear()
+    _record_wp8_discovery({
+        "tool": "k8s_ro__k8s_get_resource",
+        "input": {"namespace": "otel-demo", "resource": "pods", "name": "canary"},
+        "result": json.dumps({
+            "namespace": "otel-demo",
+            "object": {"metadata": {
+                "namespace": "otel-demo",
+                "name": "canary",
+                "uid": "uid-1",
+                "labels": {"resiliencebenchmark.io/qualification": "bladeai-wp8"},
+            }},
+        }),
+    })
+
+    proposal = _augment_wp8_proposal_target({
+        "target": {"namespace": "otel-demo", "names": []},
+    })
+
+    assert proposal["target"]["names"] == ["canary"]
+    assert proposal["target"]["namespace"] == "otel-demo"
+
+
+def test_runtime_event_sink_keeps_wp8_discovery_in_trial_store(monkeypatch):
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    runtime = Runtime(_Confirm({"ok": False, "allowed": False}))
+    runtime.emit_event(
+        "runtime_tool_end",
+        {
+            "tool": "k8s_ro__k8s_get_resource",
+            "result": json.dumps({
+                "namespace": "otel-demo",
+                "object": {"metadata": {
+                    "namespace": "otel-demo",
+                    "name": "canary",
+                    "uid": "uid-1",
+                    "labels": {"resiliencebenchmark.io/qualification": "bladeai-wp8"},
+                }},
+            }),
+        },
+    )
+
+    assert runtime._wp8_discovered_targets == {
+        ("otel-demo", "canary"): {
+            "namespace": "otel-demo",
+            "name": "canary",
+            "uid": "uid-1",
+        }
+    }
+
+
+def test_global_event_bridge_mirrors_wp8_discovery_to_active_runtime(monkeypatch):
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    from stage2_service import bladeai_worker
+
+    runtime = Runtime(_Confirm({"ok": False, "allowed": False}))
+    bladeai_worker.emit(
+        "runtime_tool_end",
+        {
+            "tool": "k8s_ro__k8s_get_resource",
+            "result": json.dumps({
+                "namespace": "otel-demo",
+                "object": {"metadata": {
+                    "namespace": "otel-demo",
+                    "name": "canary",
+                    "uid": "uid-1",
+                    "labels": {"resiliencebenchmark.io/qualification": "bladeai-wp8"},
+                }},
+            }),
+        },
+    )
+
+    assert ("otel-demo", "canary") in runtime._wp8_discovered_targets
+
+
+def test_wp8_confirmation_falls_back_to_worker_store_when_graph_sink_is_global(monkeypatch):
+    monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
+    _WP8_DISCOVERED_TARGETS.clear()
+    _WP8_DISCOVERED_TARGETS[("otel-demo", "cart-a")] = {
+        "namespace": "otel-demo",
+        "name": "cart-a",
+        "uid": "uid-1",
+    }
+    capture = NativeProposalCapture()
+    capture.record({
+        "target": {"namespace": "otel-demo", "names": []},
+        "fault_intent": {"scope": "pod", "target": "network", "action": "delay"},
+        "params": {"time": "1", "timeout": "120"},
+    })
+    client = _Confirm({"ok": True, "allowed": True, "controller_call_id": "confirm-1"})
+
+    assert Runtime(client, proposal_capture=capture, target_uid_resolver=_UID()).require_approval("high") is True
+    assert client.plans[0]["target"]["name"] == "cart-a"
+
+    _WP8_DISCOVERED_TARGETS.clear()
+
+
 def test_wp8_target_is_not_guessed_when_discovery_is_ambiguous(monkeypatch):
     monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
     _WP8_DISCOVERED_TARGETS.clear()

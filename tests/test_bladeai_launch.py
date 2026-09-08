@@ -90,6 +90,23 @@ def test_wp8_launch_carries_only_controller_fault_contract(tmp_path: Path) -> No
     assert task["qualification_fault"]["duration_seconds"] == 120
 
 
+def test_bladeai_worker_uses_trial_local_source_overlay(tmp_path: Path) -> None:
+    _argv, _stdin, child_env = _launch(tmp_path, _env())
+
+    overlay, image_root = child_env["PYTHONPATH"].split(":", 1)
+    assert overlay.startswith(str(tmp_path / "trial"))
+    assert image_root == str(REPO_ROOT)
+    assert (Path(overlay) / "stage2_service" / "bladeai_worker.py").read_bytes() == (
+        REPO_ROOT / "stage2_service" / "bladeai_worker.py"
+    ).read_bytes()
+    assert (Path(overlay) / "stage2_service" / "bladeai_events.py").read_bytes() == (
+        REPO_ROOT / "stage2_service" / "bladeai_events.py"
+    ).read_bytes()
+    assert (Path(overlay) / "stage2_service" / "bladeai_shim.py").read_bytes() == (
+        REPO_ROOT / "stage2_service" / "bladeai_shim.py"
+    ).read_bytes()
+
+
 def test_missing_required_shim_endpoint_fails_even_when_agent_mcp_is_read_only(tmp_path: Path) -> None:
     environment = _env(RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL="")
 

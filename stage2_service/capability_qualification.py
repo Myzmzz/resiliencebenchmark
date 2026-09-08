@@ -334,6 +334,7 @@ def evaluate_wp8_artifacts(
     evaluated = evaluate_bladeai_full_chain(
         trial_id=runtime.trial_id, model=model, report=report, recovery=recovery,
         runtime_target=runtime.target, events=events, expected_canary=expected,
+        expected_cleanup_handle=runtime.cleanup_handle,
     )
     # A provider/SDK failure can happen before BladeAI emits its first native
     # tool result.  That is a valid failed qualification outcome, not a

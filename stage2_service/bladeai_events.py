@@ -122,6 +122,10 @@ class BladeAIStage2EventGraph:
         self._emit = emit
         self._operation = operation
 
+    def set_emit(self, emit: EmitFunc) -> None:
+        """Bind event delivery to the current Trial runtime."""
+        self._emit = emit
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._graph, name)
 

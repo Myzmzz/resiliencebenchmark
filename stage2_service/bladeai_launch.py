@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from string import Template
 from typing import Mapping
@@ -60,6 +61,7 @@ def prepare_bladeai_launch(
     mcp_path = config_root / "mcp.json"
     write_json(mcp_path, {"mcpServers": servers})
     mcp_path.chmod(0o600)
+    python_overlay = _write_agent_python_overlay(repo_root=repo_root, trial_root=trial_root)
     child = child_env_for_harness("bladeai", environment, {})
     child.update({key: value for key, value in environment.items()
                   if key.startswith("RESBENCH_BLADEAI_") and key.endswith("_MCP_SSE_URL") and value})
@@ -79,8 +81,30 @@ def prepare_bladeai_launch(
         # description, preventing the upstream "activate_skill" instruction
         # from injecting a large catalogue before the first read.
         "RESBENCH_BLADEAI_WP8": "true" if qualification_fault is not None else "false",
-        "PYTHONPATH": str(repo_root),
+        # The evaluated Worker runs in the agent-runtime sidecar, whose image
+        # is intentionally immutable and may lag the Controller overlay. Put
+        # the Trial-local source overlay first, then extend the package path
+        # to the immutable image's remaining Stage-2 modules.
+        "PYTHONPATH": os.pathsep.join((str(python_overlay), str(repo_root))),
         "RESBENCH_TRIAL_NAMESPACE": namespace,
         "RESBENCH_BLADE_SHIM_STATE_FILE": str(agent_home / "blade-aliases.json"),
     })
     return [python_executable, "-m", "stage2_service.bladeai_worker", str(request_path)], b"", child
+
+
+def _write_agent_python_overlay(*, repo_root: Path, trial_root: Path) -> Path:
+    """Copy the patched Worker modules into the shared Trial workspace."""
+    overlay = trial_root / "python-overlay"
+    package = overlay / "stage2_service"
+    package.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (package / "__init__.py").write_text(
+        '"""Trial-local Stage-2 source overlay for the BladeAI Worker."""\n'
+        f"__path__.append({str(repo_root / 'stage2_service')!r})\n",
+        encoding="utf-8",
+    )
+    for module in ("bladeai_worker.py", "bladeai_events.py", "bladeai_shim.py"):
+        source = repo_root / "stage2_service" / module
+        target = package / module
+        target.write_bytes(source.read_bytes())
+        target.chmod(0o600)
+    return overlay
