@@ -724,7 +724,9 @@ def test_planning_tool_fields_fill_short_sdk_confirmation_and_survive_state_repl
     # tool-derived fields must remain available for the same gate.
     capture.record_state({"fault_spec": {
         "namespace": "otel-demo", "names": ["cart-a"],
-        "scope": "pod", "blade_target": "network", "blade_action": "delay"
+        "scope": "pod", "blade_target": "network", "blade_action": "delay",
+        "params": {"delay_ms": "999", "timeout": "1"},
+        "duration_seconds": 1,
     }})
     proposal = capture.take()
 

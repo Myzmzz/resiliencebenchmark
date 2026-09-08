@@ -256,7 +256,13 @@ class NativeProposalCapture:
         # can only fill an omission in the SDK payload.
         for key, value in self._tool_fields.items():
             current = self._state_fields.get(key)
-            if current is None or current == {} or current == []:
+            if key in {"params", "duration_seconds"}:
+                # The upstream graph may project the markdown plan into a
+                # legacy/derived parameter shape (for example ``delay_ms``).
+                # The canonical block the Agent just submitted is the most
+                # precise same-Trial source for these tuning fields.
+                self._state_fields[key] = value
+            elif current is None or current == {} or current == []:
                 self._state_fields[key] = value
 
     def take(self) -> dict[str, Any]:
@@ -270,7 +276,9 @@ class NativeProposalCapture:
         # same-gate FaultSpec values fill only fields the payload omitted.
         for key, value in self._state_fields.items():
             current = proposal.get(key)
-            if current is None or current == {} or current == []:
+            if key in {"params", "duration_seconds"} and key in self._tool_fields:
+                proposal[key] = value
+            elif current is None or current == {} or current == []:
                 proposal[key] = value
         self._proposal = None
         self._state_fields = {}
