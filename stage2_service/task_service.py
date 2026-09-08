@@ -384,6 +384,8 @@ class TaskSupervisor(Protocol):
 class TaskControlBackend(Protocol):
     def reset_environment(self, operation_id: str, application: str) -> Mapping[str, Any]: ...
 
+    def verify_environment(self, operation_id: str, application: str) -> Mapping[str, Any]: ...
+
     def restore_permissions(
         self, task_id: str, trial_id: str | None, target_state: str
     ) -> Mapping[str, Any]: ...
@@ -1543,6 +1545,23 @@ class Stage2TaskService:
                 "skipped": True,
                 "reason": "no fault or disturbance mutation was observed",
             }
+        # An interrupted Trial can have no persisted ``result.json`` even
+        # though it stopped during read-only planning.  Ask the control
+        # backend for an independent, read-only environment verification
+        # before attempting a full Helm reinstall.  This avoids turning a
+        # clean planning interruption into an RBAC-sensitive namespace
+        # mutation while still falling back to the full reset if verification
+        # finds an active or unhealthy environment.
+        verify = getattr(self.control_backend, "verify_environment", None)
+        if not mutated and callable(verify):
+            verification = dict(verify(task_id, "otel-demo"))
+            if verification.get("verified") is True:
+                return {
+                    "verified": True,
+                    "skipped": True,
+                    "reason": "no mutation recorded; current environment independently verified",
+                    "verification": verification,
+                }
         return dict(self.control_backend.reset_environment(task_id, "otel-demo"))
 
     def _reset_worker(self, task_id: str) -> Mapping[str, Any]:

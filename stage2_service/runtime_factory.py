@@ -1672,6 +1672,31 @@ class Stage2System:
         )
         return resetter.reset(operation_id, episode)
 
+    def verify_environment(self, operation_id: str, application: str) -> Mapping[str, Any]:
+        """Verify a clean OTel Demo state without mutating the namespace."""
+        if application != "otel-demo":
+            return {
+                "verified": False,
+                "reason": f"unsupported application: {application}",
+            }
+        episode = load_fixed_episode(
+            fixed_otel_episode_ref(self.config.repo_root), root=self.config.repo_root
+        )
+        gate = KubernetesEnvironmentGate(self.config.kubeconfig)
+        traffic = KubernetesTrafficEvidence(gate, episode)
+        resetter = OtelDemoResetter(
+            repo_root=self.config.repo_root,
+            kubeconfig=self.config.kubeconfig,
+            runtime_env_file=self.config.runtime_env_file,
+            chart_file=self.config.otel_chart_file,
+            environment_gate=gate,
+            traffic_evidence=traffic,
+            timeout_seconds=120,
+            recovery_timeout_seconds=180,
+            verify_only=True,
+        )
+        return resetter.reset(operation_id, episode)
+
 
 def write_incluster_kubeconfig(path: Path) -> None:
     token_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")

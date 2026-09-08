@@ -1038,3 +1038,21 @@ def test_abort_stops_runner_then_restores_permissions_and_environment(tmp_path):
     assert status["task_status"] == "ABORTED"
     assert controls.restores[-1][2] == "REVOKED"
     assert controls.resets[-1][1] == "otel-demo"
+
+
+def test_abort_uses_read_only_verification_for_interrupted_no_mutation_task(tmp_path):
+    service, supervisor, controls = task_service(tmp_path, Runner())
+    created = service.create(request())
+    supervisor.wait_result(created["task_id"], timeout=5)
+    verification_calls = []
+    controls.verify_environment = lambda operation_id, application: (
+        verification_calls.append((operation_id, application))
+        or {"verified": True, "verify_only": True}
+    )
+
+    result = service._abort_environment_result(created["task_id"])
+
+    assert result["verified"] is True
+    assert result["skipped"] is True
+    assert verification_calls == [(created["task_id"], "otel-demo")]
+    assert controls.resets == []
