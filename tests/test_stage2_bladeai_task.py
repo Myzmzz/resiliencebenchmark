@@ -619,6 +619,31 @@ def test_captured_sdk_fault_spec_duration_is_preserved_without_conversion():
         raise AssertionError("conflicting source durations must not be silently resolved")
 
 
+def test_captured_sdk_fault_spec_fills_short_confirmation_payload():
+    capture = NativeProposalCapture()
+    capture.record_state({
+        "fault_spec": {
+            "namespace": "otel-demo",
+            "names": ["accounting-a"],
+            "labels": {"app.kubernetes.io/name": "accounting"},
+            "scope": "pod",
+            "blade_target": "cpu",
+            "blade_action": "fullload",
+            "params": {"cpu_percent": "80"},
+            "duration_seconds": 300,
+        }
+    })
+
+    proposal = capture.take()
+
+    assert proposal["target"]["names"] == ["accounting-a"]
+    assert proposal["fault_intent"] == {
+        "scope": "pod", "target": "cpu", "action": "fullload"
+    }
+    assert proposal["params"] == {"cpu_percent": "80"}
+    assert proposal["duration_seconds"] == 300
+
+
 def test_native_proposal_capture_is_consumed_between_confirmation_gates():
     capture = NativeProposalCapture()
     capture.record_state({"fault_spec": {"duration_seconds": 60}})

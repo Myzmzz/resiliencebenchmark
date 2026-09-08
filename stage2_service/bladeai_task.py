@@ -65,7 +65,13 @@ class NativeProposalCapture:
         self._proposal = current
 
     def record_state(self, state: Mapping[str, Any]) -> None:
-        """Retain only the Agent-owned duration from FaultSpec state."""
+        """Retain the typed Agent plan exposed at the confirmation gate.
+
+        BladeAI 0.6.2 sometimes puts target/fault/parameter fields only in the
+        graph's ``fault_spec`` state and emits a shortened interrupt payload.
+        Keeping those same-state fields lets the Stage-2 Worker validate the
+        complete proposal without inventing values or trusting free text.
+        """
         # LangGraph re-enters this node while resuming an approved interrupt.
         # That resumed capture is not consumed by require_approval again, so
         # every node entry must discard it before inspecting the next plan.
@@ -74,14 +80,51 @@ class NativeProposalCapture:
         fault_spec = state.get("fault_spec")
         if not isinstance(fault_spec, Mapping):
             return
+        target: dict[str, Any] = {}
+        namespace = fault_spec.get("namespace")
+        if isinstance(namespace, str) and namespace.strip():
+            target["namespace"] = namespace.strip()
+        names = fault_spec.get("names")
+        if isinstance(names, (list, tuple)):
+            clean_names = [str(item).strip() for item in names if str(item).strip()]
+            if clean_names:
+                target["names"] = clean_names
+        labels = fault_spec.get("labels")
+        if isinstance(labels, Mapping) and labels:
+            target["labels"] = {str(key): str(value) for key, value in labels.items()}
+        if target:
+            self._state_fields["target"] = target
+        fault_intent: dict[str, str] = {}
+        for source, destination in (
+            ("scope", "scope"),
+            ("blade_target", "target"),
+            ("blade_action", "action"),
+        ):
+            value = fault_spec.get(source)
+            if isinstance(value, str) and value.strip():
+                fault_intent[destination] = value.strip()
+        if fault_intent:
+            self._state_fields["fault_intent"] = fault_intent
+        params = fault_spec.get("params")
+        if isinstance(params, Mapping) and params:
+            self._state_fields["params"] = dict(params)
         duration = fault_spec.get("duration_seconds")
         if isinstance(duration, int) and not isinstance(duration, bool) and duration > 0:
             self._state_fields["duration_seconds"] = duration
 
     def take(self) -> dict[str, Any]:
         if self._proposal is None:
-            raise BladeTaskError("BladeAI did not expose a confirmation proposal to the Runtime")
-        proposal = dict(self._proposal)
+            if not self._state_fields:
+                raise BladeTaskError("BladeAI did not expose a confirmation proposal to the Runtime")
+            proposal = {}
+        else:
+            proposal = dict(self._proposal)
+        # The interrupt payload is authoritative when it contains a field;
+        # same-gate FaultSpec values fill only fields the payload omitted.
+        for key, value in self._state_fields.items():
+            current = proposal.get(key)
+            if current is None or current == {} or current == []:
+                proposal[key] = value
         self._proposal = None
         self._state_fields = {}
         return proposal

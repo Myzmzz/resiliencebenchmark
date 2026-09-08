@@ -603,7 +603,7 @@ class Runtime:
         self.proposal_capture = proposal_capture
         self.target_uid_resolver = target_uid_resolver
         self._approval_sequence = 0
-        self._wp8_discovered_targets: dict[tuple[str, str], dict[str, str]] = {}
+        self._wp8_discovered_targets: dict[tuple[str, str], dict[str, Any]] = {}
         self._wp8_listing_namespaces: set[str] = set()
         _WP8_ACTIVE_RUNTIMES.add(self)
 
