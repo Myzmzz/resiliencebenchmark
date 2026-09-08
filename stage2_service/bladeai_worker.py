@@ -141,8 +141,11 @@ STAGE2_SKILL_GUIDE = """Stage-2 controlled execution contract (authoritative for
   use chaos_control through the connected shim and do not use native kubectl or
   shell for mutation.  Verify effect and recovery with the authorized MCP tools.
 - Before finishing planning, call the structured `save_fault_plan` tool with the
-  discovered target, canonical fault and numeric parameters; a prose-only plan
-  cannot be approved.
+  discovered target, canonical fault and numeric parameters; include exactly one
+  fenced `stage2` block in `plan_content` with `scope`, `target`, `action`,
+  `namespace`, `names`, the fault intensity key (`time`, `percent`,
+  `cpu-percent`, or `mem-percent`), and `timeout`; a prose-only plan cannot
+  be approved.
 Do not infer Stage-2 support from an older upstream catalogue entry."""
 
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, Any]] = {}
@@ -658,6 +661,11 @@ class Runtime:
         # Do not reduce native events to a local lifecycle vocabulary here.
         # ``BladeAIHarnessAdapter`` is the single normalizer for all harnesses.
         if kind in {"runtime_tool_start", "tool_start", "runtime_tool_end", "tool_end"}:
+            if self.proposal_capture is not None:
+                self.proposal_capture.record_tool_event(
+                    str(payload.get("tool") or payload.get("tool_name") or ""),
+                    payload,
+                )
             _record_wp8_discovery(
                 payload,
                 target_store=self._wp8_discovered_targets,

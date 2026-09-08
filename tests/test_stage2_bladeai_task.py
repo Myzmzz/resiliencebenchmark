@@ -714,6 +714,26 @@ def test_captured_legacy_state_fields_fill_short_confirmation_payload():
     assert proposal["duration_seconds"] == 300
 
 
+def test_planning_tool_fields_fill_short_sdk_confirmation_and_survive_state_replay():
+    capture = NativeProposalCapture()
+    capture.record_tool_event(
+        "bladeai.save_fault_plan",
+        {"input": {"plan_content": "blade create k8s pod-network delay --time 1000 --timeout 180"}},
+    )
+    # The SDK replays the confirmation node and clears its transient state;
+    # tool-derived fields must remain available for the same gate.
+    capture.record_state({"fault_spec": {
+        "namespace": "otel-demo", "names": ["cart-a"],
+        "scope": "pod", "blade_target": "network", "blade_action": "delay"
+    }})
+    proposal = capture.take()
+
+    assert proposal["params"] == {"time": "1000", "timeout": "180"}
+    assert proposal["duration_seconds"] == 180
+    assert proposal["target"] == {"namespace": "otel-demo", "names": ["cart-a"]}
+    assert proposal["fault_intent"] == {"scope": "pod", "target": "network", "action": "delay"}
+
+
 def test_native_proposal_capture_is_consumed_between_confirmation_gates():
     capture = NativeProposalCapture()
     capture.record_state({"fault_spec": {"duration_seconds": 60}})

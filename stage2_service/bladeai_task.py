@@ -9,8 +9,10 @@ write is still checked by the controlled ``blade`` shim.
 from __future__ import annotations
 
 import asyncio
+import ast
 import json
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +23,82 @@ TASK_MODE = "task"
 MANAGED_MODE = "managed"
 WP8_QUALIFICATION_TYPE = "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
 _ALLOWED_MODES = frozenset({TASK_MODE, MANAGED_MODE})
+
+
+_PLAN_BLOCK_RE = re.compile(
+    r"```(?:stage2|yaml|yml|text)?\s*\n?(?P<body>.*?)```",
+    re.IGNORECASE | re.DOTALL,
+)
+_PLAN_LINE_RE = re.compile(r"^\s*(?P<key>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*(?P<value>.*?)\s*$")
+_PLAN_FLAG_RE = re.compile(
+    r"--(?P<key>time|timeout|percent|cpu-percent|mem-percent)\s+(?P<value>\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_PLAN_PARAM_KEYS = frozenset({"time", "timeout", "percent", "cpu-percent", "mem-percent"})
+
+
+def _structured_plan_fields(content: str) -> dict[str, Any]:
+    """Extract only explicit canonical fields from an Agent plan body.
+
+    The upstream ``save_fault_plan`` tool accepts markdown, while the Stage-2
+    confirmation contract needs typed parameters.  A fenced key/value block is
+    the primary representation.  The flag fallback accepts only literal
+    ChaosBlade ``--time/--percent/...`` spellings, never nearby prose values.
+    """
+    blocks = [match.group("body") for match in _PLAN_BLOCK_RE.finditer(content)]
+    candidates: list[dict[str, str]] = []
+    for body in blocks:
+        fields: dict[str, str] = {}
+        for line in body.splitlines():
+            match = _PLAN_LINE_RE.match(line)
+            if match:
+                fields[match.group("key").lower()] = match.group("value").strip().strip("`")
+        if {"scope", "target", "action", "namespace", "names"}.issubset(fields):
+            candidates.append(fields)
+
+    # More than one canonical block is ambiguous.  Refuse to choose between
+    # potentially different Agent plans and let the Controller reject it.
+    if len(candidates) > 1 and any(candidates[0].get(k) != item.get(k) for item in candidates[1:] for k in set(candidates[0]) | set(item)):
+        return {}
+    fields = dict(candidates[-1] if candidates else {})
+
+    params: dict[str, str] = {
+        key: value
+        for key, value in fields.items()
+        if key in _PLAN_PARAM_KEYS and re.fullmatch(r"\d+(?:\.\d+)?", value)
+    }
+    if not params:
+        for match in _PLAN_FLAG_RE.finditer(content):
+            params[match.group("key").lower()] = match.group("value")
+    if not params:
+        return {}
+
+    result: dict[str, Any] = {"params": params}
+    if fields.get("scope") and fields.get("target") and fields.get("action"):
+        result["fault_intent"] = {
+            "scope": fields["scope"],
+            "target": fields["target"],
+            "action": fields["action"],
+        }
+    namespace = fields.get("namespace", "").strip()
+    names = fields.get("names", "").strip()
+    if namespace and names:
+        # The parser does not select a target from prose; it only carries a
+        # single name explicitly present in the canonical block.
+        if names.startswith("[") and names.endswith("]"):
+            try:
+                parsed_names = ast.literal_eval(names)
+            except (ValueError, SyntaxError):
+                parsed_names = []
+            clean_names = [str(item).strip() for item in parsed_names] if isinstance(parsed_names, (list, tuple)) else []
+        else:
+            clean_names = [item.strip() for item in names.split(",") if item.strip()]
+        if len(clean_names) == 1:
+            result["target"] = {"namespace": namespace, "names": clean_names}
+    timeout = params.get("timeout")
+    if timeout is not None and timeout.isdigit() and int(timeout) > 0:
+        result["duration_seconds"] = int(timeout)
+    return result
 
 
 class BladeTaskError(ValueError):
@@ -58,6 +136,45 @@ class NativeProposalCapture:
     def __init__(self) -> None:
         self._proposal: dict[str, Any] | None = None
         self._state_fields: dict[str, Any] = {}
+        # ``save_fault_plan`` is a real Agent tool, but BladeAI's upstream
+        # graph only persists its markdown body and may omit the same typed
+        # parameters from the interrupt state.  Keep the latest explicitly
+        # machine-readable fields separately so ``record_state`` cannot erase
+        # them before the confirmation bridge consumes the proposal.
+        self._tool_fields: dict[str, Any] = {}
+
+    def record_tool_event(self, tool: str, payload: Mapping[str, Any]) -> None:
+        """Capture typed fields from the Agent's successful planning tool.
+
+        Stage-2 asks the Agent to include one fenced canonical block in
+        ``save_fault_plan.plan_content``.  Only values in that block (or
+        explicit ChaosBlade ``--flag value`` spellings) are accepted; prose
+        numbers are never treated as fault parameters.
+        """
+        name = str(tool or "").strip().lower().rsplit(".", 1)[-1]
+        if name != "save_fault_plan":
+            return
+        arguments = payload.get("input") or payload.get("params") or payload.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                try:
+                    arguments = ast.literal_eval(arguments)
+                except (ValueError, SyntaxError):
+                    arguments = {}
+        if not isinstance(arguments, Mapping):
+            return
+        content = arguments.get("plan_content")
+        if not isinstance(content, str) or not content.strip():
+            return
+        # The graph emits the same call once through the full callback and
+        # again through a legacy, truncated event.  Keep the full parse when
+        # the duplicate cannot be parsed; a successful later parse replaces
+        # it for a genuinely new planning call.
+        parsed = _structured_plan_fields(content)
+        if parsed:
+            self._tool_fields = parsed
 
     def record(self, proposal: Mapping[str, Any]) -> None:
         current = dict(self._state_fields)
@@ -134,6 +251,14 @@ class NativeProposalCapture:
         if isinstance(duration, int) and not isinstance(duration, bool) and duration > 0:
             self._state_fields["duration_seconds"] = duration
 
+        # Keep fields extracted from the planning tool until ``take``.  They
+        # are lower priority than a typed interrupt/state field, and therefore
+        # can only fill an omission in the SDK payload.
+        for key, value in self._tool_fields.items():
+            current = self._state_fields.get(key)
+            if current is None or current == {} or current == []:
+                self._state_fields[key] = value
+
     def take(self) -> dict[str, Any]:
         if self._proposal is None:
             if not self._state_fields:
@@ -149,6 +274,7 @@ class NativeProposalCapture:
                 proposal[key] = value
         self._proposal = None
         self._state_fields = {}
+        self._tool_fields = {}
         return proposal
 
 
