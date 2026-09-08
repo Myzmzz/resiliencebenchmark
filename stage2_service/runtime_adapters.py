@@ -743,7 +743,13 @@ def _validate_token(token: str) -> None:
 
 
 def _validate_trial_id(trial_id: str) -> None:
-    if not isinstance(trial_id, str) or not trial_id.startswith("campaign-"):
+    # D0 qualification trials are sealed under a ``d0-`` campaign directory,
+    # while ordinary Stage-2 campaigns use ``campaign-``.  Both prefixes are
+    # Controller-generated identities; keep the same component/path checks
+    # below so accepting the D0 form cannot widen the file-system boundary.
+    if not isinstance(trial_id, str) or not (
+        trial_id.startswith("campaign-") or trial_id.startswith("d0-")
+    ):
         raise RuntimeAdapterError("invalid token-state identity")
     if trial_id.startswith("/") or "\\" in trial_id:
         raise RuntimeAdapterError("invalid token-state identity")

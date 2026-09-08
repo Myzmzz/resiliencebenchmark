@@ -78,6 +78,17 @@ def test_mcp_permission_revocation_rotates_only_selected_server(tmp_path: Path):
     assert Path(paths["chaos_control"]).read_text(encoding="utf-8") == original
 
 
+def test_mcp_token_registry_accepts_controller_generated_d0_trial_identity(
+    tmp_path: Path,
+):
+    registry = McpTokenStateRegistry(tmp_path)
+    trial_id = "d0-otel-accounting-20260908-bladeai-opus-003-bladeai"
+
+    paths = registry.initialize(trial_id, {"telemetry_ro": "x" * 48})
+
+    assert Path(paths["telemetry_ro"]).is_file()
+
+
 class Gate:
     def qualify(self, _episode):
         return {
