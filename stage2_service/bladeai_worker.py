@@ -192,11 +192,15 @@ def _targets_from_wp8_discovery(
     if tool.endswith("k8s_get_resource") and resource_arg == "pods":
         name_arg = str(arguments.get("name") or "").strip()
         known_namespaces = listing_namespaces if listing_namespaces is not None else _WP8_LABEL_LISTING_NAMESPACES
-        if name_arg and namespace_arg in known_namespaces:
+        if name_arg and (
+            namespace_arg in known_namespaces
+            or (_stage2_enabled() and namespace_arg == os.environ.get("RESBENCH_TRIAL_NAMESPACE", ""))
+        ):
             discovered[(namespace_arg, name_arg)] = {
                 "namespace": namespace_arg,
                 "name": name_arg,
                 "uid": "",
+                **({"named_get": True} if _stage2_enabled() else {}),
             }
     raw = payload.get("result")
     if isinstance(raw, str):
@@ -239,6 +243,13 @@ def _targets_from_wp8_discovery(
                 "name": name,
                 "uid": uid,
                 **({"labels": dict(labels)} if _stage2_enabled() else {}),
+                **(
+                    {"named_get": True}
+                    if _stage2_enabled()
+                    and tool.endswith("k8s_get_resource")
+                    and str(arguments.get("name") or "").strip() == name
+                    else {}
+                ),
             }
     return discovered
 
@@ -251,9 +262,19 @@ def _record_wp8_discovery(
 ) -> None:
     """Retain target names/UIDs returned by Agent read-only MCP calls."""
     discovered = _targets_from_wp8_discovery(payload, listing_namespaces=listing_namespaces)
-    _WP8_DISCOVERED_TARGETS.update(discovered)
+    for key, value in discovered.items():
+        prior = _WP8_DISCOVERED_TARGETS.get(key, {})
+        merged = {**prior, **value}
+        if prior.get("named_get") or value.get("named_get"):
+            merged["named_get"] = True
+        _WP8_DISCOVERED_TARGETS[key] = merged
     if target_store is not None:
-        target_store.update(discovered)
+        for key, value in discovered.items():
+            prior = target_store.get(key, {})
+            merged = {**prior, **value}
+            if prior.get("named_get") or value.get("named_get"):
+                merged["named_get"] = True
+            target_store[key] = merged
 
 
 def _augment_wp8_proposal_target(
@@ -287,6 +308,10 @@ def _augment_wp8_proposal_target(
                 for key, value in requested_labels.items()
             )
         ]
+    if len(candidates) != 1 and _stage2_enabled():
+        named_candidates = [item for item in candidates if item.get("named_get") is True]
+        if len(named_candidates) == 1:
+            candidates = named_candidates
     if len(candidates) != 1:
         return value
     bound = dict(target)
