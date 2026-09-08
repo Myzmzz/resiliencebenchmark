@@ -76,6 +76,11 @@ def prepare_bladeai_launch(
         "BLADE_AI_MCP_ENABLED": "true",
         "BLADE_AI_MCP_CONFIG_PATH": str(mcp_path),
         "BLADE_AI_MCP_CONNECT_TIMEOUT_SECONDS": str(BLADEAI_MCP_CONNECT_TIMEOUT_SECONDS),
+        # The upstream catalogue is versioned independently from the
+        # Controller's trial-bound shim.  Tell the isolated Worker to use the
+        # latter's published Stage-2 capability contract when planning; this
+        # is runtime policy metadata and does not alter the user's prompt.
+        "RESBENCH_BLADEAI_STAGE2": "true",
         # The WP8 qualification prompt is deliberately a direct MCP workflow.
         # The worker uses this marker to shorten the built-in skill tool
         # description, preventing the upstream "activate_skill" instruction

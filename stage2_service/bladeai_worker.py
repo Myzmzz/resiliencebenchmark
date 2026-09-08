@@ -93,6 +93,10 @@ def _wp8_enabled() -> bool:
     return os.environ.get("RESBENCH_BLADEAI_WP8", "").strip().lower() == "true"
 
 
+def _stage2_enabled() -> bool:
+    return os.environ.get("RESBENCH_BLADEAI_STAGE2", "").strip().lower() == "true"
+
+
 WP8_SKILL_CASE_PATH = (
     "references/catalogue/Pod_网络延迟/"
     "Pod_网络延迟_WP8_受控网络延迟.md"
@@ -125,6 +129,18 @@ WP8_PLAN_CONDITIONS = {
     for key, value in WP8_CONDITION_POLICY.items()
     if key != "recovery_mode"
 }
+
+STAGE2_SKILL_GUIDE = """Stage-2 controlled execution contract (authoritative for this Trial):
+- Use the connected k8s_ro MCP tools to discover one current Ready Pod and its UID.
+- Resolve labels to the exact Pod name before mutation; the controlled blade shim
+  requires exactly one --names value and never accepts a selector for writes.
+- The supported mappings are pod-network delay -> network-delay (--time),
+  pod-network loss/drop -> network-loss (--percent), pod-cpu fullload/load ->
+  cpu-load (--cpu-percent), and pod-memory load -> memory-stress (--mem-percent).
+- Use the exact Controller-provided namespace, integer --timeout and intensity;
+  use chaos_control through the connected shim and do not use native kubectl or
+  shell for mutation.  Verify effect and recovery with the authorized MCP tools.
+Do not infer Stage-2 support from an older upstream catalogue entry."""
 
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, str]] = {}
 _WP8_LABEL_LISTING_NAMESPACES: set[str] = set()
@@ -267,24 +283,26 @@ def _complete_wp8_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     return value
 
 
-def _apply_wp8_skill_guard(factory_module: Any, registry: Any) -> None:
-    """Keep the WP8 planning surface focused on the connected MCP tools.
+def _apply_stage2_skill_guard(factory_module: Any, registry: Any) -> None:
+    """Keep Stage-2 planning aligned with the trial-bound capability contract.
 
     The upstream BladeAI skill tool advertises a mandatory full-catalogue
-    activation.  That is useful for ordinary user tasks, but it adds a large
-    response and an avoidable model turn to the fixed WP8 qualification.  The
-    marker is set only by the WP8 launch adapter; normal L4 tasks retain the
-    upstream tool and behaviour unchanged.
+    activation.  That catalogue is versioned separately from the
+    trial-bound Stage-2 shim and can describe stale command support.  The
+    Stage-2 marker therefore supplies a compact, current capability guide;
+    WP8 keeps its narrower fixed-contract message.
     """
-    if not _wp8_enabled():
+    if not (_wp8_enabled() or _stage2_enabled()):
         return
     activate = getattr(registry, "activate", None)
     if callable(activate):
         def disabled_activate(_skill_name: str) -> str:
-            return (
-                "WP8 qualification: built-in skill activation is disabled. "
-                "Use the connected read-only MCP tools and the fixed qualification contract."
-            )
+            if _wp8_enabled():
+                return (
+                    "WP8 qualification: built-in skill activation is disabled. "
+                    "Use the connected read-only MCP tools and the fixed qualification contract."
+                )
+            return STAGE2_SKILL_GUIDE
 
         # The registry is process-local to this isolated worker.  Replacing
         # this bound method prevents a fallback skill call from returning the
@@ -300,8 +318,8 @@ def _apply_wp8_skill_guard(factory_module: Any, registry: Any) -> None:
         for tool in tools:
             if getattr(tool, "name", None) == "activate_skill":
                 tool.description = (
-                    "WP8 qualification only: do not call this built-in skill tool. "
-                    "Use the connected MCP tools directly."
+                    "Stage-2 controlled trial: use the published runtime capability "
+                    "contract returned by this tool and the connected MCP tools."
                 )
         return tools
 
@@ -935,7 +953,7 @@ def _install_worker_sdk_runtime(agent_cls: type) -> None:
                     inject_graph = None
                     recover_graph = None
                 else:
-                    _apply_wp8_skill_guard(factory_module, registry)
+                    _apply_stage2_skill_guard(factory_module, registry)
                     agents = await create_agent(
                         registry,
                         checkpointer=checkpointer,
