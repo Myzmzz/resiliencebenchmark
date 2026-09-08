@@ -132,6 +132,13 @@ def test_stage2_target_is_bound_from_one_matching_discovered_label(monkeypatch):
     _WP8_DISCOVERED_TARGETS.clear()
 
 
+def test_stage2_skill_guide_requires_structured_plan_fields():
+    from stage2_service.bladeai_worker import STAGE2_SKILL_GUIDE
+
+    assert "save_fault_plan" in STAGE2_SKILL_GUIDE
+    assert "prose-only" in STAGE2_SKILL_GUIDE
+
+
 def test_runtime_event_sink_keeps_wp8_discovery_in_trial_store(monkeypatch):
     monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
     runtime = Runtime(_Confirm({"ok": False, "allowed": False}))

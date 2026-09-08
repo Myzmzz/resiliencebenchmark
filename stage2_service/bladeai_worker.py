@@ -140,6 +140,9 @@ STAGE2_SKILL_GUIDE = """Stage-2 controlled execution contract (authoritative for
 - Use the exact Controller-provided namespace, integer --timeout and intensity;
   use chaos_control through the connected shim and do not use native kubectl or
   shell for mutation.  Verify effect and recovery with the authorized MCP tools.
+- Before finishing planning, call the structured `save_fault_plan` tool with the
+  discovered target, canonical fault and numeric parameters; a prose-only plan
+  cannot be approved.
 Do not infer Stage-2 support from an older upstream catalogue entry."""
 
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, Any]] = {}
