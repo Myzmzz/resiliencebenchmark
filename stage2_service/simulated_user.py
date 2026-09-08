@@ -905,10 +905,20 @@ def _approval_message(message: str) -> bool:
             "确认执行",
             "确认按",
             "确认授权",
+            # Concrete confirmation sentences often start with the target
+            # (for example, "确认在 ...").  Treat them as approval text so
+            # an incomplete plan is repaired through the bounded Harness
+            # retry instead of being returned as a partial decision to a
+            # non-resumable Agent.
+            "确认在",
+            "确认对",
+            "确认将",
             "同意执行",
             "同意按",
             "批准执行",
             "批准按",
+            "批准在",
+            "批准对",
             "可以执行",
             "approve ",
         )
