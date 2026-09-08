@@ -110,6 +110,20 @@ def test_only_wp8_task_overrides_sdk_initial_confirmation_state():
     assert module.test_task_to_initial_state is original
 
 
+def test_stage2_task_overrides_sdk_initial_confirmation_state(monkeypatch):
+    monkeypatch.setenv("RESBENCH_BLADEAI_STAGE2", "true")
+    original = lambda _task: {"needs_confirmation": False, "kept": True}
+    module = SimpleNamespace(test_task_to_initial_state=original)
+    task = SimpleNamespace(payload={})
+
+    with _wp8_confirmation_state(module, task):
+        assert module.test_task_to_initial_state(task) == {
+            "needs_confirmation": True,
+            "kept": True,
+        }
+    assert module.test_task_to_initial_state is original
+
+
 def _tool_response(name: str, call_id: str, arguments: dict | None = None) -> AIMessage:
     return AIMessage(
         content="",

@@ -142,7 +142,7 @@ STAGE2_SKILL_GUIDE = """Stage-2 controlled execution contract (authoritative for
   shell for mutation.  Verify effect and recovery with the authorized MCP tools.
 Do not infer Stage-2 support from an older upstream catalogue entry."""
 
-_WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, str]] = {}
+_WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, Any]] = {}
 _WP8_LABEL_LISTING_NAMESPACES: set[str] = set()
 _WP8_ACTIVE_RUNTIMES: weakref.WeakSet[Any] = weakref.WeakSet()
 
@@ -167,10 +167,10 @@ def _targets_from_wp8_discovery(
     payload: Mapping[str, Any],
     *,
     listing_namespaces: set[str] | None = None,
-) -> dict[tuple[str, str], dict[str, str]]:
-    """Extract only eligible WP8 targets from an MCP call or result."""
-    discovered: dict[tuple[str, str], dict[str, str]] = {}
-    if not _wp8_enabled():
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Extract eligible targets from authenticated Stage-2 read evidence."""
+    discovered: dict[tuple[str, str], dict[str, Any]] = {}
+    if not (_wp8_enabled() or _stage2_enabled()):
         return discovered
     tool = str(payload.get("tool") or "")
     if not tool.endswith(("k8s_get_resource", "k8s_list_resources")):
@@ -217,18 +217,25 @@ def _targets_from_wp8_discovery(
         if not isinstance(metadata, Mapping):
             continue
         labels = metadata.get("labels")
-        if not isinstance(labels, Mapping) or labels.get(
-            "resiliencebenchmark.io/qualification"
-        ) != "bladeai-wp8":
+        if not isinstance(labels, Mapping):
             continue
         namespace = str(metadata.get("namespace") or raw.get("namespace") or "").strip()
         name = str(metadata.get("name") or "").strip()
         uid = str(metadata.get("uid") or "").strip()
+        if _wp8_enabled() and labels.get(
+            "resiliencebenchmark.io/qualification"
+        ) != "bladeai-wp8":
+            continue
+        if _stage2_enabled() and namespace != os.environ.get(
+            "RESBENCH_TRIAL_NAMESPACE", ""
+        ):
+            continue
         if namespace and name:
             discovered[(namespace, name)] = {
                 "namespace": namespace,
                 "name": name,
                 "uid": uid,
+                **({"labels": dict(labels)} if _stage2_enabled() else {}),
             }
     return discovered
 
@@ -263,6 +270,20 @@ def _augment_wp8_proposal_target(
     source = discovered_targets if discovered_targets is not None else _WP8_DISCOVERED_TARGETS
     candidates = [item for (ns, _name), item in source.items()
                   if not namespace or ns == namespace]
+    requested_labels = target.get("labels")
+    if isinstance(requested_labels, str):
+        key, separator, raw_value = requested_labels.partition("=")
+        requested_labels = {key.strip(): raw_value.strip()} if separator else {}
+    if isinstance(requested_labels, Mapping) and requested_labels:
+        candidates = [
+            item
+            for item in candidates
+            if isinstance(item.get("labels"), Mapping)
+            and all(
+                item["labels"].get(str(key)) == value
+                for key, value in requested_labels.items()
+            )
+        ]
     if len(candidates) != 1:
         return value
     bound = dict(target)
@@ -329,17 +350,19 @@ def _apply_stage2_skill_guard(factory_module: Any, registry: Any) -> None:
 
 @contextmanager
 def _wp8_confirmation_state(l4_module: Any, task: Any):
-    """Force the fixed WP8 task through BladeAI's real confirmation gate.
+    """Force controlled Stage-2 tasks through BladeAI's confirmation gate.
 
     BladeAI 0.6.2's L4 adapter hard-codes ``needs_confirmation=False`` when
-    converting every task.  WP8 must verify the SDK ``require_approval`` hook,
-    so only the explicitly tagged qualification task overrides that single
-    state field.  The isolated worker restores the upstream function on exit.
+    converting every task.  The Stage-2 Worker must obtain a typed,
+    target-bound Harness decision before mutation; WP8 additionally preloads
+    its fixed qualification case.  The isolated worker restores the upstream
+    function on exit.
     """
     payload = getattr(task, "payload", None)
-    if not isinstance(payload, dict) or payload.get("qualification_type") != (
-        "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
-    ):
+    is_wp8 = isinstance(payload, dict) and payload.get(
+        "qualification_type"
+    ) == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION"
+    if not is_wp8 and not _stage2_enabled():
         yield
         return
     original = l4_module.test_task_to_initial_state
@@ -351,7 +374,7 @@ def _wp8_confirmation_state(l4_module: Any, task: Any):
         # this small case satisfies the upstream catalogue gate without
         # exposing the full skill catalogue or asking the model to activate a
         # large built-in skill response.
-        if _wp8_enabled():
+        if is_wp8 and _wp8_enabled():
             state["skill_name"] = "k8s-chaos-skills"
             state["matched_use_case_path"] = WP8_SKILL_CASE_PATH
             state["skill_case_content"] = WP8_SKILL_CASE_CONTENT
@@ -613,7 +636,7 @@ class Runtime:
             if self.proposal_capture is None or self.target_uid_resolver is None:
                 raise BladeTaskError("BladeAI proposal capture or controlled target discovery is unavailable")
             proposal = self.proposal_capture.take()
-            if _wp8_enabled():
+            if _wp8_enabled() or _stage2_enabled():
                 discovered_targets = (
                     self._wp8_discovered_targets
                     if self._wp8_discovered_targets
@@ -628,6 +651,17 @@ class Runtime:
                     "sdk_confirmation_id": sdk_confirmation_id,
                     "risk_level": risk_level,
                     "proposal_fields": sorted(str(key) for key in proposal),
+                    "stage2_discovered_target_count": (
+                        len(self._wp8_discovered_targets)
+                        if _stage2_enabled()
+                        else None
+                    ),
+                    "stage2_bound_target_name": (
+                        ((proposal.get("target") or {}).get("names") or [None])[0]
+                        if _stage2_enabled()
+                        and isinstance(proposal.get("target"), Mapping)
+                        else None
+                    ),
                     "wp8_discovered_target_count": (
                         len(self._wp8_discovered_targets) if _wp8_enabled() else None
                     ),

@@ -100,6 +100,38 @@ def test_wp8_target_binds_from_complete_get_with_qualification_label(monkeypatch
     assert proposal["target"]["namespace"] == "otel-demo"
 
 
+def test_stage2_target_is_bound_from_one_matching_discovered_label(monkeypatch):
+    monkeypatch.delenv("RESBENCH_BLADEAI_WP8", raising=False)
+    monkeypatch.setenv("RESBENCH_BLADEAI_STAGE2", "true")
+    monkeypatch.setenv("RESBENCH_TRIAL_NAMESPACE", "otel-demo")
+    _WP8_DISCOVERED_TARGETS.clear()
+    _record_wp8_discovery({
+        "tool": "k8s_ro__k8s_list_resources",
+        "result": json.dumps({
+            "items": [
+                {"metadata": {
+                    "namespace": "otel-demo", "name": "accounting-a", "uid": "uid-a",
+                    "labels": {"app.kubernetes.io/name": "accounting"},
+                }},
+                {"metadata": {
+                    "namespace": "otel-demo", "name": "cart-a", "uid": "uid-b",
+                    "labels": {"app.kubernetes.io/name": "cart"},
+                }},
+            ]
+        }),
+    })
+
+    proposal = _augment_wp8_proposal_target({
+        "target": {
+            "namespace": "otel-demo", "names": [],
+            "labels": {"app.kubernetes.io/name": "accounting"},
+        },
+    })
+
+    assert proposal["target"]["names"] == ["accounting-a"]
+    _WP8_DISCOVERED_TARGETS.clear()
+
+
 def test_runtime_event_sink_keeps_wp8_discovery_in_trial_store(monkeypatch):
     monkeypatch.setenv("RESBENCH_BLADEAI_WP8", "true")
     runtime = Runtime(_Confirm({"ok": False, "allowed": False}))
