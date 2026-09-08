@@ -154,27 +154,50 @@ class NativeProposalCapture:
         name = str(tool or "").strip().lower().rsplit(".", 1)[-1]
         if name != "save_fault_plan":
             return
-        arguments = payload.get("input") or payload.get("params") or payload.get("arguments")
-        if isinstance(arguments, str):
-            try:
-                arguments = json.loads(arguments)
-            except json.JSONDecodeError:
-                try:
-                    arguments = ast.literal_eval(arguments)
-                except (ValueError, SyntaxError):
-                    arguments = {}
-        if not isinstance(arguments, Mapping):
-            return
-        content = arguments.get("plan_content")
-        if not isinstance(content, str) or not content.strip():
-            return
-        # The graph emits the same call once through the full callback and
-        # again through a legacy, truncated event.  Keep the full parse when
-        # the duplicate cannot be parsed; a successful later parse replaces
-        # it for a genuinely new planning call.
-        parsed = _structured_plan_fields(content)
-        if parsed:
-            self._tool_fields = parsed
+        # Depending on the LangChain callback version, the same tool may
+        # arrive as ``input``, ``arguments``, a stringified dict, or a result
+        # preview.  Search all of those representations and retain the most
+        # complete parse; this also prevents a later truncated duplicate from
+        # erasing the full native callback.
+        candidates: list[str] = []
+
+        def collect(value: Any, *, depth: int = 0) -> None:
+            if depth > 4:
+                return
+            if isinstance(value, str):
+                if value.strip():
+                    candidates.append(value)
+                    for loader in (json.loads, ast.literal_eval):
+                        try:
+                            parsed = loader(value)
+                        except (TypeError, ValueError, SyntaxError, json.JSONDecodeError):
+                            continue
+                        if parsed is not value:
+                            collect(parsed, depth=depth + 1)
+                return
+            if isinstance(value, Mapping):
+                for key, item in value.items():
+                    if str(key).lower() in {
+                        "input", "params", "arguments", "result", "output",
+                        "summary", "plan_content",
+                    }:
+                        collect(item, depth=depth + 1)
+                return
+            if isinstance(value, (list, tuple)):
+                for item in value:
+                    collect(item, depth=depth + 1)
+
+        collect(payload)
+        best: dict[str, Any] = {}
+        for content in candidates:
+            parsed = _structured_plan_fields(content)
+            if len(parsed) > len(best) or (
+                len(parsed) == len(best)
+                and len((parsed.get("params") or {})) > len(best.get("params") or {})
+            ):
+                best = parsed
+        if best:
+            self._tool_fields = best
 
     def record(self, proposal: Mapping[str, Any]) -> None:
         current = dict(self._state_fields)
