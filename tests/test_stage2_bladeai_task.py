@@ -644,6 +644,25 @@ def test_captured_sdk_fault_spec_fills_short_confirmation_payload():
     assert proposal["duration_seconds"] == 300
 
 
+def test_captured_legacy_state_fields_fill_short_confirmation_payload():
+    capture = NativeProposalCapture()
+    capture.record_state({
+        "namespace": "otel-demo",
+        "names": ["accounting-a"],
+        "scope": "pod",
+        "blade_target": "cpu",
+        "blade_action": "fullload",
+        "params": {"cpu_percent": "80"},
+        "duration": 300,
+    })
+
+    proposal = capture.take()
+
+    assert proposal["target"]["names"] == ["accounting-a"]
+    assert proposal["params"] == {"cpu_percent": "80"}
+    assert proposal["duration_seconds"] == 300
+
+
 def test_native_proposal_capture_is_consumed_between_confirmation_gates():
     capture = NativeProposalCapture()
     capture.record_state({"fault_spec": {"duration_seconds": 60}})

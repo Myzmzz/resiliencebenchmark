@@ -79,6 +79,27 @@ class NativeProposalCapture:
         self._proposal = None
         fault_spec = state.get("fault_spec")
         if not isinstance(fault_spec, Mapping):
+            to_dict = getattr(fault_spec, "to_dict", None)
+            if callable(to_dict):
+                try:
+                    fault_spec = to_dict()
+                except Exception:  # pragma: no cover - defensive SDK boundary.
+                    fault_spec = None
+        if not isinstance(fault_spec, Mapping):
+            # Some LangGraph versions project FaultSpec fields back to the
+            # legacy top-level state instead of retaining ``fault_spec``.
+            # Capture only the known typed fields; the downstream canonical
+            # parser still rejects incomplete or out-of-scope values.
+            fault_spec = {
+                key: state.get(key)
+                for key in (
+                    "namespace", "names", "labels", "scope", "blade_target",
+                    "blade_action", "params", "params_flags", "duration_seconds",
+                    "duration",
+                )
+                if state.get(key) not in (None, "", {}, [])
+            }
+        if not isinstance(fault_spec, Mapping):
             return
         target: dict[str, Any] = {}
         namespace = fault_spec.get("namespace")
@@ -105,10 +126,11 @@ class NativeProposalCapture:
                 fault_intent[destination] = value.strip()
         if fault_intent:
             self._state_fields["fault_intent"] = fault_intent
-        params = fault_spec.get("params")
+        params = fault_spec.get("params") or state.get("params")
         if isinstance(params, Mapping) and params:
             self._state_fields["params"] = dict(params)
-        duration = fault_spec.get("duration_seconds")
+        duration = fault_spec.get("duration_seconds") or fault_spec.get("duration")
+        duration = duration or state.get("duration_seconds") or state.get("duration")
         if isinstance(duration, int) and not isinstance(duration, bool) and duration > 0:
             self._state_fields["duration_seconds"] = duration
 
