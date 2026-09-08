@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage
 
 from stage2_service.bladeai_worker import (
     CHANNEL_ONLY_MAX_TURNS,
+    STAGE2_SKILL_GUIDE,
     _run_channel_only,
     _wp8_confirmation_state,
 )
@@ -120,6 +121,8 @@ def test_stage2_task_overrides_sdk_initial_confirmation_state(monkeypatch):
         assert module.test_task_to_initial_state(task) == {
             "needs_confirmation": True,
             "kept": True,
+            "skill_case_content": STAGE2_SKILL_GUIDE,
+            "matched_use_case_path": "stage2://controlled-runtime-contract",
         }
     assert module.test_task_to_initial_state is original
 

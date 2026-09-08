@@ -398,6 +398,16 @@ def _wp8_confirmation_state(l4_module: Any, task: Any):
     def build_state(value: Any) -> dict[str, Any]:
         state = original(value)
         state["needs_confirmation"] = True
+        # Stage-2 deliberately supplies a compact, trial-bound capability
+        # contract instead of exposing BladeAI's versioned catalogue.  The
+        # upstream planner's metadata bridge otherwise treats the compact
+        # guide as "no catalogue case" and routes back to agent_loop after
+        # finish_planning forever.  Register the same authoritative guide as
+        # the selected case in state so the normal safety/confirmation path
+        # can continue without widening the Agent's skill surface.
+        if _stage2_enabled():
+            state["skill_case_content"] = STAGE2_SKILL_GUIDE
+            state["matched_use_case_path"] = "stage2://controlled-runtime-contract"
         # The WP8 contract fixes one audited qualification case. Preloading
         # this small case satisfies the upstream catalogue gate without
         # exposing the full skill catalogue or asking the model to activate a
