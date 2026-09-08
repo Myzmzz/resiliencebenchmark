@@ -683,6 +683,15 @@ class Runtime:
                 raise BladeTaskError("BladeAI proposal capture or controlled target discovery is unavailable")
             capture_audit = self.proposal_capture.audit_snapshot()
             proposal = self.proposal_capture.take()
+            proposal_audit = {
+                "params": dict(proposal.get("params") or {})
+                if isinstance(proposal.get("params"), Mapping)
+                else {},
+                "duration_seconds": proposal.get("duration_seconds"),
+                "fault_intent": dict(proposal.get("fault_intent") or {})
+                if isinstance(proposal.get("fault_intent"), Mapping)
+                else {},
+            }
             if _wp8_enabled() or _stage2_enabled():
                 discovered_targets = (
                     self._wp8_discovered_targets
@@ -718,6 +727,7 @@ class Runtime:
                         else None
                     ),
                     "capture_audit": capture_audit,
+                    "proposal_after_take_audit": proposal_audit,
                 },
             )
             plan = partial_plan_from_native_proposal(
