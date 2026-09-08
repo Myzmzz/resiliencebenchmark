@@ -197,7 +197,13 @@ class NativeProposalCapture:
             ):
                 best = parsed
         if best:
-            self._tool_fields = best
+            current = self._tool_fields
+            if len(best) > len(current) or (
+                len(best) == len(current)
+                and len((best.get("params") or {}))
+                >= len((current.get("params") or {}))
+            ):
+                self._tool_fields = best
 
     def record(self, proposal: Mapping[str, Any]) -> None:
         current = dict(self._state_fields)

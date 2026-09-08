@@ -731,6 +731,12 @@ def test_planning_tool_fields_fill_short_sdk_confirmation_and_survive_state_repl
         "bladeai.save_fault_plan",
         {"input": {"plan_content": canonical_plan}},
     )
+    # A later legacy callback can contain only the explicit flags; it must not
+    # replace the richer canonical fault intent from the full callback.
+    capture.record_tool_event(
+        "save_fault_plan",
+        {"input": "{'plan_content': '... --time 1000 --timeout 180'}"},
+    )
     # The SDK replays the confirmation node and clears its transient state;
     # tool-derived fields must remain available for the same gate.
     capture.record_state({"fault_spec": {
