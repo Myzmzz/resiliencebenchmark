@@ -170,6 +170,7 @@ def test_default_daemon_allowlist_accepts_real_bladeai_env_with_optional_servers
     assert child_env["BLADE_AI_API_BASE_URL"] == "http://127.0.0.1:18090/v1"
     assert child_env["BLADE_AI_MODEL_NAME"] == "gpt-5.5"
     assert child_env["BLADE_AI_MCP_ENABLED"] == "true"
+    assert child_env["RESBENCH_BLADEAI_STAGE2"] == "true"
     assert child_env["RESBENCH_BLADEAI_COROOT_MCP_SSE_URL"]
     assert child_env["RESBENCH_BLADEAI_CHAOS_MESH_CONTROL_MCP_SSE_URL"]
     assert child_env["RESBENCH_BLADEAI_CODE_SANDBOX_MCP_SSE_URL"]
