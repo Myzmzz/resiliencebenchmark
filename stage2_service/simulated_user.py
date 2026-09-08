@@ -353,16 +353,29 @@ class HarnessResponder:
 
         if not supplied_result.ok or supplied_result.plan is None:
             self.reply_errors[question_id] = _issues_message(supplied_result)
-            if _approval_message(message):
-                raise ConversationError(
-                    "approval text requires a valid AgentPlan: "
-                    + _issues_message(supplied_result)
-                )
+            # A confirmation is a binary authorization boundary.  Returning
+            # a partial suggestion as ``approved=null`` is useful for a
+            # resumable Agent, but BladeAI's SDK confirmation gate cannot
+            # resume after that response.  Force a bounded Harness retry so
+            # the model either returns a complete typed plan or the Trial
+            # fails explicitly without any mutation authorization.
             partial = _validate_partial_suggestion(
                 supplied_patch,
                 original_raw=original_raw,
                 envelope=self.policy.envelope,
             )
+            if request_kind == "confirmation" and partial["ok"]:
+                self.reply_errors[question_id] = (
+                    "A confirmation response must include a complete valid AgentPlan, "
+                    "including effect_condition, recovery_condition, and stop_conditions. "
+                    "Return a complete plan or explicitly reject; do not return a partial decision."
+                )
+                raise ConversationError("confirmation response was incomplete")
+            if _approval_message(message):
+                raise ConversationError(
+                    "approval text requires a valid AgentPlan: "
+                    + _issues_message(supplied_result)
+                )
             if partial["ok"] and not _has_blocking_issues(supplied_result):
                 changed = sorted(partial["fields"])
                 unauthorized = sorted(set(changed) - set(self.policy.may_supply))
