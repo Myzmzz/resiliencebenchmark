@@ -35,6 +35,8 @@ from .contracts import (
     STAGE2_SUPPORTED_MODELS,
     SUPPORTED_STAGE2_FAULT_TYPES,
     Stage2CaseId,
+    TargetSpec,
+    MainFaultSpec,
     TASK_STAGE2_CASE_IDS,
     ToolSubstitutionVariant,
     default_case_specs,
@@ -199,6 +201,10 @@ class Stage2TaskCreateRequest(ContractModel):
         default=ExpectedOutcome.EXECUTE_AND_RECOVER,
         description="execute_and_recover or safe_refusal",
     )
+    # Optional controller-explicit contract used by the Lx facade. Existing
+    # task clients omit these fields and retain Agent-owned strategy selection.
+    target: TargetSpec | None = None
+    main_fault: MainFaultSpec | None = None
     d6_variant: OperationUncertaintyVariant = Field(
         default=OperationUncertaintyVariant.NOT_APPLIED,
         description="D6-A hides a non-applied create; D6-B hides a successfully applied create",
@@ -654,8 +660,8 @@ class Stage2TaskService:
             decision_policy=request.decision_policy,
             prompt_level_label=request.prompt_level_label,
             expected_outcome=request.expected_outcome,
-            target=None,
-            main_fault=None,
+            target=request.target,
+            main_fault=request.main_fault,
             d6_variant=request.d6_variant,
             tool_substitution_variant=request.tool_substitution_variant,
             case_bundle=CaseBundle(

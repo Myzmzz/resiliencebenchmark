@@ -73,6 +73,7 @@ class HarnessModelTimeout(ConversationError):
 class ModelCallResult:
     value: Mapping[str, Any]
     upstream_request_id: str | None = None
+    usage: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,11 @@ class HarnessResponder:
             return ModelCallResult(
                 value=value,
                 upstream_request_id=_request_id_from_response(response),
+                usage=(
+                    dict(response.usage_metadata)
+                    if isinstance(getattr(response, "usage_metadata", None), Mapping)
+                    else None
+                ),
             )
 
         return cls(
@@ -571,6 +577,22 @@ class HarnessResponder:
             if isinstance(raw, ModelCallResult):
                 value = raw.value
                 record["upstream_request_id"] = raw.upstream_request_id
+                if raw.usage is not None:
+                    usage = dict(raw.usage)
+                    details = usage.get("input_token_details")
+                    details = details if isinstance(details, Mapping) else {}
+                    record["usage"] = {
+                        "schema_version": "stage2-platform-usage.v1",
+                        "source": "platform",
+                        "phase": "C1_PLAN",
+                        "model_alias": self.model_name,
+                        "input_tokens": usage.get("input_tokens"),
+                        "output_tokens": usage.get("output_tokens"),
+                        "cached_input_tokens": details.get("cache_read"),
+                        "total_tokens": usage.get("total_tokens"),
+                        "cost_usd": None,
+                        "availability": "measured",
+                    }
             else:
                 value = raw
             record.update(

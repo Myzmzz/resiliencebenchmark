@@ -11,6 +11,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Mapping
 from contextlib import ExitStack
@@ -484,12 +485,14 @@ class NativeHarnessRunner:
         elif not self.local_test_execution:
             raise HarnessRuntimeError("gateway configuration snapshot is required", error_code="GATEWAY_SNAPSHOT_MISSING")
         if not self.local_test_execution:
+            phase_ref = {"phase": LifecyclePhase.C1_PLAN.value}
             relay_config = TrialRelayConfig.issue(
                 trial_id=trial_id, model_alias=model_alias,
                 upstream_base_url=self.base_environment["RESBENCH_LLM_BASE_URL"],
                 upstream_api_key=self.base_environment["RESBENCH_LLM_API_KEY"],
                 harness_name=harness.value, gateway_config_sha256=gateway_hash,
             )
+            relay_config.phase_ref.update(phase_ref)
             relay = resources.enter_context(TrialRelay(relay_config))
             agent_env.update(relay.agent_environment())
             # Kept only for artifact redaction; child env uses an allowlist.
@@ -812,6 +815,11 @@ class NativeHarnessRunner:
                     }, env), ensure_ascii=False) + "\n")
                 selected_mapper = mapper if authoritative else native_mapper
                 mapped = selected_mapper.consume(canonical)
+                if not self.local_test_execution:
+                    for lifecycle_event in mapped:
+                        phase = getattr(lifecycle_event, "phase", None)
+                        if phase is not None:
+                            relay_config.set_phase(getattr(phase, "value", str(phase)))
                 request = selected_mapper.calls.get(canonical.call_id) if isinstance(canonical, (ToolCall, ToolResult)) else None
                 boundary_attempt = native_boundary_attempt(
                     canonical,
@@ -1301,6 +1309,7 @@ class NativeHarnessRunner:
         write_json(artifact_dir / "harness-conversation.json", redact_json(responder.history, env))
         gateway_rows = None
         gateway_request_ids: list[str] = []
+        gateway_usage_rows: list[dict[str, Any]] = []
         if not self.local_test_execution:
             gateway_request_ids = list(relay_config.request_ids)
             if self.gateway_audit_dir is not None:
@@ -1317,6 +1326,36 @@ class NativeHarnessRunner:
                 }
             else:
                 write_json(artifact_dir / "gateway-requests.json", gateway_rows)
+            if self.gateway_audit_dir is not None:
+                usage_path = self.gateway_audit_dir / f"{trial_id}.usage.jsonl"
+                usage_deadline = time.monotonic() + 5.0
+                while time.monotonic() < usage_deadline:
+                    gateway_usage_rows = []
+                    if usage_path.is_file():
+                        try:
+                            for line in usage_path.read_text(encoding="utf-8").splitlines():
+                                if line:
+                                    value = json.loads(line)
+                                    if isinstance(value, dict):
+                                        gateway_usage_rows.append(value)
+                        except (OSError, ValueError, UnicodeError):
+                            gateway_usage_rows = []
+                    observed_usage_ids = {
+                        str(item.get("request_id"))
+                        for item in gateway_usage_rows
+                        if item.get("request_id")
+                    }
+                    if observed_usage_ids >= set(gateway_request_ids):
+                        break
+                    time.sleep(0.1)
+                if gateway_usage_rows:
+                    (artifact_dir / "gateway-usage.jsonl").write_text(
+                        "".join(
+                            json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n"
+                            for item in gateway_usage_rows
+                        ),
+                        encoding="utf-8",
+                    )
         status = (
             "timeout"
             if result.timed_out
@@ -1368,6 +1407,8 @@ class NativeHarnessRunner:
             "gateway_evidence_verified": gateway_rows is not None,
             "gateway_request_ids": gateway_request_ids,
             "gateway_evidence_ref": "gateway-requests.json" if gateway_rows is not None else None,
+            "gateway_usage_ref": "gateway-usage.jsonl" if gateway_usage_rows else None,
+            "gateway_usage_count": len(gateway_usage_rows),
             "bladeai_result": (
                 redact_json(adapter.terminal_result, env)
                 if bladeai_launch_evidence is not None
@@ -1419,6 +1460,7 @@ class NativeHarnessRunner:
                 f"{campaign_id}/{trial_id}/canonical-events.jsonl",
                 *((f"{campaign_id}/{trial_id}/bladeai-launch.json",) if bladeai_launch_evidence is not None else ()),
                 *((f"{campaign_id}/{trial_id}/gateway-requests.json",) if gateway_rows is not None else ()),
+                *((f"{campaign_id}/{trial_id}/gateway-usage.jsonl",) if gateway_usage_rows else ()),
                 *((f"{campaign_id}/{trial_id}/{ref}",) if ref else ()),
                 *(f"{campaign_id}/{trial_id}/{name}" for name in native_session_refs),
             ),

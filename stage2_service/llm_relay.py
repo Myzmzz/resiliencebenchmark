@@ -47,6 +47,7 @@ class TrialRelayConfig:
     harness_name: str = "unknown"
     gateway_config_sha256: str = ""
     request_ids: list[str] = field(default_factory=list, compare=False)
+    phase_ref: dict[str, str] = field(default_factory=lambda: {"phase": "C1_PLAN"}, compare=False)
     request_timeout_seconds: float = 180.0
     max_request_bytes: int = MAX_REQUEST_BYTES
     host: str = RELAY_HOST
@@ -91,6 +92,11 @@ class TrialRelayConfig:
             "RESBENCH_LLM_BASE_URL": f"http://{self.host}:{self.port}/v1",
             "RESBENCH_LLM_API_KEY": self.relay_token,
         }
+
+    def set_phase(self, phase: str) -> None:
+        """Update the Controller-owned phase label used on subsequent calls."""
+        if phase:
+            self.phase_ref["phase"] = str(phase)
 
 
 def create_trial_relay_app(
@@ -159,6 +165,9 @@ def create_trial_relay_app(
             "x-resbench-request-id": request_id,
             "x-resbench-gateway-config-sha256": config.gateway_config_sha256,
         }
+        phase = str(config.phase_ref.get("phase") or "")
+        if phase:
+            headers["x-resbench-phase"] = phase
         if request.url.path == "/v1/messages":
             for name in ("anthropic-version", "anthropic-beta"):
                 if name in request.headers:
