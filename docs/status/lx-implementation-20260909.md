@@ -26,8 +26,8 @@ business-recovery, or formal Harness qualification result.
 The implementation image was built and pushed as a paired amd64 release:
 
 ```text
-controller: 1.94.151.57:85/observe/resbench-stage2:stage2-d0-2356fff@sha256:aa0b41a383e723d323cb10bdc908ae95c711cca4eff8ee09a987ab9315e1f07c
-agent:      1.94.151.57:85/observe/resbench-stage2:stage2-agent-2356fff@sha256:f1548ba3fbd0b8b19d3fa78be0f30b381517e2fd9f8a4da7dc0949af4baf20f7
+controller: 1.94.151.57:85/observe/resbench-stage2:stage2-d0-6be0c9e@sha256:f596fb8216ca75435b7490e0f64567fc81af8d01efd91fc5c8a74eae1295e02a
+agent:      1.94.151.57:85/observe/resbench-stage2:stage2-agent-6be0c9e@sha256:eb68110b317685a0c7c3c6b94766ba44eb4d0cfc6f926896c496ab953aa9ad52
 ```
 
 Those images and the updated callback are deployed to the old-cluster
