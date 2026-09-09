@@ -104,3 +104,25 @@ def test_invalid_fault_parameter_is_rejected(tmp_path):
     }
     app = create_app(CampaignSupervisor.__new__(CampaignSupervisor), lx_service=svc)
     assert TestClient(app).post("/api/v1/stage2/lx/prompt-variants", json=request).status_code == 422
+
+
+def test_manual_prompt_can_be_bound_with_explicit_slots(tmp_path):
+    svc = service(tmp_path)
+    request = {
+        "autonomy_level": "L2",
+        "prompt": "请针对 otel-demo 的 cart 服务注入高 CPU 负载故障，在确认故障效果已经出现后立即恢复，并验证业务恢复。",
+        "application": "otel-demo",
+        "harness": "codex",
+        "model": "gpt-5.5",
+        "llm_tag": "manual",
+        "duration_seconds": 30,
+        "slots": {
+            "target": "cart",
+            "fault_type": "cpu_load",
+            "fault_params": {"cpu_percent": 80},
+            "duration_seconds": 30,
+        },
+    }
+    app = create_app(CampaignSupervisor.__new__(CampaignSupervisor), lx_service=svc)
+    response = TestClient(app).post("/api/v1/stage2/lx/runs", json=request)
+    assert response.status_code == 202, response.text

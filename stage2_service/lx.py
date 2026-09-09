@@ -319,6 +319,8 @@ class LxService:
             "application": request.application,
             "slots": request.slots.model_dump(mode="json"),
             "polish": request.polish,
+            "polish_applied": False,
+            "polish_note": "deterministic templates are used; no model rewriting is enabled",
             "variants": variants,
         }
         self.store.write(variant_id, value)
@@ -497,11 +499,15 @@ class LxService:
         issues = task.get("issues") or []
         if not issues and task.get("task_status") not in {"FAILED", "RECOVERY_FAILED", "INTERRUPTED"}:
             return None
+        retries = _find_first(task, "retry_history") or []
+        if not isinstance(retries, list):
+            retries = []
         return {
             "code": (issues[0].get("code") if issues and isinstance(issues[0], Mapping) else None) or "STAGE2_TASK_FAILED",
             "phase": task.get("current_phase"),
             "reason": (issues[0].get("message") if issues and isinstance(issues[0], Mapping) else None) or task.get("error") or "Stage-2 task did not complete",
-            "retries": [],
+            "occurred_at": task.get("updated_at"),
+            "retries": [dict(item) for item in retries if isinstance(item, Mapping)],
         }
 
     def interactions(self, run_id: str, *, phase: str | None = None, interaction_type: str | None = None, initiator: str | None = None, offset: int = 0, limit: int = 200) -> dict[str, Any]:
@@ -513,20 +519,30 @@ class LxService:
         for index, item in enumerate(ledger, start=1):
             if not isinstance(item, Mapping):
                 continue
-            affected = list(item.get("affected_slots") or item.get("required_decisions") or [])
+            affected = [_normalize_slot(slot) for slot in (item.get("affected_slots") or item.get("required_decisions") or [])]
             if not affected:
                 affected = _slots_from_text(str(item.get("question") or item.get("agent_question") or ""))
+            affected_nodes = list(item.get("affected_nodes") or [])
+            if not affected_nodes:
+                node_by_slot = {
+                    "target": "TARGET_IDENTITY",
+                    "fault_type": "PLAN_VALIDATION",
+                    "fault_params": "PLAN_VALIDATION",
+                    "duration_seconds": "PLAN_VALIDATION",
+                    "recovery_condition": "RECOVERY_TRIGGER",
+                }
+                affected_nodes = sorted({node_by_slot[slot] for slot in affected if slot in node_by_slot})
             rows.append({
                 "sequence": index,
                 "occurred_at": item.get("occurred_at"),
                 "phase": item.get("phase") or "C1_PLAN",
                 "initiator": item.get("initiator") or "AGENT",
-                "type": item.get("type") or item.get("interaction_type") or "FACT_EVENT",
+                "type": _normalize_interaction_type(item.get("type") or item.get("interaction_type")),
                 "agent_question": item.get("agent_question") or item.get("question"),
                 "platform_answer": item.get("platform_answer") or item.get("answer"),
                 "affected_slots": affected,
                 "slot_was_disclosed": {str(slot): str(slot) in disclosed for slot in affected},
-                "affected_nodes": list(item.get("affected_nodes") or []),
+                "affected_nodes": affected_nodes,
                 "decision_supplied": bool(item.get("decision_supplied", False)),
                 "raw": dict(item),
             })
@@ -709,6 +725,28 @@ def _slots_from_text(text: str) -> list[str]:
     if any(word in lowered for word in ("服务", "目标", "cart", "target")):
         rows.append("target")
     return rows
+
+
+def _normalize_slot(value: Any) -> str:
+    return {
+        "intensity": "fault_params",
+        "fault_parameter": "fault_params",
+        "fault_parameters": "fault_params",
+        "duration": "duration_seconds",
+        "target_identity": "target",
+    }.get(str(value), str(value))
+
+
+def _normalize_interaction_type(value: Any) -> str:
+    raw = str(value or "FACT_EVENT")
+    return {
+        "FACT_EVENT": "FACT_ANSWER",
+        "harness_fact_answered": "FACT_ANSWER",
+        "AGENT_CLARIFICATION_REQUEST": "USER_DECISION",
+        "USER_DECISION": "USER_DECISION",
+        "AUTH_CONFIRM": "AUTH_CONFIRM",
+        "SEMANTIC_NUDGE": "SEMANTIC_NUDGE",
+    }.get(raw, raw)
 
 
 def _usage_group(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
