@@ -138,6 +138,13 @@ def _usage_payload(response_obj: Any) -> tuple[dict[str, Any] | None, str, str |
     total_tokens = usage.get("total_tokens")
     if input_tokens is None and output_tokens is None and total_tokens is None:
         return None, "unavailable", "upstream_usage_missing"
+    # LiteLLM 1.92 normalizes a non-stream response with no upstream usage to
+    # an all-zero usage object.  Zero is not a measured token count here.
+    numeric = (input_tokens, output_tokens, total_tokens)
+    if all(value == 0 for value in numeric if isinstance(value, (int, float))) and any(
+        value is not None for value in numeric
+    ):
+        return usage, "unavailable", "upstream_usage_missing"
     return usage, "measured", None
 
 

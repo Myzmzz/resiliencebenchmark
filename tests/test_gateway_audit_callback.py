@@ -381,3 +381,25 @@ def test_gateway_post_callback_marks_missing_usage_unavailable(
     assert row["availability"] == "unavailable"
     assert row["unavailable_reason"] == "upstream_usage_missing"
     assert row["total_tokens"] is None
+
+
+def test_gateway_post_callback_does_not_treat_litellm_zero_fill_as_measured(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    module = _load_module(monkeypatch)
+    audit_dir = tmp_path / "audit"
+    monkeypatch.setenv("RESBENCH_GATEWAY_AUDIT_DIR", str(audit_dir))
+    data = _data(trial_id="trial-zero-usage", request_id="req-zero")
+    now = datetime.now(UTC)
+    asyncio.run(
+        module.logger_instance.async_log_success_event(
+            {"litellm_params": {"proxy_server_request": data["proxy_server_request"]}, "stream": False},
+            {"usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}},
+            now,
+            now,
+        )
+    )
+    row = _read_rows(audit_dir / "trial-zero-usage.usage.jsonl")[0]
+    assert row["availability"] == "unavailable"
+    assert row["unavailable_reason"] == "upstream_usage_missing"
