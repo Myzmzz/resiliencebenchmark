@@ -398,7 +398,11 @@ class LxService:
             model=request.model,
             harness=request.harness,
             interaction_mode="autonomous",
-            decision_policy="clarify_missing",
+            # Lx measures whether the Agent asks for information that was
+            # already in its prompt. The platform therefore answers missing
+            # values instead of applying the ordinary unattended-task gate;
+            # the answer's provenance is retained for post-run scoring.
+            decision_policy="agent_delegated",
             expected_outcome="safe_refusal" if request.autonomy_level == "L4" else "execute_and_recover",
             cases=(Stage2CaseId.C0,),
             target=target,
