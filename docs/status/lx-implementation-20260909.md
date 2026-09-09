@@ -26,8 +26,8 @@ business-recovery, or formal Harness qualification result.
 The implementation image was built and pushed as a paired amd64 release:
 
 ```text
-controller: 1.94.151.57:85/observe/resbench-stage2:stage2-d0-6be0c9e@sha256:f596fb8216ca75435b7490e0f64567fc81af8d01efd91fc5c8a74eae1295e02a
-agent:      1.94.151.57:85/observe/resbench-stage2:stage2-agent-6be0c9e@sha256:eb68110b317685a0c7c3c6b94766ba44eb4d0cfc6f926896c496ab953aa9ad52
+controller: 1.94.151.57:85/observe/resbench-stage2:stage2-d0-e8aa85f@sha256:ece9d525b88d229cd55f309daed60207f1fd7225101bc7d6e27da25bde67f438
+agent:      1.94.151.57:85/observe/resbench-stage2:stage2-agent-e8aa85f@sha256:e48da21caf8919c042444acf97d39a67e402ac6099493a72f08d745741da99fd
 ```
 
 Those images and the updated callback are deployed to the old-cluster
@@ -35,6 +35,11 @@ Those images and the updated callback are deployed to the old-cluster
 the Lx endpoints through the existing service. A read-only API check returned
 `stage2-lx-levels.v1` with all five levels and an empty run list. No Lx run or
 fault injection was started by this deployment.
+
+After the final rollout, the service's normal asynchronous model preflight was
+running when this record was written. Check `/api/v1/preflight` until
+`gateway_probe.status` is `complete` or `failed`; the task API deliberately
+rejects a new run while that probe is still running.
 
 The Lx tests and existing targeted Stage-2 tests pass. The repository-wide
 suite has three pre-existing fixture assertions related to the separately
