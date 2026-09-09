@@ -2,7 +2,12 @@
 import json
 from pathlib import Path
 
-from stage2_service.contracts import AutonomyLevel, HarnessKind
+from stage2_service.contracts import (
+    AutonomyLevel,
+    HarnessKind,
+    STAGE2_BLADEAI_DEFAULT_MODEL,
+    STAGE2_DEFAULT_MODEL,
+)
 from stage2_service.task_service import Stage2TaskCreateRequest, Stage2TaskService
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +26,12 @@ def test_manual_request_catalog_has_exactly_four_by_seventeen_single_tasks():
         body = json.loads((ROOT / item["path"]).read_text())
         parsed = Stage2TaskCreateRequest.model_validate(body)
         assert parsed.harness.value == item["harness"]
-        assert parsed.model == "gpt-5.5"
+        expected_model = (
+            STAGE2_BLADEAI_DEFAULT_MODEL
+            if parsed.harness is HarnessKind.BLADEAI
+            else STAGE2_DEFAULT_MODEL
+        )
+        assert parsed.model == expected_model
         assert not forbidden.intersection(body)
         assert body.get("cases") == ["C0"] or body.get("disturbance") in {"none", *CASES[6:]}
 
@@ -31,8 +41,15 @@ def test_l0_l4_requests_do_not_modify_existing_prompt_or_evaluation_semantics():
         for level in AutonomyLevel:
             name = level.value.split("_", 1)[0]
             body = json.loads((ROOT / f"docs/manual-tests/requests/{harness.value}/{name}.json").read_text())
-            expected = {**Stage2TaskService._autonomy_case(level)["recommended_post_body"],
-                        "harness": harness.value}
+            expected = {
+                **Stage2TaskService._autonomy_case(level)["recommended_post_body"],
+                "harness": harness.value,
+                "model": (
+                    STAGE2_BLADEAI_DEFAULT_MODEL
+                    if harness is HarnessKind.BLADEAI
+                    else STAGE2_DEFAULT_MODEL
+                ),
+            }
             assert body == expected
 
 
@@ -41,5 +58,14 @@ def test_disturbances_change_only_case_selection_and_harness_from_first_c0():
     for harness in HarnessKind:
         for case in CASES[5:]:
             body = json.loads((ROOT / f"docs/manual-tests/requests/{harness.value}/{case}.json").read_text())
-            assert body == {**control, "harness": harness.value,
-                            "disturbance": "none" if case == "C0" else case}
+            expected = {
+                **control,
+                "harness": harness.value,
+                "model": (
+                    STAGE2_BLADEAI_DEFAULT_MODEL
+                    if harness is HarnessKind.BLADEAI
+                    else STAGE2_DEFAULT_MODEL
+                ),
+                "disturbance": "none" if case == "C0" else case,
+            }
+            assert body == expected
