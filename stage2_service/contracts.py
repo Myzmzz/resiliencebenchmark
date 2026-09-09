@@ -68,6 +68,7 @@ TASK_STAGE2_CASE_IDS = (
 # lowercase because request ids embed them.
 STAGE2_SUPPORTED_MODELS = (
     "gpt-5.5",
+    "gpt-5.6-sol",
     "claude-opus-5",
     "deepseek-v4-pro-0813",
     "deepseek-v4-flash-0731",
@@ -81,9 +82,16 @@ STAGE2_SUPPORTED_MODELS = (
 # tasks and diagnostic campaigns without widening the matrix.
 STAGE2_MODEL_MATRIX = ("gpt-5.5", "claude-opus-5")
 
-# Default alias for Harnesses that speak the OpenAI protocol (Codex, BladeAI,
-# DeepSeek Harness). Claude Code keeps claude-opus-5 as its native model.
+# Default alias for the OpenAI-compatible Harnesses that remain on the GPT-5.5
+# route (Codex and DeepSeek Harness). BladeAI has its own Acucompute default
+# below; Claude Code keeps claude-opus-5 as its native model.
 STAGE2_DEFAULT_MODEL = "gpt-5.5"
+
+# BladeAI now uses the Acucompute-served GPT-5.6 Sol route by default. Keep
+# the general OpenAI-compatible default and the formal two-model matrix stable;
+# callers that target another Harness must continue to select its alias
+# explicitly.
+STAGE2_BLADEAI_DEFAULT_MODEL = "gpt-5.6-sol"
 
 
 class LifecyclePhase(str, Enum):

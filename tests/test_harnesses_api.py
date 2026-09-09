@@ -101,6 +101,7 @@ def test_harnesses_api_model_choices_match_stage2_gateway(client):
     """The management API must not advertise stale or unrouted model choices."""
     from stage2_service.contracts import (
         HarnessKind,
+        STAGE2_BLADEAI_DEFAULT_MODEL,
         STAGE2_DEFAULT_MODEL,
         STAGE2_SUPPORTED_MODELS,
     )
@@ -116,9 +117,8 @@ def test_harnesses_api_model_choices_match_stage2_gateway(client):
         assert set(models["candidate_aliases_requiring_probe"]) == set(
             STAGE2_SUPPORTED_MODELS
         )
-        expected_default = (
-            "claude-opus-5"
-            if harness["id"] == HarnessKind.CLAUDE_CODE.value
-            else STAGE2_DEFAULT_MODEL
-        )
+        expected_default = {
+            HarnessKind.BLADEAI.value: STAGE2_BLADEAI_DEFAULT_MODEL,
+            HarnessKind.CLAUDE_CODE.value: "claude-opus-5",
+        }.get(harness["id"], STAGE2_DEFAULT_MODEL)
         assert models["default_alias"] == expected_default

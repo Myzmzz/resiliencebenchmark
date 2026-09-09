@@ -65,9 +65,10 @@ harnesses:
       chaos_control: disabled_in_bladeai_external_controller_only
     models:
       source: models.yaml
-      default_alias: gpt-5.5
+      default_alias: gpt-5.6-sol
       candidate_aliases_requiring_probe:
         - gpt-5.5
+        - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
         - deepseek-v4-flash-0731
@@ -113,6 +114,7 @@ harnesses:
       default_alias: claude-opus-5
       candidate_aliases_requiring_probe:
         - gpt-5.5
+        - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
         - deepseek-v4-flash-0731
@@ -152,6 +154,7 @@ harnesses:
       default_alias: gpt-5.5
       candidate_aliases_requiring_probe:
         - gpt-5.5
+        - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
         - deepseek-v4-flash-0731
@@ -199,6 +202,7 @@ harnesses:
       default_alias: gpt-5.5
       candidate_aliases_requiring_probe:
         - gpt-5.5
+        - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
         - deepseek-v4-flash-0731

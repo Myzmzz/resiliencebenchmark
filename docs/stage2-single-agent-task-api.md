@@ -37,7 +37,7 @@
 
 接口中的智能体选择字段沿用现有名称 `harness`：`codex`、`claude-code`、`deepseek-harness` 或 `bladeai`。可选模型及每个 Harness/模型组合当前是否可运行，以 `/api/v1/stage2/options` 返回的 `model_matrix` 为准，不能只凭模型名称判断。
 
-`model` 取值为网关别名，当前支持 `gpt-5.5`（Harness 默认）、`claude-opus-5`、`deepseek-v4-pro-0813`、`deepseek-v4-flash-0731`、`qwen3.8-max`、`qwen3.8-flash`（定义在 `stage2_service.contracts.STAGE2_SUPPORTED_MODELS`，路由见 `deploy/stage2/litellm/config.yaml`）；传入其他别名会得到 422。正式矩阵的模型轴仍是 `STAGE2_MODEL_MATRIX`（`gpt-5.5` 与 `claude-opus-5`），其余别名用于单智能体任务与诊断性 campaign。
+`model` 取值为网关别名，当前支持 `gpt-5.5`、`gpt-5.6-sol`（BladeAI 默认）、`claude-opus-5`、`deepseek-v4-pro-0813`、`deepseek-v4-flash-0731`、`qwen3.8-max`、`qwen3.8-flash`（定义在 `stage2_service.contracts.STAGE2_SUPPORTED_MODELS`，路由见 `deploy/stage2/litellm/config.yaml`）；传入其他别名会得到 422。正式矩阵的模型轴仍是 `STAGE2_MODEL_MATRIX`（`gpt-5.5` 与 `claude-opus-5`），其余别名用于单智能体任务与诊断性 campaign。
 
 命令能力以部署中的实时资格探针为准，而不是 Harness 名称或静态配置。`GET /api/v1/stage2/options`
 对每个 Harness 同时返回 `supported`（已声明并经描述符表达的能力）和 `runnable`（该描述符的实时资格检查已通过），以及

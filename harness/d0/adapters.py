@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping, Protocol
 
 from stage2_service.contracts import (
     DecisionPolicy, ExpectedOutcome, HarnessKind, InteractionMode,
-    PromptMode, Stage2CaseId, default_case_specs,
+    PromptMode, STAGE2_BLADEAI_DEFAULT_MODEL, Stage2CaseId, default_case_specs,
 )
 from stage2_service.episode import load_fixed_episode
 from stage2_service.gateway_evidence import read_gateway_artifact
@@ -286,7 +286,7 @@ def _string_tuple(value: Any) -> tuple[str, ...]:
 
 def adapter_models(env: Mapping[str, str]) -> dict[str, str]:
     return {
-        "bladeai": env.get("RESBENCH_D0_BLADEAI_MODEL", "gpt-5.5"),
+        "bladeai": env.get("RESBENCH_D0_BLADEAI_MODEL", STAGE2_BLADEAI_DEFAULT_MODEL),
         "codex": env.get("RESBENCH_D0_CODEX_MODEL", "gpt-5.5"),
         "claude-code": env.get("RESBENCH_D0_CLAUDE_MODEL", "claude-opus-5"),
         "deepseek-harness": env.get("RESBENCH_D0_DSH_MODEL", "gpt-5.5"),

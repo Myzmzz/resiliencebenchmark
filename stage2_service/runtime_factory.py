@@ -31,6 +31,7 @@ from .capability_loss.factory import CapabilityLossRuntimeFactory
 from .condition_monitor import ConditionRecoveryMonitor
 from .condition_policy import evaluate_condition
 from .contracts import (
+    STAGE2_BLADEAI_DEFAULT_MODEL,
     STAGE2_DEFAULT_MODEL,
     STAGE2_SUPPORTED_MODELS,
     CampaignRequest,
@@ -312,7 +313,7 @@ def _build_runtime(
         ),
         "STAGE2_BLADEAI_MODEL": model_by_harness.get(
             HarnessKind.BLADEAI,
-            STAGE2_DEFAULT_MODEL,
+            STAGE2_BLADEAI_DEFAULT_MODEL,
         ),
     }
     runtime_client = KubernetesDisturbanceClient.from_kubeconfig(

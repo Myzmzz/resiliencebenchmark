@@ -20,6 +20,7 @@ from stage2_service.contracts import (
     HarnessKind,
     HarnessReport,
     RecoveryResult,
+    STAGE2_BLADEAI_DEFAULT_MODEL,
 )
 from stage2_service.gateway_config import GatewayConfigSnapshot
 from stage2_service.platform_ledger import PlatformLedger
@@ -37,7 +38,7 @@ def test_wp8_prompt_does_not_request_large_builtin_skill_activation():
     assert "connected MCP tools directly" in prompt
 
 
-def test_bladeai_wp8_cli_defaults_model_to_stage2_default():
+def test_bladeai_wp8_cli_defaults_model_to_bladeai_default():
     args = qualify_bladeai_task.parse_args([
         "--execute",
         "--canary-pod",
@@ -46,7 +47,7 @@ def test_bladeai_wp8_cli_defaults_model_to_stage2_default():
         "out",
     ])
 
-    assert args.model == "gpt-5.5"
+    assert args.model == STAGE2_BLADEAI_DEFAULT_MODEL
 
 
 def _pod(*, labels=None, ready: bool = True) -> dict:

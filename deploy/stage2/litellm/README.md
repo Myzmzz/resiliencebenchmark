@@ -33,13 +33,13 @@ The real credentials live outside git, for example
 
 | Public alias | Upstream | Upstream model id | Used by |
 | --- | --- | --- | --- |
-| `gpt-5.5` | aigcbest new-api relay (`https://api2.aigcbest.top/v1`) | `gpt-5.5` | Harness default (Codex, BladeAI, DeepSeek Harness) |
+| `gpt-5.5` | aigcbest new-api relay (`https://api2.aigcbest.top/v1`) | `gpt-5.5` | Harness default (Codex, DeepSeek Harness) |
 | `claude-opus-5` | Acucompute console, Anthropic protocol | `claude-opus-5` | Claude Code native model |
 | `deepseek-v4-pro-0813` | DeepSeek official (`https://api.deepseek.com/v1`) | `deepseek-v4-pro` | supported model |
 | `deepseek-v4-flash-0731` | DeepSeek official | `deepseek-v4-flash` | supported model |
 | `qwen3.8-max` | DashScope compatible mode | `qwen3.8-max` | supported model |
 | `qwen3.8-flash` | DashScope compatible mode | `qwen3.8-flash` | supported model |
-| `gpt-5.6-sol` | Acucompute console | `gpt-5.6-sol` | legacy alias for earlier qualification refs |
+| `gpt-5.6-sol` | Acucompute console | `gpt-5.6-sol` | BladeAI default / diagnostic route |
 | `gpt-5.5-nexustokenai` | nexustokenai relay (`https://api.nexustokenai.com/v1`) | `gpt-5.5` | explicit alternate route, never an automatic fallback |
 
 Why aigcbest carries the default: in a side-by-side sample on 2026-09-05 the

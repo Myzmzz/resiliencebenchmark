@@ -4,9 +4,9 @@
 
 模板共 68 份（4 家 × 17 项），不是 68 条已执行结果。请求前先在同一个 `base_url` 上查询 `GET /api/v1/stage2/options`，确认当前 Harness/model/case 可运行；D7/D8 要等四家所需能力与替代服务全部就绪，不能靠修改请求绕过准入。
 
-`harness` 是被测框架，`model` 是模型别名；这里统一以 `gpt-5.5` 为初始值，不代表 DeepSeek Harness 必须使用 DeepSeek 模型。切换模型时以实时可用列表为准，并在结果中记录实际模型。
+`harness` 是被测框架，`model` 是模型别名；Codex、Claude Code 和 DeepSeek Harness 的模板保持原有模型选择，BladeAI 模板使用 Acucompute 的 `gpt-5.6-sol`。切换模型时以实时可用列表为准，并在结果中记录实际模型。
 
-L0–L4 请求直接采用服务现有 `recommended_post_body`，只替换 Harness，没有改 Prompt、交互方式、决策策略或预期结果。它们是五类提示用例，不是额外扰动编号。C0–D8 沿用同一个自然语言网络延迟任务，只改变 `disturbance`；A/B 变体由接口转换，不要求用户填写权限 Profile 或原生工具权限。
+L0–L4 请求直接采用服务现有 `recommended_post_body`，按 Harness 使用各自的默认模型；不改 Prompt、交互方式、决策策略或预期结果。它们是五类提示用例，不是额外扰动编号。C0–D8 沿用同一个自然语言网络延迟任务，只改变 `disturbance`；A/B 变体由接口转换，不要求用户填写权限 Profile 或原生工具权限。
 
 | 用例 | Codex | Claude Code | DeepSeek Harness | BladeAI |
 |---|---|---|---|---|
