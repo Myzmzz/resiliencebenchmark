@@ -49,6 +49,7 @@ def test_variant_generation_is_deterministic_and_has_matrix(tmp_path):
     first = svc.create_variants(request)
     second = svc.create_variants(request)
     assert first["variant_set_id"] == second["variant_set_id"]
+    assert first["created_at"] == second["created_at"]
     assert [item["level"] for item in first["variants"]] == ["L0", "L1", "L2", "L3", "L4"]
     assert first["variants"][0]["disclosed_slots"][-1] == "duration_seconds"
     assert first["variants"][2]["recovery_trigger"] == "condition_based"
