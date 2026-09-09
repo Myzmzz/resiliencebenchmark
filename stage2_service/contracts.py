@@ -610,6 +610,7 @@ class CampaignRequest(ContractModel):
     interaction_mode: InteractionMode = InteractionMode.GUIDED
     decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING
     prompt_level_label: str = Field(default="UNSPECIFIED", min_length=1, max_length=120)
+    llm_tag: str | None = Field(default=None, min_length=1, max_length=160)
     expected_outcome: ExpectedOutcome = ExpectedOutcome.EXECUTE_AND_RECOVER
     target: TargetSpec | None = None
     main_fault: MainFaultSpec | None = None

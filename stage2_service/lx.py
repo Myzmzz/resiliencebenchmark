@@ -300,6 +300,12 @@ class LxService:
 
     def create_variants(self, request: PromptVariantRequest) -> dict[str, Any]:
         variant_id = _variant_set_id(request.application, request.slots)
+        existing = self.store.read(variant_id)
+        if existing is not None:
+            # The content-addressed id makes a variant set immutable. A repeat
+            # request returns the original timestamp and lint result instead
+            # of silently replacing an artifact with a different rendering.
+            return existing
         variants = []
         for level, matrix in LEVEL_MATRIX.items():
             prompt = _prompt_for(level, request.application, request.slots)
@@ -480,10 +486,12 @@ class LxService:
             "C1_PLAN": "C1_PLAN", "C2_TARGET": "C2_TARGET", "FAULT_RUNNING": "C3_INJECT",
             "C4_EFFECT": "C4_EFFECT", "AWAITING_AGENT_RECOVERY": "C4_EFFECT",
             "C5_SAFETY": "C5_SAFETY", "RECOVERING": "C6_RECOVERY", "C6_RECOVERY": "C6_RECOVERY",
+            "QUEUED": "C1_PLAN", "PREFLIGHT": "C1_PLAN", "AGENT_RUNNING": "C1_PLAN",
+            "HARNESS_RESPONDING": "C1_PLAN", "FINALIZING": "C6_RECOVERY",
         }
         active = mapping.get(current)
         order = ("C1_PLAN", "C2_TARGET", "C3_INJECT", "C4_EFFECT", "C5_SAFETY", "C6_RECOVERY")
-        index = order.index(active) if active in order else (-1 if not task.get("terminal") else len(order))
+        index = len(order) if str(state) in {"COMPLETED", "DONE"} else order.index(active) if active in order else (-1 if not task.get("terminal") else len(order))
         return [{"phase": phase, "state": "done" if index > n else "running" if index == n else "pending"} for n, phase in enumerate(order)]
 
     @staticmethod
@@ -602,6 +610,7 @@ class LxService:
                         "call_id": item.get("request_id"),
                         "request_id": item.get("upstream_request_id") or item.get("request_id"),
                         "model_alias": item.get("model"),
+                        "llm_tag": item.get("model"),
                         "started_at": item.get("started_at"),
                         "ended_at": item.get("ended_at"),
                         "duration_ms": item.get("duration_ms"),
@@ -610,13 +619,17 @@ class LxService:
         summary = _usage_summary(rows)
         expected = set(_find_first(task, "gateway_request_ids") or [])
         observed = {str(row.get("request_id")) for row in rows if row.get("source") == "agent" and row.get("request_id")}
-        if expected != observed:
+        harness_count = _find_first(task, "model_request_count")
+        count_mismatch = isinstance(harness_count, int) and harness_count != len(expected)
+        if expected != observed or count_mismatch:
             summary["complete"] = False
             summary["coverage"] = {
                 "expected_agent_calls": len(expected),
                 "observed_agent_calls": len(observed),
                 "missing_request_ids": sorted(expected - observed),
                 "unexpected_request_ids": sorted(observed - expected),
+                "harness_model_request_count": harness_count,
+                "harness_relay_count_mismatch": count_mismatch,
             }
         return {
             "run_id": run_id,
@@ -757,7 +770,7 @@ def _usage_group(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
     groups: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         groups.setdefault(str(row.get(key) or "unknown"), []).append(row)
-    return [{"key": name, **_usage_summary(items)} for name, items in sorted(groups.items())]
+    return [{key: name, "key": name, **_usage_summary(items)} for name, items in sorted(groups.items())]
 
 
 def _usage_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -769,6 +782,7 @@ def _usage_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     costs = [row.get("cost_usd") for row in rows if isinstance(row.get("cost_usd"), (int, float)) and row.get("availability") != "unavailable"]
     return {
         "total_calls": len(rows),
+        "calls": len(rows),
         "total_duration_ms": total("duration_ms"),
         "input_tokens": total("input_tokens"),
         "output_tokens": total("output_tokens"),
@@ -781,4 +795,5 @@ def _usage_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "measured_calls": measured,
         "estimated_calls": estimated,
         "unavailable_calls": unavailable,
+        "cost_unavailable_calls": sum(row.get("cost_availability") == "unavailable" for row in rows),
     }

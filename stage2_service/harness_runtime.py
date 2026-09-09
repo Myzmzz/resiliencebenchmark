@@ -276,6 +276,7 @@ class NativeHarnessRunner:
         self, *, campaign_id: str, trial_id: str, harness: HarnessKind,
         model_alias: str, episode, runtime_context, capability: CapabilityProfile,
         case: CaseSpec, base_prompt: str | None, event_observer,
+        llm_tag: str | None = None,
         prompt_mode: PromptMode = PromptMode.COMPILED,
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
         decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING,
@@ -290,6 +291,7 @@ class NativeHarnessRunner:
                 harness=harness, model_alias=model_alias, episode=episode,
                 runtime_context=runtime_context, capability=capability, case=case,
                 base_prompt=base_prompt, event_observer=event_observer,
+                llm_tag=llm_tag,
                 prompt_mode=prompt_mode, interaction_mode=interaction_mode,
                 decision_policy=decision_policy, expected_outcome=expected_outcome,
                 prompt_level_label=prompt_level_label, cancel_requested=cancel_requested,
@@ -309,6 +311,7 @@ class NativeHarnessRunner:
         case: CaseSpec,
         base_prompt: str | None,
         event_observer,
+        llm_tag: str | None = None,
         prompt_mode: PromptMode = PromptMode.COMPILED,
         interaction_mode: InteractionMode = InteractionMode.GUIDED,
         decision_policy: DecisionPolicy = DecisionPolicy.CLARIFY_MISSING,
@@ -491,6 +494,7 @@ class NativeHarnessRunner:
                 upstream_base_url=self.base_environment["RESBENCH_LLM_BASE_URL"],
                 upstream_api_key=self.base_environment["RESBENCH_LLM_API_KEY"],
                 harness_name=harness.value, gateway_config_sha256=gateway_hash,
+                llm_tag=llm_tag or model_alias,
             )
             relay_config.phase_ref.update(phase_ref)
             relay = resources.enter_context(TrialRelay(relay_config))
@@ -658,6 +662,7 @@ class NativeHarnessRunner:
             "prompt": base_prompt, "executed_prompt": redact_text(prompt, env),
             "prompt_level_label": prompt_level_label, "decision_policy": decision_policy.value,
             "model": model_alias, "model_alias": model_alias, "harness": harness.value, "trial_id": trial_id,
+            "llm_tag": llm_tag or model_alias,
             "gateway_route": gateway_route, "gateway_config_sha256": gateway_hash,
         }, env))
         interaction_mode_value = interaction_mode.value
@@ -1402,6 +1407,7 @@ class NativeHarnessRunner:
             "decision_policy": decision_policy.value,
             "original_prompt": base_prompt,
             "model_alias": model_alias,
+            "llm_tag": llm_tag or model_alias,
             "gateway_route": gateway_route,
             "gateway_config_sha256": gateway_hash,
             "gateway_evidence_verified": gateway_rows is not None,

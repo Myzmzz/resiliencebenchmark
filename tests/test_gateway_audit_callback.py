@@ -340,6 +340,7 @@ def test_gateway_post_callback_records_usage_without_changing_ingress_receipts(
             "request_id": "req-usage",
             "harness": "codex",
             "model_alias": "gpt-5.5",
+            "llm_tag": "gpt-5.5",
             "source": "agent",
             "phase": "unknown",
             "input_tokens": 11,

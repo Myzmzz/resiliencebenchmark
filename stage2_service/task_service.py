@@ -176,6 +176,7 @@ class Stage2TaskCreateRequest(ContractModel):
     prompt_level_label_source: Literal[
         "submitted", "server_derived", "server_corrected"
     ] = "server_derived"
+    llm_tag: str | None = Field(default=None, min_length=1, max_length=160)
     prompt_mode: PromptMode = Field(
         default=PromptMode.VERBATIM,
         description="verbatim sends the user prompt unchanged; compiled adds the managed benchmark envelope",
@@ -659,6 +660,7 @@ class Stage2TaskService:
             interaction_mode=request.interaction_mode,
             decision_policy=request.decision_policy,
             prompt_level_label=request.prompt_level_label,
+            llm_tag=request.llm_tag,
             expected_outcome=request.expected_outcome,
             target=request.target,
             main_fault=request.main_fault,
@@ -728,6 +730,7 @@ class Stage2TaskService:
             "task_status": state["task_status"],
             "application": request["application"],
             "model": request["model"],
+            "llm_tag": request.get("llm_tag"),
             "harness": request["harness"],
             "prompt_mode": request.get("prompt_mode", PromptMode.COMPILED.value),
             "interaction_mode": request.get("interaction_mode", InteractionMode.GUIDED.value),
@@ -1336,6 +1339,7 @@ class Stage2TaskService:
             "runtime_attached": state.get("runtime_attached"),
             "application": request.get("application"),
             "model": request.get("model"),
+            "llm_tag": request.get("llm_tag"),
             "harness": request.get("harness"),
             "prompt_mode": request.get("prompt_mode", PromptMode.COMPILED.value),
             "interaction_mode": request.get("interaction_mode", InteractionMode.GUIDED.value),

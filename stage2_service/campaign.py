@@ -741,6 +741,7 @@ class CampaignEngine:
                             trial_id=trial_id,
                             harness=harness,
                             model_alias=request.model_by_harness[harness],
+                            llm_tag=request.llm_tag,
                             episode=self.episode,
                             runtime_context=runtime,
                             capability=capability,
@@ -763,6 +764,8 @@ class CampaignEngine:
                             runner_kwargs["decision_policy"] = request.decision_policy
                         if "prompt_level_label" in runner_parameters:
                             runner_kwargs["prompt_level_label"] = request.prompt_level_label
+                        if "llm_tag" in runner_parameters:
+                            runner_kwargs["llm_tag"] = request.llm_tag
                         if "expected_outcome" in runner_parameters:
                             runner_kwargs["expected_outcome"] = request.expected_outcome
                         report = self.harness_runner.run(**runner_kwargs)
