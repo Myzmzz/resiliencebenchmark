@@ -36,10 +36,11 @@ the Lx endpoints through the existing service. A read-only API check returned
 `stage2-lx-levels.v1` with all five levels and an empty run list. No Lx run or
 fault injection was started by this deployment.
 
-After the final rollout, the service's normal asynchronous model preflight was
-running when this record was written. Check `/api/v1/preflight` until
-`gateway_probe.status` is `complete` or `failed`; the task API deliberately
-rejects a new run while that probe is still running.
+After the final rollout, the normal asynchronous model preflight completed at
+`2026-09-09T23:02:27Z` with `gateway_probe.status=complete` and all eight
+configured gateway aliases available. The Stage-2 options endpoint reports all
+four Harnesses runnable for the listed aliases. This confirms model/gateway
+readiness only; it does not claim that an Lx fault Trial has been executed.
 
 The Lx tests and existing targeted Stage-2 tests pass. The repository-wide
 suite has three pre-existing fixture assertions related to the separately
