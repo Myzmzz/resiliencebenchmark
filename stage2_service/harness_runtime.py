@@ -338,6 +338,41 @@ def _bladeai_terminal_failure_details(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _queue_unsupported_feedback_in_band(
+    platform_ledger: PlatformLedger,
+    trial_id: str,
+    payload: Mapping[str, Any],
+    occurred_at: datetime,
+) -> str | None:
+    """Queue a platform answer the Harness cannot receive by resume as an in-band notice.
+
+    BladeAI cannot be resumed, so answers the platform sent that way were
+    dropped (two in L3xC0 on 2026-09-10: an approval and a plan correction).
+    Queued in band, the answer rides on the Agent's next platform tool result
+    while it is still working. Returns the notice id, or None if not queued.
+    """
+    category = str(payload.get("category") or "")
+    message = str(payload.get("message") or "")
+    if not category or not message:
+        return None
+    import hashlib
+
+    digest = hashlib.sha256(f"{category}\n{message}".encode("utf-8")).hexdigest()[:16]
+    notice = platform_ledger.enqueue_notice(
+        trial_id=trial_id,
+        notice_type=f"platform_feedback.{category}",
+        payload={"category": category, "message": message, "payload": dict(payload.get("payload") or {})},
+        idempotency_key=f"feedback-{digest}",
+    )
+    platform_ledger.append(
+        trial_id=trial_id,
+        event_type="NOTICE_QUEUED",
+        occurred_at=occurred_at,
+        payload={"notice_id": notice.notice_id, "notice_type": notice.notice_type, "source": "unsupported_feedback"},
+    )
+    return notice.notice_id
+
+
 def _bladeai_duration_source(result: Any) -> str | None:
     """The duration source BladeAI's Worker reported for its last proposal, if any."""
     raw = bytes(getattr(result, "stdout", b"") or b"")
@@ -1138,6 +1173,8 @@ class NativeHarnessRunner:
             payload = dict(record["payload"])
             platform_ledger.append(trial_id=trial_id, event_type=event,
                                    occurred_at=at, payload=payload)
+            if event == "FEEDBACK_UNSUPPORTED":
+                _queue_unsupported_feedback_in_band(platform_ledger, trial_id, payload, at)
             if event.startswith("FEEDBACK_") and payload.get("category"):
                 status_value = {
                     "FEEDBACK_QUEUED": "queued", "FEEDBACK_DISPATCHED": "dispatched",

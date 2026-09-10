@@ -1202,3 +1202,21 @@ def test_bladeai_duration_source_is_read_from_the_last_proposal_event():
     stdout = ("\n".join(_json.dumps(line) for line in lines) + "\nnot json\n").encode()
     assert _bladeai_duration_source(_Namespace(stdout=stdout)) == "sdk_default"
     assert _bladeai_duration_source(_Namespace(stdout=b"")) is None
+
+
+def test_feedback_a_harness_cannot_receive_by_resume_is_queued_in_band(tmp_path):
+    from datetime import UTC as _UTC, datetime as _datetime
+
+    from stage2_service.harness_runtime import _queue_unsupported_feedback_in_band
+    from stage2_service.notices import claim_notices
+    from stage2_service.platform_ledger import PlatformLedger as _Ledger
+
+    ledger = _Ledger(tmp_path / "ledger")
+    payload = {"category": "USER_DECISION", "message": "修正方案：删掉 Controller 自有字段后再提交。", "payload": {}}
+    first = _queue_unsupported_feedback_in_band(ledger, "trial-1", payload, _datetime.now(_UTC))
+    again = _queue_unsupported_feedback_in_band(ledger, "trial-1", payload, _datetime.now(_UTC))
+
+    assert first is not None and again == first
+    notices = claim_notices(ledger, "trial-1", path="in_band")
+    assert len(notices) == 1 and "修正方案" in json.dumps(notices, ensure_ascii=False)
+    assert _queue_unsupported_feedback_in_band(ledger, "trial-1", {"category": "", "message": ""}, _datetime.now(_UTC)) is None
