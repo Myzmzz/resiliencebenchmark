@@ -1930,11 +1930,7 @@ def _append_strategy_runtime_capability_prompt(
     fault_contracts = {
         fault_type: {
             "intensity_fields": {
-                name: {
-                    "type": "number",
-                    "unit": field_contract.unit,
-                    "bounded": False,
-                }
+                name: field_contract.describe()
                 for name, field_contract in policy.fault_type_contracts[
                     fault_type
                 ].intensity_fields.items()

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from stage2_service.api import CampaignSupervisor, create_app
 from stage2_service.lx import LxRunRequest, LxService, LxSlots, PromptVariantRequest
@@ -174,7 +175,7 @@ class RealisticTaskService:
         return {"task_id": task_id, "stop_requested": True}
 
 
-def _run(svc, level="L0"):
+def _run(svc, level="L0", case=None):
     request = PromptVariantRequest(
         application="otel-demo",
         slots=LxSlots(
@@ -186,6 +187,7 @@ def _run(svc, level="L0"):
     )
     variants = svc.create_variants(request)
     prompt = next(item["prompt"] for item in variants["variants"] if item["level"] == level)
+    extra = {"case": case} if case is not None else {}
     return LxRunRequest(
         autonomy_level=level,
         prompt=prompt,
@@ -195,6 +197,7 @@ def _run(svc, level="L0"):
         llm_tag="regression",
         duration_seconds=300,
         variant_set_id=variants["variant_set_id"],
+        **extra,
     )
 
 
@@ -595,3 +598,47 @@ def test_stored_variant_set_refreshes_matrix_derived_fields(tmp_path):
     assert reread["variant_set_id"] == stored["variant_set_id"]
     assert reread["created_at"] == stored["created_at"]
     assert l4["prompt"] == stale["prompt"]
+
+
+def test_lx_level_and_case_are_independent_axes(tmp_path):
+    """An Lx run was pinned to C0, so a level could not be paired with a case."""
+    from stage2_service.contracts import Stage2CaseId
+
+    fake = RealisticTaskService(result={"platform_status": "SUCCEEDED", "trial_count": 1})
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    assert _run(svc, level="L1").case == Stage2CaseId.C0.value  # unchanged default
+    for case in ("D1", "D3", "P1"):
+        assert _run(svc, level="L1", case=case).case == case
+
+
+def test_l4_pairs_only_with_refusal_shaped_cases(tmp_path):
+    """L4 is scored by the refusal table, which penalises acting."""
+    import pytest
+
+    fake = RealisticTaskService(result={"platform_status": "SUCCEEDED", "trial_count": 1})
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    # P2 is the case built for refusal, so L4 may select it.
+    assert _run(svc, level="L4", case="P2").case == "P2"
+    # Every case whose script tells the agent to act is refused.
+    for case in ("D1", "D3", "P1"):
+        with pytest.raises(ValidationError, match="refusal"):
+            _run(svc, level="L4", case=case)
+
+
+def test_p2_is_rejected_outside_l4(tmp_path):
+    """P2 asks for an infrastructure attack; scoring it as execution is wrong."""
+    import pytest
+
+    fake = RealisticTaskService(result={"platform_status": "SUCCEEDED", "trial_count": 1})
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    with pytest.raises(ValidationError, match="only scored under L4"):
+        _run(svc, level="L1", case="P2")
+
+
+def test_unknown_case_is_rejected(tmp_path):
+    import pytest
+
+    fake = RealisticTaskService(result={"platform_status": "SUCCEEDED", "trial_count": 1})
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    with pytest.raises(ValidationError):
+        _run(svc, level="L1", case="D99")

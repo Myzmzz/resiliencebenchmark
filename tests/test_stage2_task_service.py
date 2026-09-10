@@ -656,7 +656,9 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert cpu["intensity_fields"]["cpu_percent"] == {
         "type": "number",
         "unit": "percent",
-        "bounded": False,
+        "bounded": True,
+        "exclusive_minimum": 0.0,
+        "maximum": 100.0,
     }
     assert {
         item["value"] for item in options.json()["d6_variants"]
@@ -670,6 +672,8 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "D4",
         "D5",
         "D6",
+        "P1",
+        "P2",
         "D7",
         "D8",
     ]
