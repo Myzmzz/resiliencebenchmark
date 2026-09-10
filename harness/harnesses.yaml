@@ -103,7 +103,7 @@ harnesses:
         - --tools
         - ""
         - --allowedTools
-        - mcp__k8s_ro,mcp__telemetry_ro,mcp__source_ro,mcp__chaos_control,mcp__harness_channel
+        - mcp__k8s_ro,mcp__telemetry_ro,mcp__source_ro,mcp__chaos_control,mcp__harness_channel,mcp__coroot_ro,mcp__chaos_mesh_control,mcp__code_sandbox
     environment:
       anthropic_base_url: env:RESBENCH_LLM_BASE_URL
       anthropic_api_key: env:RESBENCH_LLM_API_KEY

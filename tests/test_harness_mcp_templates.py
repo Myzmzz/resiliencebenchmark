@@ -131,9 +131,15 @@ def test_claude_headless_adapter_explicitly_allows_only_mcp_servers():
     harnesses = yaml.safe_load(Path("harness/harnesses.yaml").read_text(encoding="utf-8"))
     args = harnesses["harnesses"]["claude-code"]["entrypoint"]["args"]
 
+    from stage2_service.mcp_supervisor import McpSupervisor
+
     assert args[args.index("--tools") + 1] == ""
     allowed = set(args[args.index("--allowedTools") + 1].split(","))
-    assert allowed == {f"mcp__{name}" for name in EXPECTED_ENDPOINTS}
+    # Every MCP server the supervisor can mount must be allowed, or Claude's own
+    # permission check refuses its tools (2026-09-10: the coroot_ro and
+    # code_sandbox calls were refused and the Coroot check failed). A server
+    # that is not in the Trial's --strict-mcp-config file stays unavailable.
+    assert allowed == {f"mcp__{name}" for name in McpSupervisor.HTTP_PORTS}
 
 
 def test_deepseek_headless_templates_select_model_and_disable_builtin_tools():

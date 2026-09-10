@@ -1347,6 +1347,10 @@ class NativeHarnessRunner:
                     command=argv[0],
                     model_alias=model_alias,
                     paths=paths,
+                    # Resumed turns keep the first turn's MCP tool surface.
+                    allowed_tools=(
+                        argv[argv.index("--allowedTools") + 1] if "--allowedTools" in argv else ""
+                    ),
                 )
                 session_id_provider = lambda: captured_session_id
 

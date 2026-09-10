@@ -1119,7 +1119,15 @@ def build_claude_resume_argv_builder(
     command: str,
     model_alias: str,
     paths: Mapping[str, Path],
+    allowed_tools: str,
 ) -> ResumeArgvBuilder:
+    """Resume a Claude session with the same MCP tool surface as its first turn.
+
+    ``allowed_tools`` is the first turn's ``--allowedTools`` value. Resumed
+    turns used to hard-code four servers, which dropped harness_channel and
+    every server added later (coroot_ro, code_sandbox, chaos_mesh_control).
+    """
+
     def build(session_id: str, turn_index: int) -> Sequence[str]:
         del turn_index
         return [
@@ -1137,7 +1145,7 @@ def build_claude_resume_argv_builder(
             "--tools",
             "",
             "--allowedTools",
-            "mcp__k8s_ro,mcp__telemetry_ro,mcp__source_ro,mcp__chaos_control",
+            allowed_tools,
             "--resume",
             session_id,
         ]
