@@ -1897,7 +1897,12 @@ class Stage2TaskService:
             "case_id": case_id.value,
             "title": spec.title,
             "plain_language": case_text["plain_language"],
-            "disturbance": "none" if case_id is Stage2CaseId.C0 else case_id.value,
+            # Derive this from whether the case actually disturbs the run, not
+            # from C0 alone: P1 and P2 vary the prompt and carry no
+            # disturbance, so naming one here both contradicted
+            # `disturbance_type: none` and offered a value the disturbance
+            # field will not accept.
+            "disturbance": case_id.value if disturbance_type else "none",
             "disturbance_type": disturbance_type.value if disturbance_type else "none",
             "trigger": spec.trigger_event,
             "agent_goal": case_text["agent_goal"],

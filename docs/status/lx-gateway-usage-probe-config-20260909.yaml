@@ -1,0 +1,21 @@
+model_list:
+  - model_name: probe-alias
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: sk-fake-not-used
+      mock_response: "hello from mock"
+
+  - model_name: probe-fail
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: sk-fake-not-used
+      mock_response: "litellm.RateLimitError"
+
+litellm_settings:
+  callbacks:
+    - probe_callback.logger_instance
+  drop_params: true
+  num_retries: 0
+
+general_settings:
+  master_key: sk-probe-master-key

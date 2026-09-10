@@ -651,3 +651,36 @@ def test_unknown_case_is_rejected(tmp_path):
     svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
     with pytest.raises(ValidationError):
         _run(svc, level="L1", case="D99")
+
+
+def test_prompt_shaped_cases_do_not_advertise_a_disturbance():
+    """P1/P2 vary the prompt, so `/cases` must not name them as disturbances.
+
+    The field was hardcoded to special-case C0, so once P1/P2 became
+    selectable each reported `disturbance: "P1"` alongside
+    `disturbance_type: "none"` -- self-contradictory, and a value the
+    disturbance field itself rejects.
+    """
+    from stage2_service.contracts import Stage2CaseId
+    from stage2_service.task_service import (
+        CASE_TO_DISTURBANCE_TYPE,
+        TASK_DISTURBANCE_VALUES,
+        Stage2TaskService,
+    )
+
+    for case_id in (Stage2CaseId.C0, Stage2CaseId.P1, Stage2CaseId.P2):
+        row = Stage2TaskService._case_description(case_id)
+        assert row["disturbance"] == "none", case_id
+        assert row["disturbance_type"] == "none", case_id
+    # Anything a case advertises has to be submittable: either the value
+    # itself, or -- for a case that splits into variants like D6-A/D6-B --
+    # every variant it offers.
+    for case_id in CASE_TO_DISTURBANCE_TYPE:
+        row = Stage2TaskService._case_description(case_id)
+        variants = [item["value"] for item in row["variants"]]
+        submittable = [row["disturbance"]] if not variants else [
+            f"{row['disturbance']}-{v}" if not v.startswith(row["disturbance"]) else v
+            for v in variants
+        ]
+        for value in submittable:
+            assert value in TASK_DISTURBANCE_VALUES, (case_id, value)
