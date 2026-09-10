@@ -4,6 +4,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from stage2_service.contracts import STAGE2_SUPPORTED_MODELS
+
 from stage2_service.api import CampaignSupervisor, create_app
 from stage2_service.lx import LxRunRequest, LxService, LxSlots, PromptVariantRequest
 
@@ -684,3 +686,44 @@ def test_prompt_shaped_cases_do_not_advertise_a_disturbance():
         ]
         for value in submittable:
             assert value in TASK_DISTURBANCE_VALUES, (case_id, value)
+
+
+def test_probe_in_progress_is_a_retryable_503_not_a_validation_error(tmp_path):
+    """A caller told "your request is invalid" stops; one told 503 retries.
+
+    The probe deliberately fails closed once its cached result expires, and a
+    re-probe takes minutes -- longer than the cache outlives a single trial.
+    Reporting that as 422 meant the submission after the first trial in a
+    sequence was rejected as malformed and the sequence died there.
+    """
+    from stage2_service.task_service import TaskTemporarilyUnavailable
+
+    class ProbingTaskService(RealisticTaskService):
+        def create(self, request, *, idempotency_key=None):
+            raise TaskTemporarilyUnavailable(
+                "gateway_probe_in_progress: model readiness is being checked"
+            )
+
+    svc = LxService(
+        task_service=ProbingTaskService(),
+        artifact_root=tmp_path,
+        gateway_audit_root=tmp_path,
+    )
+    app = create_app(CampaignSupervisor.__new__(CampaignSupervisor), lx_service=svc)
+    client = TestClient(app, raise_server_exceptions=False)
+    variants = client.post("/api/v1/stage2/lx/prompt-variants", json={
+        "application": "otel-demo",
+        "slots": {"target": "cart", "fault_type": "cpu_load",
+                  "fault_params": {"cpu_percent": 80}, "duration_seconds": 300},
+    }).json()
+    prompt = next(v["prompt"] for v in variants["variants"] if v["level"] == "L0")
+
+    response = client.post("/api/v1/stage2/lx/runs", json={
+        "autonomy_level": "L0", "prompt": prompt, "application": "otel-demo",
+        "harness": "bladeai", "model": "gpt-5.5", "llm_tag": "probe-test",
+        "duration_seconds": 300, "variant_set_id": variants["variant_set_id"],
+    })
+    assert response.status_code == 503
+    assert "Retry-After" in response.headers
+    assert int(response.headers["Retry-After"]) > 0
+    assert "gateway_probe_in_progress" in response.json()["detail"]

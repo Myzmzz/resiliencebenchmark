@@ -431,6 +431,21 @@ class TaskValidationError(ValueError):
     pass
 
 
+class TaskTemporarilyUnavailable(RuntimeError):
+    """The request is fine; the platform cannot serve it yet.
+
+    Reporting this as a validation error told callers their request was
+    malformed, so they stopped instead of retrying.  The gateway probe is the
+    case that matters: it deliberately fails closed once its result expires,
+    and a re-probe takes minutes, so a caller that gives up on the first
+    rejection cannot run two trials in a row.
+    """
+
+    def __init__(self, message: str, *, retry_after_seconds: int = 30):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -631,9 +646,10 @@ class Stage2TaskService:
         )
         if available is not True:
             if (preflight.get("gateway_probe") or {}).get("status") == "running":
-                raise TaskValidationError(
+                raise TaskTemporarilyUnavailable(
                     "gateway_probe_in_progress: model readiness is being checked; "
-                    "read /api/v1/stage2/options before submitting"
+                    "retry after the probe completes, or poll "
+                    "/api/v1/stage2/options until gateway_probe.status is complete"
                 )
             model_probe = (
                 preflight.get("model_probes", {}).get(request.model)

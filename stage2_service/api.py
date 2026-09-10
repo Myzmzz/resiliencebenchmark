@@ -33,6 +33,7 @@ from .task_service import (
     TaskDetailMode,
     TaskConflict,
     TaskNotFound,
+    TaskTemporarilyUnavailable,
     TaskValidationError,
 )
 from .lx import LxRunRequest, LxService, PromptVariantRequest
@@ -396,6 +397,14 @@ def create_app(
         except KeyError as exc:
             # An unresolvable variant_set_id is a client error, not a crash.
             raise HTTPException(status_code=404, detail="prompt variant set not found") from exc
+        except TaskTemporarilyUnavailable as exc:
+            # Transient platform state, not a bad request: say so with a code
+            # the caller will retry on.
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            ) from exc
         except (TaskValidationError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except TaskConflict as exc:
@@ -482,6 +491,14 @@ def create_app(
                     "message": str(exc),
                     "active_task_id": exc.active_task_id,
                 },
+            ) from exc
+        except TaskTemporarilyUnavailable as exc:
+            # Transient platform state, not a bad request: say so with a code
+            # the caller will retry on.
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+                headers={"Retry-After": str(exc.retry_after_seconds)},
             ) from exc
         except TaskValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

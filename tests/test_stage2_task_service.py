@@ -548,7 +548,10 @@ def test_options_reports_gateway_check_in_progress_without_admitting_task(tmp_pa
     assert codex["reason"] == "gateway_probe_in_progress"
 
     created = client.post("/api/v1/stage2/tasks", json=request().model_dump(mode="json"))
-    assert created.status_code == 422
+    # Still not admitted -- but as transient unavailability, not a malformed
+    # request, so the caller retries instead of giving up on the sequence.
+    assert created.status_code == 503
+    assert int(created.headers["Retry-After"]) > 0
     assert "gateway_probe_in_progress" in created.text
     assert runner.calls == 0
     assert supervisor.list_runs() == []
