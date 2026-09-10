@@ -273,6 +273,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repository", default=DEFAULT_REPOSITORY)
     parser.add_argument("--runtime-base", default=DEFAULT_RUNTIME_BASE)
     parser.add_argument("--builder")
+    parser.add_argument(
+        "--agent-base-context",
+        action="append",
+        default=[],
+        metavar="NAME=SRC",
+        help=(
+            "Override one base image of the agent build, for example "
+            "node:22.21.1-bookworm-slim=oci-layout:///abs/path@sha256:<digest>. "
+            "Use when the builder cannot reach the upstream registry but the same "
+            "upstream digests have been fetched ahead of time; the image content "
+            "is unchanged because only where the base comes from changes."
+        ),
+    )
     parser.add_argument("--bladeai-repo", type=Path, required=True)
     parser.add_argument(
         "--metadata",
@@ -336,6 +349,10 @@ def main(argv: list[str] | None = None) -> int:
         agent_argv = ["docker", "buildx", "build"]
         if args.builder:
             agent_argv.extend(["--builder", args.builder])
+        for override in args.agent_base_context:
+            if "=" not in override:
+                raise RuntimeError(f"--agent-base-context expects NAME=SRC, got {override!r}")
+            agent_argv.extend(["--build-context", override])
         agent_argv.extend([
             "--progress=plain", "--pull=false", "--platform", "linux/amd64",
             "--build-context", f"bladeai-src={bladeai_context}",
