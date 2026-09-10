@@ -202,6 +202,35 @@ def test_direct_cleanup_uses_exact_ledger_and_never_treats_terminal_cr_as_absent
     assert result["executor_id"] == "chaosblade"
 
 
+def test_reap_expired_runs_the_owning_executors_timer_cleanup_now(tmp_path):
+    # The chaos MCP watchdog only runs while an Agent session is connected
+    # (2026-09-10 L0xC0), so the condition monitor reaps expired leases itself.
+    import json
+
+    class Service:
+        def __init__(self, paths):
+            self.paths = paths
+            self.reaped = 0
+
+        def _iter_cleanup_ledger_paths(self):
+            return self.paths
+
+        async def cleanup_expired_leases(self):
+            self.reaped += 1
+            return {"ok": True, "inspected": 1, "cleaned": [handle], "errors": []}
+
+    handle = "cleanup-" + "b" * 36
+    ledger = tmp_path / f"{handle}.json"
+    ledger.write_text(json.dumps({"executor_id": "chaosblade", "cleanup_handle": handle}), encoding="utf-8")
+    blade, mesh = Service([ledger]), Service([])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    result = cleanup.reap_expired(handle)
+
+    assert result == {"ok": True, "inspected": 1, "cleaned": [handle], "errors": [], "executor_id": "chaosblade"}
+    assert (blade.reaped, mesh.reaped) == (1, 0)
+
+
 def test_direct_cleanup_supplies_condition_monitor_and_writes_controller_principal(tmp_path):
     handle = "cleanup-" + "b" * 36
     ledger_dir = tmp_path / "ledger"

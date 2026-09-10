@@ -1227,6 +1227,17 @@ class DirectChaosCleanup:
         """Controller fallback cleanup; never attributed to the Agent MCP."""
         return asyncio.run(self._destroy(cleanup_handle))
 
+    def reap_expired(self, cleanup_handle: str):
+        """Reap expired leases of the handle's executor now (principal TIMER).
+
+        The chaos MCP deadline watchdog runs only while an Agent session is
+        connected, so a fault whose own timer ran out could stay on the cluster
+        (2026-09-10 L0xC0). The condition monitor calls this at the deadline.
+        """
+        executor_id, service = self._service_for_handle(cleanup_handle)
+        result = asyncio.run(service.cleanup_expired_leases())
+        return {**dict(result), "executor_id": executor_id}
+
     async def _inventory_trial(self, runtime) -> dict[str, Any]:
         ledgers: dict[str, list[dict[str, Any]]] = {}
         unavailable: list[str] = []

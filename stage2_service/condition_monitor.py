@@ -305,15 +305,40 @@ class ConditionRecoveryMonitor:
         self._notify("platform_overtime_abort", self.snapshot())
 
     def _ended_fault_status(self) -> dict[str, Any] | None:
-        """The Controller status once the fault resource is gone (e.g. its timer expired), else None."""
+        """The Controller status once the fault has ended on its own, else None.
 
+        Ended means the resource is gone, or the fault's own deadline (the
+        duration the Agent requested, kept in the Controller ledger) has passed.
+        The chaos MCP watchdog that reaps expired leases only runs while an
+        Agent session is connected, so on 2026-09-10 L0xC0 nobody reaped the
+        lease and a fault that had run its course was aborted as overdue. The
+        monitor now asks the Controller to reap it (principal TIMER).
+        """
+        handle = str(self._cleanup_handle or "")
         try:
-            status = dict(self.chaos.status(str(self._cleanup_handle or "")))
+            status = dict(self.chaos.status(handle))
         except Exception:  # noqa: BLE001 - an unreadable status does not prove the fault ended.
             return None
-        if status.get("ever_active") is True and status.get("resource_absent") is True:
+        if status.get("ever_active") is not True:
+            return None
+        if status.get("resource_absent") is True:
             return status
-        return None
+        try:
+            deadline = datetime.fromisoformat(str(status.get("deadline_at") or "").replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=UTC)
+        if deadline > datetime.now(UTC):
+            return None
+        reap = getattr(self.chaos, "reap_expired", None)
+        if callable(reap):
+            try:
+                reap(handle)
+                status = dict(self.chaos.status(handle))
+            except Exception:  # noqa: BLE001 - the timer end stands even if the reap fails.
+                pass
+        return {**status, "fault_timer_expired": True}
 
     def _await_agent_or_fallback(self, cleanup_seconds: int) -> None:
         if self._agent_cleanup.wait(cleanup_seconds):

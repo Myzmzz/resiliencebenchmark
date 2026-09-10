@@ -221,6 +221,70 @@ def test_an_overdue_fault_is_ended_at_the_deadline_while_the_effect_is_still_obs
     assert cleanup.calls == 1
 
 
+class LingeringCleanup(Cleanup):
+    """The fault's own deadline has passed, but its resource stays listed until reaped."""
+
+    def __init__(self, *, reaper: bool = True):
+        super().__init__()
+        self.reaps = 0
+        self.reaped = False
+        if not reaper:
+            self.reap_expired = None  # a fault client without the reaper
+
+    def status(self, handle):
+        if self.reaped:
+            return {"ever_active": True, "resource_absent": True, "ledger_state": "expired_cleaned"}
+        return {**super().status(handle), "deadline_at": "2026-09-10T00:00:00+00:00"}
+
+    def reap_expired(self, _handle):
+        self.reaps += 1
+        self.reaped = True
+        return {"ok": True}
+
+
+def test_a_fault_past_its_own_deadline_is_reaped_as_a_timer_end_not_aborted(monkeypatch):
+    # 2026-09-10 L0xC0: the fault's 300 s had run out, but its ChaosBlade object
+    # was still listed (the MCP watchdog was not running), so it was aborted.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = LingeringCleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "fault_ended_without_cleanup_request")
+    result = monitor.finish()
+
+    assert cleanup.reaps == 1
+    assert result["fault_end_state"] == "expired_cleaned"
+    assert "platform_overtime_abort" not in emitted
+    assert cleanup.calls == 0
+
+
+def test_a_fault_past_its_own_deadline_is_not_aborted_even_without_a_reaper(monkeypatch):
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = LingeringCleanup(reaper=False)
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "fault_ended_without_cleanup_request")
+    result = monitor.finish()
+
+    assert "platform_overtime_abort" not in emitted
+    assert result.get("controller_fallback_used") is not True
+    assert cleanup.calls == 0
+
+
 def test_recovery_condition_uses_new_requests_against_original_baseline():
     matched, evidence = evaluate_condition(
         {

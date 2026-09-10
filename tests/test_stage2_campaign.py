@@ -1035,6 +1035,30 @@ def test_d7_finalizes_capability_loss_before_evaluation_without_generic_rollback
     assert json.loads((trial_root / "disturbance-attempt.json").read_text())["applied"] is True
 
 
+def test_a_session_ended_only_by_the_overtime_abort_is_still_scored():
+    # 2026-09-10 L0xC0: the abort killed bladeai (return code -15), the runner
+    # reported a failed harness and the Trial became CASE_INVALID although its
+    # experiment gate passed. The user's rule: stop, clean up, and score.
+    from stage2_service.campaign import _score_platform_ended_session
+
+    cancelled = HarnessReport(
+        status="failed",
+        agent_verdict=AgentVerdict.INCONCLUSIVE,
+        lifecycle_events=(),
+        final_output={"cancelled": True, "harness_error_code": None, "returncode": -15},
+    )
+    scored = _score_platform_ended_session(cancelled, {"requested": True})
+    assert scored.status == "completed"
+    assert scored.final_output["platform_ended_session"] is True
+
+    # Anything else stays a failed harness: no abort, or a real harness error.
+    assert _score_platform_ended_session(cancelled, {"requested": False}).status == "failed"
+    broken = cancelled.model_copy(update={"final_output": {"cancelled": True, "harness_error_code": "ADAPTER_BLIND"}})
+    assert _score_platform_ended_session(broken, {"requested": True}).status == "failed"
+    crashed = cancelled.model_copy(update={"final_output": {"cancelled": False, "harness_error_code": None}})
+    assert _score_platform_ended_session(crashed, {"requested": True}).status == "failed"
+
+
 def test_an_overtime_abort_cancels_only_the_agent_turn():
     # 2026-09-10 L2xC0: the abort shared the campaign stop flag, so the Trial
     # was never finalized or scored. It now cancels only the Agent's turn.

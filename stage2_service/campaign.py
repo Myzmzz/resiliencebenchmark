@@ -786,6 +786,7 @@ class CampaignEngine:
                                 }
                             }
                         )
+                        report = _score_platform_ended_session(report, overtime_abort)
                         emit(
                             "agent_response_captured",
                             {
@@ -1847,6 +1848,30 @@ def _update_disturbance_attempt(
 ) -> None:
     attempt.update(updates)
     attempt["state"] = state
+
+
+def _score_platform_ended_session(
+    report: HarnessReport, overtime_abort: Mapping[str, bool]
+) -> HarnessReport:
+    """Score a Trial whose Agent session the platform ended by the overtime rule.
+
+    The overtime abort cancels the Agent's process, which the runner reports as
+    a failed harness (return code -15), and a failed harness voids the Trial
+    (2026-09-10 L0xC0 was CASE_INVALID although its experiment gate passed).
+    The user's rule is that the platform stops, cleans up and scores, so a
+    session ended only by that abort counts as completed.
+    """
+    output = dict(report.final_output or {})
+    if (
+        overtime_abort.get("requested") is not True
+        or report.status != "failed"
+        or output.get("cancelled") is not True
+        or output.get("harness_error_code")
+        or output.get("output_truncated")
+    ):
+        return report
+    output["platform_ended_session"] = True
+    return report.model_copy(update={"status": "completed", "final_output": output})
 
 
 def _agent_turn_cancelled(
