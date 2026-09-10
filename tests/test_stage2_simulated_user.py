@@ -7,9 +7,12 @@ from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutc
 from stage2_service.plan_schema import PlanSafetyEnvelope
 from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS, parse_create
 from stage2_service.condition_policy import (
+    CONDITION_POLICY,
     EFFECT_OPERATORS,
     RECOVERY_OPERATORS,
     WORKLOAD_METRICS,
+    WP8_CONDITION_POLICY,
+    apply_condition_policy,
 )
 from stage2_service.contracts import STAGE2_PLATFORM_MODEL
 from stage2_service.plan_schema import validate_agent_plan
@@ -495,4 +498,77 @@ def test_only_gpt_gateway_routes_use_the_responses_api():
     assert _uses_responses_api("gpt-5.5")
     assert not _uses_responses_api("deepseek-v4-pro-0813")
     assert not _uses_responses_api("qwen3.8-max")
+
+
+CPU_CONDITIONS = {
+    "effect_condition": EXAMPLE_PLAN_FIELDS["cpu-load"]["effect_condition"],
+    "recovery_condition": EXAMPLE_PLAN_FIELDS["cpu-load"]["recovery_condition"],
+    "stop_conditions": ["目标服务成功率低于 0.95"],
+}
+
+
+def completing_responder(user_policy: SimulatedUserPolicy) -> HarnessResponder:
+    """A responder whose model supplies only the conditions."""
+
+    return HarnessResponder(
+        model_call=lambda _instructions, _context: {"message": "补齐条件。", "plan": dict(CPU_CONDITIONS)},
+        namespace="otel-demo",
+        max_fault_seconds=user_policy.envelope.max_fault_duration_seconds,
+        max_observation_seconds=300,
+        policy=user_policy,
+    )
+
+
+def test_approved_plan_keeps_the_agents_own_fault_duration():
+    answer = completing_responder(delegated_policy()).reply(
+        confirmation({**CPU_PARTIAL_PLAN, "safety_ttl_seconds": 300}), {}
+    )
+
+    assert answer["approved"] is True
+    # The create gate compares this with the Agent's --timeout exactly.
+    assert answer["approved_plan"]["safety_ttl_seconds"] == 300
+
+
+def test_missing_fault_duration_falls_back_to_1200_seconds_capped_by_the_trial():
+    long_trial = SimulatedUserPolicy.from_limits(
+        namespace="otel-demo",
+        max_fault_seconds=1200,
+        max_observation_seconds=300,
+        allowed_fault_types=ALL_FAULT_TYPES,
+        decision_policy=DecisionPolicy.AGENT_DELEGATED,
+        prompt_level=AutonomyLevel.L0_COMPLETE_TASK,
+    )
+
+    uncapped = completing_responder(long_trial).reply(confirmation(CPU_PARTIAL_PLAN), {})
+    capped = completing_responder(delegated_policy()).reply(confirmation(CPU_PARTIAL_PLAN), {})
+
+    assert CONDITION_POLICY["safety_ttl_seconds"] == 1200
+    assert uncapped["approved_plan"]["safety_ttl_seconds"] == 1200
+    # delegated_policy() caps faults at 600 seconds.
+    assert capped["approved_plan"]["safety_ttl_seconds"] == 600
+    assert (
+        plan_vocabulary(delegated_policy())["plan_fields"]["safety_ttl_seconds"]["default_when_absent"]
+        == 600
+    )
+
+
+def test_apply_condition_policy_keeps_an_agent_ttl_and_fills_a_missing_one():
+    assert apply_condition_policy({"safety_ttl_seconds": 300})["safety_ttl_seconds"] == 300
+    assert apply_condition_policy({})["safety_ttl_seconds"] == 1200
+
+
+def test_wp8_qualification_policy_still_fixes_its_own_fault_duration():
+    complete = {**CPU_PARTIAL_PLAN, **CPU_CONDITIONS, "safety_ttl_seconds": 300}
+
+    answer = HarnessResponder(
+        model_call=lambda *_args: (_ for _ in ()).throw(AssertionError("model must not be called")),
+        namespace="otel-demo",
+        max_fault_seconds=600,
+        max_observation_seconds=300,
+        policy=delegated_policy(),
+        condition_policy=WP8_CONDITION_POLICY,
+    ).reply(confirmation(complete), {})
+
+    assert answer["approved"] is True
+    assert answer["approved_plan"]["safety_ttl_seconds"] == WP8_CONDITION_POLICY["safety_ttl_seconds"]
 

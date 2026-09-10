@@ -649,7 +649,7 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     ]
     assert condition_policy == {
         "recovery_mode": "effect_condition",
-        "safety_ttl_seconds": 600,
+        "safety_ttl_seconds": 1200,
         "effect_observation_seconds": 300,
         "effect_sustain_seconds": 60,
         "agent_cleanup_seconds": 60,

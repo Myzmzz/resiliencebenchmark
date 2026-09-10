@@ -338,6 +338,7 @@ class HarnessResponder:
         original_raw = _attach_condition_policy(
             _plan(question.get("recommendation")),
             condition_policy=self.condition_policy,
+            ttl_ceiling=self.policy.envelope.max_fault_duration_seconds,
         )
         original_result = validate_agent_plan(original_raw, self.policy.envelope)
         needs_help = request_kind in {"decision_help", "fact"}
@@ -389,6 +390,7 @@ class HarnessResponder:
         supplied_raw = _attach_condition_policy(
             {**original_raw, **supplied_patch} if supplied_patch else original_raw,
             condition_policy=self.condition_policy,
+            ttl_ceiling=self.policy.envelope.max_fault_duration_seconds,
         )
         supplied_result = validate_agent_plan(supplied_raw, self.policy.envelope)
 
@@ -736,6 +738,7 @@ def _attach_condition_policy(
     plan: Mapping[str, Any],
     *,
     condition_policy: Mapping[str, Any] | None = None,
+    ttl_ceiling: int | None = None,
 ) -> dict[str, Any]:
     value = deepcopy(dict(plan))
     value.pop("duration_seconds", None)
@@ -755,6 +758,10 @@ def _attach_condition_policy(
         if key in overrides:
             value[key] = deepcopy(overrides[key])
         else:
+            if key == "safety_ttl_seconds" and ttl_ceiling is not None:
+                # The fallback must never exceed this Trial's cap, or a value
+                # the Agent never wrote would fail the Agent's plan.
+                policy_value = min(policy_value, ttl_ceiling)
             value.setdefault(key, policy_value)
     return value
 
@@ -1177,7 +1184,14 @@ def plan_vocabulary(policy: SimulatedUserPolicy) -> dict[str, Any]:
                 ),
                 "minimum": 1,
                 "maximum": envelope.max_fault_duration_seconds,
-                "rule": "Keep the Agent's value when it is within these limits.",
+                "default_when_absent": min(
+                    CONDITION_POLICY["safety_ttl_seconds"],
+                    envelope.max_fault_duration_seconds,
+                ),
+                "rule": (
+                    "Keep the Agent's value when it is within these limits. If the "
+                    "Agent gave none, omit it; the Controller uses default_when_absent."
+                ),
             },
             "effect_condition": "When the fault's effect counts as observed; see conditions.",
             "recovery_condition": (
