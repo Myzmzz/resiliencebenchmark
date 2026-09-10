@@ -727,3 +727,32 @@ def test_probe_in_progress_is_a_retryable_503_not_a_validation_error(tmp_path):
     assert "Retry-After" in response.headers
     assert int(response.headers["Retry-After"]) > 0
     assert "gateway_probe_in_progress" in response.json()["detail"]
+
+
+def test_prompt_shaped_cases_need_no_capability_beyond_the_trace():
+    """P1/P2 were selectable but still unrunnable: a third gate excluded them.
+
+    The capability gate lists which cases a harness can run. P1 and P2 vary
+    only the prompt, so they need nothing past the trace the gate already
+    requires -- but they were absent from the list, so a submission that got
+    past case selection was rejected as unsupported.
+    """
+    from stage2_service.contracts import Stage2CaseId
+    from stage2_service.task_service import Stage2TaskService
+
+    base = {"streams_tool_results": True}
+    supported = Stage2TaskService._supported_cases_for_capability(
+        base, capability_loss_supported=False
+    )
+    assert Stage2CaseId.P1 in supported
+    assert Stage2CaseId.P2 in supported
+    assert Stage2CaseId.C0 in supported
+    # Still gated on the trace itself, and still nothing without a capability.
+    assert Stage2TaskService._supported_cases_for_capability(
+        {"streams_tool_results": False}, capability_loss_supported=False
+    ) == []
+    assert Stage2TaskService._supported_cases_for_capability(
+        None, capability_loss_supported=False
+    ) == []
+    # The feedback-channel cases stay behind their own condition.
+    assert Stage2CaseId.D2 not in supported

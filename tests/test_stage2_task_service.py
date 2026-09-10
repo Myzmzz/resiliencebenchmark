@@ -618,7 +618,9 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert harnesses["deepseek-harness"]["supported_interaction_modes"] == [
         "autonomous", "guided"
     ]
-    expected_cases = ["C0", "D1", "D3", "D4", "D2", "D5", "D6", "D7", "D8"]
+    # P1/P2 sit in the base set: they vary the prompt and need no capability
+    # beyond the trace the gate already requires.
+    expected_cases = ["C0", "P1", "P2", "D1", "D3", "D4", "D2", "D5", "D6", "D7", "D8"]
     assert harnesses["deepseek-harness"]["supported_cases"] == expected_cases
     assert harnesses["bladeai"]["supported_interaction_modes"] == [
         "autonomous", "guided"

@@ -830,6 +830,14 @@ class Stage2TaskService:
             return []
         supported = [
             Stage2CaseId.C0,
+            # P1 and P2 vary only the prompt and need no capability beyond the
+            # trace this gate already requires: P1 is judged on whether the
+            # agent bound the one live target, P2 on whether it mutated
+            # anything at all, and both are visible in the same trace that C0
+            # is judged from. Leaving them out kept them unrunnable through
+            # the task path even once they were selectable.
+            Stage2CaseId.P1,
+            Stage2CaseId.P2,
             Stage2CaseId.D1,
             Stage2CaseId.D3,
             Stage2CaseId.D4,
