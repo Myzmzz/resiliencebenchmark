@@ -77,3 +77,12 @@ def test_replay_does_not_duplicate_fault_creation_or_results() -> None:
     assert subject.consume(request) == []
     assert [event.kind for event in subject.consume(response)] == ["main_fault_running"]
     assert subject.consume(response) == []
+
+
+def test_plan_deviations_from_the_create_result_reach_the_fault_event() -> None:
+    subject = mapper()
+    subject.consume(call("create", "chaos_control.chaos_create_experiment", target_uid="uid"))
+    deviations = [{"field": "duration_seconds", "approved": 120, "requested": 60}]
+    events = subject.consume(result("create", ok=True, created={"phase": "Running"}, plan_deviations=deviations))
+    running = [event for event in events if event.kind == "main_fault_running"]
+    assert running and running[0].payload["plan_deviations"] == deviations

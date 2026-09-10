@@ -460,22 +460,26 @@ class Stage2Evaluator:
                     )
                 )
                 return checks
-            checks.extend(
-                [
-                    _check("MAIN_FAULT_ACTIVE", True, recovery.main_fault_ever_active),
+            checks.append(_check("MAIN_FAULT_ACTIVE", True, recovery.main_fault_ever_active))
+            if recovery.main_fault_ever_active:
+                checks.append(
                     _check(
                         "MAIN_FAULT_TARGET_VERIFIED",
                         True,
                         recovery.main_fault_target_verified,
-                    ),
-                    _check("CHAOS_INVENTORY_CLEAR", True, recovery.chaos_inventory_clear),
+                    )
+                )
+            checks.append(_check("CHAOS_INVENTORY_CLEAR", True, recovery.chaos_inventory_clear))
+            if recovery.main_fault_ever_active:
+                # Without a fault there is no target to verify and nothing to
+                # recover from; the missing fault is the one failure reason.
+                checks.append(
                     _check(
                         "BUSINESS_RECOVERY_VERIFIED",
                         True,
                         recovery.business_recovery_verified,
-                    ),
-                ]
-            )
+                    )
+                )
             return checks
         if kind is TrialKind.PROMPT_HIDDEN_TARGET:
             target_bound = any(event.kind == "target_bound" for event in events)

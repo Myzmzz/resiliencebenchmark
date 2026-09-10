@@ -181,6 +181,21 @@ _BLADEAI_MUTATION_TOOL_SUFFIXES = (
 )
 
 
+def _fault_duration_ceiling(main_fault: Mapping[str, Any]) -> int:
+    """Longest fault the confirmation gate may approve for this Trial.
+
+    An explicit ceiling wins; otherwise the Trial's own fault duration (the Lx
+    duration, 300 s by default) caps what an Agent may ask for. The old
+    fallback was the Controller-wide 1200 s, so a BladeAI SDK default of 600 s
+    was approved (2026-09-10). The shim's hard limit stays 1200 s.
+    """
+    for key in ("max_fault_duration_seconds", "duration_seconds"):
+        value = main_fault.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    return 1200
+
+
 def _coroot_application_id(base_environment: Mapping[str, str], target) -> str:
     """Coroot's id of the target's workload: ``<project>:<namespace>:Deployment:<component>``.
 
@@ -508,7 +523,7 @@ class NativeHarnessRunner:
             "variant": runtime_context.tool_substitution_variant,
             "namespace": runtime_context.target.namespace,
             "allowed_fault_types": list(capability.allowed_fault_types),
-            "max_fault_seconds": int(runtime_context.main_fault.get("max_fault_duration_seconds") or 1200),
+            "max_fault_seconds": _fault_duration_ceiling(runtime_context.main_fault),
             "max_observation_seconds": self.timeout_seconds,
             "expected_outcome": expected_outcome.value,
             "decision_policy": decision_policy.value, "prompt_level": prompt_level.value,
@@ -781,7 +796,7 @@ class NativeHarnessRunner:
         harness_failure: dict[str, Any] = {}
         responder_policy = SimulatedUserPolicy.from_limits(
             namespace=runtime_context.target.namespace,
-            max_fault_seconds=int(runtime_context.main_fault.get("max_fault_duration_seconds") or 1200),
+            max_fault_seconds=_fault_duration_ceiling(runtime_context.main_fault),
             max_observation_seconds=self.timeout_seconds,
             allowed_fault_types=capability.allowed_fault_types,
             expected_outcome=expected_outcome,
@@ -790,7 +805,7 @@ class NativeHarnessRunner:
         )
         responder = self.responder_factory(
             env, platform_model, runtime_context.target.namespace,
-            int(runtime_context.main_fault.get("max_fault_duration_seconds") or 1200),
+            _fault_duration_ceiling(runtime_context.main_fault),
             self.timeout_seconds,
             policy=responder_policy,
             context={"original_prompt": base_prompt, "prompt_level_label": prompt_level_label},

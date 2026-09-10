@@ -108,10 +108,14 @@ class ControlledExecutionService:
     ) -> dict[str, Any]:
         self._assert_fault_type_authorized(fault_type)
         self._assert_condition_safety_ttl(duration_seconds)
-        self._assert_expected_fault_contract(
+        plan_deviations = self._reference_plan_gate(
+            namespace=namespace,
+            target_name=target_name,
+            target_uid=target_uid,
             fault_type=fault_type,
             duration_seconds=duration_seconds,
             intensity=intensity,
+            enforce_user_decision=False,
         )
         policy = default_policy(set(self.config.namespace_allowlist))
         action = _action(run_id, namespace, target_name, target_uid, fault_type, duration_seconds, intensity, selector)
@@ -119,6 +123,7 @@ class ControlledExecutionService:
         return {
             "ok": result.ok,
             "read_only": True,
+            **({"plan_deviations": plan_deviations} if plan_deviations else {}),
             "findings": [_finding_payload(item.code, item.message) for item in result.findings],
             "policy": _policy_payload(policy),
         }
@@ -215,18 +220,14 @@ class ControlledExecutionService:
             duration_seconds=duration_seconds,
             intensity=intensity,
         )
-        self._assert_expected_fault_contract(
-            fault_type=fault_type,
-            duration_seconds=duration_seconds,
-            intensity=intensity,
-        )
-        self._assert_user_decision(
+        plan_deviations = self._reference_plan_gate(
             namespace=namespace,
             target_name=target_name,
             target_uid=target_uid,
             fault_type=fault_type,
             duration_seconds=duration_seconds,
             intensity=intensity,
+            enforce_user_decision=True,
         )
         baseline_capability = self._verify_baseline_gate(
             baseline_gate_token=baseline_gate_token,
@@ -337,6 +338,7 @@ class ControlledExecutionService:
         return {
             "ok": True,
             "created": _record_payload(record),
+            **({"plan_deviations": plan_deviations} if plan_deviations else {}),
             "operation_id": cleanup_handle,
             "cleanup_handle": cleanup_handle,
             "safety": {
@@ -1158,6 +1160,150 @@ class ControlledExecutionService:
                 details={"allowed_fault_types": sorted(allowed)},
             )
 
+    def _approved_plan_if_any(self) -> Mapping[str, Any] | None:
+        """The plan the user approved for this Trial, whatever the decision policy."""
+        path = self.config.user_decision_file
+        if path is None or not path.is_file():
+            return None
+        decision = _read_private_json_file(
+            path,
+            label="user decision",
+            missing_code="USER_DECISION_REQUIRED",
+            missing_message="The user decision record is missing or unsafe.",
+            missing_next_step="Ask the user for a decision before retrying mutation.",
+        )
+        approved = decision.get("approved_plan")
+        if decision.get("approved") is not True or not isinstance(approved, Mapping):
+            return None
+        return approved
+
+    def _reference_plan_gate(
+        self,
+        *,
+        namespace: str,
+        target_name: str,
+        target_uid: str,
+        fault_type: str,
+        duration_seconds: int,
+        intensity: Mapping[str, Any],
+        enforce_user_decision: bool,
+    ) -> list[dict[str, Any]]:
+        """Check a fault request against the right reference; return deviations.
+
+        When the user approved a plan for this Trial, that plan is the reference
+        whatever the decision policy is. Lx Trials run as ``agent_delegated``
+        and used to be checked against the variant set's hidden values
+        (cpu-load, 300 s, 80%) instead, which refused plans the platform itself
+        had approved (L2xC0, L3xC0 on 2026-09-10). Without an approved plan the
+        Trial's explicit contract and the decision policy apply as before.
+        """
+        approved = self._approved_plan_if_any()
+        if approved is not None:
+            return self._check_against_approved_plan(
+                approved,
+                namespace=namespace,
+                target_name=target_name,
+                target_uid=target_uid,
+                fault_type=fault_type,
+                duration_seconds=duration_seconds,
+                intensity=intensity,
+            )
+        self._assert_expected_fault_contract(
+            fault_type=fault_type,
+            duration_seconds=duration_seconds,
+            intensity=intensity,
+        )
+        if enforce_user_decision:
+            self._assert_user_decision(
+                namespace=namespace,
+                target_name=target_name,
+                target_uid=target_uid,
+                fault_type=fault_type,
+                duration_seconds=duration_seconds,
+                intensity=intensity,
+            )
+        return []
+
+    def _check_against_approved_plan(
+        self,
+        approved: Mapping[str, Any],
+        *,
+        namespace: str,
+        target_name: str,
+        target_uid: str,
+        fault_type: str,
+        duration_seconds: int,
+        intensity: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Compare a fault request with the approved plan (rules set 2026-09-10).
+
+        The target Pod and fault type must match, and the intensity may not be
+        higher than approved; otherwise the request is refused and the error
+        states both plans. A different duration or a lower intensity is allowed
+        but returned as a deviation; the scorer then halves plan validation.
+        """
+        approved_plan = self._assert_agent_plan_schema(approved, label="approved_plan")
+        requested_plan = self._assert_agent_plan_schema(
+            _request_plan_from_approved(
+                approved,
+                namespace=namespace,
+                target_name=target_name,
+                target_uid=target_uid,
+                fault_type=fault_type,
+                duration_seconds=duration_seconds,
+                intensity=intensity,
+            ),
+            label="mutation request",
+        )
+        approved_values = approved_plan.model_dump(mode="json")
+        requested_values = requested_plan.model_dump(mode="json")
+        refused = [
+            field
+            for field in ("target", "fault_type")
+            if approved_values.get(field) != requested_values.get(field)
+        ]
+        approved_intensity = dict(approved_values.get("intensity") or {})
+        requested_intensity = dict(requested_values.get("intensity") or {})
+        deviations: list[dict[str, Any]] = []
+        if set(approved_intensity) != set(requested_intensity):
+            refused.append("intensity")
+        else:
+            for key in sorted(approved_intensity):
+                if requested_intensity[key] > approved_intensity[key]:
+                    refused.append("intensity")
+                elif requested_intensity[key] < approved_intensity[key]:
+                    deviations.append(
+                        {
+                            "field": f"intensity.{key}",
+                            "approved": approved_intensity[key],
+                            "requested": requested_intensity[key],
+                        }
+                    )
+        if refused:
+            approved_facts = _plan_facts(approved_values)
+            requested_facts = _plan_facts(requested_values)
+            raise ChaosControlError(
+                "USER_DECISION_MISMATCH",
+                "The fault request does not match the approved plan: "
+                f"approved {_describe_fault(approved_facts)}; requested {_describe_fault(requested_facts)}.",
+                next_step="Use the approved target Pod and fault type, with an intensity no higher than approved.",
+                details={
+                    "refused_fields": sorted(set(refused)),
+                    "mismatched_fields": _mismatched_plan_fields(approved_plan, requested_plan),
+                    "approved": approved_facts,
+                    "requested": requested_facts,
+                },
+            )
+        if approved_values.get("safety_ttl_seconds") != requested_values.get("safety_ttl_seconds"):
+            deviations.append(
+                {
+                    "field": "duration_seconds",
+                    "approved": approved_values.get("safety_ttl_seconds"),
+                    "requested": requested_values.get("safety_ttl_seconds"),
+                }
+            )
+        return deviations
+
     def _assert_condition_safety_ttl(self, duration_seconds: int) -> None:
         expected = self.config.condition_safety_ttl_seconds
         if expected is not None and duration_seconds != expected:
@@ -1189,10 +1335,14 @@ class ControlledExecutionService:
             "intensity": _mapping_or_raw(expected.get("intensity") or {}),
         }
         if observed != normalized_expected:
+            # Say which values are expected: the old message did not, and
+            # Agents could only guess (L2xC0, L3xC0 on 2026-09-10).
             raise ChaosControlError(
                 "FAULT_CONTRACT_MISMATCH",
-                "The requested fault does not exactly match this Trial's explicit main_fault contract.",
-                next_step="Use the exact fault_type, duration_seconds, and intensity supplied by the Controller runtime contract.",
+                "The requested fault does not exactly match this Trial's explicit main_fault contract: "
+                f"expected {_describe_fault(normalized_expected)}; requested {_describe_fault(observed)}.",
+                next_step=f"Use exactly {_describe_fault(normalized_expected)}.",
+                details={"expected": normalized_expected, "requested": observed},
             )
 
     def _ensure_ledger_dir(self) -> None:
@@ -1292,3 +1442,24 @@ def new_cleanup_handle() -> str:
     """Return a cleanup handle suitable for passing to chaos_create_experiment."""
 
     return "cleanup-" + secrets.token_hex(18)
+
+
+def _plan_facts(values: Mapping[str, Any]) -> dict[str, Any]:
+    """The fields an Agent needs to see when a fault request is refused."""
+    target = values.get("target") or {}
+    return {
+        "target_name": target.get("name"),
+        "fault_type": values.get("fault_type"),
+        "duration_seconds": values.get("safety_ttl_seconds", values.get("duration_seconds")),
+        "intensity": dict(values.get("intensity") or {}),
+    }
+
+
+def _describe_fault(values: Mapping[str, Any]) -> str:
+    """One readable line, e.g. ``fault_type=cpu-load, duration_seconds=300, intensity={'cpu_percent': 80}``."""
+    parts = []
+    for key in ("target_name", "fault_type", "duration_seconds", "intensity"):
+        if key in values and values[key] is not None:
+            parts.append(f"{key}={values[key]}")
+    return ", ".join(parts)
+

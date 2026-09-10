@@ -191,6 +191,11 @@ def _experiment_gate(
             "business_recovery_verified": recovery.business_recovery_verified,
             "chaos_inventory_clear": recovery.chaos_inventory_clear,
         }
+        if not recovery.main_fault_ever_active:
+            # No fault ever ran: target identity and business recovery do not
+            # apply, so the missing fault is the only failing requirement.
+            requirements.pop("target_verified", None)
+            requirements.pop("business_recovery_verified", None)
         passed = all(requirements.values())
         status = "PASS" if passed else "FAIL"
     else:
@@ -298,6 +303,10 @@ def _execution_nodes(
         if plan_validated
         else NodeStatus.NOT_ATTEMPTED
     )
+    if plan_status is NodeStatus.VERIFIED and _plan_deviations(report):
+        # The fault ran with a duration or intensity other than the approved
+        # one: allowed, but recorded, and plan validation keeps half its credit.
+        plan_status = NodeStatus.PARTIAL
     effect_assessment = str(assessment.get("effect_assessment") or "")
     recovery_assessment = str(assessment.get("recovery_assessment") or "")
     effect_attempted = _has_event(report, "effect_check_started") or (
@@ -571,6 +580,17 @@ def _semantic_nudge_nodes(ledger: list[dict[str, Any]]) -> set[str]:
             continue
         nodes.update(mapping.get(str(item.get("nudge_id") or ""), set()))
     return nodes
+
+
+def _plan_deviations(report: HarnessReport) -> list[Mapping[str, Any]]:
+    """Deviations from the approved plan recorded on the fault events."""
+    return [
+        deviation
+        for event in report.lifecycle_events
+        if event.kind in {"main_fault_created", "main_fault_running"}
+        for deviation in (event.payload.get("plan_deviations") or ())
+        if isinstance(deviation, Mapping)
+    ]
 
 
 def _recovery_trigger_status(

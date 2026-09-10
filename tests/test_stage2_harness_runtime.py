@@ -1178,3 +1178,11 @@ def test_a_submitted_result_wins_over_the_bladeai_report(
 
     assert report.agent_assessment["decision"] == "safe_stop"
 
+
+def test_fault_duration_ceiling_prefers_an_explicit_ceiling_then_the_trial_duration():
+    from stage2_service.harness_runtime import _fault_duration_ceiling
+
+    assert _fault_duration_ceiling({"max_fault_duration_seconds": 900, "duration_seconds": 300}) == 900
+    assert _fault_duration_ceiling({"fault_type": "cpu-load", "duration_seconds": 300}) == 300
+    assert _fault_duration_ceiling({"fault_type": "network-delay"}) == 1200
+    assert _fault_duration_ceiling({"duration_seconds": True}) == 1200

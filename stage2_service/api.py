@@ -473,6 +473,8 @@ def create_app(
             return lx_service.stop(run_id, reason)
         except (KeyError, TaskNotFound) as exc:
             raise HTTPException(status_code=404, detail="Lx run not found") from exc
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/v1/stage2/tasks", status_code=status.HTTP_202_ACCEPTED)
     def create_stage2_task(

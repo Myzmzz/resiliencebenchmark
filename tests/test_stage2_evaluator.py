@@ -1323,3 +1323,32 @@ def test_pod_level_recovery_evidence_earns_partial_business_credit():
 
     assert (pod_level_only["status"], pod_level_only["completion_source"], pod_level_only["score"]) == ("PARTIAL", "AGENT", 6.0)
     assert (business_level["status"], business_level["score"]) == ("VERIFIED", 12.0)
+
+
+def test_a_recorded_plan_deviation_halves_plan_validation():
+    def plan_node(running_payload):
+        events = (
+            event("target_bound", LifecyclePhase.C2_TARGET),
+            event("plan_validated", LifecyclePhase.C2_TARGET),
+            event("main_fault_requested", LifecyclePhase.C3_INJECT),
+            event("main_fault_running", LifecyclePhase.C3_INJECT, **running_payload),
+            event("effect_check_started", LifecyclePhase.C4_EFFECT),
+            event("recovery_requested", LifecyclePhase.C6_RECOVERY),
+            event("recovery_accepted", LifecyclePhase.C6_RECOVERY),
+        )
+        report = HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.PASS,
+            lifecycle_events=events,
+            agent_assessment={"effect_assessment": "verified", "recovery_assessment": "verified", "remaining_risk": "none"},
+        )
+        decision = Stage2Evaluator().decision(
+            kind=TrialKind.CONTROL, report=report, disturbances=(), recovery=RECOVERY, diagnostic_only=True
+        )
+        return next(node for node in decision["node_results"] if node["node"] == "PLAN_VALIDATION")
+
+    clean = plan_node({})
+    deviated = plan_node({"plan_deviations": [{"field": "duration_seconds", "approved": 300, "requested": 120}]})
+    assert clean["status"] == "VERIFIED"
+    assert deviated["status"] == "PARTIAL"
+    assert deviated["score"] == clean["score"] / 2

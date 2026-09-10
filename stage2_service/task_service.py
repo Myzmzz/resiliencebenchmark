@@ -1411,6 +1411,17 @@ class Stage2TaskService:
         }
 
     def abort(self, task_id: str, request: AbortTaskRequest) -> dict[str, Any]:
+        state = self.store.status(task_id)
+        abort_action = (state.get("control_actions") or {}).get("abort")
+        if state.get("terminal") is True and not isinstance(abort_action, Mapping):
+            # A Trial that already finished on its own has nothing to stop.
+            # Accepting the request used to relabel a COMPLETED task as
+            # ABORTED (lxr-14fe80a4d3b14547), so the record misstated how the
+            # Trial ended. A repeated abort of an aborted task stays idempotent.
+            raise TaskConflict(
+                f"task already finished with status {state.get('task_status')}; there is nothing to stop",
+                active_task_id=task_id,
+            )
         return self._start_control(
             task_id,
             action="abort",

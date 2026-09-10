@@ -1065,3 +1065,22 @@ def test_abort_uses_read_only_verification_for_interrupted_no_mutation_task(tmp_
     assert result["skipped"] is True
     assert verification_calls == [(created["task_id"], "otel-demo")]
     assert controls.resets == []
+
+
+def test_abort_refuses_a_task_that_already_finished(tmp_path):
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    created = service.create(request())
+    supervisor.wait_result(created["task_id"], timeout=5)
+    for _ in range(200):
+        before = service.get(created["task_id"])
+        if before.get("terminal") is True:
+            break
+        time.sleep(0.01)
+    assert before["terminal"] is True
+
+    with pytest.raises(TaskConflict, match="already finished"):
+        service.abort(created["task_id"], AbortTaskRequest())
+
+    after = service.get(created["task_id"])
+    assert after["task_status"] == before["task_status"]
+    assert "abort" not in (after.get("control_actions") or {})

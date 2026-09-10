@@ -223,15 +223,28 @@ class Stage2Finalizer:
                 if isinstance(approved_plan, Mapping)
                 else None
             )
-            evidence = dict(
-                self.recovery_evidence.reset_and_wait_healthy(
-                    timeout_seconds=recovery_observation_seconds,
-                    stability_samples=max(1, recovery_sustain_seconds // 10 + 1),
-                    baseline=self.recovery_evidence.baseline(trial_id),
-                    recovery_condition=recovery_condition,
-                    **self._resource_recovery_inputs(recovery_condition, evidence_runtime, fault_contract),
+            if pre_inventory.get("qualified") is True and pre_status.get("ever_active") is False:
+                # A complete inventory shows the main fault never ran, so there
+                # is nothing to recover from. (An incomplete inventory proves
+                # nothing either way and still gets the recovery check.)
+                # The Trial already fails on the missing fault; waiting here only
+                # recorded a false "business not recovered" after 180 idle
+                # seconds (L2xC0 lxr-e09aec3cd174491e).
+                evidence = {
+                    "business_healthy": False,
+                    "not_applicable": True,
+                    "reason": "main fault never ran; business recovery check skipped",
+                }
+            else:
+                evidence = dict(
+                    self.recovery_evidence.reset_and_wait_healthy(
+                        timeout_seconds=recovery_observation_seconds,
+                        stability_samples=max(1, recovery_sustain_seconds // 10 + 1),
+                        baseline=self.recovery_evidence.baseline(trial_id),
+                        recovery_condition=recovery_condition,
+                        **self._resource_recovery_inputs(recovery_condition, evidence_runtime, fault_contract),
+                    )
                 )
-            )
         except Exception as exc:  # noqa: BLE001
             evidence = {
                 "business_healthy": False,
