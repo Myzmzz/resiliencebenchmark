@@ -982,3 +982,56 @@ def test_prose_intensity_is_still_never_taken_as_a_parameter():
     from stage2_service.bladeai_task import _structured_plan_fields
 
     assert _structured_plan_fields("Parameters: cpu_percent=80, timeout=300 seconds") == {}
+
+
+@pytest.mark.parametrize(
+    ("fault_intent", "expected_type"),
+    [
+        # ChaosBlade's own action, as the SDK usually writes it.
+        ({"scope": "pod", "target": "cpu", "action": "fullload"}, "cpu-load"),
+        # Seen live on 2026-09-10 (lxr-328bb712e0d44c27): the same CPU fault
+        # named with the Stage-2 fault type; it used to be refused.
+        ({"scope": "pod", "target": "cpu", "action": "cpu-load"}, "cpu-load"),
+        ({"scope": "Pod", "target": "CPU", "action": "CPU_Load"}, "cpu-load"),
+        # The skill spelling of the scenario.
+        ({"scope": "pod", "target": "cpu", "action": "pod-cpu-fullload"}, "cpu-load"),
+        ({"scope": "pod", "target": "mem", "action": "memory-stress"}, "memory-stress"),
+        ({"scope": "pod", "target": "memory", "action": "memory-stress"}, "memory-stress"),
+        ({"scope": "pod", "target": "network", "action": "network-delay"}, "network-delay"),
+    ],
+)
+def test_equivalent_sdk_spellings_of_an_authorised_fault_map_to_one_fault_type(fault_intent, expected_type):
+    from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS
+
+    native_flag, intensity_field = NATIVE_INTENSITY_FLAGS[expected_type]
+    params = {native_flag.removeprefix("--"): "80", "timeout": "300"}
+    proposal = {**_current_native_proposal(), "fault_intent": fault_intent, "params": params}
+    partial = partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+    assert partial["fault_type"] == expected_type
+    assert partial["intensity"] == {intensity_field: 80}
+    assert partial["safety_ttl_seconds"] == 300
+
+
+def test_a_prefixed_drop_keeps_its_full_loss_meaning():
+    proposal = {
+        **_current_native_proposal(),
+        "fault_intent": {"scope": "pod", "target": "network", "action": "pod-network-drop"},
+        "params": {"timeout": "60"},
+    }
+    partial = partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+    assert (partial["fault_type"], partial["intensity"]) == ("network-loss", {"loss_percent": 100})
+
+
+@pytest.mark.parametrize(
+    "fault_intent",
+    [
+        {"scope": "pod", "target": "cpu", "action": "network-delay"},
+        {"scope": "pod", "target": "network", "action": "cpu-load"},
+        {"scope": "pod", "target": "pod", "action": "delete"},
+        {"scope": "node", "target": "cpu", "action": "fullload"},
+    ],
+)
+def test_a_fault_outside_the_authorised_space_is_still_refused(fault_intent):
+    proposal = {**_current_native_proposal(), "fault_intent": fault_intent, "params": {"cpu-percent": "80"}}
+    with pytest.raises(BladeTaskError, match="outside the authorized Stage-2 fault space"):
+        partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())

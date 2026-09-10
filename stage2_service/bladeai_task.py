@@ -533,11 +533,10 @@ def partial_plan_from_native_proposal(
     fault = proposal.get("fault_intent")
     if not isinstance(fault, Mapping):
         raise BladeTaskError("BladeAI proposal is missing structured fault_intent")
-    action = _required_text(fault.get("action"), "proposal.fault_intent.action")
-    fault_type = _canonical_fault_type(
+    fault_type, action = _canonical_fault_type(
         _required_text(fault.get("scope"), "proposal.fault_intent.scope"),
         _required_text(fault.get("target"), "proposal.fault_intent.target"),
-        action,
+        _required_text(fault.get("action"), "proposal.fault_intent.action"),
     )
     params = proposal.get("params")
     if not isinstance(params, Mapping) or not params:
@@ -574,21 +573,39 @@ def partial_plan_from_native_proposal(
     return partial
 
 
-def _canonical_fault_type(scope: str, target: str, action: str) -> str:
-    key = (scope.lower(), target.lower(), action.lower())
-    aliases = {
-        ("pod", "network", "delay"): "network-delay",
-        ("pod", "network", "loss"): "network-loss",
-        ("pod", "network", "drop"): "network-loss",
-        ("pod", "cpu", "load"): "cpu-load",
-        ("pod", "cpu", "fullload"): "cpu-load",
-        ("pod", "memory", "load"): "memory-stress",
-        ("pod", "mem", "load"): "memory-stress",
+def _canonical_fault_type(scope: str, target: str, action: str) -> tuple[str, str]:
+    """Map the SDK's ``fault_intent`` to a Stage-2 fault type and its native action.
+
+    Returns ``(fault_type, native_action)``. The SDK normally writes ChaosBlade's
+    own action (``{"scope": "pod", "target": "cpu", "action": "fullload"}``), but
+    it has also written the same fault as ``"cpu-load"`` -- the Stage-2 name --
+    and may use the skill spelling ``"pod-cpu-fullload"``. Those all name one
+    fault, so the action is normalised first (lower case, ``_`` to ``-``, a
+    leading ``<scope>-`` and ``<target>-`` removed), and a Stage-2 name is
+    accepted when it belongs to the same scope and resource. Anything else --
+    a network action on the CPU resource, a Pod delete, a node-scoped fault --
+    is still refused. The table is the shim's, so both paths accept one set.
+    """
+    from .bladeai_shim import CHAOSBLADE_FAULT_SCENARIOS
+
+    scope_key = scope.strip().lower()
+    target_key = target.strip().lower()
+    spelled = action.strip().lower().replace("_", "-")
+    native_action = spelled
+    for prefix in (f"{scope_key}-", f"{target_key}-"):
+        if native_action.startswith(prefix):
+            native_action = native_action[len(prefix):]
+    fault_type = CHAOSBLADE_FAULT_SCENARIOS.get((scope_key, target_key, native_action))
+    if fault_type is not None:
+        return fault_type, native_action
+    same_resource = {
+        value
+        for (known_scope, known_target, _action), value in CHAOSBLADE_FAULT_SCENARIOS.items()
+        if (known_scope, known_target) == (scope_key, target_key)
     }
-    try:
-        return aliases[key]
-    except KeyError as exc:
-        raise BladeTaskError("BladeAI fault_intent is outside the authorized Stage-2 fault space") from exc
+    if spelled in same_resource:
+        return spelled, spelled
+    raise BladeTaskError("BladeAI fault_intent is outside the authorized Stage-2 fault space")
 
 
 def _strict_agent_number(value: object, field: str) -> float:
