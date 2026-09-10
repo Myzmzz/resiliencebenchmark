@@ -940,3 +940,45 @@ def test_worker_reports_cleanup_failure_as_incomplete(tmp_path, monkeypatch, cap
     assert '"kind":"fatal"' in output
     assert "cleanup failed: RuntimeError" in output
     assert "cleanup token detail" not in output
+
+
+def test_canonical_underscore_intensity_spelling_is_captured():
+    """Regression: the plan bladeai actually wrote, captured from a live trial.
+
+    The block carried `cpu_percent: 80` -- the Controller's own field name and
+    the spelling the Lx prompt uses -- but the parser accepted only the CLI
+    spelling `cpu-percent`, kept just `timeout`, and the shim refused the plan
+    as "not exactly representable".  The trial was then scored as though the
+    agent had never proposed a fault.
+    """
+    block = (
+        "# Task Summary\n"
+        "- Parameters: `cpu_percent=80`, `timeout=300` seconds\n\n"
+        + (chr(96) * 3) + "stage2\n"
+        "scope: pod\n"
+        "target: cpu\n"
+        "action: fullload\n"
+        "canonical_fault: cpu-load\n"
+        "namespace: otel-demo\n"
+        "names: cart-7c58f6bb56-zdp5w\n"
+        "pod_uid: 73b2\n"
+        "cpu_percent: 80\n"
+        "timeout: 300\n"
+        + (chr(96) * 3) + "\n"
+    )
+    capture = NativeProposalCapture()
+    capture.record_tool_event("bladeai.save_fault_plan", {"arguments": {"plan_content": block}})
+    # The live state carried only the timeout; it must not win over the plan.
+    capture.record_state({"params": {"timeout": "300"}, "duration_seconds": 300})
+    proposal = capture.take()
+
+    assert proposal["params"] == {"cpu-percent": "80", "timeout": "300"}
+    assert proposal["fault_intent"] == {"scope": "pod", "target": "cpu", "action": "fullload"}
+    assert proposal["target"] == {"namespace": "otel-demo", "names": ["cart-7c58f6bb56-zdp5w"]}
+
+
+def test_prose_intensity_is_still_never_taken_as_a_parameter():
+    """Accepting a second spelling must not open the prose loophole."""
+    from stage2_service.bladeai_task import _structured_plan_fields
+
+    assert _structured_plan_fields("Parameters: cpu_percent=80, timeout=300 seconds") == {}

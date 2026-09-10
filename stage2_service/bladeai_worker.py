@@ -144,8 +144,11 @@ STAGE2_SKILL_GUIDE = """Stage-2 controlled execution contract (authoritative for
   discovered target, canonical fault and numeric parameters; include exactly one
   fenced `stage2` block in `plan_content` with `scope`, `target`, `action`,
   `namespace`, `names`, the fault intensity key (`time`, `percent`,
-  `cpu-percent`, or `mem-percent`), and `timeout`; a prose-only plan cannot
-  be approved.
+  `cpu-percent`, or `mem-percent`; the canonical `cpu_percent` spelling is
+  also accepted), and `timeout`; a prose-only plan cannot be approved.
+- When the task is finished, submit your final result once with the
+  `harness_submit_result` tool; if it returns validation errors, correct the
+  result and submit it again.
 Do not infer Stage-2 support from an older upstream catalogue entry."""
 
 _WP8_DISCOVERED_TARGETS: dict[tuple[str, str], dict[str, Any]] = {}

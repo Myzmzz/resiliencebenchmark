@@ -756,3 +756,20 @@ def test_prompt_shaped_cases_need_no_capability_beyond_the_trace():
     ) == []
     # The feedback-channel cases stay behind their own condition.
     assert Stage2CaseId.D2 not in supported
+
+
+def test_duration_mismatch_says_which_duration_and_how_to_change_it(tmp_path):
+    """The old message named a "slot contract" and gave no way forward."""
+    import pytest
+
+    from stage2_service.task_service import TaskValidationError
+
+    fake = RealisticTaskService(result={"platform_status": "SUCCEEDED", "trial_count": 1})
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    request = _run(svc, level="L0")  # a 300-second variant set
+    mismatched = LxRunRequest(**{**request.model_dump(), "duration_seconds": 600})
+    with pytest.raises(TaskValidationError) as caught:
+        svc.create_run(mismatched)
+    message = str(caught.value)
+    assert "300" in message and "600" in message
+    assert "prompt-variants" in message

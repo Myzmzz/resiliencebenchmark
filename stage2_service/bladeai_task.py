@@ -35,6 +35,28 @@ _PLAN_FLAG_RE = re.compile(
     re.IGNORECASE,
 )
 _PLAN_PARAM_KEYS = frozenset({"time", "timeout", "percent", "cpu-percent", "mem-percent"})
+# The same knob is spelled three different ways across the system: the plan
+# contract asks for the ChaosBlade CLI spelling (`cpu-percent`), while both the
+# Controller's own intensity contract and every Lx prompt use the canonical
+# field name (`cpu_percent`).  An agent that copies the spelling it was given
+# in the prompt therefore had its intensity silently dropped, leaving only
+# `timeout`, which the shim then refused as "not exactly representable" -- and
+# the trial was scored as though the agent had never proposed a fault.
+# Accept either spelling and normalise to the CLI form the shim maps from.
+_PLAN_PARAM_ALIASES = {
+    "cpu_percent": "cpu-percent",
+    "mem_percent": "mem-percent",
+    "memory_percent": "mem-percent",
+    "loss_percent": "percent",
+    "delay_ms": "time",
+    "time_ms": "time",
+    "duration_seconds": "timeout",
+}
+
+
+def _canonical_param_key(key: str) -> str:
+    lowered = str(key).strip().lower()
+    return _PLAN_PARAM_ALIASES.get(lowered, lowered)
 
 
 def _structured_plan_fields(content: str) -> dict[str, Any]:
@@ -62,14 +84,16 @@ def _structured_plan_fields(content: str) -> dict[str, Any]:
         return {}
     fields = dict(candidates[-1] if candidates else {})
 
-    params: dict[str, str] = {
-        key: value
-        for key, value in fields.items()
-        if key in _PLAN_PARAM_KEYS and re.fullmatch(r"\d+(?:\.\d+)?", value)
-    }
+    params: dict[str, str] = {}
+    for key, value in fields.items():
+        canonical = _canonical_param_key(key)
+        if canonical in _PLAN_PARAM_KEYS and re.fullmatch(r"\d+(?:\.\d+)?", value):
+            # A block that spells the same knob twice is ambiguous; keep the
+            # first and let a genuine conflict surface rather than picking one.
+            params.setdefault(canonical, value)
     if not params:
         for match in _PLAN_FLAG_RE.finditer(content):
-            params[match.group("key").lower()] = match.group("value")
+            params[_canonical_param_key(match.group("key"))] = match.group("value")
     if not params:
         return {}
 

@@ -519,7 +519,17 @@ class LxService:
         if slots is None:
             raise TaskValidationError("variant_set_id or slots is required to bind the hidden execution contract")
         if request.duration_seconds != slots.duration_seconds:
-            raise TaskValidationError("duration_seconds must match the immutable slot contract")
+            # The prompt itself states the duration, so running a different one
+            # would tell the agent one number and execute another.  Say which
+            # number this variant set carries and how to get the other one.
+            raise TaskValidationError(
+                f"duration_seconds={request.duration_seconds} does not match this "
+                f"variant set, whose prompt tells the agent {slots.duration_seconds} "
+                f"seconds. Submit duration_seconds={slots.duration_seconds}, or "
+                "generate a new variant set with "
+                f"duration_seconds={request.duration_seconds} via "
+                "POST /api/v1/stage2/lx/prompt-variants"
+            )
         violations = _lint(request.autonomy_level, request.prompt, slots)
         if violations:
             raise TaskValidationError("prompt is inconsistent with autonomy_level: " + ", ".join(violations))
