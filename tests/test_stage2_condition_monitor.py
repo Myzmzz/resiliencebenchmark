@@ -192,3 +192,35 @@ def test_effect_below_tolerated_threshold_stays_unverified():
     assert matched is False
     assert evidence["observed_value"] == 49
     assert evidence["effective_threshold"] == 40
+
+
+def test_cpu_effect_condition_reads_the_target_pods_cpu():
+    """A resource condition compares the Pod's CPU during the fault with its value at approval."""
+
+    class PodCpuWorkload(Workload):
+        def __init__(self) -> None:
+            self.values = iter([0.1])  # sampled at arm time, before injection
+
+        def target_resource_value(self, target, metric):
+            assert metric == "target_cpu_cores" and target["name"] == "cart-a"
+            return next(self.values, 2.0)  # the fault is burning CPU afterwards
+
+    cleanup = Cleanup()
+    monitor = ConditionRecoveryMonitor(PodCpuWorkload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={
+            **PLAN,
+            "effect_condition": {"metric": "target_cpu_cores", "operator": "increase_by_at_least", "threshold": 0.5},
+            "target": {"namespace": "otel-demo", "name": "cart-a", "uid": "uid-a"},
+        },
+        emit=lambda *_args: None,
+    )
+    _wait_for(monitor, "effect_condition_met")
+    monitor.agent_cleanup_requested(datetime.now(UTC))
+    result = monitor.finish()
+
+    evidence = result["effect_condition_evidence"]
+    assert result["effect_condition_met"] is True
+    assert (evidence["baseline_value"], evidence["observed_value"]) == (0.1, 2.0)

@@ -58,7 +58,9 @@ def test_permission_manager_gives_all_harnesses_one_mcp_only_profile(tmp_path: P
         == runtime_context["mcp_policy_file"]
     )
     policy = read_policy_file(Path(runtime_context["mcp_policy_file"]))
-    assert set(policy.servers) == {"k8s_ro", "telemetry_ro", "source_ro", "chaos_control"}
+    assert set(policy.servers) == {"k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "coroot_ro"}
+    # Coroot is a base backup source for every Trial (2026-09-10).
+    assert "coroot_ro" in codex.mcp_servers and "coroot_metrics_range" in codex.mcp_tools
     assert all(server.state == "enabled" for server in policy.servers.values())
     native = manager._default_permission_profile().bladeai_native
     assert native.kubernetes_read is False

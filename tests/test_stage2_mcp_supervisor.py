@@ -73,6 +73,7 @@ def test_start_trial_injects_policy_file_env_into_all_mcp_servers_and_restart_ke
         "source_ro": str(tmp_path / "source.token"),
         "chaos_control": str(tmp_path / "chaos.token"),
         "harness_channel": str(tmp_path / "harness.token"),
+        "coroot_ro": str(tmp_path / "coroot.token"),
         McpTokenStateRegistry.POLICY_FILE_STATE_KEY: str(policy.policy_path),
     }
     supervisor = McpSupervisor(
@@ -92,7 +93,7 @@ def test_start_trial_injects_policy_file_env_into_all_mcp_servers_and_restart_ke
         },
     )
 
-    assert len(launched) == 5
+    assert len(launched) == 6
     assert {env[MCP_POLICY_FILE_ENV] for env in launched} == {str(policy.policy_path)}
     assert {env["RESBENCH_PLATFORM_LEDGER_ROOT"] for env in launched} == {
         str(tmp_path / "ledger")
@@ -121,7 +122,7 @@ def test_bladeai_uses_two_minute_startup_window_but_codex_keeps_thirty_seconds(
     )
     token_files = {
         name: str(tmp_path / f"{name}.token")
-        for name in ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel")
+        for name in ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel", "coroot_ro")
     }
     supervisor = McpSupervisor(
         private_root=tmp_path / "mcp",
@@ -139,7 +140,7 @@ def test_bladeai_uses_two_minute_startup_window_but_codex_keeps_thirty_seconds(
             "RESBENCH_BLADEAI_PROXY_KUBECONFIG": str(tmp_path / "proxy.kubeconfig"),
         },
     )
-    assert waits == [BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS] * 6
+    assert waits == [BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS] * 7
 
     waits.clear()
     supervisor.stop()
@@ -150,7 +151,7 @@ def test_bladeai_uses_two_minute_startup_window_but_codex_keeps_thirty_seconds(
         token_state_files=token_files,
         runtime_environment={"RESBENCH_HARNESS_CHANNEL_TOKEN": "h" * 48},
     )
-    assert waits == [DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS] * 5
+    assert waits == [DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS] * 6
 
 
 def test_chaos_runtime_environment_does_not_infer_d6_variant_from_trial_id() -> None:

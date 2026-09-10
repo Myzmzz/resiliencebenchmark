@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from threading import Event, Lock, Thread
 from typing import Any, Protocol
 
-from .condition_policy import CONDITION_POLICY, evaluate_condition
+from .condition_policy import CONDITION_POLICY, RESOURCE_METRICS, evaluate_condition
 
 
 class WorkloadEvidence(Protocol):
@@ -61,9 +61,13 @@ class ConditionRecoveryMonitor:
         plan: Mapping[str, Any],
         emit: Callable[[str, Mapping[str, Any]], None],
     ) -> None:
+        # A resource condition compares against the target Pod before the
+        # fault; arming happens at approval, before injection.
+        resource_baseline = self._resource_value(plan)
         with self._lock:
             if self._thread is not None:
                 return
+            self._resource_baseline = resource_baseline
             self._trial_id = trial_id
             self._cleanup_handle = cleanup_handle
             self._emit = emit
@@ -112,6 +116,9 @@ class ConditionRecoveryMonitor:
             return
         baseline = dict(self.workload.baseline(str(self._trial_id)))
         condition = dict(plan.get("effect_condition") or {})
+        resource_metric = str(condition.get("metric") or "")
+        if resource_metric in RESOURCE_METRICS:
+            baseline[resource_metric] = getattr(self, "_resource_baseline", None)
         observation_seconds = _plan_seconds(
             plan, "effect_observation_seconds", CONDITION_POLICY["effect_observation_seconds"]
         )
@@ -127,6 +134,8 @@ class ConditionRecoveryMonitor:
         while not self._stop.is_set() and not self._agent_cleanup.is_set():
             try:
                 sample = dict(self.workload.current())
+                if resource_metric in RESOURCE_METRICS:
+                    sample[resource_metric] = self._resource_value(plan)
                 matched, latest = evaluate_condition(
                     condition, baseline=baseline, sample=sample
                 )
@@ -168,6 +177,19 @@ class ConditionRecoveryMonitor:
         if self._agent_cleanup.is_set():
             with self._lock:
                 self._result["agent_cleanup_before_effect_condition"] = True
+
+    def _resource_value(self, plan: Mapping[str, Any]) -> float | None:
+        """The target Pod's current value of a resource condition metric, if any."""
+
+        condition = plan.get("effect_condition") if isinstance(plan, Mapping) else None
+        metric = str(condition.get("metric") or "") if isinstance(condition, Mapping) else ""
+        sampler = getattr(self.workload, "target_resource_value", None)
+        if metric not in RESOURCE_METRICS or not callable(sampler):
+            return None
+        try:
+            return sampler(plan.get("target") or {}, metric)
+        except Exception:  # noqa: BLE001 - a failed sample leaves the condition unmet.
+            return None
 
     def _wait_for_running(self) -> bool:
         handle = str(self._cleanup_handle or "")

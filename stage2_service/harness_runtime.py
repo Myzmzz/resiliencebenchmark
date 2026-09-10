@@ -181,6 +181,23 @@ _BLADEAI_MUTATION_TOOL_SUFFIXES = (
 )
 
 
+def _coroot_application_id(base_environment: Mapping[str, str], target) -> str:
+    """Coroot's id of the target's workload: ``<project>:<namespace>:Deployment:<component>``.
+
+    Coroot names an application by cluster project, namespace, owner kind and
+    name; the benchmark targets are Deployments. Without a configured project
+    only the unprefixed form is available, which still scopes metric queries.
+    """
+
+    project = str(
+        base_environment.get("RESBENCH_COROOT_PROJECT_ID")
+        or os.environ.get("RESBENCH_COROOT_PROJECT_ID")
+        or ""
+    ).strip()
+    application = f"{target.namespace}:Deployment:{target.component}"
+    return f"{project}:{application}" if project else application
+
+
 def _bladeai_ledger_facts(ledger: PlatformLedger, trial_id: str) -> dict[str, Any]:
     """What BladeAI itself proposed and did in this Trial, as the platform recorded it.
 
@@ -517,6 +534,11 @@ class NativeHarnessRunner:
             token_state_files=permission_runtime["mcp_token_state_files"],
             runtime_environment={
                 "RESBENCH_AUTHORIZED_RUN_ID": trial_id,
+                # The Coroot application of this Trial's target, the scope of
+                # coroot_ro's trace and log queries.
+                "RESBENCH_COROOT_APPLICATION_ID": _coroot_application_id(
+                    self.base_environment, runtime_context.target
+                ),
                 "RESBENCH_BASELINE_GATE_TOKEN": runtime_context.baseline_capability,
                 "RESBENCH_CLEANUP_HANDLE": runtime_context.cleanup_handle,
                 "RESBENCH_CHAOS_ALLOWED_FAULT_TYPES": ",".join(

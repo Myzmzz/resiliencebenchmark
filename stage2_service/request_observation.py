@@ -27,22 +27,30 @@ def request_observability(runtime, start, end, load):
     try:
         labels = load("labels", {"start": start, "end": end}).get("data") or []
         check["checks"].append({"tool": "telemetry_prom_list_labels", "labels": labels})
+        # OTLP-pushed series carry the namespace as k8s_namespace_name once
+        # Prometheus promotes resource attributes; scraped ones use namespace.
+        selectors = [f'{{namespace="{namespace}"}}', f'{{k8s_namespace_name="{namespace}"}}']
         names = load("label/__name__/values", {
-            "start": start, "end": end, "match[]": f'{{namespace="{namespace}"}}',
+            "start": start, "end": end, "match[]": selectors,
         }).get("data") or []
         candidates = [name for name in names if isinstance(name, str) and name.endswith("_count")
                       and any(part in name.lower() for part in ("http", "rpc", "request"))]
         check["candidate_metrics"] = candidates
         for metric in candidates:
             rows = load("series", {
-                "start": start, "end": end, "match[]": f'{metric}{{namespace="{namespace}"}}',
+                "start": start, "end": end,
+                "match[]": [f'{metric}{{namespace="{namespace}"}}', f'{metric}{{k8s_namespace_name="{namespace}"}}'],
             }).get("data") or []
             check["checks"].append({"tool": "telemetry_prom_metric_series", "metric": metric, "series": rows})
             for row in rows:
                 identity = next((label for label in ("pod", "pod_name", "k8s_pod_name")
                                  if row.get(label) == runtime.target.name), None)
+                identity_value = runtime.target.name
+                if identity is None and row.get("k8s_pod_uid") == runtime.target.uid:
+                    identity, identity_value = "k8s_pod_uid", runtime.target.uid
                 if identity:
-                    entry = {"metric": metric, "identity_label": identity, "identity_value": runtime.target.name}
+                    entry = {"metric": metric, "identity_label": identity, "identity_value": identity_value,
+                             "namespace_label": "namespace" if row.get("namespace") == namespace else "k8s_namespace_name"}
                     if entry not in check["target_series"]:
                         check["target_series"].append(entry)
         if check["target_series"]:
@@ -65,7 +73,10 @@ def target_request_effect(runtime, observability, start, end, baseline_start, lo
     comparisons = []
     for candidate in observability.get("target_series") or ():
         metric = candidate["metric"]
-        selector = '{namespace=' + json.dumps(runtime.target.namespace) + ',' + candidate["identity_label"] + '=' + json.dumps(runtime.target.name) + '}'
+        namespace_label = candidate.get("namespace_label") or "namespace"
+        identity_value = candidate.get("identity_value") or runtime.target.name
+        selector = ('{' + namespace_label + '=' + json.dumps(runtime.target.namespace) + ','
+                    + candidate["identity_label"] + '=' + json.dumps(identity_value) + '}')
         base_start = max(baseline_start or start - 60, start - 60)
         if base_start >= start:
             continue

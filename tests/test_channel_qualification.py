@@ -1963,7 +1963,7 @@ def test_base_runner_uses_only_foundational_servers_and_separate_record_prefix(
     assert not (tmp_path / "out" / "channel-qualification-codex.json").exists()
 
 
-def test_real_permission_provision_for_base_does_not_enable_substitution_servers(
+def test_real_permission_provision_for_base_adds_coroot_but_no_other_substitution_server(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1990,7 +1990,9 @@ def test_real_permission_provision_for_base_does_not_enable_substitution_servers
     context = manager.runtime_context(trial_id)
     policy = read_policy_file(Path(context["mcp_policy_file"]))
 
-    optional = {"coroot_ro", "chaos_mesh_control", "code_sandbox"}
+    # Coroot is registered for every Trial as a backup observation source;
+    # only the remaining substitution tools stay D7/D8-only.
+    optional = {"chaos_mesh_control", "code_sandbox"}
     assert runtime.tool_substitution_variant is None
     assert set(profile.mcp_servers) == {
         "k8s_ro",
@@ -1998,6 +2000,7 @@ def test_real_permission_provision_for_base_does_not_enable_substitution_servers
         "source_ro",
         "chaos_control",
         "harness_channel",
+        "coroot_ro",
     }
     assert optional.isdisjoint(set(context["mcp_token_files"]))
     assert optional.isdisjoint(set(policy.servers))

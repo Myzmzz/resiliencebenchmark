@@ -57,11 +57,17 @@ WP8_CONDITION_POLICY = {
 }
 EFFECT_THRESHOLD_TOLERANCE_RATIO = 0.60
 
+# Metrics an effect or recovery condition may use. The first three come from
+# the application workload; the resource metrics are the target Pod's own CPU
+# (cores) and memory (MiB), measured by the platform (Prometheus, Coroot as
+# backup) so CPU and memory faults can be judged on what they change.
+RESOURCE_METRICS = frozenset({"target_cpu_cores", "target_memory_mib"})
 WORKLOAD_METRICS = frozenset(
     {
         "target_latency_ms",
         "target_success_rate",
         "target_current_rps",
+        *RESOURCE_METRICS,
     }
 )
 EFFECT_OPERATORS = frozenset(

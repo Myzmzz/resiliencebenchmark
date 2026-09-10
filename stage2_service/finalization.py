@@ -16,6 +16,7 @@ from .contracts import (
 )
 from .condition_policy import CONDITION_POLICY
 from .request_observation import timestamp as evidence_timestamp
+from .condition_policy import RESOURCE_METRICS
 from .reset_policy import classify_reset_policy
 from .trial_facts import assistance_level_from_report
 
@@ -217,16 +218,18 @@ class Stage2Finalizer:
                 approved_plan,
                 default=self.recovery_timeout_seconds,
             )
+            recovery_condition = (
+                approved_plan.get("recovery_condition")
+                if isinstance(approved_plan, Mapping)
+                else None
+            )
             evidence = dict(
                 self.recovery_evidence.reset_and_wait_healthy(
                     timeout_seconds=recovery_observation_seconds,
                     stability_samples=max(1, recovery_sustain_seconds // 10 + 1),
                     baseline=self.recovery_evidence.baseline(trial_id),
-                    recovery_condition=(
-                        approved_plan.get("recovery_condition")
-                        if isinstance(approved_plan, Mapping)
-                        else None
-                    ),
+                    recovery_condition=recovery_condition,
+                    **self._resource_recovery_inputs(recovery_condition, evidence_runtime, fault_contract),
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -388,6 +391,32 @@ class Stage2Finalizer:
                 "application://builtin-load-generator/recovery",
             ),
         )
+
+    def _resource_recovery_inputs(
+        self,
+        recovery_condition: Mapping[str, Any] | None,
+        runtime,
+        fault_contract: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Target and pre-fault value for a CPU or memory recovery condition.
+
+        Only a resource condition needs them, and only a workload evidence
+        source that can sample the Pod provides them; everything else keeps
+        the original call unchanged.
+        """
+
+        metric = str((recovery_condition or {}).get("metric") or "")
+        sampler = getattr(self.recovery_evidence, "target_resource_value", None)
+        if metric not in RESOURCE_METRICS or not callable(sampler):
+            return {}
+        start = evidence_timestamp(dict(fault_contract.get("evidence_window") or {}).get("start"))
+        baseline_value = None
+        if start is not None:
+            try:
+                baseline_value = sampler(runtime.target, metric, at=float(start) - 30)
+            except Exception:  # noqa: BLE001 - a missing baseline leaves recovery unverified.
+                baseline_value = None
+        return {"target": runtime.target, "resource_baseline": baseline_value}
 
     @staticmethod
     def _remaining_fault_seconds(

@@ -481,3 +481,96 @@ def test_actual_mcp_list_and_calls_are_read_only_and_descriptions_are_neutral(mo
     denied = run(server.call_tool("coroot_metrics_range", {"metric": "up", "start": 100, "end": 200, "labels": {"namespace": "x"}}))
     assert successful.structured_content["ok"] is True
     assert denied.structured_content["error"]["code"] == "namespace_override"
+
+
+def _panel_promql(transport: FakeCorootTransport) -> str:
+    """The PromQL coroot_ro placed in its dashboard-panel request."""
+
+    import json
+
+    call = next(call for call in transport.calls if call["path"].endswith("/panel/data"))
+    return json.loads(call["params"]["query"])["source"]["metrics"]["queries"][0]["query"]
+
+
+class AnonymousCorootTransport(FakeCorootTransport):
+    """Coroot without login: a request must carry no session cookie at all."""
+
+    async def get_json(self, *, base_url, path, params, headers, timeout_seconds, max_bytes):
+        assert headers == {}, "anonymous read must not send a session cookie"
+        return await super().get_json(
+            base_url=base_url,
+            path=path,
+            params=params,
+            headers={"Cookie": f"coroot_session={SESSION}"},
+            timeout_seconds=timeout_seconds,
+            max_bytes=max_bytes,
+        )
+
+
+def anonymous_service() -> tuple[CorootROService, FakeCorootTransport]:
+    transport = AnonymousCorootTransport()
+    config = RuntimeConfig(
+        base_url="http://coroot.example.test",
+        project_id="cluster-a",
+        scope=ObservationScope(namespace="otel-demo", application="cluster-a:otel-demo:Deployment:cartservice"),
+        allowed_services=frozenset({"cartservice"}),
+        session_cookie=None,
+        allow_anonymous_read=True,
+    )
+    return CorootROService(config=config, transport=transport), transport
+
+
+def test_anonymous_read_mode_queries_without_cookie_or_identity_check() -> None:
+    observer, transport = anonymous_service()
+
+    run(observer.metrics_range(metric="container_resources_cpu_usage_seconds_total", start=1_000, end=1_060))
+
+    assert "/api/user" not in [call["path"] for call in transport.calls]
+
+
+def test_container_metrics_are_scoped_by_container_id_not_namespace() -> None:
+    observer, transport = anonymous_service()
+
+    run(observer.metrics_range(metric="container_resources_cpu_usage_seconds_total", start=1_000, end=1_060))
+
+    promql = _panel_promql(transport)
+    assert 'container_id=~"/k8s/otel-demo/.*"' in promql
+    assert "namespace=" not in promql
+
+
+def test_non_container_metrics_keep_the_namespace_matcher() -> None:
+    observer, transport = anonymous_service()
+
+    run(observer.metrics_range(metric="kube_pod_status_ready", start=1_000, end=1_060))
+
+    assert 'namespace="otel-demo"' in _panel_promql(transport)
+
+
+def test_config_from_env_allows_anonymous_read_without_a_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in {
+        "RESBENCH_COROOT_URL": "http://coroot.example.test",
+        "RESBENCH_COROOT_PROJECT_ID": "cluster-a",
+        "RESBENCH_COROOT_APPLICATION_ID": "cluster-a:otel-demo:Deployment:cart",
+        "RESBENCH_COROOT_ALLOWED_NAMESPACE": "otel-demo",
+        "RESBENCH_COROOT_ALLOWED_SERVICES": "cart",
+        "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ": "true",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("RESBENCH_COROOT_SESSION_COOKIE", raising=False)
+
+    config = RuntimeConfig.from_env()
+
+    assert config.session_cookie is None
+    assert config.allow_anonymous_read is True
+
+
+def test_missing_configuration_fails_the_call_not_the_server_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mcp_servers.coroot_ro.service import CorootROError
+
+    for name in ("RESBENCH_COROOT_URL", "RESBENCH_COROOT_PROJECT_ID", "RESBENCH_COROOT_APPLICATION_ID"):
+        monkeypatch.delenv(name, raising=False)
+
+    observer = CorootROService(transport=FakeCorootTransport())
+
+    with pytest.raises(CorootROError):
+        observer.config

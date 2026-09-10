@@ -428,3 +428,74 @@ def test_recovery_window_waits_for_health_without_resetting_cold_start_evidence(
     assert recovered["business_healthy"] is True
     assert recovered["stats_reset_count"] == 1
     assert len(resets) == 1
+
+
+def test_cpu_effect_condition_is_judged_on_the_pods_own_cpu():
+    evidence = KubernetesTrafficEvidence(
+        Gate(),
+        Episode(),
+        prometheus_loader=lambda **_kwargs: {
+            "status": "success",
+            "data": {"result": [{"values": [[1, "0.02"], [2, "0.78"]]}]},
+        },
+        prometheus_metadata_loader=lambda *_args: {"data": []},
+    )
+    evidence._samples = [
+        (1, {"cart_requests": 100, "cart_failures": 0, "cart_response_sum_ms": 1000, "cart_avg_response_ms": 10}),
+        (2, {"cart_requests": 110, "cart_failures": 0, "cart_response_sum_ms": 1100}),
+    ]
+
+    effect = evidence.effect_since(
+        "campaign-cpu",
+        SimpleNamespace(
+            trial_id="campaign-cpu",
+            main_fault={"fault_type": "cpu-load", "intensity": {"cpu_percent": 80}, "evidence_window": {"start": 1, "end": 2}},
+            target=SimpleNamespace(namespace="otel-demo", name="cart-abc", uid="uid-current"),
+        ),
+        {"effect_condition": {"metric": "target_cpu_cores", "operator": "increase_by_at_least", "threshold": 0.5}},
+    )
+
+    condition = effect["service_condition"]
+    assert condition["matched"] is True
+    assert condition["scope"] == "target_pod"
+    assert (condition["baseline_value"], condition["observed_value"]) == (0.02, 0.78)
+
+
+def test_cpu_recovery_condition_compares_the_pod_with_its_pre_fault_cpu():
+    evidence = KubernetesTrafficEvidence(
+        Gate(),
+        Episode(),
+        stats_loader=lambda _url: {
+            "state": "running",
+            "user_count": 5,
+            "stats": [
+                {
+                    "name": "Aggregated",
+                    "num_requests": 7,
+                    "num_failures": 0,
+                    "total_rps": 1.0,
+                    "current_rps": 1.0,
+                    "current_fail_per_sec": 0.0,
+                    "response_time_percentile_0.95": 90,
+                }
+            ],
+        },
+        stats_resetter=lambda _url: None,
+        prometheus_loader=lambda **_kwargs: {
+            "status": "success",
+            "data": {"result": [{"values": [[1, "0.06"]]}]},
+        },
+    )
+
+    recovered = evidence.reset_and_wait_healthy(
+        timeout_seconds=1,
+        stability_samples=1,
+        baseline={"target_success_rate": 1.0},
+        recovery_condition={"metric": "target_cpu_cores", "operator": "within_baseline_delta", "threshold": 0.3},
+        target=SimpleNamespace(namespace="otel-demo", name="cart-abc", uid="uid-current"),
+        resource_baseline=0.05,
+    )
+
+    condition = recovered["recovery_condition_evidence"]
+    assert condition["matched"] is True
+    assert (condition["baseline_value"], condition["observed_value"]) == (0.05, 0.06)

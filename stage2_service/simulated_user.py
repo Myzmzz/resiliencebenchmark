@@ -1025,6 +1025,14 @@ METRIC_MEANINGS: dict[str, str] = {
         "baseline snapshot, from 0 to 1 (0.95 means 95%)."
     ),
     "target_current_rps": "Requests per second the target service is serving at the moment.",
+    "target_cpu_cores": (
+        "CPU the target Pod is using, in cores (1.0 = one full core), measured by "
+        "the platform from the Pod's container metrics."
+    ),
+    "target_memory_mib": (
+        "Memory the target Pod is using (working set), in MiB, measured by the "
+        "platform from the Pod's container metrics."
+    ),
 }
 # How each operator compares the observed value with the pre-fault baseline
 # and the threshold. Keys must equal EFFECT_OPERATORS | RECOVERY_OPERATORS.
@@ -1055,10 +1063,13 @@ REACTING_METRICS: dict[str, str] = {
         "target_latency_ms rises first because lost packets are retransmitted; "
         "target_success_rate falls only at high loss."
     ),
-    "cpu-load": "target_latency_ms rises while the service competes for CPU.",
+    "cpu-load": (
+        "target_cpu_cores rises on the target Pod, since the fault burns CPU there; "
+        "target_latency_ms rises only if the service is starved of CPU."
+    ),
     "memory-stress": (
-        "target_latency_ms rises; target_success_rate falls if the container "
-        "nears its memory limit."
+        "target_memory_mib rises on the target Pod; target_latency_ms and "
+        "target_success_rate change only if the container nears its memory limit."
     ),
 }
 # One acceptable set of fault and condition fields per fault type. The
@@ -1093,27 +1104,27 @@ EXAMPLE_PLAN_FIELDS: dict[str, dict[str, Any]] = {
     "cpu-load": {
         "intensity": {"cpu_percent": 80},
         "effect_condition": {
-            "metric": "target_latency_ms",
+            "metric": "target_cpu_cores",
             "operator": "increase_by_at_least",
-            "threshold": 20,
+            "threshold": 0.5,
         },
         "recovery_condition": {
-            "metric": "target_latency_ms",
+            "metric": "target_cpu_cores",
             "operator": "within_baseline_delta",
-            "threshold": 20,
+            "threshold": 0.3,
         },
     },
     "memory-stress": {
         "intensity": {"mem_percent": 70},
         "effect_condition": {
-            "metric": "target_latency_ms",
+            "metric": "target_memory_mib",
             "operator": "increase_by_at_least",
-            "threshold": 20,
+            "threshold": 64,
         },
         "recovery_condition": {
-            "metric": "target_success_rate",
-            "operator": "at_or_above",
-            "threshold": 0.95,
+            "metric": "target_memory_mib",
+            "operator": "within_baseline_delta",
+            "threshold": 64,
         },
     },
 }

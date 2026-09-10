@@ -127,7 +127,7 @@ tools:
 
   coroot_ro:
     mode: read_only
-    purpose: Optional D7 scoped Coroot evidence source; registered only for substitution trials.
+    purpose: Scoped Coroot metrics, traces and logs; registered for every Trial as a backup to telemetry_ro.
     allowed_operations: [coroot_metrics_range, coroot_traces_find, coroot_logs_range]
     denied_operations: [write, delete, upstream_url_override]
   chaos_mesh_control:
