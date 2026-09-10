@@ -248,6 +248,7 @@ def run_with_turn_complete_fixture(
     enqueue_external_notice: bool = False,
     confirm_events: tuple[tuple[str, dict], ...] = (),
     captured: dict | None = None,
+    terminal_result: dict | None = None,
 ) -> tuple:
     supervisor = FakeSupervisor()
     permissions = FakePermissions(tmp_path)
@@ -341,7 +342,13 @@ def run_with_turn_complete_fixture(
         )
         return [kwargs["python_executable"], "-m", "stage2_service.bladeai_worker", str(task_path)], b"", child_env
 
-    monkeypatch.setattr(harness_runtime, "create_adapter", lambda _harness: FakeAdapter())
+    def make_adapter(_harness):
+        adapter = FakeAdapter()
+        if terminal_result is not None:
+            adapter.terminal_result = terminal_result
+        return adapter
+
+    monkeypatch.setattr(harness_runtime, "create_adapter", make_adapter)
     monkeypatch.setattr(harness_runtime, "subprocess_streaming_runner", fake_streaming_runner)
     monkeypatch.setattr(NativeHarnessRunner, "_resolve_executable", lambda self, _harness, _declared: "/bin/echo")
     monkeypatch.setattr("stage2_service.bladeai_launch.prepare_bladeai_launch", fake_prepare_bladeai_launch)
@@ -1127,4 +1134,47 @@ def test_agent_side_denials_and_other_trials_are_not_platform_failures(tmp_path:
     assert _platform_confirm_failure(denied, "trial-1") == {}
     assert _platform_confirm_failure(foreign_code, "trial-1") == {}
     assert _platform_confirm_failure(other_trial, "trial-1") == {}
+
+
+def test_bladeai_report_is_transcribed_when_no_result_was_submitted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal = json.loads(
+        (Path(__file__).parent / "fixtures" / "stage2_bladeai" / "terminal_c0.json").read_text(encoding="utf-8")
+    )
+    terminal.pop("_note", None)
+
+    report, _responder, _feedbacks, _permissions = run_with_turn_complete_fixture(
+        tmp_path,
+        monkeypatch,
+        HarnessKind.BLADEAI,
+        result_mode="none",
+        terminal_result=terminal,
+    )
+
+    assert report.agent_assessment["effect_assessment"] == "verified"
+    assert report.agent_assessment["recovery_assessment"] == "verified"
+    assert report.final_output["validation_error"] is None
+    assert report.final_output["authorized_target"]["component"]
+
+
+def test_a_submitted_result_wins_over_the_bladeai_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal = json.loads(
+        (Path(__file__).parent / "fixtures" / "stage2_bladeai" / "terminal_c0.json").read_text(encoding="utf-8")
+    )
+    terminal.pop("_note", None)
+
+    report, _responder, _feedbacks, _permissions = run_with_turn_complete_fixture(
+        tmp_path,
+        monkeypatch,
+        HarnessKind.BLADEAI,
+        result_mode="valid",
+        terminal_result=terminal,
+    )
+
+    assert report.agent_assessment["decision"] == "safe_stop"
 

@@ -56,6 +56,7 @@ def test_remediation_preserves_existing_case_specs() -> None:
     [
         "EXECUTION_NODE_WEIGHTS",
         "SAFE_REFUSAL_NODE_WEIGHTS",
+        "SAFE_REFUSAL_BONUS_WEIGHTS",
         "STATUS_FACTORS",
         "SOURCE_FACTORS",
     ],

@@ -34,6 +34,7 @@ from .harness_adapters import create_adapter
 from .harness_adapters.base import AgentMessage, CanonicalEvent, ToolCall, ToolResult
 from .lifecycle_mapper import LifecycleMapper, successful
 from .platform_ledger import PlatformLedger
+from .bladeai_result import TRANSCRIPTION_SOURCE, transcribe_bladeai_report
 from .tool_event_pump import RealtimeToolEventPump
 from .llm_relay import TrialRelay, TrialRelayConfig
 from .gateway_evidence import read_gateway_requests
@@ -169,6 +170,56 @@ PLATFORM_CONFIRM_FAILURE_CODES = frozenset(
 )
 _CONFIRM_OUTCOME_EVENTS = frozenset({"CONFIRM_GRANTED", "CONFIRM_DENIED", "CONFIRM_FAILED"})
 _LEDGER_PAGE_SIZE = 500
+
+
+# BladeAI tool calls that change the cluster; listed as its actions taken.
+_BLADEAI_MUTATION_TOOL_SUFFIXES = (
+    "blade_create",
+    "blade_destroy",
+    "chaos_create_experiment",
+    "chaos_destroy_experiment",
+)
+
+
+def _bladeai_ledger_facts(ledger: PlatformLedger, trial_id: str) -> dict[str, Any]:
+    """What BladeAI itself proposed and did in this Trial, as the platform recorded it.
+
+    Feeds the transcription of BladeAI's report: its confirmation proposals
+    (its own words about targets), the nodes the simulated user filled in,
+    and the mutating tools it called.
+    """
+
+    proposals: list[dict[str, Any]] = []
+    assistance_nodes: list[str] = []
+    tools: list[str] = []
+    after_sequence = 0
+    while True:
+        events = ledger.query(
+            after_sequence=after_sequence, limit=_LEDGER_PAGE_SIZE, trial_id=trial_id
+        )
+        for event in events:
+            payload = event.payload if isinstance(event.payload, Mapping) else {}
+            if event.event_type == "CONFIRM_REQUESTED" and isinstance(payload.get("plan"), Mapping):
+                proposals.append(dict(payload["plan"]))
+            elif event.event_type == "PLAN_ASSISTANCE_DELIVERED":
+                assistance_nodes.extend(str(node) for node in payload.get("affected_nodes") or ())
+            elif event.event_type == "ToolCall" and isinstance(payload.get("tool"), str):
+                tools.append(payload["tool"])
+        if len(events) < _LEDGER_PAGE_SIZE:
+            break
+        after_sequence = events[-1].sequence
+    actions = [
+        tool for tool in dict.fromkeys(tools)
+        if tool.endswith(_BLADEAI_MUTATION_TOOL_SUFFIXES)
+    ]
+    return {
+        "proposals": proposals,
+        "assistance_nodes": sorted(set(assistance_nodes)),
+        "actions": actions,
+        "cleanup_requested": any(
+            tool.endswith(("blade_destroy", "chaos_destroy_experiment")) for tool in tools
+        ),
+    }
 
 
 def _platform_confirm_failure(ledger: PlatformLedger, trial_id: str) -> dict[str, Any]:
@@ -1302,6 +1353,23 @@ class NativeHarnessRunner:
                         "assessment": validated_result, "source": "harness_submit_result",
                     })
                     submitted_result_loaded = True
+        if harness is HarnessKind.BLADEAI and not submitted_result_loaded:
+            # BladeAI reports through its own SDK, never harness_submit_result;
+            # copy that report, verbatim, into the result the scorer reads.
+            facts = _bladeai_ledger_facts(platform_ledger, trial_id)
+            transcribed = transcribe_bladeai_report(
+                getattr(adapter, "terminal_result", None),
+                proposals=facts["proposals"],
+                assistance_nodes=facts["assistance_nodes"],
+                actions=facts["actions"],
+                agent_cleanup_requested=facts["cleanup_requested"],
+                interaction_mode=interaction_mode.value,
+            )
+            if transcribed is not None and result_validator.is_valid(transcribed):
+                last_assessment = transcribed
+                assessment_history.append({
+                    "assessment": transcribed, "source": TRANSCRIPTION_SOURCE,
+                })
         confirm_failure = _platform_confirm_failure(platform_ledger, trial_id)
         if confirm_failure and not harness_failure:
             harness_failure = confirm_failure
@@ -1465,6 +1533,7 @@ class NativeHarnessRunner:
             "output_repair_exhausted": output_repair_count > 0 and not output_repaired,
             "retry_history": retry_budget.retries,
             "platform_model": platform_model,
+            "authorized_target": runtime_context.target.model_dump(mode="json"),
             "harness_error_code": harness_failure.get("error_code"),
             "harness_error": redact_json(harness_failure, env),
             "harness_model_request_count": sum(
