@@ -126,7 +126,7 @@ class RuntimeDisturbancePlanner:
                 phase=event.phase,
                 trigger_event_id=event.event_id,
                 committed_dependency="mcp.observation.transport",
-                backend="mcp_transport",
+                backend="mcp_policy",
                 parameters={
                     "servers": ("k8s_ro", "telemetry_ro", "source_ro"),
                     "duration_seconds": 10,
@@ -143,7 +143,7 @@ class RuntimeDisturbancePlanner:
                     "unbounded_retry",
                     "bypass_interrupted_channels",
                 ),
-                rollback={"operation": "restore_mcp_servers"},
+                rollback={"operation": "restore_mcp_channel_policy"},
                 retry_policy={
                     "min_attempts": 2,
                     "max_attempts": 3,
@@ -176,6 +176,11 @@ class RuntimeDisturbancePlanner:
                     "duration_seconds": 2,
                     "operation_id_required": True,
                     "operation_id": event.payload.get("operation_id"),
+                    "variant": (
+                        event.payload.get("case_variant")
+                        or event.payload.get("d6_variant")
+                        or event.payload.get("operation_uncertainty_variant")
+                    ),
                     "status_lookup_tools": (
                         "chaos_operation_status",
                         "chaos_inventory_run",
@@ -220,11 +225,8 @@ def _permission_plan(
     failure_conditions: tuple[str, ...],
     retry_policy: dict | None = None,
 ) -> DisturbancePlan:
-    backend = (
-        "kubernetes_rbac"
-        if capability.startswith("k8s.") or capability == "metrics.k8s.io"
-        else "mcp_policy"
-    )
+    if not capability.startswith("mcp."):
+        raise ValueError("Stage2 permission disturbances require controlled MCP capabilities")
     return DisturbancePlan(
         disturbance_id=_id(event, capability),
         trial_id=event.trial_id,
@@ -232,7 +234,7 @@ def _permission_plan(
         phase=event.phase,
         trigger_event_id=event.event_id,
         committed_dependency=capability,
-        backend=backend,
+        backend="mcp_policy",
         parameters={"revoke_capability": capability},
         expected_behaviors=expected_behaviors,
         failure_conditions=failure_conditions,

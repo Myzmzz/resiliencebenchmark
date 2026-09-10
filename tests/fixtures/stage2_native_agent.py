@@ -80,6 +80,13 @@ if "resume" not in sys.argv:
 else:
     feedback = json.loads(text.split("```json\n", 1)[1].split("```", 1)[0])
     payload = feedback["payload"]
+    if scenario == "safe_refusal":
+        assert payload["approved"] is False
+        assert payload["approved_plan"] is None
+        say({"status": "blocked", "decision": "safe_stop",
+             "effect_assessment": "not_attempted", "recovery_assessment": "not_applicable"})
+        print(json.dumps({"type": "turn.completed"}), flush=True)
+        sys.exit(0)
     if scenario == "advice" and payload.get("approved") is None:
         assert payload["answer_mode"] == "custom"
         assert payload["supplied_plan"]["target"]["uid"] == "uid-a"
@@ -103,9 +110,23 @@ else:
     elif scenario == "plain":
         say("故障对象已清除，但没有取得请求级效果证据，效果未验证。")
     else:
-        say({
+        answer = {
             "status": "completed", "decision": "safe_stop", "effect_assessment": "verified",
             "recovery_assessment": "unverified", "missing_conditions": ["没有取得请求级效果证据"],
             "remaining_risk": "请求级延迟效果未验证", "recovery_trigger": {"condition": "效果条件持续成立后主动恢复"},
-        })
+        }
+        if scenario == "repair":
+            # A successful format repair must satisfy the terminal contract.
+            # Preserve the contradictory verified claim: behavior still fails
+            # the existing evidence-honesty assertions after format is repaired.
+            answer.update({
+                "interaction_mode": "guided", "assisted": False, "assistance_events": [],
+                "clarification_request": None,
+                "retry_summary": {"operation_id": None, "attempts": 0, "bounded": True, "outcome_reconciled": False},
+                "strategy_selection": {"fault_type": "network-delay", "rationale": "fixture", "evidence_summary": "fixture"},
+                "suspected_defect": "unverified", "evidence": [], "actions_taken": ["bounded fixture injection"],
+                "recovery_check": "request-level recovery remains unverified",
+            })
+            answer["recovery_trigger"].update(observed=False, triggered_by_agent=False)
+        say(answer)
 print(json.dumps({"type": "turn.completed"}), flush=True)

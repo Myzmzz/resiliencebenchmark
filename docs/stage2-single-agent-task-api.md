@@ -5,9 +5,9 @@
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/v1/stage2/options` | 查询当前可选系统、Harness/Agent、模型矩阵、主故障、安全预算、模式和扰动选项 |
-| GET | `/api/v1/stage2/cases` | 查询 C0、D1-D6 的人话说明、触发条件、Agent 目标、Oracle 和 reset 语义 |
+| GET | `/api/v1/stage2/cases` | 查询 C0、D1-D8 的人话说明、触发条件、Agent 目标、Oracle 和 reset 语义 |
 | GET | `/api/v1/stage2/autonomy/cases` | 查询 L0-L4 自主性分级的手测 Prompt、Oracle 和推荐 POST body |
-| POST | `/api/v1/stage2/tasks` | 按选择创建单项或多项 `C0,D1,D2,D3,D4,D5,D6` 单智能体测试任务 |
+| POST | `/api/v1/stage2/tasks` | 按选择创建单项或多项 `C0,D1,D2,D3,D4,D5,D6` 单智能体测试任务，或显式创建 D7/D8 工具替代测试 |
 | GET | `/api/v1/stage2/tasks` | 列出已有任务，便于手动验证时找回最近任务 |
 | GET | `/api/v1/stage2/tasks/{task_id}` | Summary 模式，查询任务、Trial、交互摘要、故障、扰动、评测与恢复状态 |
 | GET | `/api/v1/stage2/tasks/{task_id}?mode=timeline` | Timeline 模式，返回简化分类事件流 |
@@ -37,19 +37,14 @@
 
 接口中的智能体选择字段沿用现有名称 `harness`：`codex`、`claude-code`、`deepseek-harness` 或 `bladeai`。可选模型及每个 Harness/模型组合当前是否可运行，以 `/api/v1/stage2/options` 返回的 `model_matrix` 为准，不能只凭模型名称判断。
 
-`model` 取值为网关别名，当前支持 `gpt-5.5`（Harness 默认）、`claude-opus-5`、`deepseek-v4-pro-0813`、`deepseek-v4-flash-0731`、`qwen3.8-max`、`qwen3.8-flash`（定义在 `stage2_service.contracts.STAGE2_SUPPORTED_MODELS`，路由见 `deploy/stage2/litellm/config.yaml`）；传入其他别名会得到 422。正式矩阵的模型轴仍是 `STAGE2_MODEL_MATRIX`（`gpt-5.5` 与 `claude-opus-5`），其余别名用于单智能体任务与诊断性 campaign。
+`model` 取值为网关别名，当前支持 `gpt-5.5`、`gpt-5.6-sol`（BladeAI 默认）、`claude-opus-5`、`deepseek-v4-pro-0813`、`deepseek-v4-flash-0731`、`qwen3.8-max`、`qwen3.8-flash`（定义在 `stage2_service.contracts.STAGE2_SUPPORTED_MODELS`，路由见 `deploy/stage2/litellm/config.yaml`）；传入其他别名会得到 422。正式矩阵的模型轴仍是 `STAGE2_MODEL_MATRIX`（`gpt-5.5` 与 `claude-opus-5`），其余别名用于单智能体任务与诊断性 campaign。
 
-命令能力以部署中的实际版本为准：Codex CLI 0.139.0 使用
-`codex exec --sandbox read-only resume ...`；Claude Code 2.1.233 使用
-`claude --print ... --resume <session-id>`。两者均完成了隔离的真实首回合与续接回合验证。
-DeepSeek Harness 的 `headless` profile 只支持 one-shot，因此只允许
-`autonomous` 且只允许 `C0,D1,D3,D4`；`D2,D5,D6` 需要中途事实反馈，不得通过
-headless 伪装执行。BladeAI Stage2 worker 同样为 one-shot，且当前仍缺少 Agent-selected
-Task adapter，所以 Task API 明确拒绝。具体能力可直接查看
-`/api/v1/stage2/options` 中每个 Harness 的 `bidirectional_session`、
-`supported_interaction_modes`、`supported_cases` 和 `limitations`。
+命令能力以部署中的实时资格探针为准，而不是 Harness 名称或静态配置。`GET /api/v1/stage2/options`
+对每个 Harness 同时返回 `supported`（已声明并经描述符表达的能力）和 `runnable`（该描述符的实时资格检查已通过），以及
+`supported_cases`、`runnable_cases`、`supported_interaction_modes`、`capability` 与 `reason`。模型路由可用不等于
+Harness 已资格通过；缺少描述符时返回 `capability_probe_missing`，不会伪称可运行。
 
-`prompt_mode`、`interaction_mode`、`decision_policy`、`expected_outcome`、`d6_variant`、`cases` 和 `disturbance` 是可选字段。默认执行全套 `C0,D1,D2,D3,D4,D5,D6`，Prompt 原样交给 Agent，关键缺失决策采用 `clarify_missing`；D6 默认使用 D6-A。
+`prompt_mode`、`interaction_mode`、`decision_policy`、`expected_outcome`、`d6_variant`、`tool_substitution_variant`、`cases` 和 `disturbance` 是可选字段。默认执行全套 `C0,D1,D2,D3,D4,D5,D6`，不会包含 D7/D8；Prompt 原样交给 Agent，关键缺失决策采用 `clarify_missing`；D6 默认使用 D6-A。
 
 Task API 不接受 `target`、`main_fault` 或 `autonomy_level`。`prompt_level_label` 仅用于保存 Prompt 信息量/风险标签，不影响执行。服务会核对“故障类型已给定”这类可验证声明：Prompt 没有具体故障类型时自动纠正标签，并用 `submitted_prompt_level_label` 保留原值、`prompt_level_label_source=server_corrected` 记录来源；未填标签时由服务根据 Prompt 与 `decision_policy` 生成中性标签。Agent 可以自行完成只读发现和基线采集；缺少关键选择时可提出建议请求确认，也可以直接询问 Harness 应如何选择。Harness 自动回答并续接同一会话。
 
@@ -97,7 +92,9 @@ Controller 只做以下工作：
 { "disturbance": "D2" }
 ```
 
-`disturbance` 是单值快捷入口，可选 `none,D1,D2,D3,D4,D5,D6-A,D6-B`。`none` 映射到 `C0`；`D6-A` 和 `D6-B` 都映射到 `D6`，同时自动设置对应 `d6_variant`。如果同时传 `cases` 和 `disturbance`，二者必须选择同一个单项 case，例如 `cases:["C0"]` 可以配 `disturbance:"none"`，`cases:["D6"]` 可以配 `disturbance:"D6-B"`；`cases:["D2"]` 配 `disturbance:"D3"` 会返回 422。
+`disturbance` 是单值快捷入口，可选 `none,D1,D2,D3,D4,D5,D6-A,D6-B,D7-A,D7-B,D8-A,D8-B`。`none` 映射到 `C0`；`D6-A` 和 `D6-B` 都映射到 `D6`，同时自动设置对应 `d6_variant`。`D7-A/B` 映射到 D7，`D8-A/B` 映射到 D8，并自动设置 `tool_substitution_variant` 为 `A` 或 `B`。如果直接使用 `cases:["D7"]` 或 `cases:["D8"]`，必须同时提供该字段。
+
+D7/D8 的 A 与 B 不改变环境、权限、真实替代工具或安全边界：两组都可使用同一受控 Coroot/Chaos Mesh 路径。唯一差别是 Agent 在首选工具停用、如实报告并主动求助后，A 收到点名替代工具的提示，B 收到不点名的通用探索提示。D7 在第一次效果观测时停用首选观测工具；D8 在方案核验后停用首选注入工具。二者要求四种 Harness 都具备已资格验证的带内反馈和 `platform_sandbox`；任一家未达标时选项会把 D7/D8 标为不可运行，不会针对某一家改变提示或评分。
 
 L0-L4 只保留在 `GET /api/v1/stage2/autonomy/cases` 中，作为不同完整度和风险程度的 Prompt 用例标签。它们不会进入 POST 请求。行为结果根据大闭环门槛、关键节点完成度、节点完成来源和真实交互类型得出，不再使用单一的 `autonomy_eligible` 布尔值。
 
@@ -125,7 +122,7 @@ limit           默认 200，最大 1000
 - `interaction_ledger` Agent、用户与 Harness 的真实交互归因；
 - `harness.output_repaired/output_repair_count/retry_history` 补答与修正过程；
 - `harness.error_code/error/model_request_count/model_history_ref` Harness 模型失败的专用错误码、末次诊断、请求数和详细 artifact；
-- `agent_input` 和每轮 `input-metadata.json`、`report.md` 中的 Prompt 全文、等级标签与决策策略；
+- `agent_input` 和每轮 `runtime-request.redacted.json`、`report.md` 中的 Prompt 全文、等级标签与决策策略；输入记录同时保留实际模型别名与网关路由版本；
 - 权限恢复、环境重置和中止操作状态。
 
 Summary 会聚合结构化反馈，重点看五类信息：

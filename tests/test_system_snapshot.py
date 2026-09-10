@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import json
 
 import pytest
 
@@ -21,7 +23,19 @@ from controller.system_snapshot import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOT = REPO_ROOT.parent / "benchmark-sources" / "materialized"
+
+
+def _scanner(tmp_path: Path) -> SystemScanner:
+    """Self-contained source-verification fixture, not a live source claim."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shutil.copyfile(REPO_ROOT / "benchmarkfactory.yaml", repo / "benchmarkfactory.yaml")
+    shutil.copytree(REPO_ROOT / "environment", repo / "environment")
+    source_root = tmp_path / "materialized"
+    (source_root / "otel-demo-2.2.0").mkdir(parents=True)
+    (repo / "artifacts").mkdir()
+    (repo / "artifacts" / "source-verification-otel-demo.json").write_text(json.dumps({"fixture": "fake-static-unit-only", "spec": {"sources": [{"id": "otel-demo-2.2.0", "commit": "b74a7bc7bbe66099c61951f42b24dab8b6f02d18", "archiveSha256": "2fb6048c4004db2567edef29442cd2763e0095940ecc8ca9bdd597637e4c9777"}]}}))
+    return SystemScanner(repo, source_root)
 
 
 def _spec(*, mode: RunMode = RunMode.DRY_RUN, namespace: str = "otel-demo") -> RunSpec:
@@ -49,8 +63,8 @@ def _spec(*, mode: RunMode = RunMode.DRY_RUN, namespace: str = "otel-demo") -> R
     )
 
 
-def test_dry_run_snapshot_uses_locked_source_and_formal_workload_contract() -> None:
-    snapshot = SystemScanner(REPO_ROOT, SOURCE_ROOT).scan("run-test", _spec())
+def test_dry_run_snapshot_uses_locked_source_and_formal_workload_contract(tmp_path: Path) -> None:
+    snapshot = _scanner(tmp_path).scan("run-test", _spec())
 
     assert snapshot.schema_version == "system-snapshot.v1"
     assert snapshot.source.status is SnapshotStatus.QUALIFIED
@@ -67,7 +81,7 @@ def test_dry_run_snapshot_uses_locked_source_and_formal_workload_contract() -> N
     ]
 
 
-def test_execute_snapshot_consumes_normalized_runtime_adapter() -> None:
+def test_execute_snapshot_consumes_normalized_runtime_adapter(tmp_path: Path) -> None:
     class Adapter:
         def scan(self, namespace: str) -> RuntimeSnapshot:
             assert namespace == "otel-demo"
@@ -91,7 +105,7 @@ def test_execute_snapshot_consumes_normalized_runtime_adapter() -> None:
                 ],
             )
 
-    snapshot = SystemScanner(REPO_ROOT, SOURCE_ROOT).scan(
+    snapshot = _scanner(tmp_path).scan(
         "run-live",
         _spec(mode=RunMode.EXECUTE),
         runtime_adapter=Adapter(),
@@ -102,8 +116,8 @@ def test_execute_snapshot_consumes_normalized_runtime_adapter() -> None:
     assert snapshot.runtime.targets[0].uid == "uid-123"
 
 
-def test_execute_without_runtime_adapter_is_fail_closed() -> None:
-    snapshot = SystemScanner(REPO_ROOT, SOURCE_ROOT).scan(
+def test_execute_without_runtime_adapter_is_fail_closed(tmp_path: Path) -> None:
+    snapshot = _scanner(tmp_path).scan(
         "run-live",
         _spec(mode=RunMode.EXECUTE),
     )
@@ -112,9 +126,9 @@ def test_execute_without_runtime_adapter_is_fail_closed() -> None:
     assert "must block" in snapshot.limitations[0]
 
 
-def test_run_namespace_must_match_trusted_application_registry() -> None:
+def test_run_namespace_must_match_trusted_application_registry(tmp_path: Path) -> None:
     with pytest.raises(SnapshotError, match="liveReference"):
-        SystemScanner(REPO_ROOT, SOURCE_ROOT).scan(
+        _scanner(tmp_path).scan(
             "run-wrong-namespace",
             _spec(namespace="default"),
         )

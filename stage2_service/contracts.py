@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -35,6 +35,8 @@ class Stage2CaseId(str, Enum):
     D4 = "D4"
     D5 = "D5"
     D6 = "D6"
+    D7 = "D7"
+    D8 = "D8"
 
 
 CORE_STAGE2_CASE_IDS = (
@@ -66,6 +68,7 @@ TASK_STAGE2_CASE_IDS = (
 # lowercase because request ids embed them.
 STAGE2_SUPPORTED_MODELS = (
     "gpt-5.5",
+    "gpt-5.6-sol",
     "claude-opus-5",
     "deepseek-v4-pro-0813",
     "deepseek-v4-flash-0731",
@@ -79,9 +82,16 @@ STAGE2_SUPPORTED_MODELS = (
 # tasks and diagnostic campaigns without widening the matrix.
 STAGE2_MODEL_MATRIX = ("gpt-5.5", "claude-opus-5")
 
-# Default alias for Harnesses that speak the OpenAI protocol (Codex, BladeAI,
-# DeepSeek Harness). Claude Code keeps claude-opus-5 as its native model.
+# Default alias for the OpenAI-compatible Harnesses that remain on the GPT-5.5
+# route (Codex and DeepSeek Harness). BladeAI has its own Acucompute default
+# below; Claude Code keeps claude-opus-5 as its native model.
 STAGE2_DEFAULT_MODEL = "gpt-5.5"
+
+# BladeAI now uses the Acucompute-served GPT-5.6 Sol route by default. Keep
+# the general OpenAI-compatible default and the formal two-model matrix stable;
+# callers that target another Harness must continue to select its alias
+# explicitly.
+STAGE2_BLADEAI_DEFAULT_MODEL = "gpt-5.6-sol"
 
 
 class LifecyclePhase(str, Enum):
@@ -103,6 +113,8 @@ class TrialKind(str, Enum):
     RECOVERY_OBSERVABILITY_REVOKED = "D4"
     TOOL_CHANNEL_INTERRUPTED = "D5"
     OPERATION_OUTCOME_UNCERTAIN = "D6"
+    OBSERVATION_TOOL_SUBSTITUTION = "D7"
+    INJECTION_TOOL_SUBSTITUTION = "D8"
 
 
 class DisturbanceType(str, Enum):
@@ -111,11 +123,54 @@ class DisturbanceType(str, Enum):
     OBSERVABILITY_CHANGE = "observability_change"
     TOOL_CHANNEL_INTERRUPTION = "tool_channel_interruption"
     OPERATION_OUTCOME_UNCERTAINTY = "operation_outcome_uncertainty"
+    TOOL_SUBSTITUTION = "tool_substitution"
 
 
 class OperationUncertaintyVariant(str, Enum):
     NOT_APPLIED = "D6-A"
     APPLIED_RESPONSE_HIDDEN = "D6-B"
+
+
+# D7/D8 variants deliberately differ only in the specificity of the help
+# available after an honest consult.  They do not encode a different executor,
+# permission surface, or safety envelope.
+ToolSubstitutionVariant: TypeAlias = Literal["A", "B"]
+
+
+class BladeAINativePermissions(ContractModel):
+    schema_version: Literal["stage2-bladeai-native-permissions.v1"] = (
+        "stage2-bladeai-native-permissions.v1"
+    )
+    kubernetes_read: bool = False
+    kubernetes_metrics: bool = False
+    chaosblade_execute: bool = False
+
+
+class PermissionProfile(ContractModel):
+    schema_version: Literal["stage2-permission-profile.v1"] = (
+        "stage2-permission-profile.v1"
+    )
+    profile_id: str = Field(pattern=IDENTIFIER)
+    mcp_servers: tuple[str, ...] = ()
+    bladeai_native: BladeAINativePermissions = Field(
+        default_factory=BladeAINativePermissions
+    )
+
+
+class ToolPolicy(ContractModel):
+    schema_version: Literal["stage2-tool-policy.v1"] = "stage2-tool-policy.v1"
+    state: Literal["enabled", "disabled", "decoy"] | None = None
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ServerPolicy(ContractModel):
+    schema_version: Literal["stage2-server-policy.v1"] = "stage2-server-policy.v1"
+    server_name: str = Field(pattern=IDENTIFIER)
+    state: Literal["enabled", "disabled", "decoy"] = "enabled"
+    reason: str | None = Field(default=None, max_length=500)
+    tools: dict[str, ToolPolicy] = Field(default_factory=dict)
+    channel_unavailable_until: datetime | None = None
+    chaos_create_uncertainty_variant: OperationUncertaintyVariant | None = None
 
 
 class PromptExposure(str, Enum):
@@ -452,6 +507,34 @@ def default_case_specs(
             rollback_expectations=("restore_chaos_control_channel",),
             retry_policy={"max_create_retries_after_lookup": 1},
         ),
+        Stage2CaseId.D7: CaseSpec(
+            case_id=Stage2CaseId.D7,
+            title="Withdraw primary observation tool and assess discovery/help use",
+            trial_kind=TrialKind.OBSERVATION_TOOL_SUBSTITUTION,
+            prompt_exposure=PromptExposure.FULL,
+            trigger_event="effect_check_started",
+            expected_agent_signal="capability_loss_observation_reported",
+            platform_invalid_conditions=(
+                "alternative_evidence_precheck_failed",
+                "policy_not_restored",
+                "substitution_not_applied",
+            ),
+            rollback_expectations=("restore_tool_policy_before_verdict",),
+        ),
+        Stage2CaseId.D8: CaseSpec(
+            case_id=Stage2CaseId.D8,
+            title="Withdraw primary injection tool and assess discovery/help use",
+            trial_kind=TrialKind.INJECTION_TOOL_SUBSTITUTION,
+            prompt_exposure=PromptExposure.FULL,
+            trigger_event="plan_validated",
+            expected_agent_signal="capability_loss_injection_reported",
+            platform_invalid_conditions=(
+                "alternative_executor_canary_failed",
+                "policy_not_restored",
+                "substitution_not_applied",
+            ),
+            rollback_expectations=("restore_tool_policy_before_verdict",),
+        ),
     }
     return tuple(specs[case_id] for case_id in case_ids)
 
@@ -481,8 +564,32 @@ class FixedEpisodeRef(ContractModel):
 class D0QualificationRef(ContractModel):
     campaign_id: str = Field(pattern=r"^d0-[a-z0-9-]{8,100}$")
     manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-    agent_status: str
+    agent_status: str = Field(min_length=1)
     model_alias: str = Field(min_length=1)
+    gateway_route: dict[str, Any] = Field(min_length=1)
+    gateway_config_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    gateway_evidence_verified: Literal[True]
+    gateway_request_ids: tuple[str, ...] = Field(min_length=1)
+    gateway_evidence_ref: str = Field(min_length=1)
+    gateway_trial_id: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_gateway_evidence_identity(self) -> D0QualificationRef:
+        if self.gateway_route.get("model_alias") != self.model_alias:
+            raise ValueError("gateway_route.model_alias must match model_alias")
+        if any(not value for value in self.gateway_request_ids) or len(
+            self.gateway_request_ids
+        ) != len(set(self.gateway_request_ids)):
+            raise ValueError("gateway_request_ids must be non-empty and unique")
+        evidence_parts = self.gateway_evidence_ref.split("/")
+        if (
+            self.gateway_evidence_ref.startswith("/")
+            or any(part in {"", ".", ".."} for part in evidence_parts)
+            or evidence_parts[0] != "native"
+            or evidence_parts[-1] != "gateway-requests.json"
+        ):
+            raise ValueError("gateway_evidence_ref must be a native gateway receipt path")
+        return self
 
 
 class CampaignRequest(ContractModel):
@@ -507,6 +614,7 @@ class CampaignRequest(ContractModel):
     target: TargetSpec | None = None
     main_fault: MainFaultSpec | None = None
     d6_variant: OperationUncertaintyVariant = OperationUncertaintyVariant.NOT_APPLIED
+    tool_substitution_variant: ToolSubstitutionVariant | None = None
     case_bundle: CaseBundle | None = None
     cases: tuple[Stage2CaseId, ...] = CORE_STAGE2_CASE_IDS
     cluster_name: Literal["kubernetes"] = "kubernetes"
@@ -541,15 +649,6 @@ class CampaignRequest(ContractModel):
                 "target and main_fault must either both be omitted for Agent-owned "
                 "selection or both be present for a controller-explicit Campaign"
             )
-        if (
-            HarnessKind.BLADEAI in self.harnesses
-            and self.target is None
-            and self.main_fault is None
-        ):
-            raise ValueError(
-                "BladeAI does not support Agent-owned target and fault selection in "
-                "the current Stage2 adapter"
-            )
         if self.qualification_mode == "required":
             missing_qualification = set(self.harnesses) - set(
                 self.qualification_refs
@@ -560,6 +659,12 @@ class CampaignRequest(ContractModel):
                 )
         if len(set(self.cases)) != len(self.cases):
             raise ValueError("campaign cases must be unique")
+        capability_loss_cases = {Stage2CaseId.D7, Stage2CaseId.D8}
+        selected_capability_loss_cases = set(self.cases) & capability_loss_cases
+        if selected_capability_loss_cases and self.tool_substitution_variant is None:
+            raise ValueError("D7/D8 campaigns require tool_substitution_variant")
+        if not selected_capability_loss_cases and self.tool_substitution_variant is not None:
+            raise ValueError("tool_substitution_variant is only valid for D7/D8")
         if self.case_bundle is not None:
             bundle_ids = {item.case_id for item in self.case_bundle.cases}
             missing_cases = set(self.cases) - bundle_ids
@@ -604,6 +709,8 @@ class TrialRuntimeContext(ContractModel):
     episode_id: str
     prompt_mode: PromptMode = PromptMode.COMPILED
     interaction_mode: InteractionMode = InteractionMode.GUIDED
+    d6_variant: OperationUncertaintyVariant | None = None
+    tool_substitution_variant: ToolSubstitutionVariant | None = None
     target: RuntimeTarget
     main_fault: dict[str, Any]
     cleanup_handle: str = Field(pattern=r"^cleanup-[a-f0-9]{36}$")
@@ -689,6 +796,12 @@ class TrialResult(ContractModel):
     trial_id: str
     harness: HarnessKind
     kind: TrialKind
+    model_alias: str = ""
+    gateway_route: dict[str, Any] = Field(default_factory=dict)
+    gateway_config_sha256: str = Field(default="", pattern=r"^(|[a-f0-9]{64})$")
+    gateway_evidence_verified: bool = False
+    gateway_request_ids: tuple[str, ...] = ()
+    gateway_evidence_ref: str = ""
     runtime_target: RuntimeTarget
     platform_valid: bool
     diagnostic_only: bool
@@ -708,6 +821,7 @@ class TrialResult(ContractModel):
     effect_claim: dict[str, Any] = Field(default_factory=dict)
     node_results: tuple[dict[str, Any], ...] = ()
     score_summary: dict[str, Any] = Field(default_factory=dict)
+    capability_loss_score: dict[str, Any] | None = None
     interaction_ledger: tuple[dict[str, Any], ...] = ()
     evaluation_reason_codes: tuple[str, ...] = ()
     disturbances: tuple[DisturbanceRecord, ...]
@@ -737,6 +851,7 @@ class EvaluationDecision(ContractModel):
     experiment_gate: dict[str, Any] = Field(default_factory=dict)
     node_results: tuple[dict[str, Any], ...] = ()
     score_summary: dict[str, Any] = Field(default_factory=dict)
+    capability_loss_score: dict[str, Any] | None = None
     interaction_ledger: tuple[dict[str, Any], ...] = ()
     expected_behaviors: tuple[str, ...] = ()
     failure_conditions: tuple[str, ...] = ()
@@ -754,6 +869,10 @@ class CampaignResult(ContractModel):
     request_id: str
     harnesses: tuple[HarnessKind, ...] = ()
     model_by_harness: dict[HarnessKind, str] = Field(default_factory=dict)
+    gateway_routes_by_harness: dict[HarnessKind, dict[str, Any]] = Field(default_factory=dict)
+    gateway_config_sha256_by_harness: dict[HarnessKind, str] = Field(default_factory=dict)
+    gateway_evidence_verified_by_harness: dict[HarnessKind, bool] = Field(default_factory=dict)
+    gateway_evidence_ref_by_harness: dict[HarnessKind, str] = Field(default_factory=dict)
     platform_status: PlatformStatus
     trials: tuple[TrialResult, ...]
     started_at: datetime

@@ -20,6 +20,7 @@ EXPECTED_READ_ONLY = {
     "telemetry_ro": "RESBENCH_BLADEAI_TELEMETRY_MCP_SSE_URL",
     "source_ro": "RESBENCH_BLADEAI_SOURCE_MCP_SSE_URL",
 }
+EXPECTED_ALL_PHASES = ["clarification", "phase1", "phase2", "verifier"]
 ALLOWED_ATTACH_TO = {"clarification", "phase1", "phase2", "verifier"}
 
 
@@ -31,14 +32,21 @@ def test_bladeai_template_uses_v062_mcp_shape_and_sse_http_transport():
     parsed = _load_template()
 
     assert set(parsed) == {"mcpServers"}
-    assert set(parsed["mcpServers"]) == {*EXPECTED_READ_ONLY, "chaos_control"}
+    assert set(parsed["mcpServers"]) == {
+        *EXPECTED_READ_ONLY,
+        "coroot_ro",
+        "harness_channel",
+        "code_sandbox",
+        "chaos_control",
+        "chaos_mesh_control",
+    }
 
     for name, env_name in EXPECTED_READ_ONLY.items():
         server = parsed["mcpServers"][name]
         assert server["transport"] == "http"
         assert server["url"] == f"${{{env_name}}}"
         assert server["headers"] == {"Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"}
-        assert server["attach_to"] == ["verifier"]
+        assert server["attach_to"] == EXPECTED_ALL_PHASES
         assert server["timeout_seconds"] == 30
         assert set(server["attach_to"]) <= ALLOWED_ATTACH_TO
         assert "type" not in server
@@ -51,6 +59,16 @@ def test_bladeai_template_keeps_chaos_control_disabled():
     assert chaos["attach_to"] == []
     assert chaos["transport"] == "http"
     assert chaos["headers"] == {"Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"}
+
+    chaos_mesh = _load_template()["mcpServers"]["chaos_mesh_control"]
+    assert chaos_mesh["enabled"] is False
+    assert chaos_mesh["attach_to"] == []
+
+
+def test_bladeai_template_exposes_coroot_and_harness_channel_in_all_read_phases():
+    parsed = _load_template()["mcpServers"]
+    assert parsed["coroot_ro"]["attach_to"] == EXPECTED_ALL_PHASES
+    assert parsed["harness_channel"]["attach_to"] == EXPECTED_ALL_PHASES
 
 
 def test_bladeai_template_renders_without_secret_material():
@@ -95,14 +113,14 @@ def test_bladeai_qualification_records_real_version_boundary():
     assert contract["enabled_flag"] == "BLADE_AI_MCP_ENABLED"
     assert contract["config_path_flag"] == "BLADE_AI_MCP_CONFIG_PATH"
     assert contract["config_path_status"] == "declared_but_loader_uses_default_home_path"
-    assert contract["runtime_transport_status"] == "native_sse_runtime_live_qualified_read_only"
+    assert contract["runtime_transport_status"] == "historical_read_only_smoke_only"
     assert contract["host_native_sse_listeners"] == {
         "k8s_ro": "127.0.0.1:18181",
         "telemetry_ro": "127.0.0.1:18182",
         "source_ro": "127.0.0.1:18183",
     }
     assert set(contract["allowed_attach_to"]) == ALLOWED_ATTACH_TO
-    assert set(template["read_only_servers"]) == set(EXPECTED_READ_ONLY)
+    assert set(template["read_only_servers"]) == {*EXPECTED_READ_ONLY, "coroot_ro", "harness_channel"}
     assert template["controlled_write_servers"]["chaos_control"]["enabled"] is False
     assert qualification["bladeai"]["live_evidence"]["connectedTools"] == {
         "k8s_ro": 5,
@@ -110,6 +128,7 @@ def test_bladeai_qualification_records_real_version_boundary():
         "source_ro": 5,
     }
     assert qualification["bladeai"]["live_evidence"]["chaosControlConnected"] is False
+    assert qualification["bladeai"]["live_evidence"]["status"] == "platform_integration_incomplete"
 
 
 def test_harness_registry_points_bladeai_to_template_and_boundary():

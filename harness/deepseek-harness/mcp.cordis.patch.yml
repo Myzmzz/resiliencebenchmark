@@ -39,6 +39,15 @@
   disabled: true
 
 - insert:
+    - id: mcp-harness-channel
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: harness_channel
+        transport: streamable-http
+        url: !!js process.env.RESBENCH_HARNESS_CHANNEL_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.RESBENCH_HARNESS_CHANNEL_TOKEN}`'
+        failOnStartupError: true
     - id: mcp-k8s-ro
       name: '@deepseek-ai/dsh-mcp-client'
       config:

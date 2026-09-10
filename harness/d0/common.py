@@ -44,6 +44,8 @@ _SECRET_ASSIGNMENT = re.compile(
 )
 _BEARER = re.compile(r"(?i)(\bBearer\s+)[A-Za-z0-9._~+/=-]+")
 _BASIC = re.compile(r"(?i)(\bBasic\s+)[A-Za-z0-9+/=]+")
+_COROOT_SESSION = re.compile(r"(?i)(\bcoroot_session\s*=\s*)[^;\s\"']+")
+_COOKIE_FIELD = re.compile(r'(?i)("(?:session_cookie|cookie|coroot_session)"\s*:\s*)"(?:\\.|[^"\\])*"')
 _URI_CREDENTIAL = re.compile(r"(https?://[^\s/:@]+:)[^\s/@]+(@)")
 _MODEL_KEY = re.compile(
     r"(?<![A-Za-z0-9])(?:sk-ant-|sk-)[A-Za-z0-9_-]{12,}"
@@ -72,6 +74,8 @@ def redact_sensitive_text(value: str) -> str:
     text = _SECRET_ASSIGNMENT.sub(r"\1<redacted>", text)
     text = _BEARER.sub(r"\1<redacted>", text)
     text = _BASIC.sub(r"\1<redacted>", text)
+    text = _COROOT_SESSION.sub(r"\1<redacted>", text)
+    text = _COOKIE_FIELD.sub(r'\1"<redacted>"', text)
     text = _URI_CREDENTIAL.sub(r"\1<redacted>\2", text)
     return _MODEL_KEY.sub("<redacted-model-key>", text)
 

@@ -58,10 +58,9 @@ defaults:
       must_not_request_secrets: true
 
 models:
-  # Harness default (Codex / BladeAI / DeepSeek Harness). Served through the
-  # gateway from the aigcbest relay (deploy/stage2/litellm/config.yaml explains
-  # why not nexustokenai); Codex uses the Responses wire API, Claude Code
-  # reaches it through the gateway's Anthropic Messages bridge.
+  # Codex and DeepSeek Harness keep the GPT-5.5 default served through the
+  # aigcbest relay. BladeAI uses the Acucompute gpt-5.6-sol alias explicitly;
+  # Claude Code reaches its native alias through the gateway's Anthropic bridge.
   gpt-5.5:
     upstream_model: gpt-5.5
     display_name: GPT-5.5

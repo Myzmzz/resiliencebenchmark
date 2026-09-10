@@ -46,6 +46,42 @@ async def capture(coro):
         return exc.as_response()
 
 
+class RecordingIdentityBackend(InMemoryChaosBackend):
+    """In-memory backend that records the kubeconfig used for each backend call."""
+
+    def __init__(self):
+        super().__init__(pod_uids={("otel-demo", "checkoutservice-abc123"): "pod-uid-1"})
+        self.calls: list[tuple[str, str]] = []
+
+    async def list_experiments(self, kubeconfig: str, namespace: str | None = None):
+        self.calls.append(("list_experiments", kubeconfig))
+        return await super().list_experiments(kubeconfig, namespace)
+
+    async def get_experiment(self, namespace: str, name: str, kubeconfig: str):
+        self.calls.append(("get_experiment", kubeconfig))
+        return await super().get_experiment(namespace, name, kubeconfig)
+
+    async def get_pod_uid(self, namespace: str, name: str, kubeconfig: str):
+        self.calls.append(("get_pod_uid", kubeconfig))
+        return await super().get_pod_uid(namespace, name, kubeconfig)
+
+    async def create_experiment(self, manifest, kubeconfig: str):
+        self.calls.append(("create_experiment", kubeconfig))
+        return await super().create_experiment(manifest, kubeconfig)
+
+    async def delete_experiment(self, namespace: str, name: str, kubeconfig: str):
+        self.calls.append(("delete_experiment", kubeconfig))
+        return await super().delete_experiment(namespace, name, kubeconfig)
+
+    async def prepare_target_fence(self, namespace: str, name: str, uid: str, kubeconfig: str):
+        self.calls.append(("prepare_target_fence", kubeconfig))
+        return await super().prepare_target_fence(namespace, name, uid, kubeconfig)
+
+    async def clear_target_fence(self, namespace: str, name: str, uid: str, kubeconfig: str):
+        self.calls.append(("clear_target_fence", kubeconfig))
+        return await super().clear_target_fence(namespace, name, uid, kubeconfig)
+
+
 class ChaosControlServiceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
@@ -56,6 +92,7 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.config = RuntimeConfig(
             execute_enabled=True,
             kubeconfig="/tmp/controller.kubeconfig",
+            cleanup_kubeconfig="/tmp/finalizer.kubeconfig",
             namespace_allowlist=frozenset({"otel-demo"}),
             controller_token_ref="k8s://resbench/controller-token#token",
             controller_pod_uid="controller-pod-uid",
@@ -120,6 +157,27 @@ class ChaosControlServiceTest(unittest.TestCase):
 
         self.assertFalse(config.execute_enabled)
         self.assertIsNone(config.kubeconfig)
+        self.assertIsNone(config.cleanup_kubeconfig)
+
+    def test_from_env_reads_cleanup_kubeconfig_without_falling_back_to_primary(self):
+        config = RuntimeConfig.from_env({
+            "RESBENCH_CHAOS_KUBECONFIG": "/tmp/executor.kubeconfig",
+            "RESBENCH_CHAOS_CLEANUP_KUBECONFIG": "/tmp/finalizer.kubeconfig",
+        })
+
+        self.assertEqual("/tmp/executor.kubeconfig", config.kubeconfig)
+        self.assertEqual("/tmp/finalizer.kubeconfig", config.cleanup_kubeconfig)
+
+    def test_read_operations_reject_caller_selected_cleanup_kubeconfig(self):
+        result = call(
+            self.service.inventory_run(
+                namespace="otel-demo",
+                kubeconfig="/tmp/finalizer.kubeconfig",
+            )
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("EXPLICIT_KUBECONFIG_REQUIRED", result["error"]["code"])
 
     def test_validate_plan_is_read_only_and_reuses_controller_policy(self):
         result = run(
@@ -211,6 +269,17 @@ class ChaosControlServiceTest(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual("EXPLICIT_KUBECONFIG_REQUIRED", result["error"]["code"])
+
+    def test_create_requires_server_internal_cleanup_kubeconfig_before_mutation(self):
+        backend = RecordingIdentityBackend()
+        service = ChaosControlService(replace(self.config, cleanup_kubeconfig=None), backend)
+
+        result = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("CLEANUP_KUBECONFIG_REQUIRED", result["error"]["code"])
+        self.assertEqual([], backend.calls)
+        self.assertEqual([], backend.created_manifests)
 
     def test_create_rejects_forged_baseline_token(self):
         result = call(self.service.create_experiment(**self.create_kwargs(baseline_gate_token="forged-token")))
@@ -416,6 +485,241 @@ class ChaosControlServiceTest(unittest.TestCase):
 
         self.assertEqual("USER_DECISION_MISMATCH", mismatch["error"]["code"])
         self.assertTrue(accepted["ok"])
+
+    def test_create_rejects_invalid_approved_plan_schema_without_backend_write(self):
+        decision_file = Path(self.tempdir.name) / "user-decision.json"
+        decision_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "stage2-user-decision.v1",
+                    "question_id": "question-0123456789abcdef",
+                    "approved": True,
+                    "answer_mode": "approve_recommendation",
+                    "approved_plan": {
+                        "target": {
+                            "namespace": "otel-demo",
+                            "name": "checkoutservice-abc123",
+                            "uid": "pod-uid-1",
+                        },
+                        "fault_type": "network-delay",
+                        "safety_ttl_seconds": 120,
+                        "intensity": {"delay_ms": "250ms"},
+                        "effect_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "increase_by_at_least",
+                            "threshold": 100,
+                            "threshold_tolerance_ratio": 0.6,
+                        },
+                        "recovery_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "within_baseline_delta",
+                            "threshold": 50,
+                        },
+                        "stop_conditions": ["effect condition met"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(decision_file, 0o600)
+        service = ChaosControlService(
+            replace(
+                self.config,
+                decision_policy="clarify_missing",
+                user_decision_file=decision_file,
+            ),
+            self.backend,
+        )
+
+        result = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("PLAN_SCHEMA_INVALID", result["error"]["code"])
+        self.assertIn("issues", result["error"]["details"])
+        self.assertEqual([], self.backend.created_manifests)
+
+    def test_create_rejects_modified_controller_owned_condition_policy(self):
+        decision_file = Path(self.tempdir.name) / "user-decision.json"
+        approved = {
+            "target": {
+                "namespace": "otel-demo",
+                "name": "checkoutservice-abc123",
+                "uid": "pod-uid-1",
+            },
+            "fault_type": "network-delay",
+            "safety_ttl_seconds": 120,
+            "intensity": {"delay_ms": 250},
+            "effect_condition": {
+                "metric": "target_latency_ms",
+                "operator": "increase_by_at_least",
+                "threshold": 100,
+                "threshold_tolerance_ratio": 0.9,
+            },
+            "recovery_condition": {
+                "metric": "target_latency_ms",
+                "operator": "within_baseline_delta",
+                "threshold": 50,
+            },
+            "stop_conditions": ["effect condition met"],
+        }
+        decision_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "stage2-user-decision.v1",
+                    "question_id": "question-0123456789abcdef",
+                    "approved": True,
+                    "answer_mode": "approve_recommendation",
+                    "approved_plan": approved,
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(decision_file, 0o600)
+        service = ChaosControlService(
+            replace(
+                self.config,
+                decision_policy="clarify_missing",
+                user_decision_file=decision_file,
+            ),
+            self.backend,
+        )
+
+        result = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("PLAN_SCHEMA_INVALID", result["error"]["code"])
+        self.assertEqual([], self.backend.created_manifests)
+        self.assertEqual(
+            "effect_condition.threshold_tolerance_ratio",
+            result["error"]["details"]["issues"][0]["path"],
+        )
+
+    def test_create_rejects_invalid_request_plan_schema_without_backend_write(self):
+        decision_file = Path(self.tempdir.name) / "user-decision.json"
+        decision_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "stage2-user-decision.v1",
+                    "question_id": "question-0123456789abcdef",
+                    "approved": True,
+                    "answer_mode": "approve_recommendation",
+                    "approved_plan": {
+                        "target": {
+                            "namespace": "otel-demo",
+                            "name": "checkoutservice-abc123",
+                            "uid": "pod-uid-1",
+                        },
+                        "fault_type": "network-delay",
+                        "safety_ttl_seconds": 120,
+                        "intensity": {"delay_ms": 250},
+                        "effect_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "increase_by_at_least",
+                            "threshold": 100,
+                            "threshold_tolerance_ratio": 0.6,
+                        },
+                        "recovery_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "within_baseline_delta",
+                            "threshold": 50,
+                        },
+                        "stop_conditions": ["effect condition met"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(decision_file, 0o600)
+        service = ChaosControlService(
+            replace(
+                self.config,
+                decision_policy="clarify_missing",
+                user_decision_file=decision_file,
+            ),
+            self.backend,
+        )
+
+        result = call(
+            service.create_experiment(
+                **self.create_kwargs(intensity={"delay_ms": "250ms"})
+            )
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("PLAN_SCHEMA_INVALID", result["error"]["code"])
+        self.assertEqual([], self.backend.created_manifests)
+
+    def test_create_rejects_non_mapping_intensity_without_backend_write(self):
+        result = call(
+            self.service.create_experiment(
+                **self.create_kwargs(intensity="delay_ms=250")
+            )
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("PLAN_SCHEMA_INVALID", result["error"]["code"])
+        self.assertEqual([], self.backend.created_manifests)
+
+    def test_create_rejects_request_that_changes_approved_uid_and_intensity(self):
+        decision_file = Path(self.tempdir.name) / "user-decision.json"
+        decision_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "stage2-user-decision.v1",
+                    "question_id": "question-0123456789abcdef",
+                    "approved": True,
+                    "answer_mode": "approve_recommendation",
+                    "approved_plan": {
+                        "target": {
+                            "namespace": "otel-demo",
+                            "name": "checkoutservice-abc123",
+                            "uid": "pod-uid-1",
+                        },
+                        "fault_type": "network-delay",
+                        "safety_ttl_seconds": 120,
+                        "intensity": {"delay_ms": 250},
+                        "effect_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "increase_by_at_least",
+                            "threshold": 100,
+                        },
+                        "recovery_condition": {
+                            "metric": "target_latency_ms",
+                            "operator": "within_baseline_delta",
+                            "threshold": 50,
+                        },
+                        "stop_conditions": ["effect condition met"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(decision_file, 0o600)
+        service = ChaosControlService(
+            replace(
+                self.config,
+                decision_policy="clarify_missing",
+                user_decision_file=decision_file,
+            ),
+            self.backend,
+        )
+
+        result = call(
+            service.create_experiment(
+                **self.create_kwargs(
+                    target_uid="other-pod-uid",
+                    intensity={"delay_ms": 500},
+                )
+            )
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("USER_DECISION_MISMATCH", result["error"]["code"])
+        self.assertEqual(
+            ["intensity", "target"],
+            result["error"]["details"]["mismatched_fields"],
+        )
+        self.assertEqual([], self.backend.created_manifests)
 
     def test_cleanup_expired_leases_does_not_delete_before_deadline(self):
         create_result = run(self.service.create_experiment(**self.create_kwargs()))
@@ -660,6 +964,91 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertTrue(destroy_result["verified_absent"])
         self.assertEqual([("otel-demo", name)], self.backend.deleted)
 
+    def test_destroy_rejects_caller_selected_cleanup_kubeconfig(self):
+        run(self.service.create_experiment(**self.create_kwargs()))
+
+        result = call(
+            self.service.destroy_experiment(
+                cleanup_handle="cleanup-episode-e2e-001-r001",
+                kubeconfig="/tmp/finalizer.kubeconfig",
+            )
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("EXPLICIT_KUBECONFIG_REQUIRED", result["error"]["code"])
+        self.assertEqual([], self.backend.deleted)
+
+    def test_create_and_destroy_route_backend_kubeconfigs_by_identity(self):
+        backend = RecordingIdentityBackend()
+        service = ChaosControlService(self.config, backend)
+
+        create_result = run(service.create_experiment(**self.create_kwargs()))
+        destroy_result = run(
+            service.destroy_experiment(
+                cleanup_handle="cleanup-episode-e2e-001-r001",
+                kubeconfig="/tmp/controller.kubeconfig",
+            )
+        )
+
+        self.assertTrue(create_result["ok"], create_result)
+        self.assertTrue(destroy_result["verified_absent"], destroy_result)
+        self.assertIn(("prepare_target_fence", "/tmp/controller.kubeconfig"), backend.calls)
+        self.assertIn(("create_experiment", "/tmp/controller.kubeconfig"), backend.calls)
+        self.assertIn(("delete_experiment", "/tmp/finalizer.kubeconfig"), backend.calls)
+        self.assertIn(("clear_target_fence", "/tmp/finalizer.kubeconfig"), backend.calls)
+        self.assertNotIn(("delete_experiment", "/tmp/controller.kubeconfig"), backend.calls)
+        self.assertNotIn(("clear_target_fence", "/tmp/controller.kubeconfig"), backend.calls)
+
+    def test_d6a_clears_prepared_fence_with_cleanup_kubeconfig(self):
+        backend = RecordingIdentityBackend()
+        service = ChaosControlService(
+            replace(self.config, create_uncertainty_variant="D6-A"),
+            backend,
+        )
+
+        result = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("OPERATION_OUTCOME_UNKNOWN", result["error"]["code"])
+        self.assertIn(("prepare_target_fence", "/tmp/controller.kubeconfig"), backend.calls)
+        self.assertIn(("clear_target_fence", "/tmp/finalizer.kubeconfig"), backend.calls)
+        self.assertNotIn(("clear_target_fence", "/tmp/controller.kubeconfig"), backend.calls)
+
+    def test_create_failure_clears_orphan_fence_with_cleanup_kubeconfig(self):
+        from mcp_servers.chaos_control.service import ChaosControlError
+
+        class FailingCreateBackend(RecordingIdentityBackend):
+            async def create_experiment(self, manifest, kubeconfig: str):
+                self.calls.append(("create_experiment", kubeconfig))
+                self.created_manifests.append(manifest)
+                raise ChaosControlError("APPLY_FAILED", "simulated apply failure", next_step="retry cleanup")
+
+        backend = FailingCreateBackend()
+        service = ChaosControlService(self.config, backend)
+
+        result = call(service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("APPLY_FAILED", result["error"]["code"])
+        self.assertIn(("create_experiment", "/tmp/controller.kubeconfig"), backend.calls)
+        self.assertIn(("clear_target_fence", "/tmp/finalizer.kubeconfig"), backend.calls)
+        self.assertNotIn(("clear_target_fence", "/tmp/controller.kubeconfig"), backend.calls)
+
+    def test_ttl_cleanup_routes_delete_and_fence_clear_to_cleanup_kubeconfig(self):
+        backend = RecordingIdentityBackend()
+        service = ChaosControlService(self.config, backend)
+        run(service.create_experiment(**self.create_kwargs()))
+        ledger = json.loads((self.ledger_dir / "cleanup-episode-e2e-001-r001.json").read_text())
+        after_deadline = datetime.fromisoformat(ledger["deadline_at"]) + timedelta(seconds=1)
+
+        result = run(service.cleanup_expired_leases(now=after_deadline))
+
+        self.assertTrue(result["ok"], result)
+        self.assertIn(("delete_experiment", "/tmp/finalizer.kubeconfig"), backend.calls)
+        self.assertIn(("clear_target_fence", "/tmp/finalizer.kubeconfig"), backend.calls)
+        self.assertNotIn(("delete_experiment", "/tmp/controller.kubeconfig"), backend.calls)
+        self.assertNotIn(("clear_target_fence", "/tmp/controller.kubeconfig"), backend.calls)
+
     def test_destroy_rejects_unknown_handle_without_deleting_anything(self):
         result = call(
             self.service.destroy_experiment(
@@ -891,6 +1280,7 @@ class ChaosControlMcpServerTest(unittest.TestCase):
     def service_for_mcp(self):
         config = RuntimeConfig(
             kubeconfig="/tmp/controller.kubeconfig",
+            cleanup_kubeconfig="/tmp/finalizer.kubeconfig",
             namespace_allowlist=frozenset({"otel-demo"}),
             controller_token_ref="k8s://resbench/controller-token#token",
             controller_pod_uid="controller-pod-uid",

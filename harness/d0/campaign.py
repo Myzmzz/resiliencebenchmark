@@ -8,16 +8,15 @@ import re
 import subprocess
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
 from .adapters import (
     AdapterResult,
-    BladeAISessionAdapter,
     D0Adapter,
-    HeadlessAdapter,
+    NativeD0Adapter,
     adapter_models,
 )
 from .behavior import derive_agent_behavior
@@ -34,7 +33,6 @@ from .common import (
     write_manifest,
 )
 from .observer import KubectlD0Observer
-from .facade import BladeAIServerProcess, D0ChaosFacade, D0ReadOnlyMcpStack
 from .inventory import collect_execution_inventory
 from .visualization import generate_visualizations
 
@@ -47,7 +45,6 @@ class D0CampaignConfig:
     repo_root: Path
     artifact_root: Path
     kubeconfig: Path
-    episode_file: Path
     expected_host_id: str = EXPECTED_EXECUTION_HOST_ID
     sample_seconds: int = 10
     agent_timeout_seconds: int = 720
@@ -66,56 +63,41 @@ class D0Campaign:
         observer_factory=KubectlD0Observer,
         host_evidence_provider=host_evidence,
         inventory_provider=collect_execution_inventory,
-        facade_factory=D0ChaosFacade,
-        bladeai_server_factory=BladeAIServerProcess,
-        read_only_stack_factory=D0ReadOnlyMcpStack,
+        runtime_builder=None,
     ):
         self.config = config
         self.environment = dict(environment or os.environ)
-        if self.environment.get("RESBENCH_LLM_BASE_URL"):
-            self.environment.setdefault(
-                "BLADE_AI_API_BASE_URL",
-                self.environment["RESBENCH_LLM_BASE_URL"],
-            )
-        if self.environment.get("RESBENCH_LLM_API_KEY"):
-            self.environment.setdefault(
-                "BLADE_AI_LLM_API_KEY",
-                self.environment["RESBENCH_LLM_API_KEY"],
-            )
         self.observer_factory = observer_factory
         self.host_evidence_provider = host_evidence_provider
         self.inventory_provider = inventory_provider
-        self.facade_factory = facade_factory
-        self.bladeai_server_factory = bladeai_server_factory
-        self.read_only_stack_factory = read_only_stack_factory
+        self.runtime_builder = runtime_builder or self._build_runtime
+        self._runtime_system = None
         self.models = adapter_models(self.environment)
-        self.environment.setdefault("BLADE_AI_MODEL_NAME", self.models["bladeai"])
         self.adapters = dict(adapters or self._default_adapters())
 
     def _default_adapters(self) -> dict[str, D0Adapter]:
-        common = {
-            "repo_root": self.config.repo_root,
-            "parent_env": self.environment,
-            "artifact_root": self.config.artifact_root,
-            "episode_file": self.config.episode_file,
-            "timeout_seconds": self.config.agent_timeout_seconds,
-        }
         return {
-            "bladeai": BladeAISessionAdapter(
-                base_url=self.environment.get("RESBENCH_D0_BLADEAI_BASE_URL", "http://127.0.0.1:18089"),
-                model_alias=self.models["bladeai"],
-                timeout_seconds=self.config.agent_timeout_seconds,
-            ),
-            "codex": HeadlessAdapter(name="codex", model_alias=self.models["codex"], **common),
-            "claude-code": HeadlessAdapter(
-                name="claude-code", model_alias=self.models["claude-code"], **common
-            ),
-            "deepseek-harness": HeadlessAdapter(
-                name="deepseek-harness",
-                model_alias=self.models["deepseek-harness"],
-                **common,
-            ),
+            name: NativeD0Adapter(
+                name=name, repo_root=self.config.repo_root, model_alias=self.models[name],
+                runtime_builder=self.runtime_builder, timeout_seconds=self.config.agent_timeout_seconds,
+            )
+            for name in self.config.agents
         }
+
+    def _build_runtime(self, episode, models):
+        """Reuse production composition without requiring D0 to qualify itself."""
+        from stage2_service.runtime_factory import Stage2RuntimeConfig, Stage2System
+
+        if self._runtime_system is None:
+            runtime_config = replace(
+                Stage2RuntimeConfig.from_env(self.environment),
+                repo_root=self.config.repo_root,
+                kubeconfig=self.config.kubeconfig,
+                private_root=self.config.artifact_root / ".runtime-private",
+                artifact_root=self.config.artifact_root / ".native-runtime",
+            )
+            self._runtime_system = Stage2System(runtime_config)
+        return self._runtime_system.build_runtime(episode, models)
 
     @staticmethod
     def campaign_id() -> str:
@@ -145,8 +127,10 @@ class D0Campaign:
             "execution_mode": {
                 "unattended": True,
                 "operator_input_allowed": False,
-                "approval_handling": "native-adapter-automatic",
-                "agent_processes_and_controller_run_on_execution_host": True,
+                "approval_handling": "shared-harness-channel",
+                "execution_boundary": "agent_exec_sidecar",
+                "agent_processes_run_in_controller_container": False,
+                "agent_execution_transport": "agent_exec_unix_socket",
             },
             "repo_revision": self._repo_revision(),
             "results": [],
@@ -160,6 +144,7 @@ class D0Campaign:
             host=host,
             models=self.models,
             environment=self.environment,
+            runtime_descriptors=self._runtime_descriptors(),
         )
         missing_runtimes = [
             agent
@@ -180,45 +165,16 @@ class D0Campaign:
             raise RuntimeError("D0 Kubernetes execution identity is incomplete")
         metadata["execution_inventory"] = self.execution_inventory
         write_json(campaign_dir / "campaign.json", metadata)
-        bladeai_server = self.bladeai_server_factory(
-            base_url=self.environment.get(
-                "RESBENCH_D0_BLADEAI_BASE_URL", "http://127.0.0.1:18089"
-            ),
-            artifact_root=campaign_dir,
-            environment=self.environment,
-        )
-        read_only_stack = None
-        try:
-            if any(
-                isinstance(self.adapters[agent], HeadlessAdapter)
-                for agent in self.config.agents
-                if agent != "bladeai"
-            ):
-                read_only_stack = self.read_only_stack_factory(
-                    repo_root=self.config.repo_root,
-                    kubeconfig=self.config.kubeconfig,
-                    campaign_dir=campaign_dir,
-                    environment=self.environment,
-                )
-                read_only_overrides = read_only_stack.start()
-                for agent in self.config.agents:
-                    if agent != "bladeai":
-                        self.adapters[agent].update_environment(read_only_overrides)
-            bladeai_server.start()
-            for agent in self.config.agents:
-                result = self._run_agent(campaign, campaign_dir, agent)
-                metadata["results"].append(result)
-                write_json(campaign_dir / "campaign.json", metadata)
-                if result["status"] == "RESET_FAILED":
-                    metadata["status"] = "STOPPED_RESET_FAILED"
-                    break
-                if result.get("foreign_crs_observed"):
-                    metadata["status"] = "QUALIFICATION_INVALID"
-                    break
-        finally:
-            bladeai_server.stop()
-            if read_only_stack is not None:
-                read_only_stack.stop()
+        for agent in self.config.agents:
+            result = self._run_agent(campaign, campaign_dir, agent)
+            metadata["results"].append(result)
+            write_json(campaign_dir / "campaign.json", metadata)
+            if result["status"] == "RESET_FAILED":
+                metadata["status"] = "STOPPED_RESET_FAILED"
+                break
+            if result.get("foreign_crs_observed"):
+                metadata["status"] = "QUALIFICATION_INVALID"
+                break
         if metadata["status"] == "RUNNING":
             statuses = {value["status"] for value in metadata["results"]}
             if statuses == {"PASS"}:
@@ -229,11 +185,49 @@ class D0Campaign:
                 metadata["status"] = "QUALIFICATION_INVALID"
             else:
                 metadata["status"] = "QUALIFICATION_FAILED"
+        metadata["gateway_config_sha256_by_agent"] = {
+            value["agent"]: value.get("gateway_config_sha256", "")
+            for value in metadata["results"]
+        }
+        metadata["gateway_routes_by_agent"] = {
+            value["agent"]: value.get("gateway_route", {})
+            for value in metadata["results"]
+        }
+        metadata["gateway_evidence_verified_by_agent"] = {
+            value["agent"]: value.get("gateway_evidence_verified") is True
+            for value in metadata["results"]
+        }
+        metadata["gateway_evidence_ref_by_agent"] = {
+            value["agent"]: value.get("gateway_evidence_ref", "")
+            for value in metadata["results"]
+        }
+        metadata["gateway_trial_id_by_agent"] = {
+            value["agent"]: value.get("gateway_trial_id", "")
+            for value in metadata["results"]
+        }
         metadata["finished_at"] = utc_now()
         metadata["visualization"] = generate_visualizations(campaign_dir, metadata)
         write_json(campaign_dir / "campaign.json", metadata)
         write_manifest(campaign_dir)
         return metadata | {"artifact_dir": str(campaign_dir)}
+
+    def _runtime_descriptors(self) -> dict[str, dict[str, Any]]:
+        from stage2_service.capability_preflight import harness_capabilities_from_qualification
+
+        configured = self.environment.get("STAGE2_HARNESS_CAPABILITIES_FILE")
+        descriptors, source = harness_capabilities_from_qualification(
+            Path(configured) if configured else None,
+        )
+        return {
+            name: {
+                "available": descriptors[name]["qualification_passed"],
+                "runtime_source": "qualification_descriptor",
+                "execution_boundary": "agent_exec_sidecar",
+                "capability": descriptors[name],
+                "qualification": source["harnesses"][name],
+            }
+            for name in self.config.agents
+        }
 
     def _repo_revision(self) -> dict[str, Any]:
         command = ["git", "-C", str(self.config.repo_root), "rev-parse", "HEAD"]
@@ -246,12 +240,14 @@ class D0Campaign:
         )
         source_paths = [
             self.config.repo_root / "harness/d0",
-            self.config.repo_root / "mcp_servers/d0_chaos_control",
+            self.config.repo_root / "mcp_servers/chaos_core",
+            self.config.repo_root / "mcp_servers/chaos_control",
+            self.config.repo_root / "stage2_service",
+            self.config.repo_root / "harness/agent_exec",
             self.config.repo_root / "scripts/run_otel_accounting_cpu_matrix.py",
             self.config.repo_root / "scripts/run_harness_trial.py",
             self.config.repo_root / "scripts/audit_d0_campaign.py",
             self.config.repo_root / "scripts/sanitize_d0_artifacts.py",
-            self.config.repo_root / "tasks/examples/public/episode.otel-accounting-cpu-d0.v1.yaml",
             self.config.repo_root / "harness/harnesses.yaml",
             self.config.repo_root / "harness/models.yaml",
         ]
@@ -304,12 +300,11 @@ class D0Campaign:
         sink = self._event_sink(trial_dir)
         observer = self.observer_factory(
             kubeconfig=self.config.kubeconfig,
+            cleanup_kubeconfig=lambda: getattr(self.adapters[agent], "cleanup_kubeconfig", None),
             artifact_dir=trial_dir,
             trial_id=trial_id,
             sample_seconds=self.config.sample_seconds,
-            ownership_mode=(
-                "native-bladeai" if agent == "bladeai" else "strict-run-id"
-            ),
+            include_chaos_mesh=True,
         )
         started = time.monotonic()
         before = observer.prepare()
@@ -330,32 +325,6 @@ class D0Campaign:
             "oracle_target_not_exposed_in_prompt": True,
         }
         write_json(trial_dir / "trial.json", trial_metadata)
-        facade = None
-        if agent != "bladeai":
-            target = {"namespace": "otel-demo", **dict(before["pods"][0])}
-            facade = self.facade_factory(
-                repo_root=self.config.repo_root,
-                kubeconfig=self.config.kubeconfig,
-                trial_dir=trial_dir,
-                trial_id=trial_id,
-                target=target,
-                environment=self.environment,
-            )
-            overrides = facade.start()
-            adapter = self.adapters[agent]
-            if not isinstance(adapter, HeadlessAdapter) and not hasattr(
-                adapter, "update_environment"
-            ):
-                raise TypeError("headless D0 adapter cannot accept Trial-bound MCP environment")
-            adapter.update_environment(overrides)
-            sink(
-                {
-                    "ts": utc_now(),
-                    "actor": "controller",
-                    "kind": "d0_chaos_facade_started",
-                    "payload": facade.public_context(),
-                }
-            )
         observer.start()
         fallback = {"requested": False, "verified": True}
         convergence = {"verified": False}
@@ -388,7 +357,8 @@ class D0Campaign:
                         finished_at=utc_now(),
                         process_status="adapter_exception",
                         artifact_ref=agent,
-                        error=f"{type(exc).__name__}: {str(exc)[:500]}",
+                        error=f"{type(exc).__name__}: D0 isolated runtime failed",
+                        failure_code="HARNESS_IMPLEMENTATION_ERROR",
                     )
                 )
                 sink(
@@ -477,16 +447,6 @@ class D0Campaign:
                         },
                     }
                 )
-                if facade is not None:
-                    facade.stop()
-                    facade = None
-                    sink(
-                        {
-                            "ts": utc_now(),
-                            "actor": "controller",
-                            "kind": "trial_tool_channel_revoked",
-                        }
-                    )
                 adapter_thread.join(timeout=15)
 
             if observer.state.new_cr_names and observer.state.recovery_observed_at is None:
@@ -546,8 +506,6 @@ class D0Campaign:
             )
         finally:
             observer.stop()
-            if facade is not None:
-                facade.stop()
         result = self._result(
             agent,
             trial_dir,
@@ -561,6 +519,13 @@ class D0Campaign:
         )
         trial_metadata["finished_at"] = utc_now()
         trial_metadata["adapter"] = result.get("adapter", {})
+        trial_metadata["model_alias"] = result.get("model_alias") or self.models[agent]
+        trial_metadata["gateway_route"] = result.get("gateway_route", {})
+        trial_metadata["gateway_config_sha256"] = result.get("gateway_config_sha256", "")
+        trial_metadata["gateway_evidence_verified"] = result.get("gateway_evidence_verified") is True
+        trial_metadata["gateway_request_ids"] = list(result.get("gateway_request_ids") or [])
+        trial_metadata["gateway_evidence_ref"] = result.get("gateway_evidence_ref", "")
+        trial_metadata["gateway_trial_id"] = result.get("gateway_trial_id", "")
         write_json(trial_dir / "trial.json", trial_metadata)
         write_json(
             trial_dir / "recovery.json",
@@ -594,6 +559,11 @@ class D0Campaign:
         deadline,
     ):
         adapter = asdict(adapter_result) if adapter_result is not None else {}
+        gateway_route = adapter.get("gateway_route") if isinstance(adapter.get("gateway_route"), Mapping) else {}
+        gateway_hash = str(adapter.get("gateway_config_sha256") or "")
+        gateway_request_ids = adapter.get("gateway_request_ids")
+        if not isinstance(gateway_request_ids, (list, tuple)):
+            gateway_request_ids = ()
         effect = observer.state.effect_monotonic is not None
         recovered = observer.state.recovery_observed_at is not None
         fallback_used = bool(fallback.get("requested"))
@@ -623,6 +593,9 @@ class D0Campaign:
         elif adapter.get("failure_code") in {
             "MODEL_UNAVAILABLE",
             "ADAPTER_PROCESS_FAILED",
+            "HARNESS_IMPLEMENTATION_ERROR",
+            "RESULT_CONTRACT_INVALID",
+            "CAPABILITY_TRACE_MISSING",
         } and not effect:
             status = "CASE_INVALID"
         elif fallback_used and fallback.get("verified") is not True:
@@ -652,6 +625,15 @@ class D0Campaign:
         return {
             "schema_version": "d0-trial-result.v1",
             "agent": agent,
+            "model_alias": adapter.get("model_alias") or "",
+            "gateway_route": dict(gateway_route),
+            "gateway_config_sha256": gateway_hash,
+            "gateway_evidence_verified": adapter.get("gateway_evidence_verified") is True,
+            "gateway_request_ids": [
+                item for item in gateway_request_ids if isinstance(item, str) and item
+            ],
+            "gateway_evidence_ref": str(adapter.get("gateway_evidence_ref") or ""),
+            "gateway_trial_id": str(adapter.get("gateway_trial_id") or ""),
             "status": status,
             "injection_observed": bool(observer.state.new_cr_names),
             "effect_observed": effect,

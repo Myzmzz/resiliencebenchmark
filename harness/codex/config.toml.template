@@ -53,3 +53,7 @@ approval_mode = "approve"
 
 [mcp_servers.chaos_control.tools.chaos_destroy_experiment]
 approval_mode = "approve"
+
+[mcp_servers.harness_channel]
+url = "__RESBENCH_HARNESS_CHANNEL_MCP_URL__"
+bearer_token_env_var = "RESBENCH_HARNESS_CHANNEL_TOKEN"

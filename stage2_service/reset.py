@@ -130,6 +130,7 @@ class OtelDemoResetter:
             prior_evidence.get("fault_absent") is True
             and prior_evidence.get("business_recovery_verified") is True
         )
+        inventory_safe = prior_evidence.get("chaos_inventory_clear") is not False
         traffic_verified = traffic.get("business_healthy") is True
         return {
             "trial_id": trial_id,
@@ -139,6 +140,7 @@ class OtelDemoResetter:
             "verified": (
                 qualification.get("qualified") is True
                 and traffic_verified
+                and inventory_safe
             ),
             "verification_source": (
                 "bounded_current_traffic"
@@ -146,6 +148,7 @@ class OtelDemoResetter:
                 else "unverified"
             ),
             "prior_trial_recovery_verified": prior_recovery,
+            "fault_inventory_safe": inventory_safe,
             "qualification": qualification,
             "traffic_recovery": traffic,
         }

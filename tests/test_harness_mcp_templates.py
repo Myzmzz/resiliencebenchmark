@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from scripts import benchmark_prepare
+from scripts.run_harness_trial import render_claude_config, render_codex_config, render_dsh_contract
 
 
 CODEX_TEMPLATE = Path("harness/codex/config.toml.template")
@@ -19,7 +20,12 @@ EXPECTED_ENDPOINTS = {
     "telemetry_ro": "RESBENCH_TELEMETRY_MCP_URL",
     "source_ro": "RESBENCH_SOURCE_MCP_URL",
     "chaos_control": "RESBENCH_CHAOS_CONTROL_MCP_URL",
+    "harness_channel": "RESBENCH_HARNESS_CHANNEL_MCP_URL",
 }
+
+
+def token_env(server: str) -> str:
+    return "RESBENCH_HARNESS_CHANNEL_TOKEN" if server == "harness_channel" else "RESBENCH_MCP_TOKEN"
 
 
 def test_codex_template_uses_official_http_mcp_server_shape():
@@ -44,7 +50,7 @@ def test_codex_template_uses_official_http_mcp_server_shape():
     for name, env_name in EXPECTED_ENDPOINTS.items():
         server = parsed["mcp_servers"][name]
         assert server["url"] == f"__{env_name}__"
-        assert server["bearer_token_env_var"] == "RESBENCH_MCP_TOKEN"
+        assert server["bearer_token_env_var"] == token_env(name)
         if name == "chaos_control":
             assert server["tools"] == {
                 "chaos_create_experiment": {"approval_mode": "approve"},
@@ -63,7 +69,7 @@ def test_codex_template_is_safe_after_runner_url_rendering():
 
     for name, env_name in EXPECTED_ENDPOINTS.items():
         assert parsed["mcp_servers"][name]["url"] == f"https://mcp.example.invalid/{env_name.lower()}"
-        assert parsed["mcp_servers"][name]["bearer_token_env_var"] == "RESBENCH_MCP_TOKEN"
+        assert parsed["mcp_servers"][name]["bearer_token_env_var"] == token_env(name)
 
 
 def test_claude_code_template_uses_http_mcp_with_environment_expansion():
@@ -74,7 +80,7 @@ def test_claude_code_template_uses_http_mcp_with_environment_expansion():
         server = parsed["mcpServers"][name]
         assert server["type"] == "http"
         assert server["url"] == f"${{{env_name}}}"
-        assert server["headers"] == {"Authorization": "Bearer ${RESBENCH_MCP_TOKEN}"}
+        assert server["headers"] == {"Authorization": f"Bearer ${{{token_env(name)}}}"}
 
 
 def test_claude_code_template_is_valid_after_safe_environment_substitution():
@@ -82,6 +88,7 @@ def test_claude_code_template_is_valid_after_safe_environment_substitution():
     for env_name in EXPECTED_ENDPOINTS.values():
         rendered = rendered.replace(f"${{{env_name}}}", f"https://mcp.example.invalid/{env_name.lower()}")
     rendered = rendered.replace("${RESBENCH_MCP_TOKEN}", "example-runtime-token")
+    rendered = rendered.replace("${RESBENCH_HARNESS_CHANNEL_TOKEN}", "example-runtime-token")
 
     parsed = json.loads(rendered)
 
@@ -149,6 +156,25 @@ def test_deepseek_headless_templates_select_model_and_disable_builtin_tools():
     disabled = {item["id"] for item in patch if isinstance(item, dict) and item.get("disabled") is True}
     assert {"code-runtime", "tool-bash", "tool-pwsh", "tool-fs", "tool-web", "tool-subagent"} <= disabled
     inserted = next(item["insert"] for item in patch if isinstance(item, dict) and "insert" in item)
-    assert len(inserted) == 4
+    assert len(inserted) == len(EXPECTED_ENDPOINTS)
     assert all(item["config"]["transport"] == "streamable-http" for item in inserted)
     assert all(item["config"]["failOnStartupError"] is True for item in inserted)
+
+
+def test_optional_substitution_servers_are_rendered_only_when_urls_exist(tmp_path: Path):
+    base_env = {
+        "RESBENCH_LLM_BASE_URL": "https://gateway.example.invalid/v1",
+        **{env: f"https://mcp.example.invalid/{name}" for name, env in EXPECTED_ENDPOINTS.items()},
+    }
+    codex = render_codex_config(Path.cwd(), tmp_path / "codex-base", base_env)
+    assert set(tomllib.loads(codex.read_text())["mcp_servers"]) == set(EXPECTED_ENDPOINTS)
+    extended = {**base_env, "RESBENCH_COROOT_MCP_URL": "http://127.0.0.1:18086/mcp",
+                "RESBENCH_CHAOS_MESH_CONTROL_MCP_URL": "http://127.0.0.1:18087/mcp",
+                "RESBENCH_CODE_SANDBOX_MCP_URL": "http://127.0.0.1:18088/mcp"}
+    rendered = render_codex_config(Path.cwd(), tmp_path / "codex-extended", extended)
+    assert {"coroot_ro", "chaos_mesh_control", "code_sandbox"} <= set(tomllib.loads(rendered.read_text())["mcp_servers"])
+    claude = render_claude_config(Path.cwd(), tmp_path / "claude", extended)
+    assert {"coroot_ro", "chaos_mesh_control", "code_sandbox"} <= set(json.loads(claude.read_text())["mcpServers"])
+    render_dsh_contract(Path.cwd(), tmp_path / "dsh", extended, "gpt-5.6-sol")
+    patch = (tmp_path / "dsh" / "cordis.patch.yml").read_text()
+    assert "serverName: coroot_ro" in patch and "serverName: chaos_mesh_control" in patch and "serverName: code_sandbox" in patch

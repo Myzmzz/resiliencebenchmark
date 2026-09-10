@@ -89,8 +89,8 @@ def test_render_writes_configmap_and_secret_with_only_referenced_names(tmp_path)
         "UNRELATED_TOKEN": "leave-me-out",
     }
 
-    configmap, secret = renderer.render_manifests(SAMPLE_CONFIG, config, env, "ns-test")
-    written = renderer.write_manifests(tmp_path, configmap, secret)
+    configmap, secret, client_secret = renderer.render_manifests(SAMPLE_CONFIG, config, env, "ns-test")
+    written = renderer.write_manifests(tmp_path, configmap, secret, client_secret)
 
     assert configmap["metadata"] == {
         "name": "litellm-config",
@@ -98,6 +98,7 @@ def test_render_writes_configmap_and_secret_with_only_referenced_names(tmp_path)
         "labels": {"app.kubernetes.io/managed-by": "resiliencebenchmark"},
     }
     assert configmap["data"]["config.yaml"] == SAMPLE_CONFIG
+    assert configmap["data"]["gateway_audit.py"] == renderer.AUDIT_CALLBACK_PATH.read_text()
     assert secret["stringData"] == {
         "LITELLM_MASTER_KEY": "sk-master",
         "PROVIDER_A_KEY": "sk-a",
@@ -106,10 +107,19 @@ def test_render_writes_configmap_and_secret_with_only_referenced_names(tmp_path)
     assert [path.name for path in written] == [
         "litellm-config.configmap.yaml",
         "litellm-upstream.secret.yaml",
+        "resbench-stage2-gateway-client.secret.yaml",
     ]
     reloaded = yaml.safe_load(written[1].read_text(encoding="utf-8"))
     assert "UNRELATED_TOKEN" not in reloaded["stringData"]
+    assert client_secret["metadata"]["name"] == "resbench-stage2-gateway-client"
+    assert client_secret["stringData"] == {"llm-base-url": "http://127.0.0.1:4000/v1", "llm-api-key": "sk-master"}
+    assert "PROVIDER_A_KEY" not in str(client_secret)
     assert (written[1].stat().st_mode & 0o777) == 0o600
+
+
+def test_gateway_callback_instance_is_enabled_in_production():
+    config = yaml.safe_load(PRODUCTION_CONFIG.read_text())
+    assert config["litellm_settings"]["callbacks"] == ["gateway_audit.logger_instance"]
 
 
 def test_cli_check_mode_exits_non_zero_without_writing(tmp_path, capsys):

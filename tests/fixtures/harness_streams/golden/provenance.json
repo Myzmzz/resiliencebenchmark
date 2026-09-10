@@ -1,0 +1,75 @@
+{
+  "source_kind": "historical_native_trace",
+  "fixtures": [
+    {
+      "name": "claude_L0.stream-json",
+      "task_id": "stage2-task-496842e3ddb04aac",
+      "native_rows": 36,
+      "fixture_rows": 36,
+      "bytes": 77262,
+      "redacted": true,
+      "recompressed": false,
+      "new_trial_executed": false
+    },
+    {
+      "name": "claude_L1.stream-json",
+      "task_id": "stage2-task-42f56cf4e46f4da3",
+      "native_rows": 250,
+      "fixture_rows": 250,
+      "bytes": 777657,
+      "redacted": true,
+      "recompressed": false,
+      "new_trial_executed": false
+    },
+    {
+      "name": "claude_L2.stream-json",
+      "task_id": "stage2-task-2b104dc48bda4dfd",
+      "native_rows": 49,
+      "fixture_rows": 49,
+      "bytes": 125344,
+      "redacted": true,
+      "recompressed": false,
+      "new_trial_executed": false
+    },
+    {
+      "name": "claude_L3.stream-json",
+      "task_id": "stage2-task-b5229e40fce84aa1",
+      "native_rows": 115,
+      "fixture_rows": 115,
+      "bytes": 362840,
+      "redacted": true,
+      "recompressed": false,
+      "new_trial_executed": false
+    },
+    {
+      "name": "claude_L4.stream-json",
+      "task_id": "stage2-task-ef6ce446732e48ef",
+      "native_rows": 130,
+      "fixture_rows": 130,
+      "bytes": 379399,
+      "redacted": true,
+      "recompressed": false,
+      "new_trial_executed": false
+    },
+    {
+      "name": "deepseek_L3.session.zstd",
+      "task_id": "stage2-task-b4b49138d1d84554",
+      "native_rows": 635,
+      "fixture_rows": 635,
+      "bytes": 45144,
+      "redacted": true,
+      "recompressed": true,
+      "new_trial_executed": false
+    },
+    {
+      "name": "codex_L3.jsonl",
+      "task_id": "stage2-task-e0561967a2bd46e3",
+      "native_rows": 72,
+      "fixture_rows": 72,
+      "bytes": 117175,
+      "redacted": true,
+      "recompressed": false,
+      "new_trial_executed": false
+    }
+  ]
+}

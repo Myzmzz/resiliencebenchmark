@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,18 @@ from tasks.episode_promotion import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOT = REPO_ROOT.parent / "benchmark-sources" / "materialized"
+
+
+def _scanner(tmp_path: Path) -> SystemScanner:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shutil.copyfile(REPO_ROOT / "benchmarkfactory.yaml", repo / "benchmarkfactory.yaml")
+    shutil.copytree(REPO_ROOT / "environment", repo / "environment")
+    source = tmp_path / "sources"
+    (source / "otel-demo-2.2.0").mkdir(parents=True)
+    (repo / "artifacts").mkdir()
+    (repo / "artifacts" / "source-verification-otel-demo.json").write_text(json.dumps({"fixture": "fake-static-unit-only", "spec": {"sources": [{"id": "otel-demo-2.2.0", "commit": "b74a7bc7bbe66099c61951f42b24dab8b6f02d18", "archiveSha256": "2fb6048c4004db2567edef29442cd2763e0095940ecc8ca9bdd597637e4c9777"}]}}))
+    return SystemScanner(repo, source)
 
 
 def _spec() -> RunSpec:
@@ -92,8 +104,8 @@ class ObservationAdapter:
         )
 
 
-def _snapshot():
-    return SystemScanner(REPO_ROOT, SOURCE_ROOT).scan(
+def _snapshot(tmp_path: Path):
+    return _scanner(tmp_path).scan(
         "run-promote",
         _spec(),
         runtime_adapter=RuntimeAdapter(),
@@ -129,10 +141,10 @@ def _internal_episode() -> dict:
     }
 
 
-def test_promotion_binds_exact_live_uid_and_separates_public_task_from_ground_truth() -> None:
+def test_promotion_binds_exact_live_uid_and_separates_public_task_from_ground_truth(tmp_path: Path) -> None:
     promoted = promote_episode(
         _internal_episode(),
-        _snapshot(),
+        _snapshot(tmp_path),
         _spec(),
         PromotionQualification(
             independent_observers_qualified=True,
@@ -163,11 +175,11 @@ def test_promotion_binds_exact_live_uid_and_separates_public_task_from_ground_tr
     assert promoted.multi_level_episode["base_task"]["agent_visible_task"] == promoted.public_episode
 
 
-def test_promotion_blocks_when_independent_observers_are_not_qualified() -> None:
+def test_promotion_blocks_when_independent_observers_are_not_qualified(tmp_path: Path) -> None:
     with pytest.raises(EpisodePromotionError, match="independent observers"):
         promote_episode(
             _internal_episode(),
-            _snapshot(),
+            _snapshot(tmp_path),
             _spec(),
             PromotionQualification(
                 independent_observers_qualified=False,

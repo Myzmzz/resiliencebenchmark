@@ -1,0 +1,20 @@
+{
+  "harness": "deepseek-harness",
+  "version": "0.1.0-rc.7",
+  "model": "gpt-5.6-sol",
+  "process_count": 1,
+  "pid": 15,
+  "native_resume_used": false,
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 29.95,
+  "tool_order": [
+    "primary_lookup",
+    "harness_help",
+    "fallback_lookup"
+  ],
+  "session_files": [],
+  "hint_then_tool_call": true,
+  "final_output_contains_tool_value": true,
+  "passed": true
+}

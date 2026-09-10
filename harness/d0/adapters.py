@@ -1,23 +1,21 @@
-"""Native D0 Agent adapters with exact-prompt preservation."""
+"""D0 Agent adapters using the same isolated runtime as Stage2 tasks."""
 
 from __future__ import annotations
 
-import json
-import os
-import re
 import threading
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
-from scripts.run_harness_trial import extract_json_objects, run_trial
+from stage2_service.contracts import (
+    DecisionPolicy, ExpectedOutcome, HarnessKind, InteractionMode,
+    PromptMode, STAGE2_BLADEAI_DEFAULT_MODEL, Stage2CaseId, default_case_specs,
+)
+from stage2_service.episode import load_fixed_episode
+from stage2_service.gateway_evidence import read_gateway_artifact
+from stage2_service.matrix import fixed_otel_episode_ref
 
-from .common import CONFIRMATION_REPLY, utc_now
-
+from .common import utc_now, write_json
 
 EventSink = Callable[[dict[str, Any]], None]
 
@@ -36,410 +34,259 @@ class AdapterResult:
     failure_code: str = ""
     needs_human: bool = False
     native_session_trace_captured: bool = False
+    model_alias: str = ""
+    gateway_route: dict[str, Any] = field(default_factory=dict)
+    gateway_config_sha256: str = ""
+    gateway_evidence_verified: bool = False
+    gateway_request_ids: tuple[str, ...] = ()
+    gateway_evidence_ref: str = ""
+    gateway_trial_id: str = ""
 
 
 class D0Adapter(Protocol):
     name: str
 
-    def run(
-        self,
-        *,
-        prompt: str,
-        trial_id: str,
-        artifact_dir: Path,
-        event_sink: EventSink,
-    ) -> AdapterResult: ...
+    def run(self, *, prompt: str, trial_id: str, artifact_dir: Path,
+            event_sink: EventSink) -> AdapterResult: ...
 
     def cancel(self) -> bool: ...
 
 
-def _tool_name(value: Mapping[str, Any]) -> str:
-    nested = value.get("item")
-    nested = nested if isinstance(nested, Mapping) else {}
-    return str(
-        value.get("tool")
-        or value.get("name")
-        or nested.get("tool")
-        or nested.get("name")
-        or ""
-    )
+class NativeD0Adapter:
+    """Qualify the measured Agent, not a Controller-side CLI or external SDK API."""
 
-
-def _is_recovery_tool(value: Mapping[str, Any]) -> bool:
-    name = _tool_name(value).lower()
-    return "destroy" in name or name.endswith("recover") or name.endswith("recover_experiment")
-
-
-class HeadlessAdapter:
-    def __init__(
-        self,
-        *,
-        name: str,
-        repo_root: Path,
-        model_alias: str,
-        parent_env: Mapping[str, str],
-        artifact_root: Path,
-        episode_file: Path,
-        timeout_seconds: int,
-    ):
+    def __init__(self, *, name: str, repo_root: Path, model_alias: str,
+                 runtime_builder: Callable[..., Any], timeout_seconds: int):
         self.name = name
         self.repo_root = repo_root
         self.model_alias = model_alias
-        self.parent_env = dict(parent_env)
-        self.artifact_root = artifact_root
-        self.episode_file = episode_file
+        self.runtime_builder = runtime_builder
         self.timeout_seconds = timeout_seconds
         self.cancel_event = threading.Event()
+        self.cleanup_kubeconfig: Path | None = None
 
     def cancel(self) -> bool:
         self.cancel_event.set()
         return True
 
-    def update_environment(self, values: Mapping[str, str]) -> None:
-        self.parent_env.update({key: value for key, value in values.items() if value})
-
-    def run(
-        self,
-        *,
-        prompt: str,
-        trial_id: str,
-        artifact_dir: Path,
-        event_sink: EventSink,
-    ) -> AdapterResult:
-        started_at = utc_now()
+    def run(self, *, prompt: str, trial_id: str, artifact_dir: Path,
+            event_sink: EventSink) -> AdapterResult:
+        started = utc_now()
         self.cancel_event.clear()
-        tool_calls = 0
-        recovery = False
+        self.cleanup_kubeconfig = None
+        harness = HarnessKind(self.name)
+        episode = load_fixed_episode(fixed_otel_episode_ref(self.repo_root), root=self.repo_root)
+        components = self.runtime_builder(episode, {harness: self.model_alias})
+        self.cleanup_kubeconfig = Path(components.cleanup_backend.kubeconfig)
+        campaign_id = artifact_dir.parent.name
+        calls: set[str] = set()
+        confirmations: set[str] = set()
+        recovery_requested = False
+        provisioned = False
 
-        def observe(item: Mapping[str, Any]) -> None:
-            nonlocal tool_calls, recovery
-            value = dict(item)
-            marker = str(value.get("type") or value.get("event") or "")
-            allowed = {
-                "thread.started",
-                "turn.started",
-                "turn.completed",
-                "response.created",
-                "response.completed",
-                "message",
-                "assistant",
-                "agent_message",
-                "item.started",
-                "item.completed",
-                "mcp_tool_call",
-                "tool_call",
-                "tool_result",
-                "function_call",
-                "function_call_output",
-            }
-            if marker not in allowed:
+        def observe(event: Any) -> None:
+            nonlocal recovery_requested
+            if hasattr(event, "model_dump"):
+                event = event.model_dump(mode="json")
+            if not isinstance(event, Mapping):
                 return
-            tool = _tool_name(value)
-            if tool:
-                tool_calls += 1
-            if _is_recovery_tool(value):
-                recovery = True
-            event_sink(
-                {
-                    "ts": utc_now(),
-                    "actor": "agent",
-                    "agent": self.name,
-                    "kind": marker,
-                    "tool": tool or None,
-                    "payload": value,
-                }
-            )
-
-        report = run_trial(
-            repo_root=self.repo_root,
-            harness_name=self.name,
-            model_alias=self.model_alias,
-            episode_file=self.episode_file,
-            execute=True,
-            artifact_root=artifact_dir.parent,
-            timeout_seconds=self.timeout_seconds,
-            parent_env=self.parent_env,
-            event_observer=observe,
-            trial_id=artifact_dir.name,
-            prompt_text_override=prompt,
-            require_structured_result=False,
-            enforce_formal_runtime=False,
-            cancel_requested=self.cancel_event.is_set,
-        )
-        diagnostic = "\n".join(
-            path.read_text(encoding="utf-8", errors="replace")
-            for path in (artifact_dir / "stdout.txt", artifact_dir / "stderr.txt")
-            if path.is_file()
-        ).lower()
-        failure_code = ""
-        if "model_not_found" in diagnostic or "no available channel for model" in diagnostic:
-            failure_code = "MODEL_UNAVAILABLE"
-        elif report.get("status") == "aborted_by_controller":
-            failure_code = "CONTROLLER_CANCELLED"
-        elif report.get("status") not in {"completed"}:
-            failure_code = "ADAPTER_PROCESS_FAILED"
-        needs_human = bool(
-            re.search(
-                r"(?:needs? (?:human|user)|permission required|waiting for (?:approval|confirmation)|please confirm)",
-                diagnostic,
-            )
-        )
-        return AdapterResult(
-            status="finished" if report.get("status") == "completed" else "failed",
-            started_at=started_at,
-            finished_at=utc_now(),
-            process_status=str(report.get("status") or "failed"),
-            artifact_ref=str(report.get("artifactRef") or ""),
-            error=str(report.get("error") or ""),
-            agent_recovery_requested=recovery,
-            tool_calls=tool_calls,
-            failure_code=failure_code,
-            needs_human=needs_human,
-            native_session_trace_captured=bool(report.get("nativeSessionRefs")),
-        )
-
-
-def _request_json(method: str, url: str, payload: dict[str, Any] | None, timeout: float) -> Any:
-    data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode()
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        raw = response.read().decode("utf-8", errors="replace")
-    return json.loads(raw) if raw else None
-
-
-def _post_interrupt(base_url: str, session_id: str, interrupt_id: str, answer: str) -> dict[str, Any]:
-    url = f"{base_url}/api/v1/sessions/{urllib.parse.quote(session_id)}/interrupt"
-    response: Any = None
-    for attempt in range(6):
-        response = _request_json(
-            "POST", url, {"interrupt_id": interrupt_id, "answer": answer}, 30
-        )
-        if not isinstance(response, dict) or response.get("delivered") is not False:
-            break
-        time.sleep(0.1 * (attempt + 1))
-    return response if isinstance(response, dict) else {"response": response}
-
-
-class BladeAISessionAdapter:
-    name = "bladeai"
-
-    def __init__(self, *, base_url: str, model_alias: str, timeout_seconds: int = 720):
-        self.base_url = base_url.rstrip("/")
-        self.model_alias = model_alias
-        self.timeout_seconds = timeout_seconds
-        self.cancel_event = threading.Event()
-        self.session_id = ""
-
-    def cancel(self) -> bool:
-        self.cancel_event.set()
-        session_id = self.session_id
-        if not session_id:
-            return True
-        try:
-            _request_json(
-                "DELETE",
-                f"{self.base_url}/api/v1/sessions/{urllib.parse.quote(session_id)}",
-                None,
-                15,
-            )
-            return True
-        except Exception:
-            return False
-
-    @staticmethod
-    def _event_payload(lines: list[str]) -> Any:
-        raw = "\n".join(lines)
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return raw
-
-    @staticmethod
-    def _interrupt_node(payload: Any) -> str:
-        if not isinstance(payload, dict):
-            return ""
-        return str(
-            payload.get("node")
-            or payload.get("type")
-            or (payload.get("payload") or {}).get("type")
-            or ""
-        )
-
-    @staticmethod
-    def _interrupt_id(payload: Any) -> str:
-        if not isinstance(payload, dict):
-            return ""
-        for mapping in (payload, payload.get("payload") or {}):
-            if not isinstance(mapping, dict):
-                continue
-            for key in ("interrupt_id", "interruptId", "task_id", "taskId", "id"):
-                if mapping.get(key):
-                    return str(mapping[key])
-        return ""
-
-    def run(
-        self,
-        *,
-        prompt: str,
-        trial_id: str,
-        artifact_dir: Path,
-        event_sink: EventSink,
-    ) -> AdapterResult:
-        started_at = utc_now()
-        self.cancel_event.clear()
-        session = _request_json(
-            "POST",
-            f"{self.base_url}/api/v1/sessions",
-            {"namespace": "otel-demo", "model_name": self.model_alias},
-            30,
-        )
-        if not isinstance(session, dict):
-            raise RuntimeError("BladeAI session endpoint returned non-object")
-        session_id = str(
-            session.get("session_id")
-            or session.get("id")
-            or (session.get("data") or {}).get("session_id")
-            or ""
-        )
-        if not session_id:
-            raise RuntimeError("BladeAI session endpoint returned no session id")
-        self.session_id = session_id
-        confirmations = 0
-        tool_calls = 0
-        recovery = False
-        error = ""
-        terminal = ""
+            payload = dict(event.get("payload") or {})
+            # Native text remains a transcript, never execution evidence.
+            tool = event.get("tool")
+            if tool and payload.get("source") != "mcp_server":
+                return
+            if event.get("event_type") not in {"TOOL_INTERACTION", "AGENT_MESSAGE"}:
+                return  # Lifecycle facts are retained in harness-report.json.
+            native_type = str(event.get("native_type") or "")
+            call_id = str(payload.get("call_id") or "")
+            if tool and native_type == "tool_call":
+                calls.add(call_id)
+                if str(tool).endswith("destroy_experiment"):
+                    recovery_requested = True
+            if (str(tool).endswith("harness_confirm") and native_type == "tool_result"
+                    and (payload.get("result") or {}).get("allowed") is True):
+                confirmations.add(call_id)
+            event_sink({
+                "ts": str(event.get("occurred_at") or utc_now()),
+                "actor": "agent" if tool or event.get("event_type") == "AGENT_MESSAGE" else "harness",
+                "agent": self.name,
+                "kind": native_type or str(event.get("kind") or event.get("event_type") or "runtime_event"),
+                "tool": tool,
+                "source": payload.get("source", "native_stream"),
+                "payload": payload,
+            })
 
         try:
-            for turn_index, turn_input in enumerate((prompt, CONFIRMATION_REPLY), start=1):
-                url = f"{self.base_url}/api/v1/sessions/{urllib.parse.quote(session_id)}/turn"
-                request = urllib.request.Request(
-                    url,
-                    data=json.dumps(
-                        {
-                            "input": turn_input,
-                            "permission_mode": "confirm",
-                            "display_mode": "working",
-                            "dry_run": False,
-                        },
-                        ensure_ascii=False,
-                    ).encode(),
-                    method="POST",
-                    headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
-                )
-                event_name = "message"
-                data_lines: list[str] = []
-
-                def flush() -> None:
-                    nonlocal event_name, data_lines, confirmations, tool_calls, recovery, error, terminal
-                    if not data_lines:
-                        event_name = "message"
-                        return
-                    payload = self._event_payload(data_lines)
-                    effective = event_name
-                    if effective == "message" and isinstance(payload, dict):
-                        effective = str(payload.get("type") or "message")
-                    record = {
-                        "ts": utc_now(),
-                        "actor": "agent",
-                        "agent": self.name,
-                        "turn": turn_index,
-                        "kind": effective,
-                        "payload": payload,
-                    }
-                    event_sink(record)
-                    text = json.dumps(payload, ensure_ascii=False).lower()
-                    if effective in {"tool_start", "tool_call"}:
-                        tool_calls += 1
-                    if any(marker in text for marker in ("blade_destroy", "recover_graph", "recovery_requested")):
-                        recovery = True
-                    if effective in {"confirm", "confirmation", "interrupt"}:
-                        node = self._interrupt_node(payload)
-                        interrupt_id = self._interrupt_id(payload) or trial_id
-                        answer = (
-                            "rejected"
-                            if node in {"tool_screener", "plan_change_confirm"}
-                            else "approved"
-                        )
-                        response = _post_interrupt(
-                            self.base_url, session_id, interrupt_id, answer
-                        )
-                        confirmations += 1
-                        event_sink(
-                            {
-                                "ts": utc_now(),
-                                "actor": "harness",
-                                "agent": self.name,
-                                "kind": "approval_answered",
-                                "node": node,
-                                "answer": answer,
-                                "interrupt_id": interrupt_id,
-                                "response": response,
-                            }
-                        )
-                    if effective in {"result", "done"}:
-                        terminal = effective
-                    if effective == "error":
-                        error = text[:1000]
-                    event_name = "message"
-                    data_lines = []
-
-                deadline = time.monotonic() + self.timeout_seconds
-                with urllib.request.urlopen(request, timeout=60) as response:
-                    while True:
-                        if self.cancel_event.is_set():
-                            raise TimeoutError("BladeAI turn cancelled by D0 Controller")
-                        if time.monotonic() > deadline:
-                            raise TimeoutError("BladeAI turn exceeded timeout")
-                        line = response.readline()
-                        if not line:
-                            flush()
-                            break
-                        decoded = line.decode("utf-8", errors="replace").rstrip("\r\n")
-                        if decoded == "":
-                            flush()
-                        elif decoded.startswith("event:"):
-                            event_name = decoded[6:].strip() or "message"
-                        elif decoded.startswith("data:"):
-                            data_lines.append(decoded[5:].lstrip())
-                if error:
-                    break
-        except (urllib.error.URLError, TimeoutError) as exc:
-            error = f"{type(exc).__name__}: {exc}"
+            components.traffic.start_sampling()
+            runtime = components.preparer.prepare(
+                trial_id, episode, namespace="otel-demo", target=None, main_fault=None,
+            ).model_copy(update={"prompt_mode": PromptMode.VERBATIM, "interaction_mode": InteractionMode.GUIDED})
+            capability = components.permissions.provision(campaign_id, trial_id, harness, episode, runtime)
+            provisioned = True
+            # These components belong solely to this D0 attempt. NativeRunner
+            # still owns all homes, tokens, channel, audit, relay and AgentExec.
+            components.harness_runner.artifact_root = artifact_dir / "native"
+            components.harness_runner.timeout_seconds = self.timeout_seconds
+            report = components.harness_runner.run(
+                campaign_id=campaign_id, trial_id=trial_id, harness=harness,
+                model_alias=self.model_alias, episode=episode, runtime_context=runtime,
+                capability=capability, case=default_case_specs((Stage2CaseId.C0,))[0],
+                base_prompt=prompt, prompt_mode=PromptMode.VERBATIM,
+                interaction_mode=InteractionMode.GUIDED,
+                decision_policy=DecisionPolicy.CLARIFY_MISSING,
+                expected_outcome=ExpectedOutcome.EXECUTE_AND_RECOVER,
+                prompt_level_label="UNSPECIFIED", event_observer=observe,
+                cancel_requested=self.cancel_event.is_set,
+            )
+            write_json(artifact_dir / "harness-report.json", report.model_dump(mode="json"))
+            gateway = self._gateway_metadata(
+                report=report,
+                native_root=artifact_dir / "native",
+                trial_id=trial_id,
+                harness=harness.value,
+            )
+            failure = str(report.final_output.get("harness_error_code") or "")
+            if report.final_output.get("validation_error"):
+                failure = failure or "RESULT_CONTRACT_INVALID"
+            if report.status != "completed":
+                failure = failure or "ADAPTER_PROCESS_FAILED"
+            if not gateway["gateway_route"] or not gateway["gateway_config_sha256"]:
+                failure = failure or "GATEWAY_ROUTE_EVIDENCE_MISSING"
+            if gateway["gateway_evidence_verified"] is not True:
+                failure = failure or "GATEWAY_EVIDENCE_MISSING"
+            captured = any(
+                ref.endswith("session-events.jsonl")
+                and (artifact_dir / "native" / ref).is_file()
+                and (artifact_dir / "native" / ref).stat().st_size > 0
+                for ref in report.artifact_refs
+            )
+            if not captured:
+                failure = failure or "CAPABILITY_TRACE_MISSING"
+            return AdapterResult(
+                status="finished" if report.status == "completed" and not failure else "failed",
+                started_at=started, finished_at=utc_now(), process_status=report.status,
+                artifact_ref="harness-report.json", tool_calls=len(calls),
+                confirmations=len(confirmations), failure_code=failure,
+                agent_recovery_requested=recovery_requested,
+                native_session_trace_captured=captured,
+                model_alias=gateway["model_alias"],
+                gateway_route=gateway["gateway_route"],
+                gateway_config_sha256=gateway["gateway_config_sha256"],
+                gateway_evidence_verified=gateway["gateway_evidence_verified"],
+                gateway_request_ids=gateway["gateway_request_ids"],
+                gateway_evidence_ref=gateway["gateway_evidence_ref"],
+                gateway_trial_id=gateway["gateway_trial_id"],
+            )
         finally:
             try:
-                _request_json(
-                    "DELETE",
-                    f"{self.base_url}/api/v1/sessions/{urllib.parse.quote(session_id)}",
-                    None,
-                    15,
-                )
-            except Exception:
-                pass
-            self.session_id = ""
-        return AdapterResult(
-            status="finished" if not error else "failed",
-            started_at=started_at,
-            finished_at=utc_now(),
-            process_status=terminal or ("failed" if error else "eof"),
-            artifact_ref=artifact_dir.name,
-            error=error,
-            agent_recovery_requested=recovery,
-            tool_calls=tool_calls,
-            confirmations=confirmations,
+                components.supervisor.stop()
+            finally:
+                try:
+                    components.traffic.close()
+                finally:
+                    if provisioned:
+                        components.permissions.restore(trial_id)
+
+    def _gateway_metadata(
+        self,
+        *,
+        report,
+        native_root: Path,
+        trial_id: str,
+        harness: str,
+    ) -> dict[str, Any]:
+        final = report.final_output if isinstance(report.final_output, Mapping) else {}
+        model_alias = str(final.get("model_alias") or self.model_alias)
+        if final.get("trial_id") and final.get("trial_id") != trial_id:
+            return {
+                "model_alias": model_alias,
+                "gateway_route": {},
+                "gateway_config_sha256": "",
+                "gateway_evidence_verified": False,
+                "gateway_request_ids": (),
+                "gateway_evidence_ref": "",
+                "gateway_trial_id": trial_id,
+            }
+        gateway_route = final.get("gateway_route") or {}
+        if not isinstance(gateway_route, Mapping):
+            gateway_route = {}
+        gateway_hash = str(final.get("gateway_config_sha256") or "")
+        request_ids = _string_tuple(final.get("gateway_request_ids"))
+        evidence = self._persistent_gateway_evidence(
+            report=report,
+            native_root=native_root,
+            raw_evidence_ref=str(final.get("gateway_evidence_ref") or ""),
+            trial_id=trial_id,
+            harness=harness,
+            model_alias=model_alias,
+            gateway_hash=gateway_hash,
+            request_ids=request_ids,
         )
+        evidence_verified = (
+            final.get("gateway_evidence_verified") is True
+            and bool(request_ids)
+            and evidence is not None
+        )
+        return {
+            "model_alias": model_alias,
+            "gateway_route": dict(gateway_route),
+            "gateway_config_sha256": gateway_hash,
+            "gateway_evidence_verified": evidence_verified,
+            "gateway_request_ids": request_ids,
+            "gateway_evidence_ref": evidence["ref"] if evidence is not None else "",
+            "gateway_trial_id": trial_id,
+        }
+
+    @staticmethod
+    def _persistent_gateway_evidence(
+        *,
+        report,
+        native_root: Path,
+        raw_evidence_ref: str,
+        trial_id: str,
+        harness: str,
+        model_alias: str,
+        gateway_hash: str,
+        request_ids: tuple[str, ...],
+    ) -> dict[str, str] | None:
+        if raw_evidence_ref != "gateway-requests.json":
+            return None
+        if not request_ids or len(set(request_ids)) != len(request_ids):
+            return None
+        for ref in getattr(report, "artifact_refs", ()) or ():
+            ref_text = str(ref)
+            if ref_text != raw_evidence_ref and not ref_text.endswith("/gateway-requests.json"):
+                continue
+            ref_path = Path(ref_text)
+            if ref_path.is_absolute() or ".." in ref_path.parts:
+                return None
+            path = native_root / ref_path
+            rows = read_gateway_artifact(
+                path,
+                trial_id=trial_id,
+                harness=harness,
+                model_alias=model_alias,
+                config_sha256=gateway_hash,
+                request_ids=set(request_ids),
+            )
+            if rows is not None:
+                return {"ref": f"native/{ref_path.as_posix()}"}
+            return None
+        return None
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple, set)):
+        return ()
+    items = tuple(value)
+    if not all(isinstance(item, str) and item for item in items):
+        return ()
+    return items
 
 
 def adapter_models(env: Mapping[str, str]) -> dict[str, str]:
     return {
-        # Defaults mirror stage2_service.contracts.STAGE2_DEFAULT_MODEL: the
-        # OpenAI-protocol Harnesses use gpt-5.5, Claude Code its native model.
-        "bladeai": env.get("RESBENCH_D0_BLADEAI_MODEL", "gpt-5.5"),
+        "bladeai": env.get("RESBENCH_D0_BLADEAI_MODEL", STAGE2_BLADEAI_DEFAULT_MODEL),
         "codex": env.get("RESBENCH_D0_CODEX_MODEL", "gpt-5.5"),
         "claude-code": env.get("RESBENCH_D0_CLAUDE_MODEL", "claude-opus-5"),
         "deepseek-harness": env.get("RESBENCH_D0_DSH_MODEL", "gpt-5.5"),

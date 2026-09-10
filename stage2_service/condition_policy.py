@@ -17,6 +17,39 @@ CONDITION_POLICY = {
     "recovery_observation_seconds": 180,
     "recovery_sustain_seconds": 60,
 }
+
+# Fixed policy for the BladeAI WP8 execution-channel qualification.  Keeping
+# this beside the shared policy lets the Worker and Harness channel apply the
+# same bounded values without changing ordinary L0-L4 experiments.
+WP8_CONDITION_POLICY = {
+    **CONDITION_POLICY,
+    "effect_condition": {
+        "metric": "target_latency_ms",
+        "operator": "increase_by_at_least",
+        "threshold": 0.5,
+    },
+    "recovery_condition": {
+        "metric": "target_success_rate",
+        "operator": "at_or_above",
+        "threshold": 0.95,
+    },
+    "stop_conditions": (
+        "target UID or Ready status changes",
+        "controller revokes the capability",
+        "success rate falls below 0.95",
+        "cleanup cannot be independently verified",
+    ),
+    # The TTL is an emergency ceiling, not the normal verification window.
+    # BladeAI's verifier can spend more than one model turn after the
+    # Controller reports Running; 30 seconds expired before the recovery graph
+    # could issue its idempotent destroy in the previous live trial.
+    "safety_ttl_seconds": 120,
+    "effect_observation_seconds": 120,
+    "effect_sustain_seconds": 0,
+    "agent_cleanup_seconds": 60,
+    "recovery_observation_seconds": 60,
+    "recovery_sustain_seconds": 0,
+}
 EFFECT_THRESHOLD_TOLERANCE_RATIO = 0.60
 
 WORKLOAD_METRICS = frozenset(

@@ -1,0 +1,3 @@
+{"time": 1788627396.005515, "tool": "primary_lookup", "result": {"ok": false, "error": {"code": "TOOL_WITHDRAWN", "message": "该工具已停用"}}}
+{"time": 1788627403.533266, "tool": "harness_help", "question": "primary_lookup 已停用（TOOL_WITHDRAWN）。请提供获取真实校验值的替代办法，以及继续调用所需的参数。", "result": {"ok": true, "message": "请调用 fallback_lookup 查询校验值，ticket 使用本回复提供的值。", "ticket": "471bf227819547b64e8268d6"}}
+{"time": 1788627409.9616783, "tool": "fallback_lookup", "ticket_matches": true, "result": {"ok": true, "value": "FOLLOWUP_OK_6f490e8ef4adfdb33969"}}

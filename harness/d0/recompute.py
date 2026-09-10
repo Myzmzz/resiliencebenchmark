@@ -17,6 +17,7 @@ from .common import (
 from .visualization import generate_visualizations
 from .common import AGENTS
 from .behavior import derive_agent_behavior
+from .observer import _healthy_cpu_sample
 
 
 def _dt(value: str) -> datetime:
@@ -84,10 +85,11 @@ def recompute_trial(trial_dir: Path, agent: str) -> dict[str, Any]:
         int(pod.get("restart_count") or 0) for pod in before.get("pods", [])
     )
     precondition_ok = (
-        baseline_cpu <= 200
+        all(_healthy_cpu_sample(pod) for pod in before.get("pods", []))
         and len(before.get("pods", [])) == 1
         and before.get("pods", [{}])[0].get("ready") is True
         and not before.get("chaosblades")
+        and not before.get("chaos_mesh")
     )
     initial = {
         str(value.get("name"))
@@ -103,22 +105,10 @@ def recompute_trial(trial_dir: Path, agent: str) -> dict[str, Any]:
         trial_metadata.get("trial_id")
         or f"{trial_dir.parent.name}-{agent}"
     )
-    baseline_names = {
-        str(value.get("name")) for value in before.get("pods", []) if value.get("name")
-    }
+    baseline_uids = {str(pod.get("uid") or "") for pod in before.get("pods", [])} - {""}
 
     def owned_cr(value: dict[str, Any]) -> bool:
-        if value.get("run_id") == trial_id:
-            return True
-        return (
-            agent == "bladeai"
-            and not value.get("run_id")
-            and not value.get("owner")
-            and (
-                bool(baseline_names.intersection(value.get("target_names") or []))
-                or bool(__import__("re").fullmatch(r"[0-9a-f]{16}", str(value.get("name") or "")))
-            )
-        )
+        return value.get("run_id") == trial_id and value.get("owner") == "chaos_control"
 
     seen: set[str] = set()
     foreign_seen: set[str] = set()
@@ -141,6 +131,10 @@ def recompute_trial(trial_dir: Path, agent: str) -> dict[str, Any]:
         new = names - initial
         seen.update(new)
         foreign_seen.update((all_names - initial) - names)
+        foreign_seen.update(
+            f"chaos_mesh/{item.get('resource', 'unknown')}/{item['name']}"
+            for item in row.get("chaos_mesh", []) if item.get("name")
+        )
         maximum = max(
             [int(pod.get("cpu_millicores") or 0) for pod in row.get("pods", [])]
             or [0]
@@ -150,12 +144,20 @@ def recompute_trial(trial_dir: Path, agent: str) -> dict[str, Any]:
             maximum_restarts,
             sum(int(pod.get("restart_count") or 0) for pod in row.get("pods", [])),
         )
-        if effect_at is None and new and maximum >= max(300, baseline_cpu + 300):
+        target_matched = any(
+            owned_cr(cr) and cr.get("target_uid") in baseline_uids
+            and cr.get("fault_type") == "cpu-load" and cr.get("cpu_percent") == 80
+            and str(cr.get("phase") or "").lower() in {"success", "running"}
+            and any(pod.get("uid") == cr.get("target_uid") for pod in row.get("pods", []))
+            for cr in row.get("chaosblades", [])
+        )
+        if effect_at is None and new and target_matched and maximum >= max(300, baseline_cpu + 300):
             effect_at = str(row.get("ts"))
         elif (
             effect_at is not None
             and effect_ended_at is None
-            and maximum <= max(200, baseline_cpu + 100)
+            and all(_healthy_cpu_sample(pod) for pod in row.get("pods", []))
+            and len(row.get("pods", [])) == 1
         ):
             effect_ended_at = str(row.get("ts"))
         if (
@@ -190,18 +192,10 @@ def recompute_trial(trial_dir: Path, agent: str) -> dict[str, Any]:
         for event in normalized_trace.get("events", [])
         if isinstance(event, dict)
     )
-    native_trace_capture_complete = bool(events) and (
-        agent == "bladeai"
-        or (
-            trace_path.is_file()
-            and (trial_dir / "stdout.txt").is_file()
-            and (trial_dir / "stderr.txt").is_file()
-        )
+    native_trace_capture_complete = bool(events) and any(
+        path.is_file() and path.stat().st_size > 0
+        for path in (trial_dir / "native").glob("*/*/session-events.jsonl")
     )
-    if agent == "deepseek-harness":
-        native_trace_capture_complete = native_trace_capture_complete and any(
-            trial_dir.glob("dsh-session-*.jsonl")
-        )
     failure_code = _adapter_failure_code(trial_dir, existing)
     needs_human = bool((existing.get("adapter") or {}).get("needs_human"))
     end_at = recovery_at or (str(fallback.get("ts")) if fallback_used else None)
@@ -227,6 +221,8 @@ def recompute_trial(trial_dir: Path, agent: str) -> dict[str, Any]:
         "MODEL_UNAVAILABLE",
         "ADAPTER_PROCESS_FAILED",
         "HARNESS_IMPLEMENTATION_ERROR",
+        "RESULT_CONTRACT_INVALID",
+        "CAPABILITY_TRACE_MISSING",
     } and effect_at is None:
         status = "CASE_INVALID"
     elif effect_at is None:

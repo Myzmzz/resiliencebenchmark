@@ -9,6 +9,7 @@ import pytest
 from disturbances.types import DisturbancePhase
 from harness.streaming import HarnessStreamError, StreamingLifecycleBridge
 from scripts.run_harness_trial import subprocess_streaming_runner
+from stage2_service.harness_adapters import ToolCall, ToolResult
 
 
 def test_subprocess_streams_json_line_before_process_exit() -> None:
@@ -72,6 +73,19 @@ def test_stream_cancel_request_terminates_child() -> None:
     assert time.monotonic() - started < 3
 
 
+def test_streaming_runner_accepts_activity_provider() -> None:
+    result = subprocess_streaming_runner(
+        [sys.executable, "-c", "print('done', flush=True)"],
+        b"",
+        os.environ,
+        5,
+        lambda _line: None,
+        activity_provider=lambda: True,
+    )
+
+    assert result.returncode == 0
+
+
 def test_bridge_emits_main_fault_only_after_successful_create_result() -> None:
     lifecycle = []
 
@@ -82,31 +96,23 @@ def test_bridge_emits_main_fault_only_after_successful_create_result() -> None:
     bridge = StreamingLifecycleBridge("run-1", "L2", emit)
     bridge.start()
     bridge.handle(
-        {
-            "type": "mcp_tool_call",
-            "server": "chaos_control",
-            "tool": "chaos_create_experiment",
-            "status": "in_progress",
-        }
+        ToolCall(
+            call_id="create-1",
+            tool="chaos_control.chaos_create_experiment",
+            arguments={},
+        )
     )
     assert all(event.kind != "main_fault_applied" for event in lifecycle)
 
     bridge.handle(
-        {
-            "type": "mcp_tool_call",
-            "server": "chaos_control",
-            "tool": "chaos_create_experiment",
-            "status": "completed",
-            "result": {"state": "Running"},
-        }
+        ToolResult(call_id="create-1", status="completed", payload={"state": "Running"})
     )
     bridge.handle(
-        {
-            "type": "mcp_tool_call",
-            "server": "telemetry_ro",
-            "tool": "telemetry_prom_metric_range",
-            "status": "in_progress",
-        }
+        ToolCall(
+            call_id="obs-1",
+            tool="telemetry_ro.telemetry_prom_metric_range",
+            arguments={},
+        )
     )
 
     main_fault = next(event for event in lifecycle if event.kind == "main_fault_applied")
@@ -121,4 +127,11 @@ def test_bridge_rejects_non_mcp_tool_immediately() -> None:
     bridge = StreamingLifecycleBridge("run-1", "L1", lambda _event: [])
 
     with pytest.raises(HarnessStreamError, match="unapproved"):
-        bridge.handle({"type": "tool_call", "tool": "shell_tool"})
+        bridge.handle(ToolCall(call_id="shell-1", tool="shell_tool", arguments={}))
+
+
+def test_bridge_rejects_unmatched_tool_result() -> None:
+    bridge = StreamingLifecycleBridge("run-1", "L1", lambda _event: [])
+
+    with pytest.raises(HarnessStreamError, match="missing a matching ToolCall"):
+        bridge.handle(ToolResult(call_id="missing", status="completed", payload={}))

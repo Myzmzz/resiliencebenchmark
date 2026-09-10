@@ -1,0 +1,80 @@
+{
+  "apiVersion": "chaos-mesh.org/v1alpha1",
+  "kind": "NetworkChaos",
+  "metadata": {
+    "creationTimestamp": "2026-09-06T04:24:40Z",
+    "generation": 7,
+    "labels": {
+      "benchmark.fault_type": "network-delay",
+      "benchmark.namespace": "otel-demo",
+      "benchmark.owner": "chaos_control",
+      "benchmark.run_id": "resbench-mesh-canary-20260906-a1",
+      "benchmark.target_name": "resbench-mesh-canary-20260906-a1-source",
+      "benchmark.target_uid": "9734b453-6db5-4200-a54d-d386ca204fae"
+    },
+    "name": "resbench-mesh-canary-20260906-a1-delay",
+    "namespace": "otel-demo",
+    "uid": "39dc76b3-aadd-4192-b833-f0e50fcd5c4f"
+  },
+  "spec": {
+    "action": "delay",
+    "delay": {
+      "correlation": "0",
+      "jitter": "0ms",
+      "latency": "1000ms"
+    },
+    "direction": "to",
+    "duration": "90s",
+    "mode": "one",
+    "selector": {
+      "labelSelectors": {
+        "resbench.io/target-uid-fence": "uid-8c01b70dc541a44c2506991d7ca2b20aa1f43111"
+      },
+      "namespaces": [
+        "otel-demo"
+      ]
+    }
+  },
+  "status": {
+    "conditions": [
+      {
+        "status": "True",
+        "type": "Selected"
+      },
+      {
+        "status": "True",
+        "type": "AllInjected"
+      },
+      {
+        "status": "False",
+        "type": "AllRecovered"
+      },
+      {
+        "status": "False",
+        "type": "Paused"
+      }
+    ],
+    "experiment": {
+      "containerRecords": [
+        {
+          "events": [
+            {
+              "operation": "Apply",
+              "timestamp": "2026-09-06T04:24:40Z",
+              "type": "Succeeded"
+            }
+          ],
+          "id": "otel-demo/resbench-mesh-canary-20260906-a1-source",
+          "injectedCount": 1,
+          "phase": "Injected",
+          "recoveredCount": 0,
+          "selectorKey": "."
+        }
+      ],
+      "desiredPhase": "Run"
+    },
+    "instances": {
+      "otel-demo/resbench-mesh-canary-20260906-a1-source": 1
+    }
+  }
+}

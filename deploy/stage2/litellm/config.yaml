@@ -81,10 +81,10 @@ model_list:
       api_key: os.environ/DASHSCOPE_API_KEY
 
   # ---------------------------------------------------------------------------
-  # Acucompute console (previous gateway). claude-opus-5 is only served over
+  # Acucompute console. claude-opus-5 is only served over
   # the Anthropic protocol by this account, so LiteLLM converts the OpenAI
-  # protocol the Harnesses speak into Messages API calls. gpt-5.6-sol stays
-  # registered so earlier qualification refs still resolve.
+  # protocol the Harnesses speak into Messages API calls. gpt-5.6-sol is the
+  # BladeAI default route and uses the OpenAI-compatible endpoint.
   # ---------------------------------------------------------------------------
   - model_name: claude-opus-5
     litellm_params:
@@ -99,6 +99,8 @@ model_list:
       api_key: os.environ/ACUCOMPUTE_API_KEY
 
 litellm_settings:
+  callbacks:
+    - gateway_audit.logger_instance
   # Drop request parameters an upstream does not understand instead of
   # failing the call (matches the previously deployed gateway).
   drop_params: true

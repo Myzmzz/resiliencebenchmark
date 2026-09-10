@@ -11,7 +11,7 @@ from mcp.server import MCPServer
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 
-from mcp_servers.http_runtime import run_mcp_server
+from mcp_servers.http_runtime import PolicyGate, run_mcp_server
 
 from .service import ChaosControlError, ChaosControlService, RuntimeConfig
 
@@ -115,12 +115,14 @@ def create_server(
         token_verifier=token_verifier,
         lifespan=lifespan,
     )
+    policy_gate = PolicyGate.from_env("chaos_control")
 
     @server.tool(
         name="chaos_validate_plan",
         title="Validate ChaosBlade Plan",
         annotations=_read_annotations("Validate ChaosBlade Plan"),
     )
+    @policy_gate.guard("chaos_validate_plan")
     async def chaos_validate_plan(
         namespace: str,
         target_name: str,
@@ -158,6 +160,7 @@ def create_server(
         title="Inventory ChaosBlade Run State",
         annotations=_read_annotations("Inventory ChaosBlade Run State"),
     )
+    @policy_gate.guard("chaos_inventory_run")
     async def chaos_inventory_run(namespace: str) -> dict[str, Any]:
         """Read-only inventory of cluster-scoped ChaosBlade CRs for one logical namespace."""
 
@@ -168,6 +171,7 @@ def create_server(
         title="Create Gated ChaosBlade Experiment",
         annotations=_write_annotations("Create Gated ChaosBlade Experiment"),
     )
+    @policy_gate.guard("chaos_create_experiment")
     async def chaos_create_experiment(
         namespace: str,
         target_name: str,
@@ -232,6 +236,7 @@ def create_server(
         title="Get ChaosBlade Experiment",
         annotations=_read_annotations("Get ChaosBlade Experiment"),
     )
+    @policy_gate.guard("chaos_get_experiment")
     async def chaos_get_experiment(namespace: str, name: str) -> dict[str, Any]:
         """Read-only lookup of one cluster-scoped ChaosBlade CR by logical namespace and name."""
 
@@ -242,6 +247,7 @@ def create_server(
         title="Get Chaos Create Operation Status",
         annotations=_read_annotations("Get Chaos Create Operation Status"),
     )
+    @policy_gate.guard("chaos_operation_status")
     async def chaos_operation_status(
         operation_id: str | None = None,
         cleanup_handle: str | None = None,
@@ -267,6 +273,7 @@ def create_server(
         title="Destroy Ledger-Owned ChaosBlade Experiment",
         annotations=_destroy_annotations("Destroy Ledger-Owned ChaosBlade Experiment"),
     )
+    @policy_gate.guard("chaos_destroy_experiment")
     async def chaos_destroy_experiment(
         cleanup_handle: str | None = None,
     ) -> dict[str, Any]:
@@ -286,6 +293,7 @@ def create_server(
         title="Read ChaosBlade Recovery Status",
         annotations=_read_annotations("Read ChaosBlade Recovery Status"),
     )
+    @policy_gate.guard("chaos_recovery_status")
     async def chaos_recovery_status(
         cleanup_handle: str | None = None,
     ) -> dict[str, Any]:

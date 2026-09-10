@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from harness.d0.common import evaluation_ready_result
 from stage2_service.contracts import STAGE2_MODEL_MATRIX
+from stage2_service.gateway_evidence import read_gateway_artifact
 
 HARNESSES = ("bladeai", "claude-code", "codex", "deepseek-harness")
 # The qualification matrix covers every alias the Stage-2 service exposes.
@@ -70,6 +71,58 @@ def build(d0_root: Path, assignments: dict[tuple[str, str], str]) -> dict:
                 raise ValueError(
                     f"D0 model identity mismatch: {campaign_id}/{harness}"
                 )
+            if (result or {}).get("model_alias") != model:
+                raise ValueError(
+                    f"D0 result model identity mismatch: {campaign_id}/{harness}"
+                )
+            gateway_route = (result or {}).get("gateway_route")
+            gateway_hash = str((result or {}).get("gateway_config_sha256") or "")
+            gateway_request_ids = (result or {}).get("gateway_request_ids")
+            gateway_evidence_ref = str((result or {}).get("gateway_evidence_ref") or "")
+            gateway_trial_id = str((result or {}).get("gateway_trial_id") or "")
+            if not isinstance(gateway_route, dict) or not gateway_route:
+                raise ValueError(
+                    f"D0 gateway route evidence is missing: {campaign_id}/{harness}"
+                )
+            if not re_fullmatch_sha256(gateway_hash):
+                raise ValueError(
+                    f"D0 gateway config version evidence is missing: {campaign_id}/{harness}"
+                )
+            if (
+                (result or {}).get("gateway_evidence_verified") is not True
+                or not isinstance(gateway_request_ids, list)
+                or not gateway_request_ids
+                or not all(isinstance(item, str) and item for item in gateway_request_ids)
+                or len(set(gateway_request_ids)) != len(gateway_request_ids)
+                or not gateway_evidence_ref
+                or not gateway_trial_id
+            ):
+                raise ValueError(
+                    f"D0 gateway request evidence is missing: {campaign_id}/{harness}"
+                )
+            evidence_ref_path = Path(gateway_evidence_ref)
+            if (
+                evidence_ref_path.is_absolute()
+                or ".." in evidence_ref_path.parts
+                or not evidence_ref_path.parts
+                or evidence_ref_path.parts[0] != "native"
+                or evidence_ref_path.name != "gateway-requests.json"
+            ):
+                raise ValueError(
+                    f"D0 gateway request evidence is missing: {campaign_id}/{harness}"
+                )
+            gateway_rows = read_gateway_artifact(
+                root / harness / evidence_ref_path,
+                trial_id=gateway_trial_id,
+                harness=harness,
+                model_alias=model,
+                config_sha256=gateway_hash,
+                request_ids=set(gateway_request_ids),
+            )
+            if gateway_rows is None:
+                raise ValueError(
+                    f"D0 gateway request evidence is missing: {campaign_id}/{harness}"
+                )
             models[model][harness] = {
                 "campaign_id": campaign_id,
                 "manifest_sha256": hashlib.sha256(
@@ -77,6 +130,12 @@ def build(d0_root: Path, assignments: dict[tuple[str, str], str]) -> dict:
                 ).hexdigest(),
                 "agent_status": status,
                 "model_alias": model,
+                "gateway_route": gateway_route,
+                "gateway_config_sha256": gateway_hash,
+                "gateway_evidence_verified": True,
+                "gateway_request_ids": gateway_request_ids,
+                "gateway_evidence_ref": gateway_evidence_ref,
+                "gateway_trial_id": gateway_trial_id,
                 "evaluation_ready": evaluation_ready_result(dict(result or {})),
                 "invalid_reason": (
                     None
@@ -88,6 +147,10 @@ def build(d0_root: Path, assignments: dict[tuple[str, str], str]) -> dict:
         "schema_version": "stage2-qualification-matrix.v1",
         "models": models,
     }
+
+
+def re_fullmatch_sha256(value: str) -> bool:
+    return len(value) == 64 and all(ch in "0123456789abcdef" for ch in value)
 
 
 def main(argv: list[str] | None = None) -> int:

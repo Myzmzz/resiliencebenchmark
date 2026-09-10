@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -22,8 +21,8 @@ Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 PROTOCOLS = {
     "bladeai": {
-        "agent_transport": "bladeai-session-turn-sse",
-        "tool_boundary": "bladeai-native-internal-chaos",
+        "agent_transport": "bladeai-task-via-agent-exec",
+        "tool_boundary": "trial-bound-mcp-and-controlled-shim",
     },
     "codex": {
         "agent_transport": "codex-headless-jsonl",
@@ -110,39 +109,20 @@ def _executable_identity(
     runner: Runner,
     command_path: Path,
     host: Mapping[str, Any],
+    *,
+    runtime_descriptor: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if agent == "bladeai":
-        command = env.get("RESBENCH_D0_BLADEAI_COMMAND", command)
-    path_value = env.get("RESBENCH_D0_NATIVE_PATH") or env.get("PATH")
-    resolved = (
-        str(Path(command).expanduser().resolve())
-        if Path(command).is_absolute()
-        else shutil.which(command, path=path_value)
-    )
-    value: dict[str, Any] = {
+    descriptor = dict(runtime_descriptor or {})
+    capability = dict(descriptor.get("capability") or {})
+    return {
         "command": command,
-        "resolved_path": resolved,
-        "available": bool(resolved),
         **PROTOCOLS[agent],
+        "available": capability.get("qualification_passed") is True,
+        "runtime_source": "qualification_descriptor",
+        "execution_boundary": "agent_exec_sidecar",
+        "capability": capability,
+        "qualification": descriptor.get("qualification", {"status": "capability_probe_missing"}),
     }
-    if not resolved:
-        return value
-    executable = Path(resolved).resolve()
-    if executable.is_file():
-        value["resolved_sha256"] = sha256_file(executable)
-    try:
-        completed, _ = _command_record(
-            command_path=command_path,
-            host=host,
-            argv=[resolved, "--version"],
-            runner=runner,
-        )
-        output = (completed.stdout or completed.stderr).strip().splitlines()
-        value["version_command_returncode"] = completed.returncode
-        value["version"] = redact_sensitive_text(output[0][:500]) if output else ""
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        value["version_error"] = type(exc).__name__
-    return value
 
 
 def collect_execution_inventory(
@@ -154,6 +134,7 @@ def collect_execution_inventory(
     host: Mapping[str, Any],
     models: Mapping[str, str],
     environment: Mapping[str, str],
+    runtime_descriptors: Mapping[str, Mapping[str, Any]] | None = None,
     runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     harness_registry = yaml.safe_load(
@@ -177,6 +158,7 @@ def collect_execution_inventory(
             runner,
             commands,
             host,
+            runtime_descriptor=(runtime_descriptors or {}).get(agent),
         ) | {
             "adapter_registry_version": harness_registry.get("version"),
             "entrypoint_mode": entrypoint.get("mode"),

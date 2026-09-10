@@ -15,7 +15,6 @@ from fastapi import FastAPI, Header, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from .contracts import (
-    STAGE2_SUPPORTED_MODELS,
     CampaignRequest,
     CampaignResult,
     CaseBundle,
@@ -24,6 +23,7 @@ from .contracts import (
     default_case_specs,
 )
 from .matrix_evidence import MatrixEvidenceNotFound, MatrixEvidenceStore
+from .runtime_lock import RuntimeLock, RuntimeLockLease
 from .task_service import (
     AbortTaskRequest,
     EnvironmentResetRequest,
@@ -42,8 +42,9 @@ class CampaignRunner(Protocol):
 
 
 class CampaignSupervisor:
-    def __init__(self, runner: CampaignRunner):
+    def __init__(self, runner: CampaignRunner, *, runtime_lock: RuntimeLock):
         self.runner = runner
+        self.runtime_lock = runtime_lock
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stage2-campaign")
         self.lock = Lock()
         self.condition = Condition(self.lock)
@@ -62,6 +63,7 @@ class CampaignSupervisor:
                 return request.request_id
             if any(not future.done() for future in self.futures.values()):
                 raise RuntimeError("one Stage-2 campaign is already active")
+            runtime_lease = self.runtime_lock.acquire(owner=f"api:{request.request_id}")
             self.events[request.request_id] = []
             self.interactions[request.request_id] = []
             self.stop_events[request.request_id] = Event()
@@ -69,12 +71,18 @@ class CampaignSupervisor:
                 self.event_sinks[request.request_id] = event_sink
             if result_sink is not None:
                 self.result_sinks[request.request_id] = result_sink
-            self.futures[request.request_id] = self.pool.submit(
-                self._run_request, request
-            )
+            try:
+                self.futures[request.request_id] = self.pool.submit(
+                    self._run_request, request, runtime_lease
+                )
+            except Exception:
+                runtime_lease.release()
+                raise
             return request.request_id
 
-    def _run_request(self, request: CampaignRequest) -> CampaignResult:
+    def _run_request(
+        self, request: CampaignRequest, runtime_lease: RuntimeLockLease
+    ) -> CampaignResult:
         def observe(event) -> None:
             payload = dict(event) if isinstance(event, dict) else {"event": str(event)}
             self.append_event(request.request_id, payload)
@@ -90,13 +98,15 @@ class CampaignSupervisor:
                 result = self.runner.run(request, **kwargs)
             else:
                 result = self.runner.run(request)
+            sink = self.result_sinks.get(request.request_id)
+            if sink is not None:
+                sink(result)
+            return result
         except TypeError:
             # A runner bug must never start the Trial again without its callbacks.
             raise
-        sink = self.result_sinks.get(request.request_id)
-        if sink is not None:
-            sink(result)
-        return result
+        finally:
+            runtime_lease.release()
 
     def append_event(self, request_id: str, event: dict) -> None:
         with self.condition:
@@ -320,41 +330,9 @@ def create_app(
 
     @app.get("/api/v1/preflight")
     def preflight() -> dict:
-        if preflight_provider is not None:
-            return dict(preflight_provider())
-        return {
-            "status": "READY_TO_CHECK",
-            "harnesses": {
-                "codex": True,
-                "claude-code": False,
-                "deepseek-harness": False,
-                "bladeai": False,
-            },
-            "models": list(STAGE2_SUPPORTED_MODELS),
-            "model_matrix": {
-                harness: {model: available for model in STAGE2_SUPPORTED_MODELS}
-                for harness, available in {
-                    "codex": True,
-                    "claude-code": False,
-                    "deepseek-harness": False,
-                    "bladeai": False,
-                }.items()
-            },
-            "cases": [item.model_dump(mode="json") for item in default_case_specs()],
-            "mcp_servers": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"],
-            "rbac": {
-                "trial_token_rotation": True,
-                "observability_revoke": [
-                    "mcp.k8s.read",
-                    "mcp.telemetry.read",
-                    "mcp.source.read",
-                ],
-                "chaos_revoke": ["mcp.chaos.create"],
-            },
-            "chaosblade": {"executor": "chaos_control", "execute_enabled_required": True},
-            "d0": {"artifact_root_configured": False, "campaigns": []},
-            "reset_mode": "unknown",
-        }
+        if preflight_provider is None:
+            raise HTTPException(status_code=503, detail="Runtime qualification provider is unavailable")
+        return dict(preflight_provider())
 
     @app.get("/api/v1/qualifications")
     def qualifications() -> dict:

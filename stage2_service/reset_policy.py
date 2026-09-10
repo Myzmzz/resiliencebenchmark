@@ -93,7 +93,7 @@ def _explicit_tier(data: Mapping[str, Any]) -> ResetTier | None:
 
 
 def _infer_tier(summary: Mapping[str, Any]) -> ResetTier:
-    if summary["unknown_or_failed_rollback"]:
+    if summary["unknown_or_failed_rollback"] or summary["foreign_or_unobserved_fault"]:
         return ResetTier.T3_FULL_REINSTALL
     if summary["fault_or_target_mutated"]:
         return ResetTier.T2_FAULT_OR_TARGET
@@ -128,6 +128,8 @@ def _reason_codes(tier: ResetTier, summary: Mapping[str, Any]) -> tuple[str, ...
     reasons: list[str] = []
     if summary["unknown_or_failed_rollback"]:
         reasons.append("UNKNOWN_OR_FAILED_ROLLBACK")
+    if summary["foreign_or_unobserved_fault"]:
+        reasons.append("FOREIGN_OR_UNOBSERVED_FAULT")
     if summary["fault_or_target_mutated"]:
         reasons.append("FAULT_OR_TARGET_MUTATION_OBSERVED")
     if summary["capability_mutated"]:
@@ -142,7 +144,7 @@ def _reason_codes(tier: ResetTier, summary: Mapping[str, Any]) -> tuple[str, ...
 def _verified(
     tier: ResetTier, data: Mapping[str, Any], summary: Mapping[str, Any]
 ) -> bool:
-    if summary["unknown_or_failed_rollback"]:
+    if summary["unknown_or_failed_rollback"] or summary["foreign_or_unobserved_fault"]:
         return False
     if tier is ResetTier.T0_NO_WRITE:
         return _truthy(
@@ -202,6 +204,14 @@ def _summarize(data: Mapping[str, Any]) -> dict[str, Any]:
         ),
     )
     rollback_failed = _rollback_failed(data)
+    foreign_or_unobserved_fault = _truthy(
+        data,
+        (
+            "foreign_active_faults",
+            "unowned_active_faults",
+            "fault_inventory_incomplete",
+        ),
+    ) or data.get("fault_inventory_qualified") is False
     fault_or_target = _truthy(
         data,
         (
@@ -261,6 +271,7 @@ def _summarize(data: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "unknown_or_failed_rollback": rollback_failed
         or (outcome_uncertain and not outcome_reconciled),
+        "foreign_or_unobserved_fault": foreign_or_unobserved_fault,
         "operation_outcome_uncertain": outcome_uncertain,
         "operation_outcome_reconciled": outcome_reconciled,
         "rollback_failed": rollback_failed,

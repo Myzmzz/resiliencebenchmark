@@ -69,3 +69,17 @@
 | 原始输入、补答、报告、接口与部署 | 输入artifact检查、Campaign报告生成、Task API回归、远端Git分支和在线接口核对 |
 
 最后核对另修正了计划文档中遗留的“尚未实施”说明；历史第六至八轮结果保持原样。真实第六、七轮闭环仍未重跑，需用户按手动检查说明执行。
+
+## 2026-09-07 BladeAI WP8 资格重测与模型额度归因
+
+本轮只在旧集群 `resiliencebenchmark-system/resbench-stage2-integration` 部署并运行一次 BladeAI WP8，未访问新集群，也未启动第二次 Trial。代码提交为 `c6c915f`，配对镜像已部署，integration Pod 3/3 Ready、零重启。
+
+真实 Trial `campaign-50b2baadba104136-bladeai-wp8-1` 在 MCP 四服务成功启动、BladeAI SDK 已进入规划阶段后，被 LiteLLM 上游返回 403：模型额度不足。该轮没有发生 Kubernetes 读取、确认、故障创建、销毁或 Agent 工具调用；因此 `qualification_passed=false`，不把它归因于 MCP 启动、权限边界或 BladeAI SDK。
+
+为避免同类失败再次以通用 `PERMISSION_DENIED` 混淆资格判断，代码新增：
+
+- 模型探针对 `quota_exhausted`、容量暂不可用、限流和认证/权限失败的分类；不可用别名在 `/api/v1/stage2/options` 的 `model_probes` 中给出稳定原因，不自动切换模型或路由。
+- BladeAI 终态对额度与容量错误的稳定 Harness 错误码：`BLADEAI_MODEL_QUOTA_EXHAUSTED`、`BLADEAI_PROVIDER_CAPACITY_EXHAUSTED`；两者不改变试验重试预算，也不把外部服务失败判成 Agent 行为。
+- WP8 资格记录优先保留上述稳定错误码，同时保留原始 Agent 终态错误作为证据。
+
+本轮结果证据位于 `artifacts/remediation/20260907-bladeai-wp8-final/`；ChaosBlade、Chaos Mesh 对象均为0，金丝雀 Pod Ready，清理状态正常。下一次真实资格仍需先确认可用模型额度，再单独授权启动；当前不宣称 BladeAI 资格通过。

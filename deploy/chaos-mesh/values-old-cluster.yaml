@@ -1,0 +1,79 @@
+# Only the old coroot-config cluster; install with the official 2.7.3 chart.
+clusterScoped: false
+timezone: UTC
+enableProfiling: false
+enableCtrlServer: false
+
+images:
+  registry: ghcr.io
+  tag: v2.7.3
+
+controllerManager:
+  image:
+    registry: 1.94.151.57:85
+    repository: observe/chaos-mesh
+    tag: v2.7.3-stage2-20260905@sha256:f621818e987a75e933d5fb0c5e9c0abb0b72285dadea50f1a4b3719041214bfc
+  replicaCount: 1
+  targetNamespace: otel-demo
+  allowHostNetworkTesting: false
+  nodeSelector:
+    kubernetes.io/hostname: tcse-v100-03
+  leaderElection:
+    enabled: true
+  # Keep the official engine registration. In 2.7.3 selective *-records
+  # registration returns from the whole bootstrap loop on the first omitted
+  # implementation; a three-kind list would silently omit required controllers.
+  # Benchmark exposure is restricted by its MCP tools and executor/finalizer
+  # RBAC, not by this upstream bootstrap flag. See README.md.
+  enabledControllers: ["*"]
+  enabledWebhooks:
+    - networkchaos
+    - podchaos
+    - stresschaos
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+chaosDaemon:
+  image:
+    registry: 1.94.151.57:85
+    repository: observe/chaos-daemon
+    tag: v2.7.3-stage2-20260905@sha256:bd42d0f88a33f01a0c547e33cd036d40ea09fd7508082ffb7778040672526d4a
+  runtime: docker
+  socketPath: /var/run/docker.sock
+  mtls:
+    enabled: true
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values: [tcse-v100-01, tcse-v100-02, tcse-v100-03]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+dashboard:
+  create: false
+  securityMode: true
+dnsServer:
+  create: false
+bpfki:
+  create: false
+prometheus:
+  create: false
+
+webhook:
+  FailurePolicy: Fail
+  timeoutSeconds: 5
+  CRDS: [networkchaos, podchaos, stresschaos]

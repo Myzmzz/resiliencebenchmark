@@ -41,8 +41,20 @@ CATALOG = REPO_ROOT / "tasks/catalog/resilience-defect-classes.v0.1.yaml"
 RULES = TEMPLATE_ROOT / "defect-matchers.v0.1.yaml"
 MODEL_DEFECT_SCHEMA = PACKAGE_ROOT / "schemas/model-defect-assessment.schema.json"
 MODEL_EPISODE_SCHEMA = PACKAGE_ROOT / "schemas/model-episode-review.schema.json"
-TRAIN_TICKET = REPO_ROOT.parent / "benchmark-sources/materialized/train-ticket-upstream"
-TRAIN_CONTEXT = REPO_ROOT / "artifacts/resilience-agent/train-ticket-static-20260823/system-context.yaml"
+
+
+def train_ticket_fixture(root: Path) -> tuple[Path, dict[str, Any]]:
+    """Tiny fake static source fixture; never represents a live qualification."""
+    project = root / "train-ticket-upstream"
+    app = project / "ts-travel-service/src/main/java/travel/TravelApplication.java"
+    service = project / "ts-travel-service/src/main/java/travel/service/TravelServiceImpl.java"
+    app.parent.mkdir(parents=True)
+    service.parent.mkdir(parents=True)
+    app_lines = ["// fixture\n"] * 31 + ["RestTemplate client = new RestTemplate();\n"]
+    service_lines = ["// fixture\n"] * 344 + ["restTemplate.exchange(url, HttpMethod.GET, entity, String.class);\n"]
+    app.write_text("".join(app_lines), encoding="utf-8")
+    service.write_text("".join(service_lines), encoding="utf-8")
+    return project, {"fixture": "fake-static-unit-only", "application": "train-ticket"}
 
 
 def model_config(*, max_rounds: int = 12) -> ModelConfig:
@@ -776,9 +788,8 @@ def test_episode_stage_failure_preserves_validated_candidate_artifacts(tmp_path:
 
 
 def test_train_ticket_model_agent_rejects_bad_seed_and_finds_timeout_candidate(tmp_path: Path) -> None:
-    assert TRAIN_TICKET.is_dir()
-    context = load_document(TRAIN_CONTEXT)
-    seed = identify_defects(TRAIN_TICKET, CATALOG, RULES, context)
+    train_ticket, context = train_ticket_fixture(tmp_path)
+    seed = identify_defects(train_ticket, CATALOG, RULES, context)
     seed_ids = [item["candidate_id"] for item in seed["candidates"]]
     evidence_refs = [
         {
@@ -860,7 +871,7 @@ def test_train_ticket_model_agent_rejects_bad_seed_and_finds_timeout_candidate(t
     }
     model = ScriptedModel([final_turn(assessment, "defect-final"), final_turn(episode_review, "episode-final")])
     result = ResilienceAnalysisAgent(model).run(
-        TRAIN_TICKET,
+        train_ticket,
         system_context=context,
         output_dir=tmp_path,
     )

@@ -1,0 +1,12 @@
+#!/opt/bladeai-venv/bin/python
+import sys
+
+from stage2_service.bladeai_read_cli import ReadCliError, main
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ReadCliError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1)

@@ -9,7 +9,7 @@ from mcp.server import MCPServer
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 
-from mcp_servers.http_runtime import run_mcp_server
+from mcp_servers.http_runtime import PolicyGate, run_mcp_server
 from .service import ALLOW_RAW_QUERIES_ENV, TelemetryROError, TelemetryROService, error_envelope
 
 
@@ -55,12 +55,14 @@ def create_server(
         auth=auth,
         token_verifier=token_verifier,
     )
+    policy_gate = PolicyGate.from_env("telemetry_ro")
 
     @server.tool(
         name="telemetry_workload_current",
         title="Current Scoped Business Workload Metrics",
         annotations=_read_annotations("Current Scoped Business Workload Metrics"),
     )
+    @policy_gate.guard("telemetry_workload_current")
     async def telemetry_workload_current() -> dict[str, Any]:
         """Read current request count, failures, RPS, latency, and success rate from the configured benchmark workload; an insufficient sample is not a failure."""
 
@@ -71,6 +73,7 @@ def create_server(
         title="Prometheus Scoped Metric Instant Query",
         annotations=_read_annotations("Prometheus Scoped Metric Instant Query"),
     )
+    @policy_gate.guard("telemetry_prom_metric_instant")
     async def telemetry_prom_metric_instant(
         metric: str,
         time: int,
@@ -105,6 +108,7 @@ def create_server(
         title="Prometheus Scoped Metric Range Query",
         annotations=_read_annotations("Prometheus Scoped Metric Range Query"),
     )
+    @policy_gate.guard("telemetry_prom_metric_range")
     async def telemetry_prom_metric_range(
         metric: str,
         start: int,
@@ -137,6 +141,7 @@ def create_server(
         title="Prometheus Scoped Metric Series",
         annotations=_read_annotations("Prometheus Scoped Metric Series"),
     )
+    @policy_gate.guard("telemetry_prom_metric_series")
     async def telemetry_prom_metric_series(
         metric: str,
         start: int,
@@ -163,6 +168,7 @@ def create_server(
         title="Prometheus List Labels",
         annotations=_read_annotations("Prometheus List Labels"),
     )
+    @policy_gate.guard("telemetry_prom_list_labels")
     async def telemetry_prom_list_labels(
         start: int,
         end: int,
@@ -178,6 +184,7 @@ def create_server(
         title="Jaeger List Services",
         annotations=_read_annotations("Jaeger List Services"),
     )
+    @policy_gate.guard("telemetry_jaeger_list_services")
     async def telemetry_jaeger_list_services(limit: int = 50, offset: int = 0) -> dict[str, Any]:
         """List only Jaeger services in the configured allowlist."""
 
@@ -188,6 +195,7 @@ def create_server(
         title="Jaeger List Operations",
         annotations=_read_annotations("Jaeger List Operations"),
     )
+    @policy_gate.guard("telemetry_jaeger_list_operations")
     async def telemetry_jaeger_list_operations(service: str, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         """List Jaeger operations only for an allowlisted service."""
 
@@ -198,6 +206,7 @@ def create_server(
         title="Jaeger Find Traces",
         annotations=_read_annotations("Jaeger Find Traces"),
     )
+    @policy_gate.guard("telemetry_jaeger_find_traces")
     async def telemetry_jaeger_find_traces(
         service: str,
         start: int,
@@ -228,6 +237,7 @@ def create_server(
         title="Loki List Labels",
         annotations=_read_annotations("Loki List Labels"),
     )
+    @policy_gate.guard("telemetry_loki_list_labels")
     async def telemetry_loki_list_labels(start: int, end: int, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         """List Loki label names for a bounded benchmark episode window."""
 
@@ -238,6 +248,7 @@ def create_server(
         title="Loki Scoped Logs Instant Query",
         annotations=_read_annotations("Loki Scoped Logs Instant Query"),
     )
+    @policy_gate.guard("telemetry_loki_logs")
     async def telemetry_loki_logs(
         time: int,
         labels: dict[str, str] | None = None,
@@ -261,6 +272,7 @@ def create_server(
         title="Loki Scoped Logs Range Query",
         annotations=_read_annotations("Loki Scoped Logs Range Query"),
     )
+    @policy_gate.guard("telemetry_loki_logs_range")
     async def telemetry_loki_logs_range(
         start: int,
         end: int,
@@ -291,6 +303,7 @@ def create_server(
             title="Unqualified Raw Prometheus Instant Query",
             annotations=_read_annotations("Unqualified Raw Prometheus Instant Query"),
         )
+        @policy_gate.guard("telemetry_prom_query_instant")
         async def telemetry_prom_query_instant(query: str, time: int, limit: int = 50) -> dict[str, Any]:
             """Development-only raw PromQL instant query; unqualified for shared-cluster production use."""
 
@@ -301,6 +314,7 @@ def create_server(
             title="Unqualified Raw Prometheus Range Query",
             annotations=_read_annotations("Unqualified Raw Prometheus Range Query"),
         )
+        @policy_gate.guard("telemetry_prom_query_range")
         async def telemetry_prom_query_range(query: str, start: int, end: int, step: int, limit: int = 50) -> dict[str, Any]:
             """Development-only raw PromQL range query; unqualified for shared-cluster production use."""
 
@@ -311,6 +325,7 @@ def create_server(
             title="Unqualified Raw Prometheus List Series",
             annotations=_read_annotations("Unqualified Raw Prometheus List Series"),
         )
+        @policy_gate.guard("telemetry_prom_list_series")
         async def telemetry_prom_list_series(
             match: list[str],
             start: int,
@@ -327,6 +342,7 @@ def create_server(
             title="Unqualified Raw Jaeger Get Trace",
             annotations=_read_annotations("Unqualified Raw Jaeger Get Trace"),
         )
+        @policy_gate.guard("telemetry_jaeger_get_trace")
         async def telemetry_jaeger_get_trace(trace_id: str) -> dict[str, Any]:
             """Development-only Jaeger trace-id lookup; unqualified for shared-cluster production use."""
 
@@ -337,6 +353,7 @@ def create_server(
             title="Unqualified Raw Loki Instant Query",
             annotations=_read_annotations("Unqualified Raw Loki Instant Query"),
         )
+        @policy_gate.guard("telemetry_loki_query")
         async def telemetry_loki_query(
             query: str,
             time: int,
@@ -352,6 +369,7 @@ def create_server(
             title="Unqualified Raw Loki Range Query",
             annotations=_read_annotations("Unqualified Raw Loki Range Query"),
         )
+        @policy_gate.guard("telemetry_loki_query_range")
         async def telemetry_loki_query_range(
             query: str,
             start: int,

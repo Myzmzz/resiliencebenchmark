@@ -1678,6 +1678,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "langchain" },
     { name = "langchain-openai" },
@@ -1686,6 +1687,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "uvicorn" },
+    { name = "zstandard" },
 ]
 
 [package.optional-dependencies]
@@ -1702,6 +1704,7 @@ test = [
 requires-dist = [
     { name = "dulwich", marker = "extra == 'runtime'", specifier = ">=0.22,<0.23" },
     { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27,<1" },
     { name = "jsonschema", specifier = ">=4.20,<5" },
     { name = "kubernetes", marker = "extra == 'runtime'", specifier = ">=32,<35" },
@@ -1713,6 +1716,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7,<9" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
+    { name = "zstandard", specifier = ">=0.25,<1" },
 ]
 provides-extras = ["test", "runtime"]
 

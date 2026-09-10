@@ -1,0 +1,141 @@
+# Apply with stage2.yaml before rolling a new Controller. These ServiceAccounts
+# never get tokens mounted into Agent containers. API-server-authorized fixed
+# impersonation uses the Controller's rotating projected credential.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: resbench-stage2-executor
+  namespace: resiliencebenchmark-system
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: resbench-stage2-finalizer
+  namespace: resiliencebenchmark-system
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resbench-stage2-executor-chaosblade
+rules:
+  - apiGroups: ["chaosblade.io"]
+    resources: ["chaosblades"]
+    verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resbench-stage2-executor-chaosblade
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: resbench-stage2-executor-chaosblade
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2-executor
+    namespace: resiliencebenchmark-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resbench-stage2-finalizer-chaosblade
+rules:
+  - apiGroups: ["chaosblade.io"]
+    resources: ["chaosblades", "chaosblades/finalizers"]
+    verbs: ["get", "list", "delete", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resbench-stage2-finalizer-chaosblade
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: resbench-stage2-finalizer-chaosblade
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2-finalizer
+    namespace: resiliencebenchmark-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resbench-stage2-executor
+  namespace: otel-demo
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["networkchaos", "podchaos", "stresschaos"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resbench-stage2-executor
+  namespace: otel-demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resbench-stage2-executor
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2-executor
+    namespace: resiliencebenchmark-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resbench-stage2-finalizer
+  namespace: otel-demo
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["networkchaos", "podchaos", "stresschaos"]
+    verbs: ["get", "list", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resbench-stage2-finalizer
+  namespace: otel-demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resbench-stage2-finalizer
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2-finalizer
+    namespace: resiliencebenchmark-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resbench-stage2-controller-liveness
+  namespace: resiliencebenchmark-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resbench-stage2-controller-liveness
+  namespace: resiliencebenchmark-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resbench-stage2-controller-liveness
+subjects:
+  - kind: ServiceAccount
+    name: resbench-stage2-executor
+    namespace: resiliencebenchmark-system
+  - kind: ServiceAccount
+    name: resbench-stage2-finalizer
+    namespace: resiliencebenchmark-system

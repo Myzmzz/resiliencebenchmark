@@ -10,6 +10,21 @@ runtime_refs:
   chaos: service_ref:chaos_control
 
 tools:
+  harness_channel:
+    mode: controlled_write
+    purpose: Confirm Agent plans, consult the Harness, submit results, and receive Controller notices.
+    allowed_operations:
+      - harness_confirm
+      - harness_consult
+      - harness_submit_result
+      - harness_poll_notices
+    denied_operations:
+      - change_trial_identity
+      - change_permissions
+      - read_oracle
+    scope:
+      identity_from_controller: true
+      always_available_for_trial: true
   k8s_ro:
     mode: read_only
     purpose: Inspect Kubernetes objects, events, pod status, service topology, and logs metadata.
@@ -39,6 +54,7 @@ tools:
     mode: read_only
     purpose: Query scoped Prometheus metrics, Jaeger traces, and Loki logs for baseline, fault effect, diagnosis, and recovery evidence.
     allowed_operations:
+      - telemetry_workload_current
       - telemetry_prom_metric_instant
       - telemetry_prom_metric_range
       - telemetry_prom_metric_series
@@ -108,6 +124,22 @@ tools:
       require_global_chaosblade_inventory_clear: true
       baseline_capability_one_time_use: true
       require_durable_deadline_watchdog: true
+
+  coroot_ro:
+    mode: read_only
+    purpose: Optional D7 scoped Coroot evidence source; registered only for substitution trials.
+    allowed_operations: [coroot_metrics_range, coroot_traces_find, coroot_logs_range]
+    denied_operations: [write, delete, upstream_url_override]
+  chaos_mesh_control:
+    mode: controlled_write
+    purpose: Optional D8 Controller-gated Chaos Mesh executor; registered only for substitution trials.
+    allowed_operations: [chaos_mesh_validate_plan, chaos_mesh_inventory_run, chaos_mesh_create_experiment, chaos_mesh_get_experiment, chaos_mesh_operation_status, chaos_mesh_destroy_experiment, chaos_mesh_recovery_status]
+    denied_operations: [arbitrary_shell, bypass_controller_budget]
+  code_sandbox:
+    mode: controlled_write
+    purpose: Optional bounded code execution through the Agent execution sidecar.
+    allowed_operations: [run_python]
+    denied_operations: [network, direct_mcp_credentials, host_shell]
 
 not_exposed_to_agent:
   oracle:

@@ -1,0 +1,10 @@
+{
+  "id": "stage2-manual-single-case-example",
+  "name": "Stage2 Manual Single Case (example)",
+  "values": [
+    {"key": "stage2_base_url", "value": "", "enabled": true}
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2026-09-05T00:00:00.000Z",
+  "_postman_exported_using": "ResilienceBenchmark"
+}

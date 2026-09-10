@@ -6,6 +6,7 @@ from controller.runtime_secrets import PrivateRuntimeSecretStore
 from controller.trial_preparation import TrialRuntimeContextStore
 from harness.live_runner import LiveHarnessTrialRunner
 from progression.controller import TrialTicket
+from stage2_service.harness_adapters import ToolCall, ToolResult
 
 
 def _ticket() -> TrialTicket:
@@ -32,21 +33,21 @@ def test_live_runner_forwards_events_before_return_and_keeps_disturbance_hidden(
         executor_arguments.update(kwargs)
         observer = kwargs["event_observer"]
         observer(
-            {
-                "type": "mcp_tool_call",
-                "server": "chaos_control",
-                "tool": "chaos_create_experiment",
-                "status": "completed",
-                "result": {"state": "Running"},
-            }
+            ToolCall(
+                call_id="create-1",
+                tool="chaos_control.chaos_create_experiment",
+                arguments={},
+            )
         )
         observer(
-            {
-                "type": "mcp_tool_call",
-                "server": "telemetry_ro",
-                "tool": "telemetry_prom_metric_range",
-                "status": "in_progress",
-            }
+            ToolResult(call_id="create-1", status="completed", payload={"state": "Running"})
+        )
+        observer(
+            ToolCall(
+                call_id="obs-1",
+                tool="telemetry_ro.telemetry_prom_metric_range",
+                arguments={},
+            )
         )
         return {"status": "completed", "runTraceRef": "trace.json"}
 
@@ -74,6 +75,7 @@ def test_live_runner_forwards_events_before_return_and_keeps_disturbance_hidden(
     assert "disturbances" not in executor_arguments
     assert [event.kind for event in lifecycle] == [
         "trial_started",
+        "tool_call",
         "tool_result",
         "main_fault_applied",
         "observation_started",

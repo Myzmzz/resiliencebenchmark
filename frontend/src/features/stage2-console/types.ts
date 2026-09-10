@@ -1,5 +1,5 @@
 export type HarnessId = "codex" | "claude-code" | "deepseek-harness" | "bladeai";
-export type CaseId = "C0" | "P1" | "P2" | "D1" | "D2" | "D3" | "D4" | "D5" | "D6";
+export type CaseId = "C0" | "P1" | "P2" | "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7" | "D8";
 export type ConsolePhase = "C1" | "C2" | "C3" | "C4" | "C5" | "C6";
 export type ConsoleStatus = "IDLE" | "RUNNING" | "COMPLETED" | "FAILED" | "CASE_INVALID" | "RESET_FAILED" | "BLOCKED" | "ABORTED";
 export type CaseVerdict = "PENDING" | "PASS" | "FAIL" | "INCONCLUSIVE" | "CASE_INVALID" | "SKIPPED";

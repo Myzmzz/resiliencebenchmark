@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""The only ``blade`` executable present in the evaluated Agent container."""
+
+from stage2_service.bladeai_shim import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

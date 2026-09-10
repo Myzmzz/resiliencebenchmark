@@ -141,6 +141,45 @@ def test_probe_records_core_capabilities_with_fake_transport(tmp_path):
     assert model["capabilities"]["structuredJsonOutput"] is True
 
 
+def test_provider_failure_class_distinguishes_quota_from_capacity_and_authentication():
+    assert probe_models.provider_failure_class("token quota is not enough", http_status=403) == "quota_exhausted"
+    assert probe_models.provider_failure_class("selected model is at capacity", http_status=429) == "capacity_transient"
+    assert probe_models.provider_failure_class("invalid api key", http_status=401) == "authentication_or_permission"
+
+
+def test_probe_records_quota_failure_class(tmp_path):
+    config = tmp_path / "models.yaml"
+    write_models_config(config)
+
+    class QuotaTransport(FakeTransport):
+        def __call__(self, method, url, headers, body, timeout):
+            if method == "GET" and url.endswith("/models"):
+                return super().__call__(method, url, headers, body, timeout)
+            return response(
+                {
+                    "error": {
+                        "message": "token quota is not enough; request id req-123",
+                    }
+                },
+                status=403,
+            )
+
+    report = probe_models.run_probe(
+        config,
+        {probe_models.BASE_URL_ENV: "https://gateway.example/v1", probe_models.API_KEY_ENV: "secret"},
+        aliases=["gpt-5.6"],
+        transport=QuotaTransport(),
+    )
+
+    model = report["models"][0]
+    assert model["overallStatus"] == "probed_with_failures"
+    assert model["failureClasses"] == ["quota_exhausted"]
+    assert all(probe.get("failureClass") == "quota_exhausted" for probe in model["probes"] if probe["check"] != "model_alias_resolution")
+    encoded = json.dumps(report)
+    assert "req-123" in encoded
+    assert "secret" not in encoded
+
+
 def test_anthropic_failure_is_protocol_only_not_model_failure(tmp_path):
     config = tmp_path / "models.yaml"
     write_models_config(config)

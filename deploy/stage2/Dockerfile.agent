@@ -1,0 +1,107 @@
+# Evaluated-runtime image.  It intentionally excludes kubectl, helm, all
+# controller services, ClusterRole material, and the native ChaosBlade binary.
+FROM node:24.13.0-bookworm-slim AS node_runtime
+FROM bladeai-src AS bladeai_source
+FROM node:22.21.1-bookworm-slim AS bladeai_tui
+
+COPY --from=bladeai_source / /opt/blade-ai
+WORKDIR /opt/blade-ai/tui
+RUN npm install -g npm@10.9.2 \
+    && npm ci --ignore-scripts --no-audit --no-fund \
+    && ./node_modules/.bin/patch-package \
+    && npm run build \
+    && test -s /opt/blade-ai/tui/dist/cli.js \
+    && test -s /opt/blade-ai/tui/dist/package.json
+
+FROM python:3.12.13-slim-bookworm
+
+ARG UV_VERSION=0.10.9
+ARG BLADEAI_RELEASE_TAG=blade-ai-v0.6.2
+ARG BLADEAI_RELEASE_COMMIT=d8c5473ccda329a3841f114f83a43881a2205ab5
+ARG BLADEAI_PACKAGE_VERSION=0.3.0
+ARG BLADEAI_MCP_VERSION=1.27.0
+LABEL resiliencebenchmark.io/bladeai-release-tag=${BLADEAI_RELEASE_TAG}
+LABEL resiliencebenchmark.io/bladeai-release-commit=${BLADEAI_RELEASE_COMMIT}
+LABEL resiliencebenchmark.io/bladeai-package-version=${BLADEAI_PACKAGE_VERSION}
+LABEL resiliencebenchmark.io/bladeai-mcp-version=${BLADEAI_MCP_VERSION}
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PATH=/opt/agent/.venv/bin:/opt/bladeai-venv/bin:/opt/resiliencebenchmark/deepseek-harness/bin:/usr/local/bin:/usr/bin:/bin
+
+# iptables/ip6tables is used only by the root-owned agent-exec daemon to make
+# a UID-scoped egress allowlist before it drops to the evaluated Agent UID.
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+       ca-certificates iptables iproute2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ! command -v kubectl \
+    && ! command -v helm
+
+COPY --from=node_runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node_runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && npm install --global --no-audit --no-fund \
+       @openai/codex@0.139.0 @anthropic-ai/claude-code@2.1.233
+
+RUN python -m venv /opt/agent/.venv \
+    && /opt/agent/.venv/bin/pip install --no-cache-dir "mcp[cli]==2.0.0" "uv==${UV_VERSION}"
+
+# DeepSeek Harness and BladeAI are the two remaining evaluated runtimes.  No
+# native ChaosBlade vendor directory is copied from bladeai_source.
+RUN install -d -m 0755 /opt/resiliencebenchmark/deepseek-harness
+COPY harness/deepseek-harness/runtime-lock/package.json /opt/resiliencebenchmark/deepseek-harness/package.json
+COPY harness/deepseek-harness/runtime-lock/package-lock.json /opt/resiliencebenchmark/deepseek-harness/package-lock.json
+RUN npm ci --prefix /opt/resiliencebenchmark/deepseek-harness --omit=dev --ignore-scripts --no-audit --no-fund \
+    && install -d -m 0755 /opt/resiliencebenchmark/deepseek-harness/bin \
+    && printf '%s\n' '#!/bin/sh' 'exec node /opt/resiliencebenchmark/deepseek-harness/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"' > /opt/resiliencebenchmark/deepseek-harness/bin/dsh \
+    && chmod 0755 /opt/resiliencebenchmark/deepseek-harness/bin/dsh \
+    && ln -s /opt/resiliencebenchmark/deepseek-harness/bin/dsh /usr/local/bin/dsh
+
+COPY --from=bladeai_source / /opt/blade-ai
+COPY --from=bladeai_tui /opt/blade-ai/tui/dist /opt/blade-ai/tui/dist
+RUN python -m venv /opt/bladeai-venv \
+    && python -c 'import os, tomllib; from pathlib import Path; project = tomllib.loads(Path("/opt/blade-ai/pyproject.toml").read_text())["project"]; assert project["version"] == os.environ["BLADEAI_PACKAGE_VERSION"]; assert "mcp>=1.0,<2.0" in project["dependencies"]' \
+    && test -s /opt/blade-ai/tui/dist/cli.js \
+    && test -s /opt/blade-ai/tui/dist/package.json \
+    && test ! -e /opt/blade-ai/vendor/chaosblade \
+    && ! find /opt/blade-ai -type f -name blade -print -quit | grep .
+RUN /opt/bladeai-venv/bin/pip install --no-cache-dir "mcp[cli]==${BLADEAI_MCP_VERSION}" --editable /opt/blade-ai \
+    && /opt/bladeai-venv/bin/python -c "import importlib.metadata as m; assert m.version('blade-ai') == '${BLADEAI_PACKAGE_VERSION}'; assert m.version('mcp').split('.')[0] == '1'"
+
+# Only the execution daemon and the minimal Blade client modules are copied.
+COPY harness/__init__.py /app/harness/__init__.py
+COPY harness/agent_exec /app/harness/agent_exec
+COPY harness/schemas/agent-result.schema.json /app/harness/schemas/agent-result.schema.json
+COPY harness/mcp-tools.yaml /app/harness/mcp-tools.yaml
+COPY harness/bladeai/blade-shim/blade /app/harness/bladeai/blade-shim/blade
+COPY harness/bladeai/kubectl-shim/kubectl /app/harness/bladeai/kubectl-shim/kubectl
+COPY deploy/stage2/codex-eval /usr/local/bin/codex-eval
+COPY stage2_service/bladeai_worker.py /app/stage2_service/bladeai_worker.py
+COPY stage2_service/bladeai_events.py /app/stage2_service/bladeai_events.py
+COPY stage2_service/bladeai_mcp_guard.py /app/stage2_service/bladeai_mcp_guard.py
+COPY stage2_service/bladeai_duration.py /app/stage2_service/bladeai_duration.py
+COPY stage2_service/bladeai_task.py /app/stage2_service/bladeai_task.py
+COPY stage2_service/condition_policy.py /app/stage2_service/condition_policy.py
+COPY stage2_service/bladeai_shim.py /app/stage2_service/bladeai_shim.py
+COPY stage2_service/bladeai_read_cli.py /app/stage2_service/bladeai_read_cli.py
+RUN install -d -m 0755 /app/stage2_service \
+    && install -d -m 0755 /run/resbench-host \
+    && touch /run/resbench-host/cgroupns \
+    && touch /app/stage2_service/__init__.py \
+    && cp /app/harness/bladeai/blade-shim/blade /usr/local/bin/blade \
+    && sed -i '1c #!/opt/bladeai-venv/bin/python' /app/harness/bladeai/blade-shim/blade \
+    && sed -i '1c #!/opt/bladeai-venv/bin/python' /usr/local/bin/blade \
+    && chmod 0755 /app/harness/bladeai/blade-shim/blade /app/harness/bladeai/kubectl-shim/kubectl /usr/local/bin/blade \
+    && chmod 0755 /usr/local/bin/codex-eval \
+    && ! command -v blade-native \
+    && /usr/sbin/iptables-restore --version \
+    && /usr/sbin/iptables --version \
+    && /usr/sbin/ip6tables --version
+
+ARG SOURCE_HEAD=unknown
+LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
+WORKDIR /app
+ENTRYPOINT ["/opt/agent/.venv/bin/python", "-m", "harness.agent_exec"]

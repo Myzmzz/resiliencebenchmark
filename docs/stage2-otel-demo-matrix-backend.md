@@ -6,9 +6,11 @@
 
 - 系统：`otel-demo`
 - Harness：BladeAI、Claude Code、Codex、DeepSeek Harness
-- 模型：`gpt-5.6-sol`、`claude-opus-5`
+- 模型：`gpt-5.5`、`claude-opus-5`
 - 核心用例：`C0`、`P1`、`P2`、`D1`、`D2`、`D3`、`D4`
 - Trial 总数：`4 × 2 × 7 = 56`
+
+当前正式矩阵按 `gpt-5.5` 与 `claude-opus-5` 统计；`gpt-5.6-sol` 仅保留为 2026-09-05 前后旧运行与整改记录中的历史事实，不与本页正式矩阵混统计。
 
 初始 Prompt：
 
@@ -23,10 +25,10 @@
 ```bash
 python scripts/build_stage2_qualification_matrix.py \
   --d0-root /var/lib/resbench-stage2/integration/d0 \
-  --campaign gpt-5.6-sol/bladeai=<CAMPAIGN_ID> \
-  --campaign gpt-5.6-sol/claude-code=<CAMPAIGN_ID> \
-  --campaign gpt-5.6-sol/codex=<CAMPAIGN_ID> \
-  --campaign gpt-5.6-sol/deepseek-harness=<CAMPAIGN_ID> \
+  --campaign gpt-5.5/bladeai=<CAMPAIGN_ID> \
+  --campaign gpt-5.5/claude-code=<CAMPAIGN_ID> \
+  --campaign gpt-5.5/codex=<CAMPAIGN_ID> \
+  --campaign gpt-5.5/deepseek-harness=<CAMPAIGN_ID> \
   --campaign claude-opus-5/bladeai=<CAMPAIGN_ID> \
   --campaign claude-opus-5/claude-code=<CAMPAIGN_ID> \
   --campaign claude-opus-5/codex=<CAMPAIGN_ID> \
@@ -34,7 +36,7 @@ python scripts/build_stage2_qualification_matrix.py \
   --output /var/lib/resbench-stage2/integration/qualification/qualification-matrix.json
 ```
 
-任一组合的平台/清理证据无效、执行主机未验证、Manifest 不匹配或模型身份不一致，资格矩阵生成都会失败。Agent能力强弱由Stage-2 C0及后续用例评估，不由D0准入替代。
+任一组合的平台/清理证据无效、执行主机未验证、Manifest 不匹配或模型身份不一致，资格矩阵生成都会失败。历史上的 `gpt-5.6-sol` 入口/整改记录仍可作为旧证据引用，但它们不属于本页正式 `gpt-5.5` 矩阵，也不应与现行 D0 资格混算。Agent能力强弱由Stage-2 C0及后续用例评估，不由D0准入替代。
 
 ## 执行与恢复
 

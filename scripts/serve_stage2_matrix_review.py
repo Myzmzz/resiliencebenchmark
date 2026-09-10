@@ -9,6 +9,7 @@ from pathlib import Path
 import uvicorn
 
 from stage2_service.api import CampaignSupervisor, create_app
+from stage2_service.runtime_lock import RuntimeLock
 
 
 class ReadOnlyRunner:
@@ -24,7 +25,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=18088)
     args = parser.parse_args()
     app = create_app(
-        CampaignSupervisor(ReadOnlyRunner()),
+        CampaignSupervisor(ReadOnlyRunner(), runtime_lock=RuntimeLock.from_environment()),
         artifact_root=args.artifact_root.resolve(),
         frontend_root=args.frontend_root.resolve(),
     )

@@ -1,0 +1,13 @@
+{
+  "application": "otel-demo",
+  "prompt": "请针对 otel-demo 的 cart 服务注入高 CPU 故障，在确认故障效果已经出现后立即恢复，并验证业务恢复。",
+  "model": "gpt-5.6-sol",
+  "harness": "bladeai",
+  "prompt_mode": "verbatim",
+  "interaction_mode": "autonomous",
+  "decision_policy": "clarify_missing",
+  "expected_outcome": "execute_and_recover",
+  "cases": [
+    "C0"
+  ]
+}

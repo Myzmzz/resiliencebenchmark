@@ -8,15 +8,32 @@ from types import SimpleNamespace
 from typing import Any
 
 from stage2_service.artifacts import ArtifactStore
+from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.campaign import (
     CampaignEngine,
+    _gateway_evidence_issues,
     _approval_feedback,
     _guided_turn_feedback,
 )
+
+
+def test_gateway_evidence_is_required_without_qualification_and_actual_model_cannot_be_filled():
+    missing = _gateway_evidence_issues(
+        {"model_alias": "", "gateway_route": {}, "gateway_config_sha256": "", "gateway_evidence_verified": False, "gateway_request_ids": (), "gateway_evidence_ref": ""},
+        qualification_ref=None, expected_model_alias="gpt-5.6-sol",
+    )
+    assert "gateway_route_missing" in missing
+    assert "gateway_model_alias_mismatch" in missing
+    wrong = _gateway_evidence_issues(
+        {"model_alias": "other", "gateway_route": {"model_alias": "other"}, "gateway_config_sha256": "a" * 64, "gateway_evidence_verified": True, "gateway_request_ids": ("one",), "gateway_evidence_ref": "gateway-requests.json"},
+        qualification_ref=None, expected_model_alias="gpt-5.6-sol",
+    )
+    assert wrong == ["gateway_model_alias_mismatch"]
 from stage2_service.contracts import (
     AgentVerdict,
     CampaignRequest,
     CapabilityProfile,
+    DisturbancePlan,
     DisturbanceRecord,
     DisturbanceType,
     HarnessKind,
@@ -255,6 +272,50 @@ class Disturbances:
         return record.model_copy(update={"rolled_back": True, "rollback_evidence": {"verified": True}})
 
 
+class AsyncD5Disturbances(Disturbances):
+    """Campaign-facing D5 double: completion occurs only through wait()."""
+
+    def __init__(self):
+        super().__init__()
+        self.restoration_observer = None
+        self.waited = []
+
+    def set_restoration_observer(self, observer):
+        self.restoration_observer = observer
+
+    def apply(self, plan):
+        record = super().apply(plan)
+        if plan.type is not DisturbanceType.TOOL_CHANNEL_INTERRUPTION:
+            return record
+        return record.model_copy(
+            update={
+                "application_evidence": {
+                    "servers": ("k8s_ro", "telemetry_ro", "source_ro"),
+                    "duration_seconds": 1,
+                    "restoration": {"status": "pending", "verified": False},
+                },
+                "rolled_back": False,
+            }
+        )
+
+    def wait_for_restoration(self, record):
+        self.waited.append(record)
+        completed = record.model_copy(
+            update={
+                "rolled_back": True,
+                "application_evidence": {
+                    **record.application_evidence,
+                    "restoration": {"status": "restored", "verified": True},
+                    "channel_restored_feedback": {"event_type": "CHANNEL_RESTORED"},
+                },
+                "rollback_evidence": {"verified": True},
+            }
+        )
+        assert self.restoration_observer is not None
+        self.restoration_observer(completed)
+        return completed
+
+
 class Runner:
     def run(
         self,
@@ -271,7 +332,7 @@ class Runner:
         event_observer,
         **_runtime_options,
     ):
-        del model_alias, episode, capability, base_prompt
+        del episode, capability, base_prompt
         events = []
         if case.trial_kind is TrialKind.PROTECTED_INFRASTRUCTURE:
             events = [
@@ -468,6 +529,15 @@ class Runner:
                     payload={"target_uid": runtime_context.target.uid},
                 ),
                 LifecycleEvent(
+                    event_id=f"{trial_id}-d6-unknown",
+                    campaign_id=campaign_id,
+                    trial_id=trial_id,
+                    harness=harness,
+                    phase=LifecyclePhase.C3_INJECT,
+                    kind="operation_outcome_unknown",
+                    payload={"operation_id": runtime_context.cleanup_handle},
+                ),
+                LifecycleEvent(
                     event_id=f"{trial_id}-d6-reconcile",
                     campaign_id=campaign_id,
                     trial_id=trial_id,
@@ -533,6 +603,12 @@ class Runner:
             lifecycle_events=tuple(events),
             artifact_refs=(f"harness://{trial_id}",),
             final_output={
+                "model_alias": model_alias,
+                "gateway_route": {"model_alias": model_alias, "route": "test"},
+                "gateway_config_sha256": "a" * 64,
+                "gateway_evidence_verified": True,
+                "gateway_request_ids": [f"request-{trial_id}"],
+                "gateway_evidence_ref": "gateway-requests.json",
                 "agent_result": {
                     "remaining_risk": case.expected_agent_signal,
                     "recovery_check": case.expected_agent_signal,
@@ -584,11 +660,11 @@ class ConditionMonitor:
         return {"armed": False}
 
 
-def _engine(tmp_path: Path, *, gate=True, reset=True):
+def _engine(tmp_path: Path, *, gate=True, reset=True, disturbances=None):
     request = _request()
     episode = load_fixed_episode(request.episode, root=REPO_ROOT)
     permissions = Permissions()
-    disturbances = Disturbances()
+    disturbances = disturbances or Disturbances()
     resetter = Resetter(reset)
     engine = CampaignEngine(
         episode=episode,
@@ -603,6 +679,7 @@ def _engine(tmp_path: Path, *, gate=True, reset=True):
         resetter=resetter,
         condition_monitor_factory=ConditionMonitor,
         artifacts=ArtifactStore(tmp_path),
+        platform_ledger=PlatformLedger(tmp_path / "platform-ledger"),
     )
     return engine, request, permissions, disturbances, resetter
 
@@ -657,6 +734,46 @@ def test_campaign_runs_codex_nine_case_suite(tmp_path: Path):
             )
         )
     ) == 9
+
+
+def test_d5_restoration_notice_is_enqueued_only_after_async_completion(tmp_path: Path):
+    disturbances = AsyncD5Disturbances()
+    engine, request, _permissions, _disturbances, _resetter = _engine(
+        tmp_path,
+        disturbances=disturbances,
+    )
+    emitted = []
+
+    result = engine.run(request, event_observer=emitted.append)
+
+    assert result.platform_status is PlatformStatus.COMPLETED
+    assert len(disturbances.waited) == 1
+    restored_feedback = [
+        event
+        for event in emitted
+        if event["kind"] == "structured_feedback"
+        and event["payload"]["feedback"]["payload"].get("event_type")
+        == "CHANNEL_RESTORED"
+    ]
+    assert len(restored_feedback) == 1
+    d5_trial = next(trial for trial in result.trials if trial.kind is TrialKind.TOOL_CHANNEL_INTERRUPTED)
+    assert d5_trial.disturbances[0].rolled_back is True
+    notices = engine.platform_ledger.pending_notices(trial_id=d5_trial.trial_id)
+    assert [notice.notice_type for notice in notices] == ["CHANNEL_RESTORED"]
+
+
+def test_d6_reconciliation_disturbance_waits_for_unknown_create_result(tmp_path: Path):
+    engine, request, _permissions, disturbances, _resetter = _engine(tmp_path)
+
+    result = engine.run(request)
+
+    assert result.platform_status is PlatformStatus.COMPLETED
+    d6 = next(
+        plan
+        for plan in disturbances.applied
+        if plan.type is DisturbanceType.OPERATION_OUTCOME_UNCERTAINTY
+    )
+    assert d6.trigger_event_id.endswith("-d6-unknown")
     assert (tmp_path / result.campaign_id / "campaign/evaluation.json").is_file()
     assert (tmp_path / result.campaign_id / "manifest.sha256").is_file()
 
@@ -739,6 +856,29 @@ def test_campaign_stops_after_reset_failure(tmp_path: Path):
     assert len(resetter.calls) == 1
 
 
+def test_replayed_native_evidence_never_reapplies_runtime_disturbances(tmp_path: Path):
+    engine, request, permissions, disturbances, resetter = _engine(tmp_path)
+
+    class ReplayedRunner(Runner):
+        def run(self, **kwargs):
+            original_observer = kwargs.pop("event_observer")
+
+            def replay_observer(event):
+                if isinstance(event, LifecycleEvent):
+                    event = event.model_copy(update={
+                        "payload": {**event.payload, "replayed": True},
+                    })
+                return original_observer(event)
+
+            return super().run(**kwargs, event_observer=replay_observer)
+
+    engine.harness_runner = ReplayedRunner()
+    engine.run(request)
+    assert disturbances.applied == []
+    assert len(permissions.provisioned) == len(permissions.restored)
+    assert len(resetter.calls) == len(permissions.provisioned)
+
+
 class RaisingRunner:
     def run(self, **_kwargs):
         raise RuntimeError("native harness crashed")
@@ -754,7 +894,8 @@ class FailedRunner:
 
 
 class InvalidAgentOutputRunner:
-    def run(self, **_kwargs):
+    def run(self, **kwargs):
+        model = kwargs["model_alias"]
         return HarnessReport(
             status="failed",
             agent_verdict=AgentVerdict.INCONCLUSIVE,
@@ -762,16 +903,20 @@ class InvalidAgentOutputRunner:
             final_output={
                 "process_succeeded": True,
                 "validation_error": "agent result schema mismatch",
+                "model_alias": model, "gateway_route": {"model_alias": model}, "gateway_config_sha256": "a" * 64,
+                "gateway_evidence_verified": True, "gateway_request_ids": ["invalid-output-request"], "gateway_evidence_ref": "gateway-requests.json",
             },
         )
 
 
 class TimeoutRunner:
-    def run(self, **_kwargs):
+    def run(self, **kwargs):
+        model = kwargs["model_alias"]
         return HarnessReport(
             status="timeout",
             agent_verdict=AgentVerdict.FAIL,
             lifecycle_events=(),
+            final_output={"model_alias": model, "gateway_route": {"model_alias": model}, "gateway_config_sha256": "a" * 64, "gateway_evidence_verified": True, "gateway_request_ids": ["timeout-request"], "gateway_evidence_ref": "gateway-requests.json"},
         )
 
 
@@ -821,3 +966,70 @@ def test_invalid_agent_output_after_successful_process_is_a_valid_agent_failure(
 
     assert result.trials[0].platform_valid is True
     assert result.trials[0].agent_verdict is AgentVerdict.FAIL
+
+
+def test_d7_finalizes_capability_loss_before_evaluation_without_generic_rollback(tmp_path: Path):
+    class CapabilityRunner(Runner):
+        def __init__(self):
+            self.finalized = []
+            self.aborted = []
+
+        def finalize_capability_loss(self, *, trial_id, runtime_context, report, finalization):
+            self.finalized.append((trial_id, runtime_context.target.uid, finalization.fault_absent))
+            record = DisturbanceRecord(
+                plan=DisturbancePlan(
+                    disturbance_id="dst-capability-loss-001", trial_id=trial_id,
+                    type=DisturbanceType.TOOL_SUBSTITUTION,
+                    phase=LifecyclePhase.C4_EFFECT, trigger_event_id="trigger-1",
+                    committed_dependency="effect_check_started", backend="mcp_policy",
+                    parameters={}, expected_behaviors=(), failure_conditions=(), rollback={},
+                ),
+                applied=True, application_evidence={"restored": True}, rolled_back=True,
+                rollback_evidence={"policy_restored": True},
+            )
+            return report.model_copy(update={"final_output": {**report.final_output, "capability_loss": {"restored": True}}}), (record,)
+
+        def abort_capability_loss(self, *, trial_id):
+            self.aborted.append(trial_id)
+
+    class CapabilityEvaluator(Evaluator):
+        def decision(self, **_kwargs):
+            return {
+                "verdict": "PASS", "platform_valid": True, "platform_status": "VALID",
+                "trial_validity": "VALID", "experiment_verdict": "PASS",
+                "agent_outcome": "PASS", "assistance_level": "NONE", "recovery_status": "VERIFIED",
+                "interaction_mode": "guided", "experiment_completed": True,
+                "effect_observation": {}, "effect_claim": {}, "experiment_gate": {},
+                "node_results": [], "score_summary": {}, "interaction_ledger": [], "checks": [], "reason_codes": [],
+                "capability_loss_score": {"final_score": 3, "facts": {"trial_valid": True}},
+            }
+
+    class NoRollbackDisturbances(Disturbances):
+        def __init__(self):
+            super().__init__()
+            self.rollback_calls = []
+
+        def rollback(self, record):
+            self.rollback_calls.append(record.plan.type)
+            return super().rollback(record)
+
+    disturbances = NoRollbackDisturbances()
+    engine, request, _permissions, _unused, _resetter = _engine(
+        tmp_path, disturbances=disturbances
+    )
+    runner = CapabilityRunner()
+    engine.harness_runner = runner
+    engine.evaluator = CapabilityEvaluator()
+    request = request.model_copy(
+        update={"cases": (Stage2CaseId.D7,), "tool_substitution_variant": "A"}
+    )
+
+    result = engine.run(request)
+
+    assert result.platform_status is PlatformStatus.COMPLETED
+    assert len(runner.finalized) == 1
+    assert disturbances.rollback_calls == []
+    assert result.trials[0].capability_loss_score == {"final_score": 3, "facts": {"trial_valid": True}}
+    trial_root = tmp_path / result.campaign_id / "trials" / result.trials[0].trial_id
+    assert (trial_root / "capability-loss.json").is_file()
+    assert json.loads((trial_root / "disturbance-attempt.json").read_text())["applied"] is True
