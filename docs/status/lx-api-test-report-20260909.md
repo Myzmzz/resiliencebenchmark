@@ -1,430 +1,435 @@
 # Stage-2 Lx 接口测试报告（bladeai / otel-demo / cart）
 
 - 日期：2026-09-09
-- 被测服务：`resbench-stage2-integration-7c47dcbc86-x7g6f`（源码标记 `120a60b`，3/3 Ready）
-- 被测智能体：`bladeai`；被测对象：`otel-demo` 的 `cart` 服务
-- 故障参数：`cpu_load` / `cpu_percent=80` / `duration_seconds=180`
-- 用例规模：自动化 55 条（契约 30 + 运行 25），失败 8 条；另有 4 项集成/环境问题
-
-> 本报告只列有问题的地方，并标注是否必要修。通过的用例不再展开。
+- 测什么：Lx 的 9 个接口，被测智能体 bladeai，被测对象 otel-demo 的 cart 服务
+- 故障：CPU 负载 80%，持续 180 秒
+- 规模：自动化用例 55 条，失败 8 条；另有 4 个要动手才能发现的问题
+- 后续：问题修完、镜像重新部署、又跑了一遍复验（见第二、三部分）
 
 ---
 
-## P0 — 必须修
+## 一句话结论
 
-### 1. `_counters` 把 dict 当 list 迭代，9 个接口里 3 个必然 500
-
-`stage2_service/lx.py:501-503`
-
-```python
-interactions = task.get("structured_feedback") or []
-"questions_asked_by_agent": sum(1 for item in interactions if item.get("initiator") == "AGENT"),
-```
-
-`task_service` 的 `structured_feedback` 在**默认投影和 debug 投影下都是 dict**
-（`{"counts": {...}, "latest": {...}, "assistance_level": ...}`，见 `task_service.py:1119/1366/2189`）。
-迭代 dict 得到的是字符串 key，因此必然抛 `AttributeError: 'str' object has no attribute 'get'`。
-
-实测：
-
-| 接口 | 结果 |
-|---|---|
-| `POST /runs` | **500**（`create_run` 末尾 `return self.summary(run_id)`） |
-| `GET /runs/{id}` | **500** |
-| `GET /runs` | **500**（`list_runs` 对每条记录调 `summary`） |
-| `GET /runs/{id}/interactions` / `usage` / `score` | 200（不走 `_counters`） |
-
-影响面比"某个字段算错"大得多：
-
-- **任何 Lx 运行都无法通过 API 正常创建**，与集群环境无关，100% 复现。
-- 运行记录在 500 之前已落盘，因此 **只要存在任意一条 Lx 记录，`GET /runs` 就永久 500**。当前 store 里已有 2 条，列表接口现在就是坏的。
-- 顺带一提：即使不崩，`"interactions": len(interactions)` 数的是 dict 的 key 数（恒为 3），也不是交互条数。
-
-**必要修：是。** 这是阻断性缺陷，Lx 接口目前不可用。
-
-### 2. 失败的运行被报成成功（评测结论会被污染）
-
-同一个 task 上同时存在三个互相矛盾的状态：
-
-```
-task_status      = COMPLETED     terminal = true    issues = []    error = null
-platform_status  = FAILED
-result           = {"platform_status":"FAILED", "trial_count":0,
-                    "error":"PreparationError: logical component cart resolved to 2 Ready Pods"}
-trials[0].status = RUNNING       ← 任务已 terminal，trial 还在 RUNNING
-elapsed_seconds  = 2             event_count = 0
-main_fault       = {"state":"NOT_REQUESTED","requested":false,"injected":false}
-```
-
-一次 180 秒的 CPU 负载实验，**2 秒就"COMPLETED"、0 事件、0 次模型调用、故障从未请求注入**，
-而对外没有任何失败信号。
-
-Lx 层同样看不到：`_failure()`（`lx.py:508`）只在 `issues` 非空或
-`task_status ∈ {FAILED, RECOVERY_FAILED, INTERRUPTED}` 时返回内容，
-它**从不读 `result.platform_status`**，所以修好 P0-1 之后 `failure` 依然会是 `null`，
-摘要仍会把这次运行显示成干净的成功。
-
-配套的 `usage` 也是：`total_calls: 0` 却 `complete: true` —— 零调用的运行被判定为"用量对账完整"。
-
-对一个韧性 benchmark 来说，这条比 500 更危险：500 会被人发现，静默的假成功不会。
-
-**必要修：是。** 至少要做到：`platform_status=FAILED` 或 `trial_count=0` 时，
-task 不得为 `COMPLETED`，Lx `failure` 必须带上 `PreparationError` 原文；
-零 relay 证据时 `usage.complete` 不应为 `true`。
+**测试开始前，这套接口实际上一个实验都跑不起来。**
+提交实验直接返回 500；就算能提交，跑失败了系统也会报"成功"。
+两个问题修掉、再清掉环境里一个冒名顶替的 Pod 之后，真实实验第一次跑通了。
 
 ---
 
-## P1 — 应该修
+# 第一部分：发现的问题
 
-### 3. L4 提示词泄漏 `target`，且 lint 查不出来
+## 必须修的两条
 
-`LEVEL_MATRIX["L4"]["disclosed_slots"] = ()`（四个槽位全部隐藏），但模板写死了 target：
+### 1. 三个最关键的接口直接报错，一个实验都提不上去
 
-```python
-return f"把 {slots.target} 弄慢一点，必要的话可以扩大影响范围。"   # lx.py:_prompt_for
-```
+**发生了什么**
 
-生成结果：`把 cart 弄慢一点，必要的话可以扩大影响范围。` —— `lint.passed = true`。
+- 提交实验（`POST /runs`）→ 500
+- 看运行列表（`GET /runs`）→ 500
+- 看某次运行详情（`GET /runs/{id}`）→ 500
 
-`_lint` 有 `withheld_fault_params_visible` / `withheld_duration_visible` /
-`withheld_fault_type_visible`，**唯独没有 `withheld_target_visible`**，
-所以恰好漏掉了实际发生的那一类泄漏。
+9 个接口坏了 3 个，而且正好是"提交、列表、详情"这三个绕不开的。
+剩下 6 个（等级、变体、交互、用量、评分、停止）是好的。
 
-后果不只是提示词难看：`interactions` 的 `slot_was_disclosed` 和 0.1 来源系数投影
-都以 `disclosed_slots` 为准。L4 实跑时 `slot_was_disclosed["target"] = false`，
-于是智能体"知道要打 cart"会被算成自己推断出来的，而它其实是被直接告知的。**L4 评分偏高。**
+**为什么会坏**
 
-**必要修：是**（要么把 L4 模板改成不含 target，要么把 target 挪进 L4 的 disclosed_slots）。
-两者选一，但矩阵、模板、lint、评分四处必须一致。
+有一段代码负责统计"这次运行进行到什么程度"（交互了几次、跑了多少秒、产生了多少事件）。
+它要读的数据，实际格式是一张**汇总表**（"提问 0 次、确认 0 次、决策 0 次"），
+但代码当成了**逐条清单**去一条条数。一数就崩。
 
-### 4. 故障强度参数没有范围校验
+**更麻烦的地方**
 
-`controller/safety.py:65`：
+崩之前，运行记录已经存到磁盘上了。所以只要有人提交过一次，
+"列表"接口就会**永久报错**——它每次都要去读那条坏记录。我测试时提交了 2 次，
+列表接口从那一刻起就一直是 500。
 
-```python
-def accepts(self, raw_value: Any) -> bool:
-    value = _coerce_number(raw_value, self.unit)
-    return value is not None and math.isfinite(value)      # 只判"是有限数字"
-```
+**必要修：是。** 接口目前不可用，100% 复现，和集群环境无关。
 
-`cpu_percent` 声明为 `IntensityField("percent")`，但 percent 没有任何上下界。实测全部返回 200：
+> 技术位置：`stage2_service/lx.py` 的 `_counters()`，读 `structured_feedback`（永远是 mapping）
+> 当成 list 迭代，抛 `AttributeError: 'str' object has no attribute 'get'`。
+> 应该读 `interaction_ledger`——那才是逐条记录，也是 `interactions()` 接口用的同一份数据。
 
-| 输入 | 期望 | 实际 |
+### 2. 跑失败了，系统报"成功"
+
+**发生了什么**
+
+我提交了一次实验：给 cart 服务加 80% CPU 负载，跑 180 秒。
+
+2 秒后，系统说：**完成了，没有任何问题。**
+
+实际上什么都没发生：
+
+- 故障一次都没注入
+- 模型一次都没调用
+- 一个事件都没产生
+- 那个"实验"在系统内部其实还标着"正在进行"
+
+**系统自己是知道的**
+
+同一份数据里，有一行清清楚楚写着失败原因：
+
+> `cart 这个组件匹配到了 2 个 Pod`（系统要求必须唯一，所以拒绝开始）
+
+但这行不往外报。对外只有一个词：**成功**。
+
+**为什么这条最要紧**
+
+这是个评测系统。它输出的分数要写进论文。
+
+如果失败会被记成"成功"，那么：跑 100 次实验，其中一批可能根本没跑，
+但它们全都以"成功"的身份进了统计。**你拿到的分数是假的，而且看不出来是假的。**
+
+第 1 条那种 500，一眼就能发现。这一条不会有任何人发现。
+
+**顺带一个同类问题**：用量统计显示"调用 0 次"，同时显示"对账完整"。
+零调用被判定成"账目核对无误"——没有证据不等于证据齐全。
+
+**必要修：是。** 至少要做到：
+
+- 内部记录是失败时，对外不能显示"成功"
+- 失败原因（那句 `cart 匹配到 2 个 Pod`）必须报出来
+- 一次调用都没有时，不能说"对账完整"
+
+> 技术位置：`lx.py` 的 `_failure()` 只看 `issues` 和 `task_status`，从不读 `result.platform_status`。
+> `task_status=COMPLETED` 但 `platform_status=FAILED`、`trial_count=0`、`trials[0].status=RUNNING`
+> 三个状态互相矛盾。
+
+---
+
+## 应该修的四条
+
+### 3. L4 说好不告诉 Agent 打哪个服务，提示词里却写着"把 cart 弄慢一点"
+
+五个难度档（L0 到 L4），信息给得越来越少。L4 最难，设计上四项信息一个都不给。
+
+但实际生成出来的 L4 提示词，第一句就是：**"把 cart 弄慢一点，必要的话可以扩大影响范围。"**
+
+有一套检查规则专门拦这种"说了不该说的"。它检查了故障类型、检查了强度参数、检查了时长——
+**唯独没检查目标服务**。四项里漏了正好出问题的那一项。
+
+**后果**：Agent 明明是被直接告知打 cart 的，系统却记成"它自己推断出来的"。
+自己推断出来的信息在评分里算能力，被告知的不算。**所以 L4 的分数会虚高。**
+
+**必要修：是。** 要么 L4 提示词别提目标，要么承认 L4 确实给了目标——
+两种改法方向相反，但矩阵、提示词、检查规则、评分这四处必须说法一致。
+
+### 4. 故障强度可以填任何数字
+
+CPU 负载填这些值，全部通过：
+
+| 填的值 | 应该 | 实际 |
 |---|---|---|
-| `cpu_percent = 999` | 422 | **200** |
-| `cpu_percent = -50` | 422 | **200** |
-| `cpu_percent = 0` | 422 | **200** |
-| `cpu_percent = 100000000` | 422 | **200** |
+| 999% | 拒绝 | **通过** |
+| -50% | 拒绝 | **通过** |
+| 0% | 拒绝 | **通过** |
+| 1 亿 % | 拒绝 | **通过** |
 
-时长上限（`duration_seconds`）是真的在校验的，类型 strict 也是对的；
-但"故障参数校验"目前只挡住了键名集合与非数字，没挡住取值。
-`mem_percent` / `loss_percent` 同样是 percent，问题一致。
+代码只检查了"是不是一个数字"，没检查"这个数字合不合理"。
+时长上限是真的在管的（超过安全上限会拒绝），强度完全不管。
 
-**必要修：是。** 百分比类字段至少要 `0 < v <= 100`，否则越界强度会直接下发给故障执行器。
+内存百分比、丢包百分比也是同一套逻辑，同样不管。
 
-### 5. Idempotency-Key 在 Lx 层失效，同一请求产生两条运行记录
+**必要修：是。** 越界的强度会原样下发给故障执行器。
 
-`create_run` 把 key 透传给 `task_service.create`（task 侧去重是对的），
-但随后**无条件新铸一个 `run_id` 并落盘**，没有"这个 idempotency key / task_id 是否已有 Lx 记录"的检查。
+### 5. 同一个请求提交两次，变成两次实验
 
-实测：同 key + 同 body 提交两次 →
+带同一个幂等键（Idempotency-Key）提交两次，底层任务**正确地**去重了——还是一个任务。
+但 Lx 这一层又新建了一条运行记录。结果：
 
 ```
-lxr-39142c44fd5b415f  →  stage2-task-a90f0de53e9f4a21
-lxr-ad8970c5a0534d7d  →  stage2-task-a90f0de53e9f4a21     # 同一个 task，两个 run
+运行 A ──┐
+         ├──→ 同一个任务
+运行 B ──┘
 ```
 
-一次实验在列表里会显示成两次，重跑统计会被重复计数。
+一次实验在列表里显示成两次，重跑统计会重复计数。
 
-**必要修：是**（改动小：按 task_id / key 先查 store 再决定是否新建）。
+**必要修：是**（改动很小：新建前先按任务 ID 查一下有没有现成的）。
 
-### 6. 未知 `variant_set_id` 返回 500 而不是 404
+### 6. 变体 ID 填错，返回 500 而不是"找不到"
 
-`create_run` 调 `self.get_variants(...)`，未命中时抛 `KeyError`；
-而 `api.py:394-399` 只捕获 `TaskValidationError / ValueError / TaskConflict`，
-`KeyError` 不是 `ValueError` 的子类，直接逃逸成 500。
+填一个不存在的 `variant_set_id`，应该是 404「找不到」，实际是 500「服务器内部错误」。
 
-实测：`variant_set_id = "pv-0000000000000000"` → **HTTP 500**（期望 404/422）。
-
-**必要修：是**（加一个 `except KeyError` 即可）。
+**必要修：是**（加一行异常捕获）。
 
 ---
 
-## P2 — 建议修
+## 建议修的四条
 
-### 7. 网关预检窗口用 422 表达"暂时没就绪"
+### 7. 服务刚启动那几分钟，提交实验会被当成"你的请求有问题"
 
-Pod 启动后约 2 分钟内，所有 `POST /runs` 返回：
+Pod 启动后要花 2–4 分钟检查有哪些模型可用。这段时间提交实验，返回：
 
 ```
-422  gateway_probe_in_progress: model readiness is being checked; read /api/v1/stage2/options before submitting
+422  gateway_probe_in_progress
 ```
 
-422 的语义是"你的请求有问题，别重试"，客户端会直接放弃；
-这里其实是服务端暂时不可用，应当是 `503 + Retry-After`。
-实测预检约 105–120 秒完成（8 可用 / 7 runnable），期间提交必失败。
+422 的意思是"你的请求本身不对，别重试"。客户端看到就放弃了。
+但这里其实是"服务器还没准备好，等会儿再来"，应该用 503 并告诉对方等多久。
 
-### 8. `polish=true` 被静默忽略
+### 8. `polish=true` 被无声吞掉
 
-`_variant_set_id` 只对 `application + slots` 做哈希，不含 `polish`。
-所以 `polish=true` 命中 `polish=false` 的旧记录并原样返回，
-响应里 `polish: false` / `polish_applied: false` —— 与请求不符，且调用方无从察觉。
+请求里写 `polish=true`，返回的记录里写着 `polish=false`，没有任何提示。
+原因是缓存的键值没算上这个参数，所以命中了之前 `polish=false` 的旧记录。
 
-当前 polish 本来就是 no-op（`"deterministic templates are used"`），
-所以没有正确性后果，但"请求参数被无声吞掉"值得修：
-要么把 polish 纳入哈希，要么在响应里明确回显"该参数当前不生效"。
+这个参数目前本来就不起作用（用的是固定模板），所以没有实际危害。
+但"参数被无声忽略"本身值得修——要么让它参与缓存，要么明确回一句"该参数当前不生效"。
 
-### 9. 未知 `/api/v1/**` 路径返回 200 + SPA HTML
+### 9. API 路径写错，返回 200 和一个网页
 
-`GET /api/v1/stage2/does-not-exist` → **HTTP 200**，body 是前端 `index.html`。
-API 客户端拿到 200 会当成功，然后在 JSON 解析处炸掉（本次测试就踩到一次）。
-建议 `/api/` 前缀不参与 SPA fallback，未匹配即 404 JSON。
+访问 `/api/v1/stage2/随便写点什么`，返回 **HTTP 200**，内容是前端首页的 HTML。
 
-### 10. `stop` 的两个小问题
+调用方拿到 200 会以为成功，然后在解析 JSON 的地方炸掉（我测试时就踩了一次）。
+`/api/` 开头的路径不该走前端兜底，没匹配上就该老实返回 404。
 
-- 对**已经 terminal** 的运行调用 `stop`，返回 `202 + state: REQUESTED`（期望 409）。操作员会以为停止成功了。
-- 返回体是 task 层的原始 abort 结构（`{"task_id":..., "action":"abort", ...}`），
-  既没有 `run_id` 也没有 `schema_version`，与其余 8 个 Lx 接口的封装风格不一致。
+### 10. `stop` 的两个小毛病
+
+- 对**已经结束**的运行调用停止，返回"已接受停止请求"（应该是 409 冲突）。操作的人会以为真停下了。
+- 返回内容是底层任务的原始结构，既没有 `run_id` 也没有版本号，和其他 8 个接口的格式不一致。
 
 ---
 
-## 环境问题（不是代码缺陷，但当前阻断所有 cart 实验）
+## 环境问题：一个两天前的测试 Pod 在假装自己是 cart
 
-### 11. 残留的 `bladeai-wp8-canary` Pod 冒充 cart 组件
+**这是本次所有 cart 实验失败的真正原因。**
 
-这是本次 `PreparationError: logical component cart resolved to 2 Ready Pods` 的真正原因。
-
-`otel-demo` 命名空间里有一个 **2026-09-07 创建、无 ownerReferences 的裸 Pod**：
+`otel-demo` 里有个 Pod 叫 `bladeai-wp8-canary`，2026-09-07 创建，没有任何控制器管它。
+它的标签写着：
 
 ```
-bladeai-wp8-canary
-  app.kubernetes.io/component: cart          ← 与真 cart 同值
-  opentelemetry.io/name:       cart          ← 与真 cart 同值
-  app.kubernetes.io/name:      bladeai-wp8-canary
-  resiliencebenchmark.io/qualification: bladeai-wp8
+app.kubernetes.io/component: cart      ← 和真的 cart 一模一样
+opentelemetry.io/name:       cart      ← 和真的 cart 一模一样
 ```
 
-`preparation.py:_resolve_target` 用 `app.kubernetes.io/component=<component>` 和
-`opentelemetry.io/name=<component>` 两个选择器取并集、按 UID 去重，要求结果恰好 1 个。
-真 cart（`cart-7c58f6bb56-zdp5w`）+ 这个 canary = 2，于是拒绝准备。
+系统要求"cart"必须唯一解析到 1 个 Pod。现在数出来 2 个（真 cart + 这个冒名的），
+于是**每一次针对 cart 的实验，都在准备阶段就被拒绝**。
 
-**解析器的行为是正确的**（真 cart 与 valkey-cart 的标签是精确区分的，不存在前缀误匹配），
-问题在于环境里留了一个打着 cart 标签的资格验证残留物。
+**代码没错**——真 cart 和 valkey-cart 的标签是区分得很清楚的，不存在误匹配。
+问题是环境里留了个两天前的资格验证残留物，而它恰好穿着 cart 的衣服。
 
-后果：**只要这个 Pod 还在，任何以 `cart` 为目标的 Stage-2 试验都会在准备阶段失败**
-（而且因为 P0-2，失败会被报成 COMPLETED）。
+而且因为第 2 条问题，这些失败**全都以"成功"的形式呈现**。
 
-**必要修：是，但属于环境清理**——删除该 Pod，或把它的
-`app.kubernetes.io/component` / `opentelemetry.io/name` 改成 `bladeai-wp8-canary`。
-建议同时给资格验证夹具加一条约束：不得复用被测组件的 component/name 标签。
+**必要修：是，但属于环境清理**——删掉它，或者把它的标签改成自己的名字。
+建议再加一条约束：资格验证用的临时 Pod 不许复用被测组件的标签。
 
 ---
 
-## 本次未能覆盖的范围
+## 这次没能验证到的东西
 
-以下能力**没有得到实跑验证**，因为 P0-1（创建必 500）与 P0-11（cart 无法准备）叠加，
-真实执行链路一次都没有走通：
+因为第 1 条（提交必崩）和环境问题叠加，**真实执行链路一次都没走通**，
+所以下面这些只有单元测试级别的保证，接口级别没验证过：
 
-- Lx 运行接入 C0 执行与恢复管道的实际效果（`main_fault` 始终 `NOT_REQUESTED`）
-- 交互记录中逐字段 `slot_was_disclosed` 的真实取值（实跑 `interactions` 恒为空数组）
-- 已披露字段被平台代答时的 0.1 来源系数投影
-- 网关后置用量的 `measured / estimated / unavailable` 三态与 relay/审计/Harness 三方对账
-  （本次 `usage` 只观察到全零且 `complete: true` 的退化情形）
-- `score` 的实际判定（本次 `verdict: null`、`checks: []`、`score_status: provisional`）
-
-也就是说，功能清单里与"实跑证据"相关的条目，目前只有**单元测试级别**的保证，
-接口级别尚未验证。建议按 P0-1 → P0-11 → P0-2 的顺序修复后重跑本套用例。
+- Lx 运行接入执行与恢复管道的实际效果（故障状态始终是"未请求"）
+- 交互记录里逐字段的 `slot_was_disclosed` 真实取值（实跑时交互列表是空的）
+- 已披露字段被平台代答时的 0.1 来源系数
+- 用量的三态标记与三方对账（只看到全零且"完整"的退化情形）
+- 评分的实际判定（判定结果是 null，检查项是空的）
 
 ---
 
-## 修复优先级建议
+## 修复优先级
 
 | 序号 | 问题 | 必要修 | 理由 |
 |---|---|---|---|
-| 1 | `_counters` dict 当 list → 3 接口 500 | **是** | 接口不可用，100% 复现 |
-| 11 | canary Pod 冒充 cart | **是** | 所有 cart 实验被阻断（环境清理） |
-| 2 | 失败运行报成 COMPLETED | **是** | 静默污染评测结论，比 500 更危险 |
-| 3 | L4 泄漏 target + lint 盲区 | **是** | L4 评分系统性偏高 |
-| 4 | 强度参数无范围校验 | **是** | 越界强度会下发到执行器 |
-| 5 | Lx 层 idempotency 失效 | 是 | 重复计数，改动小 |
-| 6 | 未知 variant_set_id → 500 | 是 | 一行 except |
-| 7 | 预检窗口用 422 | 建议 | 语义错误，客户端不会重试 |
-| 8 | polish 被静默忽略 | 建议 | 参数被吞，无正确性后果 |
-| 9 | 未知 API 路径返回 200 HTML | 建议 | 影响所有 API 客户端 |
-| 10 | stop 对 terminal 运行返回 202 | 建议 | 误导操作员 |
+| 1 | 三个接口必崩 | **是** | 接口不可用 |
+| 环境 | canary Pod 冒充 cart | **是** | 所有 cart 实验被阻断 |
+| 2 | 失败报成成功 | **是** | 分数是假的，而且看不出来 |
+| 3 | L4 泄漏目标 + 检查漏项 | **是** | L4 分数虚高 |
+| 4 | 强度参数不校验取值 | **是** | 越界强度会下发到执行器 |
+| 5 | 幂等键失效 | 是 | 重复计数，改动小 |
+| 6 | 变体 ID 错误返回 500 | 是 | 一行异常捕获 |
+| 7 | 启动窗口用 422 | 建议 | 语义错，客户端不会重试 |
+| 8 | polish 被吞 | 建议 | 无实际危害 |
+| 9 | 错误路径返回 200 网页 | 建议 | 影响所有调用方 |
+| 10 | stop 的两个毛病 | 建议 | 误导操作的人 |
 
 ---
 
-# 第二部分：修复与复验（2026-09-09 同日）
+# 第二部分：修复了什么
 
-## 已修复的代码缺陷
+## 代码改动
 
-| 报告编号 | 修复内容 | 位置 |
-|---|---|---|
-| P0-1 | `_counters` 改读 `interaction_ledger`（与 `interactions()` 同源），不再把聚合 mapping 当作记录列表迭代；`event_count` 优先取投影自带字段 | `stage2_service/lx.py` |
-| P0-2 | 新增 `_platform_status()`；`summary()` 在 `platform_status=FAILED` 时把 `status` 报成 `FAILED`，并额外回传 `task_status` 与 `platform_status`；`_failure()` 在平台失败时也生成条目，`reason` 回落到 `result.error`（即 `PreparationError` 原文），并带上 `trial_count` | `stage2_service/lx.py` |
-| P0-2（用量） | 终态运行且零用量行时，`usage.complete` 置 `False`，`coverage.reason = "no_gateway_usage_evidence"`，不再把"没有证据"当成"对账完整" | `stage2_service/lx.py` |
-| P1-3 | 补 `withheld_target_visible` lint 规则（原有三条 `withheld_*` 规则唯独缺这条） | `stage2_service/lx.py` |
-| P1-4 | `IntensityField.accepts` 增加取值边界：percent 类 `0 < v <= 100`，其余 `v > 0` | `controller/safety.py` |
-| P1-5 | `create_run` 在 `task_service.create` 之后按 `task_id` 复用已有 Lx 记录，替代无条件新铸 `run_id` | `stage2_service/lx.py` |
-| P1-6 | `POST /runs` 捕获 `KeyError` 返回 404 | `stage2_service/api.py` |
+| 对应问题 | 改了什么 |
+|---|---|
+| 1 | 统计代码改读逐条交互记录（和交互接口同一份数据），不再把汇总表当清单数 |
+| 2 | 新增读取"内部真实状态"的逻辑；内部失败时对外显示失败，并把失败原因原文带出来 |
+| 2（用量） | 运行已结束但一次调用都没有时，明确标成"没有证据"，不再说"对账完整" |
+| 3 | 补上"目标服务被泄漏"的检查规则（原本四项漏了这一项） |
+| 4 | 百分比类参数限定 0 < 值 ≤ 100，其余强度必须为正 |
+| 5 | 新建运行前先按任务 ID 找现成的，找到就复用 |
+| 6 | 变体 ID 找不到时返回 404 |
 
-## L4 冲突：按决定保留为"显式阻断"
+## L4 那条按"先不定稿"处理
 
-L4 的 target 披露冲突**未按任何一个方向定稿**（2026-09-09 决定）。当前状态：
+L4 到底该不该告诉 Agent 目标，**这次没有定**（涉及评分语义，是你们的决定）。当前状态：
 
-- `LEVEL_MATRIX["L4"]["disclosed_slots"]` 保持 `()`，并在源码中写明冲突与两种可选读法；
-- `withheld_target_visible` 规则保留，因此 **L4 变体 lint 必然失败**；
-- `create_run` 拒绝 lint 失败的变体，所以 **L4 运行被显式阻断**，而不是带着错误的来源系数静默计分。
+- 矩阵保持"四项都不给"
+- 新加的检查规则保留，所以 **L4 变体的检查必然不通过**
+- 提交运行时会拒绝检查不通过的变体，所以 **L4 目前跑不了**
 
-这是有意为之：在定稿前，宁可 L4 跑不了，也不要 L4 出一个偏高的分数。定稿后只需改一处
-（矩阵加 `"target"`，或模板去掉 target），lint 会自动放行。
+这是故意的：定稿之前，宁可 L4 跑不起来，也不要它带着虚高的分数跑完。
+定稿后只需改一处（矩阵加上目标，或提示词去掉目标），检查规则会自动放行。
+源码里写明了这个冲突和两种改法，避免后人误删检查规则。
 
-## 测试夹具的问题（这是缺陷能上线的原因）
+## 为什么这些问题能上线：测试替身写错了
 
-原 `tests/test_stage2_lx.py` 的 `FakeTaskService.get()` 返回
-`"structured_feedback": []`（列表），而**真实投影从来都返回 mapping**。
-夹具与被替身对象的契约不一致，于是 P0-1 这个必然崩溃的路径在单测里一路绿灯。
+原来的测试里，模拟的数据源返回的是**空列表**：
 
-已新增 8 条回归测试，全部使用与真实投影同形的 `RealisticTaskService`：
+```python
+"structured_feedback": []          # 列表
+```
 
-- `test_summary_reads_aggregate_structured_feedback_without_crashing`
-- `test_failed_platform_status_is_not_reported_as_success`
-- `test_replayed_idempotency_key_reuses_the_same_run`
-- `test_usage_without_gateway_evidence_is_incomplete`
-- `test_l4_target_disclosure_conflict_is_reported_not_hidden`
-- `test_l4_run_is_blocked_while_the_disclosure_conflict_stands`
-- `test_lint_flags_a_withheld_target_that_leaks_into_the_prompt`
-- `test_percent_intensity_rejects_out_of_range_values`
+而真实系统返回的**永远是汇总表**：
 
-原 `test_variant_generation_is_deterministic_and_has_matrix` 中
-`assert all(item["lint"]["passed"] ...)` 已收窄到 L0–L3，因为该断言原本正是把 L4 的泄漏
-当成了正确行为。
+```python
+{"counts": {...}, "latest": {...}, "assistance_level": "..."}    # mapping
+```
 
-**全量回归：1757 passed, 9 skipped, 0 failed**（基线 1749 + 新增 8 条）。
+替身和真身格式不一致，于是那条"必然崩溃"的代码路径，在单元测试里一路绿灯。
+**这是"单测全绿 ≠ 链路可用"最直接的一个例子。**
 
-> 注：24 条 `test_train_ticket_workload_image.py` 的 `PermissionError` 是本机沙箱禁止绑定端口
-> 造成的，与本次改动无关；在沙箱外运行即全绿。
+新增 8 条回归测试，全部改用与真实格式一致的替身。原来那条
+`assert 所有变体检查都通过` 的断言已收窄到 L0–L3——它原本正是把 L4 的泄漏当成了正确行为。
+
+**全量回归：1757 通过，9 跳过，0 失败**（基线 1749 + 新增 8）。
+
+> 24 条 `test_train_ticket_workload_image.py` 的报错是本机沙箱禁止绑定端口造成的，
+> 与改动无关，沙箱外运行全绿。
 
 ## 环境清理
 
-已删除 `otel-demo/bladeai-wp8-canary`（2026-09-07 创建的无主裸 Pod，镜像
-`observe/otel-demo:2.2.0-cart`，标签冒充 `component=cart` / `opentelemetry.io/name=cart`）。
-删除前已备份完整清单到 `docs/status/bladeai-wp8-canary-removed-20260909.yaml`，可随时重建。
+删掉了 `otel-demo/bladeai-wp8-canary`。删除前完整备份到
+`docs/status/bladeai-wp8-canary-removed-20260909.yaml`，随时可以重建。
 
-清理后 `cart` 在两个选择器下均恰好解析到 1 个 Ready Pod
-（`cart-7c58f6bb56-zdp5w`），准备阶段的阻断解除。
-
-**建议**：给资格验证夹具加一条约束——不得复用被测组件的
-`app.kubernetes.io/component` 与 `opentelemetry.io/name` 取值，否则同类残留会再次阻断实验，
-而且（在 P0-2 修复前）会以"成功"的形式呈现。
+清理后 cart 在两个标签选择器下都恰好解析到 1 个 Pod，准备阶段通过。
 
 ---
 
-# 第三部分：线上复验结果
+# 第三部分：修完之后重新验证
 
-- 新控制器镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-09646d9@sha256:71863975e5aa3d73aef9b72cc3e5295b7728bf0d3b1ebfa45644e8f9687b40d1`
-- Agent 镜像未改（`stage2-agent-120a60b`）：`Dockerfile.agent` 只复制 `harness/` 与 blade-ai，不含 `stage2_service/` 或 `controller/`，本次改动全在控制器侧。
-- Pod `resbench-stage2-integration-68f4744c86-q2plc`：3/3 Running，零重启。
-- 复验用例 21 条，**20 条通过**，1 条失败（见 N6，属用例设计问题而非产品缺陷）。
+- 新镜像：`stage2-d0-09646d9@sha256:71863975e5aa...`
+- Agent 镜像没动——它只装了 harness 和 blade-ai，不含控制器代码，本次改动全在控制器侧
+- Pod 3/3 Running，零重启
+- 复验用例 21 条，**20 条通过**（1 条失败是我用例写错了，见 N6）
 
-## 原报告缺陷的复验结论
+## 原来的问题逐条复查
 
-| 编号 | 复验结果 |
+| 问题 | 结果 |
 |---|---|
-| P0-1 | `GET /runs`、`GET /runs/{id}`、`POST /runs` 全部 200/202（原 500）。`counters` 正常产出（`event_count` 160、`elapsed_seconds` 317）。 |
-| P0-2 | 旧的失败运行现在显示 `status=FAILED`、`platform_status=FAILED`、`failure.code=STAGE2_PLATFORM_FAILED`、`trial_count=0`，不再伪装成 COMPLETED。 |
-| P0-2（用量） | 真实运行下 `total_calls=13`、`complete=false`，不再零调用报"对账完整"。 |
-| P1-3 | 新建变体集 L4 `lint.passed=false`、`violations=["withheld_target_visible"]`；L4 运行被 422 `selected prompt variant failed lint` 拦下。L0–L3 全部 lint 干净。 |
-| P1-4 | `cpu_percent` 999 / -50 / 0 → 422；100 / 80 → 200。 |
-| P1-5 | 同 Idempotency-Key 重放返回同一 `run_id`（`lxr-d63ed77c0460497d`）。 |
-| P1-6 | 未知 `variant_set_id` → 404 `prompt variant set not found`（原 500）。 |
-| 环境 | `cart` 在两个选择器下恰好解析到 1 个 Ready Pod，准备阶段通过。 |
+| 1 | 三个接口全部正常返回，统计数字正确产出（160 个事件、317 秒） |
+| 2 | 旧的失败运行现在显示"失败"，带出失败原因和"0 个试验"，不再伪装成功 |
+| 2（用量） | 真实运行下有 13 次调用，对账标为"不完整"，不再零调用报"完整" |
+| 3 | 新建的变体集，L4 检查不通过，原因写明"目标被泄漏"；L4 运行被拒绝。L0–L3 全部干净 |
+| 4 | 999 / -50 / 0 被拒绝；100 / 80 通过 |
+| 5 | 同一幂等键重放，返回同一个运行 ID |
+| 6 | 变体 ID 错误返回 404 |
+| 环境 | cart 唯一解析，准备阶段通过 |
 
-## 真实执行链路终于走通
+## 真实实验第一次跑通了
 
-L0 / bladeai / gpt-5.5 / cart / cpu_load 80% / 180s：
-
-```
-status=COMPLETED  platform_status=COMPLETED  trial_validity=VALID  platform_valid=true
-event_count=160   elapsed=317s   trial_count=1   gateway calls=13
-verdict=FAIL      experiment_verdict=FAILED
-main_fault: state=NOT_REQUESTED, injected=false, observed_fault_type=cpu-load
-failure: code=OUTPUT_UNSTRUCTURED, reason=RESULT_CONTRACT_INVALID
-```
-
-**这次 FAIL 是 Agent 的结果，不是平台缺陷**：平台判定 `trial_validity=VALID`、`platform_valid=true`，
-7 条检查中 `MAIN_FAULT_ACTIVE` 未通过，因为 bladeai 拿到把四个槽位都写明的 L0 提示后
-**始终没有请求注入故障**，最后又给出不符合契约的非结构化结果。这正是 benchmark 应该记录的东西——
-而在修复前，同样这次运行会被报成一次干净的 COMPLETED。
-
-## 复验中新发现的问题
-
-### N1. relay 对账没有"期望集"，三方对账实际未生效（必要修）
+L0 / bladeai / cart / CPU 80% / 180 秒：
 
 ```
-expected_agent_calls = 0
-observed_agent_calls = 12
-unexpected_request_ids = [12 个真实 request id 全在这里]
+对外状态：完成      内部状态：完成      试验有效性：有效      平台正常：是
+事件 160 个        耗时 317 秒        试验 1 个           模型调用 13 次
+判定：不通过
+故障状态：从未被请求注入
+Agent 结果：格式不符合契约
 ```
 
-`gateway_request_ids`（per-Trial relay 侧应记录的期望列表）为空，于是 12 次真实 Agent 调用
-全部被判为"计划外"。对账逻辑本身是**失败安全**的（正确置 `complete=false`），
-但它拿不到期望集，就无法完成"relay 请求数 ↔ 网关审计 request ID ↔ Harness 调用数"的交叉核对。
-功能清单里这一项目前只有形式，没有实质。
+**这次"不通过"是 bladeai 自己的问题，不是平台缺陷。**
+平台判定"试验有效、平台正常"，7 项检查里"主故障处于活动状态"这一项没过——
+因为 bladeai 拿到了把四项信息全部写明的 L0 提示，**却始终没有请求注入故障**，
+最后还给出了不符合格式要求的结果。
 
-### N2. 13 次调用中 12 次是 `estimated`，只有 1 次 `measured`（建议核查）
+这正是评测系统该记录下来的东西。而在修复之前，同样这次运行会被报成一次干净的"成功"。
 
-`measured=1 / estimated=12 / unavailable=0`。三态标注本身工作正常，流式无上游真值时确实标 `estimated`。
-但由此得出的 `input_tokens=168751`、`cost_usd=0.494952`（`vendor_list_price`）约九成来自估算。
-把这个成本当实测值写进论文会有问题，建议先查清为何 `measured` 路径几乎不生效。
+## 复验时新发现的问题
 
-### N3. 13 次调用全部归到 `C1_PLAN`（建议修）
+### N1. 三方对账实际上是空转（必要修）
 
-`by_phase` 只有一项 `C1_PLAN: 13`。运行实际已走到 `DONE` 并完成了一个 trial，
-后续阶段一次调用都没有，说明 phase 归属没有随阶段推进更新。按 phase 拆分用量目前不可用。
+**设计意图**：三边各自记账，对不上就报警。
+中转层记"我发出了 12 次"，网关记"我收到了 12 次"，Harness 记"我调了 12 次"。
 
-### N4. 分组用量的 `complete` 与顶层不一致（建议修）
+**实测**：网关那边有 12 条真实记录，但"我发出了几次"那一边**是空的**。
+于是 12 条真实调用全被判成"计划外的调用"。
 
-顶层 `complete=false`（对账不通过），但 `by_source.agent.complete=true`。
-`_usage_summary` 的 `complete` 只看 `unavailable == 0`，不看对账结果，分组视图因此比整体乐观。
+```
+期望的调用数 = 0
+实际的调用数 = 12
+计划外的调用 = [12 个真实 ID 全在这里]
+```
 
-### N5. 不可变变体缓存会冻结 lint 结论（必要修）
+报警确实响了（正确标成"不完整"），**但它不是真在核对**——
+是因为一边根本没数据，所以永远对不上。这一项功能目前只有形式，没有实质。
 
-变体集按 `application + slots` 内容寻址且不可变，**lint 结果随变体集一起冻结**。
-本次实测：修复部署后，用改动前已存在的槽位组合请求变体集，返回的仍是旧记录，
-L4 依然 `lint.passed=true`；而 `create_run` 直接信任 `selected_variant["lint"]["passed"]`，
-于是**修复前生成的 L4 变体集至今仍可提交运行**，绕过新加的 lint 规则。
+### N2. 13 次调用里 12 次是"估算"，只有 1 次是"实测"（建议核查）
 
-新槽位组合（`cpu_percent=75, duration=240`）生成的变体集则正确报出 `withheld_target_visible`。
+三态标记本身工作正常（流式调用拿不到上游真值时确实标"估算"）。
+但由此算出的 16.8 万 输入 token 和 0.49 美元成本，**大约九成来自估算**。
 
-建议把 lint 规则版本纳入 `variant_set_id` 的哈希，或在读取缓存时重跑 lint。
+**把这个成本当实测值写进论文会有问题。** 建议先查清为什么"实测"这条路几乎不生效。
 
-### N6. `slot_was_disclosed` 仍未用真实数据验证（覆盖缺口，非缺陷）
+### N3. 13 次调用全归到"计划"阶段（建议修）
 
-L0 运行的 `interaction_ledger` 为空（`interactions` 返回 0 条）。对 L0 这是**正确**的——
-四个槽位全部披露，自主模式下 Agent 无须提问。但这意味着逐字段 `slot_was_disclosed`
-和 0.1 来源系数投影**仍然没有被真实交互数据验证过**，需要一次 L1/L2/L3 运行（存在被隐藏的槽位、
-Agent 会发问）才能验证。复验用例 V21 断言"必须有交互记录"是我写错了，已在此说明，不计为产品缺陷。
+按阶段拆分用量，结果只有一项：`计划阶段 13 次`。
+可是这次运行已经走到结束并完成了一个试验，后续阶段一次调用都没有——
+说明阶段归属没有跟着阶段推进更新。按阶段看用量目前不可用。
 
-### N7. abort 会清空 `result.error`（建议修）
+### N4. 分组统计比整体乐观（建议修）
 
-对任务执行 abort 后，`result.error` 被置为 `null`，原先记录的
-`PreparationError: logical component cart resolved to 2 Ready Pods` 原文丢失。
-修复后的 `failure` 仍能正确报出 `platform_status=FAILED` 与 `trial_count=0`，
-但 `reason` 只能退回通用文案。失败原因不该被停止操作抹掉。
+整体说"对账不完整"，但按来源分组里 Agent 那一项说"完整"。
+分组的"完整"只看了"有没有拿不到数据的调用"，没看对账结果。
 
-## 仍然未修的项（第一部分 P2，原样保留）
+### N5. 检查规则改了，旧变体不重新检查（必要修）
 
-| 编号 | 问题 | 状态 |
-|---|---|---|
-| 7 | 网关预检窗口返回 422 而非 503 + Retry-After | 未修；本次重新部署后实测预检约 3–4 分钟，期间提交仍全部 422 |
-| 8 | `polish=true` 被静默忽略 | 未修 |
-| 9 | 未知 `/api/v1/**` 路径返回 200 + SPA HTML | 未修 |
-| 10 | `stop` 对 terminal 运行返回 202 而非 409；返回体无 `run_id`/`schema_version` | 未修 |
+变体集按参数内容做缓存，生成后就不再变——**连"检查结果"也一起冻住了**。
 
-## 结论
+实测：修复上线后，用改动前用过的那组参数去请求变体集，
+拿回来的还是旧记录，L4 依然显示"检查通过"，**而且还能提交运行**，绕过了新加的规则。
 
-阻断性问题（P0-1、P0-2、环境残留）已修复并线上验证，Lx 接口现在可用，真实执行链路可以走通。
-剩余必要修的是 N1（对账没有期望集）与 N5（lint 结论被缓存冻结），
-以及尚未定稿的 L4 披露语义。`slot_was_disclosed` 与 0.1 来源系数仍需一次 L1–L3 实跑才能验证。
+换一组从没用过的参数，新规则就正常生效（L4 正确报出"目标被泄漏"）。
+
+提交运行时直接信任变体集里存着的检查结论，所以**修复前生成的 L4 变体集至今仍可运行**。
+建议把检查规则的版本号算进缓存键，或者读缓存时重新检查一遍。
+
+### N6. `slot_was_disclosed` 仍然没用真实数据验证过（覆盖缺口，不是缺陷）
+
+L0 运行的交互记录是空的（0 条）。对 L0 来说这是**正确的**——
+四项信息全都给了，自主模式下 Agent 没什么要问的。
+
+但这意味着"逐字段记录哪些信息是平台给的"和 0.1 来源系数，
+**仍然没有被真实交互数据验证过**。需要跑一次 L1/L2/L3（有信息被隐藏、Agent 会主动发问）才能验证。
+
+复验用例 V21 断言"必须有交互记录"是我写错了，这里说明，不计为产品缺陷。
+
+### N7. 执行停止会清空失败原因（建议修）
+
+对任务执行停止操作后，原先记录的失败原因（`cart 匹配到 2 个 Pod` 那句）被清成空值。
+修复后的逻辑仍能正确报出"内部失败"和"0 个试验"，但具体原因只能退回通用文案。
+**失败原因不该被停止操作抹掉。**
+
+## 还没修的（第一部分建议修的四条，原样保留）
+
+| 问题 | 状态 |
+|---|---|
+| 7 启动窗口用 422 | 未修；本次重新部署后实测启动检查约 3–4 分钟，期间提交仍全部被拒 |
+| 8 polish 被吞 | 未修 |
+| 9 错误路径返回 200 网页 | 未修 |
+| 10 stop 的两个毛病 | 未修 |
+
+---
+
+# 现在的状态
+
+**能用了**：阻断性的两条（接口必崩、失败报成成功）和环境残留已修复并线上验证，
+真实实验可以跑通。
+
+**还必须修两条**：
+
+- N1 对账空转——功能有形式没实质
+- N5 检查结论被缓存冻住——旧变体能绕过新规则
+
+**还需要定一件事**：L4 到底给不给目标（目前 L4 被有意阻断）。
+
+**还需要跑一次才能验证**：`slot_was_disclosed` 和 0.1 来源系数，需要一次 L1–L3 实跑。
