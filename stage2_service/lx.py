@@ -651,6 +651,23 @@ class LxService:
         task = self.task_service.get(run["task_id"], mode="debug")
         ledger = _find_first(task, "interaction_ledger") or []
         disclosed = set(run["resolved"].get("disclosed_slots") or [])
+        # Which slots an interaction concerned is recorded on the agent's
+        # clarification request, while `decision_supplied` is recorded on the
+        # platform's answer -- two separate ledger entries joined only by
+        # `question_id`.  Carry a question's slots onto its answer so that an
+        # answered slot stays attributable; without this the per-slot
+        # disclosure map is empty on every answer and the 0.1 source factor,
+        # which needs both fields on one row, can never apply.
+        slots_by_question: dict[str, list[str]] = {}
+        for item in ledger:
+            if not isinstance(item, Mapping):
+                continue
+            question_id = item.get("question_id")
+            declared = item.get("affected_slots") or item.get("required_decisions")
+            if question_id and declared:
+                slots_by_question[str(question_id)] = [
+                    _normalize_slot(slot) for slot in declared
+                ]
         rows = []
         for index, item in enumerate(ledger, start=1):
             if not isinstance(item, Mapping):
@@ -658,6 +675,8 @@ class LxService:
             affected = [_normalize_slot(slot) for slot in (item.get("affected_slots") or item.get("required_decisions") or [])]
             if not affected:
                 affected = _slots_from_text(str(item.get("question") or item.get("agent_question") or ""))
+            if not affected and item.get("question_id"):
+                affected = list(slots_by_question.get(str(item["question_id"])) or [])
             affected_nodes = list(item.get("affected_nodes") or [])
             if not affected_nodes:
                 node_by_slot = {
@@ -743,8 +762,15 @@ class LxService:
         summary = _usage_summary(rows)
         expected = set(_find_first(task, "gateway_request_ids") or [])
         observed = {str(row.get("request_id")) for row in rows if row.get("source") == "agent" and row.get("request_id")}
+        # `model_request_count` counts the platform-side responder's own model
+        # calls (the simulated user / assessor), not the agent's, so it
+        # reconciles against the platform rows.  Comparing it with the agent
+        # relay ids is a category error that marked every healthy run
+        # incomplete: a clean run has 13 agent calls and 1 platform call, and
+        # 1 != 13 always tripped the mismatch.
         harness_count = _find_first(task, "model_request_count")
-        count_mismatch = isinstance(harness_count, int) and harness_count != len(expected)
+        platform_calls = sum(1 for row in rows if row.get("source") == "platform")
+        count_mismatch = isinstance(harness_count, int) and harness_count != platform_calls
         # Zero usage rows on a finished run is an absence of evidence, not
         # evidence of a clean zero-cost run: every trial that actually invokes
         # an agent produces at least one gateway call. Reporting complete=True
@@ -757,7 +783,8 @@ class LxService:
                 "missing_request_ids": sorted(expected),
                 "unexpected_request_ids": [],
                 "harness_model_request_count": harness_count,
-                "harness_relay_count_mismatch": count_mismatch,
+                "observed_platform_calls": platform_calls,
+                "harness_platform_count_mismatch": count_mismatch,
                 "reason": "no_gateway_usage_evidence",
             }
         elif expected != observed or count_mismatch:
@@ -768,7 +795,8 @@ class LxService:
                 "missing_request_ids": sorted(expected - observed),
                 "unexpected_request_ids": sorted(observed - expected),
                 "harness_model_request_count": harness_count,
-                "harness_relay_count_mismatch": count_mismatch,
+                "observed_platform_calls": platform_calls,
+                "harness_platform_count_mismatch": count_mismatch,
             }
         return {
             "run_id": run_id,

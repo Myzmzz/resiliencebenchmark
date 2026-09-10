@@ -423,7 +423,7 @@ def test_usage_reconciliation_matches_when_expected_ids_are_present(tmp_path):
         result={"platform_status": "COMPLETED", "trial_count": 1},
         trials=[{
             "trial_id": "t-1",
-            "harness": {"gateway_request_ids": ids, "model_request_count": 2},
+            "harness": {"gateway_request_ids": ids, "model_request_count": 0},
         }],
     )
     svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
@@ -440,3 +440,118 @@ def test_usage_reconciliation_matches_when_expected_ids_are_present(tmp_path):
     assert usage["summary"]["total_calls"] == 2
     assert usage["summary"]["complete"] is True
     assert "coverage" not in usage["summary"]
+
+
+def test_platform_call_count_reconciles_against_platform_rows(tmp_path):
+    """The harness count is platform-side; comparing it to agent calls is wrong.
+
+    A healthy run has many agent calls and a handful of platform ones, so
+    comparing the platform-side `model_request_count` with the agent relay ids
+    marked every clean run incomplete.
+    """
+    agent_ids = ["a" * 32, "b" * 32, "c" * 32]
+    fake = RealisticTaskService(
+        result={"platform_status": "COMPLETED", "trial_count": 1},
+        trials=[{
+            "trial_id": "t-1",
+            # three agent calls through the relay, one platform-side call
+            "harness": {"gateway_request_ids": agent_ids, "model_request_count": 1},
+        }],
+    )
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    rows = [{"request_id": rid, "source": "agent", "availability": "measured",
+             "input_tokens": 1, "output_tokens": 1, "total_tokens": 2,
+             "duration_ms": 1, "phase": "C1_PLAN"} for rid in agent_ids]
+    rows.append({"request_id": "d" * 32, "source": "platform", "availability": "measured",
+                 "input_tokens": 1, "output_tokens": 1, "total_tokens": 2,
+                 "duration_ms": 1, "phase": "C1_PLAN"})
+    (tmp_path / "t-1.usage.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    summary = svc.create_run(_run(svc))
+    usage = svc.usage(summary["run_id"])
+    assert usage["summary"]["total_calls"] == 4
+    assert usage["summary"]["complete"] is True, usage["summary"].get("coverage")
+
+    # A genuine platform-side discrepancy must still be caught.
+    fake.overrides["trials"] = [{
+        "trial_id": "t-1",
+        "harness": {"gateway_request_ids": agent_ids, "model_request_count": 5},
+    }]
+    usage = svc.usage(summary["run_id"])
+    assert usage["summary"]["complete"] is False
+    assert usage["summary"]["coverage"]["harness_platform_count_mismatch"] is True
+    assert usage["summary"]["coverage"]["observed_platform_calls"] == 1
+
+
+def test_platform_answer_inherits_the_slots_of_the_question_it_answers(tmp_path):
+    """The 0.1 source factor needs slots and decision_supplied on one row.
+
+    The ledger records slots on the agent's clarification request and
+    `decision_supplied` on the platform's answer, joined only by question_id.
+    Without carrying the slots across, the per-slot disclosure map is empty on
+    every answer and the source factor can never apply.
+    """
+    ledger = [
+        {
+            "interaction_type": "AGENT_CLARIFICATION_REQUEST",
+            "question_id": "q-1",
+            "required_decisions": ["target", "duration_seconds"],
+            "initiator": "AGENT",
+        },
+        {
+            "interaction_type": "USER_DECISION",
+            "question_id": "q-1",
+            "affected_nodes": ["TARGET_IDENTITY"],
+            "decision_supplied": True,
+            "initiator": "HARNESS",
+        },
+    ]
+    fake = RealisticTaskService(
+        result={"platform_status": "COMPLETED", "trial_count": 1},
+        trials=[{"evaluation": {
+            "interaction_ledger": ledger,
+            "node_results": [{
+                "node": "TARGET_IDENTITY", "completion_source": "USER_DIRECTED",
+                "raw_score": 20, "score": 20, "weight": 20,
+            }],
+        }}],
+    )
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    # L0 discloses target, so answering it again is redundant and must be discounted.
+    summary = svc.create_run(_run(svc, level="L0"))
+    rows = svc.interactions(summary["run_id"])["interactions"]
+    answer = next(r for r in rows if r["type"] == "USER_DECISION")
+    assert answer["affected_slots"] == ["target", "duration_seconds"]
+    assert answer["slot_was_disclosed"] == {"target": True, "duration_seconds": True}
+
+    score = svc.score(summary["run_id"])
+    redundant = score["autonomy"]["redundant_questions"]
+    assert {item["slot"] for item in redundant} == {"target", "duration_seconds"}
+    assert all(item["source_factor_applied"] == 0.1 for item in redundant)
+    # score() spreads the evaluation at the top level.
+    node = score["node_results"][0]
+    assert node["completion_source"] == "USER_DIRECTED_DISCLOSED"
+    assert node["source_factor"] == 0.1
+    assert node["score"] == 2.0
+    assert score["score_summary"]["adjusted_score"] == 2.0
+
+
+def test_withheld_slot_answered_by_platform_is_not_penalised(tmp_path):
+    """Answering a slot the level withheld is legitimate, not redundant."""
+    ledger = [
+        {"interaction_type": "AGENT_CLARIFICATION_REQUEST", "question_id": "q-9",
+         "required_decisions": ["duration_seconds"], "initiator": "AGENT"},
+        {"interaction_type": "USER_DECISION", "question_id": "q-9",
+         "affected_nodes": ["PLAN_VALIDATION"], "decision_supplied": True,
+         "initiator": "HARNESS"},
+    ]
+    fake = RealisticTaskService(
+        result={"platform_status": "COMPLETED", "trial_count": 1},
+        trials=[{"evaluation": {"interaction_ledger": ledger, "node_results": []}}],
+    )
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    # L1 withholds duration_seconds.
+    summary = svc.create_run(_run(svc, level="L1"))
+    score = svc.score(summary["run_id"])
+    assert score["autonomy"]["redundant_questions"] == []
+    assert {item["slot"] for item in score["autonomy"]["legitimate_questions"]} == {"duration_seconds"}
