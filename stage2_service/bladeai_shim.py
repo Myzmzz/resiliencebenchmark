@@ -51,15 +51,38 @@ class BladeRecord:
     status: str = "Created"
 
 
-_FAULT_TYPES = {
+# The whole ChaosBlade surface of a Stage-2 Trial. The Harness responder
+# (simulated_user) reads these tables to describe that surface to its model,
+# so the user it simulates never proposes a command this shim would refuse.
+#
+# Scenarios accepted as ``blade create k8s <scope>-<target> <action>``,
+# keyed by (scope, target, action). The first entry of each fault type is
+# ChaosBlade's own spelling; the later ones are accepted aliases.
+CHAOSBLADE_FAULT_SCENARIOS = {
     ("pod", "cpu", "fullload"): "cpu-load",
     ("pod", "cpu", "load"): "cpu-load",
-    ("pod", "memory", "load"): "memory-stress",
     ("pod", "mem", "load"): "memory-stress",
+    ("pod", "memory", "load"): "memory-stress",
     ("pod", "network", "delay"): "network-delay",
     ("pod", "network", "loss"): "network-loss",
     ("pod", "network", "drop"): "network-loss",
 }
+# The one native numeric flag each fault type accepts, and the Controller
+# intensity field it maps to. Values are copied without unit conversion.
+NATIVE_INTENSITY_FLAGS = {
+    "network-delay": ("--time", "delay_ms"),
+    "network-loss": ("--percent", "loss_percent"),
+    "cpu-load": ("--cpu-percent", "cpu_percent"),
+    "memory-stress": ("--mem-percent", "mem_percent"),
+}
+# Native flags whose value the Controller fixes. A command may omit them or
+# repeat exactly these values; any other value is refused.
+CONTROLLER_FIXED_NATIVE_FLAGS = {
+    "network-delay": {"--interface": "eth0", "--offset": "0"},
+    "network-loss": {"--interface": "eth0"},
+}
+# Fault duration in whole seconds; ``--duration`` is accepted as an alias.
+CHAOSBLADE_DURATION_FLAG = "--timeout"
 _SAFE_FLAG = re.compile(r"^--[a-z0-9-]+$")
 _UUID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
 
@@ -438,7 +461,7 @@ def parse_create(argv: Sequence[str], *, namespace: str, max_duration_seconds: i
         scope, target = argv[2].split("-", 1)
     except ValueError as exc:
         raise BladeShimError("fault scenario must use '<scope>-<target>'") from exc
-    fault_type = _FAULT_TYPES.get((scope, target, argv[3]))
+    fault_type = CHAOSBLADE_FAULT_SCENARIOS.get((scope, target, argv[3]))
     if fault_type is None:
         raise BladeShimError("requested ChaosBlade scenario is not authorized for this Trial")
     flags = _parse_flags(argv[4:])
@@ -453,7 +476,7 @@ def parse_create(argv: Sequence[str], *, namespace: str, max_duration_seconds: i
     selected_namespace = flags.pop("--namespace", namespace)
     if selected_namespace != namespace:
         raise BladeShimError("--namespace must equal the Controller-bound Trial namespace")
-    duration_raw = flags.pop("--timeout", flags.pop("--duration", None))
+    duration_raw = flags.pop(CHAOSBLADE_DURATION_FLAG, flags.pop("--duration", None))
     if duration_raw is None:
         raise BladeShimError("--timeout in seconds is required")
     if not isinstance(duration_raw, str) or not duration_raw.isdigit():
@@ -472,29 +495,24 @@ def parse_create(argv: Sequence[str], *, namespace: str, max_duration_seconds: i
 
 def canonical_native_intensity(fault_type: str, flags: Mapping[str, Any], *, action: str) -> dict[str, int]:
     """Map only documented native numeric knobs to Controller canonical fields."""
-    rules = {
-        "network-delay": ("--time", "delay_ms"),
-        "network-loss": ("--percent", "loss_percent"),
-        "cpu-load": ("--cpu-percent", "cpu_percent"),
-        "memory-stress": ("--mem-percent", "mem_percent"),
-    }
     try:
-        native_key, canonical = rules[fault_type]
+        native_key, canonical = NATIVE_INTENSITY_FLAGS[fault_type]
     except KeyError as exc:
         raise BladeShimError("native fault has no Controller-equivalent intensity mapping") from exc
-    if fault_type in {"network-delay", "network-loss"}:
-        interface = flags.pop("--interface", "eth0")
-        if interface != "eth0":
+    fixed_flags = CONTROLLER_FIXED_NATIVE_FLAGS.get(fault_type, {})
+    if "--interface" in fixed_flags:
+        interface = flags.pop("--interface", fixed_flags["--interface"])
+        if interface != fixed_flags["--interface"]:
             raise BladeShimError("network interface must be Controller-fixed eth0")
-        if fault_type == "network-delay":
-            offset = flags.pop("--offset", "0")
-            if (
-                isinstance(offset, bool)
-                or not isinstance(offset, (str, int))
-                or not str(offset).isdigit()
-                or int(offset) != 0
-            ):
-                raise BladeShimError("network delay offset must be the Controller-fixed 0")
+    if "--offset" in fixed_flags:
+        offset = flags.pop("--offset", fixed_flags["--offset"])
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, (str, int))
+            or not str(offset).isdigit()
+            or int(offset) != int(fixed_flags["--offset"])
+        ):
+            raise BladeShimError("network delay offset must be the Controller-fixed 0")
     if fault_type == "network-loss" and action == "drop":
         if flags:
             raise BladeShimError("network drop maps only to Controller 100 percent loss")

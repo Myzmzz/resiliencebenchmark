@@ -90,7 +90,12 @@ from .contracts import (
     Stage2CaseId,
 )
 from .permissions import Stage2PermissionManager
-from .simulated_user import HarnessModelTimeout, HarnessResponder, SimulatedUserPolicy
+from .simulated_user import (
+    HarnessModelTimeout,
+    HarnessResponder,
+    SimulatedUserPolicy,
+    resolve_platform_model,
+)
 from .mcp_supervisor import McpSupervisor
 from .native_boundary import (
     PERMISSION_BYPASS_EVENT,
@@ -150,6 +155,60 @@ def _bladeai_terminal_retry_details(value: Any) -> tuple[bool, str, dict[str, An
         "error_message": message[:300],
         "retry_scope": "bladeai_wp8_pre_mutation",
     }
+
+
+# Harness-channel confirmation failures that originate in the platform --
+# the simulated user's model timed out or returned an unusable completion,
+# or the channel itself failed -- rather than in the Agent's plan.
+PLATFORM_CONFIRM_FAILURE_CODES = frozenset(
+    {
+        "HARNESS_MODEL_TIMEOUT",
+        "HARNESS_MODEL_COMPLETION_FAILED",
+        "HARNESS_CONFIRM_INTERNAL_ERROR",
+    }
+)
+_CONFIRM_OUTCOME_EVENTS = frozenset({"CONFIRM_GRANTED", "CONFIRM_DENIED", "CONFIRM_FAILED"})
+_LEDGER_PAGE_SIZE = 500
+
+
+def _platform_confirm_failure(ledger: PlatformLedger, trial_id: str) -> dict[str, Any]:
+    """Return a Harness failure when the Trial's last confirmation broke on the platform side.
+
+    An Agent whose plan could not be confirmed because the simulated user
+    failed has not failed the task, so scoring it would blame the Agent for
+    the platform. Only the last confirmation outcome counts: if a later
+    attempt was granted or denied, the platform recovered and what followed
+    is the Agent's own behaviour.
+    """
+
+    last_outcome = None
+    after_sequence = 0
+    while True:
+        events = ledger.query(
+            after_sequence=after_sequence, limit=_LEDGER_PAGE_SIZE, trial_id=trial_id
+        )
+        for event in events:
+            if event.event_type in _CONFIRM_OUTCOME_EVENTS:
+                last_outcome = event
+        if len(events) < _LEDGER_PAGE_SIZE:
+            break
+        after_sequence = events[-1].sequence
+    if last_outcome is None or last_outcome.event_type != "CONFIRM_FAILED":
+        return {}
+    error_code = str(last_outcome.payload.get("error_code") or "")
+    if error_code not in PLATFORM_CONFIRM_FAILURE_CODES:
+        return {}
+    failure: dict[str, Any] = {
+        "error_code": error_code,
+        "operation": "harness_confirm",
+        "reason": str(last_outcome.payload.get("message") or "")[:300],
+        "attempts": last_outcome.payload.get("attempts"),
+        "responder_model": last_outcome.payload.get("responder_model"),
+    }
+    diagnostic = last_outcome.payload.get("diagnostic")
+    if isinstance(diagnostic, Mapping) and diagnostic:
+        failure["diagnostic"] = dict(diagnostic)
+    return failure
 
 
 def _bladeai_terminal_failure_details(value: Any) -> dict[str, Any]:
@@ -362,6 +421,10 @@ class NativeHarnessRunner:
              if prompt_level_label.split("_", 1)[0].split("-", 1)[0] == level.value.split("_", 1)[0]),
             AutonomyLevel.L3_STRATEGY_SELECTION,
         )
+        # The simulated user answers on the fixed platform model whatever
+        # model the Agent under test uses; the in-process responder and the
+        # Harness channel both read this one value.
+        platform_model = resolve_platform_model()
         channel_root = control_root / "harness-channel"
         channel_root.mkdir(mode=0o700)
         channel_context_file = channel_root / "context.json"
@@ -381,7 +444,8 @@ class NativeHarnessRunner:
             "max_observation_seconds": self.timeout_seconds,
             "expected_outcome": expected_outcome.value,
             "decision_policy": decision_policy.value, "prompt_level": prompt_level.value,
-            "model_alias": model_alias, "original_prompt": base_prompt,
+            "model_alias": model_alias, "platform_model_alias": platform_model,
+            "original_prompt": base_prompt,
             **(
                 {"condition_policy": wp8_condition_policy}
                 if wp8_condition_policy is not None
@@ -652,7 +716,7 @@ class NativeHarnessRunner:
             prompt_level=prompt_level,
         )
         responder = self.responder_factory(
-            env, model_alias, runtime_context.target.namespace,
+            env, platform_model, runtime_context.target.namespace,
             int(runtime_context.main_fault.get("max_fault_duration_seconds") or 1200),
             self.timeout_seconds,
             policy=responder_policy,
@@ -661,7 +725,8 @@ class NativeHarnessRunner:
         write_json(artifact_dir / "runtime-request.redacted.json", redact_json({
             "prompt": base_prompt, "executed_prompt": redact_text(prompt, env),
             "prompt_level_label": prompt_level_label, "decision_policy": decision_policy.value,
-            "model": model_alias, "model_alias": model_alias, "harness": harness.value, "trial_id": trial_id,
+            "model": model_alias, "model_alias": model_alias, "platform_model": platform_model,
+            "harness": harness.value, "trial_id": trial_id,
             "llm_tag": llm_tag or model_alias,
             "gateway_route": gateway_route, "gateway_config_sha256": gateway_hash,
         }, env))
@@ -1237,6 +1302,11 @@ class NativeHarnessRunner:
                         "assessment": validated_result, "source": "harness_submit_result",
                     })
                     submitted_result_loaded = True
+        confirm_failure = _platform_confirm_failure(platform_ledger, trial_id)
+        if confirm_failure and not harness_failure:
+            harness_failure = confirm_failure
+            self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                       LifecyclePhase.C5_SAFETY, "harness_confirm_failed", confirm_failure)
         live_unclosed_calls = sorted(set(mapper.calls) - set(mapper.results))
         native_unclosed_calls = [call.call_id for call in adapter.open_calls()]
         unclosed_calls = sorted(set(live_unclosed_calls + native_unclosed_calls))
@@ -1394,6 +1464,7 @@ class NativeHarnessRunner:
             "output_repair_count": output_repair_count,
             "output_repair_exhausted": output_repair_count > 0 and not output_repaired,
             "retry_history": retry_budget.retries,
+            "platform_model": platform_model,
             "harness_error_code": harness_failure.get("error_code"),
             "harness_error": redact_json(harness_failure, env),
             "harness_model_request_count": sum(

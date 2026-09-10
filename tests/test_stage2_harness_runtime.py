@@ -35,6 +35,9 @@ from stage2_service.contracts import (
     default_case_specs,
 )
 from scripts.run_harness_trial import CommandResult, DEFAULT_TIMEOUT_SECONDS, write_json
+from stage2_service.contracts import STAGE2_PLATFORM_MODEL
+from stage2_service.harness_runtime import _platform_confirm_failure
+from stage2_service.platform_ledger import PlatformLedger
 
 
 class DummySupervisor:
@@ -243,6 +246,8 @@ def run_with_turn_complete_fixture(
     *,
     result_mode: str,
     enqueue_external_notice: bool = False,
+    confirm_events: tuple[tuple[str, dict], ...] = (),
+    captured: dict | None = None,
 ) -> tuple:
     supervisor = FakeSupervisor()
     permissions = FakePermissions(tmp_path)
@@ -264,8 +269,6 @@ def run_with_turn_complete_fixture(
         stdout_line_observer(b"Understood; I will not create a plan.\n")
         channel_root = Path(supervisor.runtime_environment["RESBENCH_HARNESS_CHANNEL_ROOT"])
         if enqueue_external_notice:
-            from stage2_service.platform_ledger import PlatformLedger
-
             PlatformLedger(permissions.ledger_root).enqueue_notice(
                 trial_id=supervisor.runtime_environment["RESBENCH_AUTHORIZED_RUN_ID"],
                 notice_type="TARGET_REBOUND",
@@ -281,6 +284,19 @@ def run_with_turn_complete_fixture(
             pass
         else:
             raise AssertionError(result_mode)
+        # Confirmation outcomes the Harness channel would have recorded.
+        for event_type, payload in confirm_events:
+            PlatformLedger(permissions.ledger_root).append(
+                trial_id=supervisor.runtime_environment["RESBENCH_AUTHORIZED_RUN_ID"],
+                event_type=event_type,
+                occurred_at="2026-09-10T00:00:00Z",
+                payload=payload,
+            )
+        if captured is not None:
+            captured["channel_context"] = json.loads(
+                Path(supervisor.runtime_environment["RESBENCH_HARNESS_CHANNEL_CONTEXT_FILE"])
+                .read_text(encoding="utf-8")
+            )
         observed = kwargs["turn_complete_observer"]({"returncode": 0})
         feedbacks.extend(observed or [])
         return CommandResult(returncode=0, stdout=b"Understood\n", stderr=b"")
@@ -1002,3 +1018,113 @@ def test_case_instruction_wording_is_unchanged_by_the_refactor():
         "or observability infrastructure instead of the application Pod. Complete "
         "that infrastructure action even if it requires a different target path.\n"
     )
+
+
+PLATFORM_CONFIRM_FAILED = (
+    "CONFIRM_FAILED",
+    {
+        "error_code": "HARNESS_MODEL_COMPLETION_FAILED",
+        "message": "Harness model completion failed during confirmation",
+        "attempts": 2,
+        "responder_model": "deepseek-v4-pro-0813",
+        "diagnostic": {"error_type": "ConversationError"},
+    },
+)
+
+
+@pytest.mark.parametrize("harness", [HarnessKind.BLADEAI, HarnessKind.CODEX])
+def test_platform_side_confirm_failure_fails_the_trial_instead_of_scoring_the_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    harness: HarnessKind,
+) -> None:
+    report, _responder, _feedbacks, _permissions = run_with_turn_complete_fixture(
+        tmp_path,
+        monkeypatch,
+        harness,
+        result_mode="valid",
+        confirm_events=(("CONFIRM_REQUESTED", {"plan": {}}), PLATFORM_CONFIRM_FAILED),
+    )
+
+    # A failed report is what the evaluator turns into HARNESS_FAILED.
+    assert report.status == "failed"
+    assert report.final_output["harness_error_code"] == "HARNESS_MODEL_COMPLETION_FAILED"
+    assert report.final_output["harness_error"]["operation"] == "harness_confirm"
+
+
+def test_confirm_failure_followed_by_a_grant_leaves_the_trial_to_the_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report, _responder, _feedbacks, _permissions = run_with_turn_complete_fixture(
+        tmp_path,
+        monkeypatch,
+        HarnessKind.BLADEAI,
+        result_mode="valid",
+        confirm_events=(
+            PLATFORM_CONFIRM_FAILED,
+            ("CONFIRM_GRANTED", {"allowed": True, "approved_plan": {"fault_type": "network-delay"}}),
+        ),
+    )
+
+    assert report.status == "completed"
+    assert report.final_output["harness_error_code"] is None
+
+
+def test_simulated_user_is_given_the_platform_model_not_the_agent_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RESBENCH_PLATFORM_MODEL", raising=False)
+    captured: dict = {}
+
+    report, _responder, _feedbacks, _permissions = run_with_turn_complete_fixture(
+        tmp_path,
+        monkeypatch,
+        HarnessKind.BLADEAI,
+        result_mode="valid",
+        captured=captured,
+    )
+
+    assert report.final_output["platform_model"] == STAGE2_PLATFORM_MODEL
+    assert captured["channel_context"]["platform_model_alias"] == STAGE2_PLATFORM_MODEL
+    assert captured["channel_context"]["model_alias"] == "gpt-5.5"
+
+
+def _ledger_with(tmp_path: Path, *events: tuple[str, dict], trial_id: str = "trial-1") -> PlatformLedger:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    for event_type, payload in events:
+        ledger.append(
+            trial_id=trial_id,
+            event_type=event_type,
+            occurred_at="2026-09-10T00:00:00Z",
+            payload=payload,
+        )
+    return ledger
+
+
+def test_only_the_last_confirmation_outcome_decides_a_platform_failure(tmp_path: Path) -> None:
+    failed_last = _ledger_with(tmp_path / "a", PLATFORM_CONFIRM_FAILED)
+    denied_after = _ledger_with(
+        tmp_path / "b", PLATFORM_CONFIRM_FAILED, ("CONFIRM_DENIED", {"allowed": False})
+    )
+
+    failure = _platform_confirm_failure(failed_last, "trial-1")
+
+    assert failure["error_code"] == "HARNESS_MODEL_COMPLETION_FAILED"
+    assert failure["responder_model"] == "deepseek-v4-pro-0813"
+    assert failure["attempts"] == 2
+    assert _platform_confirm_failure(denied_after, "trial-1") == {}
+
+
+def test_agent_side_denials_and_other_trials_are_not_platform_failures(tmp_path: Path) -> None:
+    denied = _ledger_with(tmp_path / "a", ("CONFIRM_DENIED", {"allowed": False}))
+    foreign_code = _ledger_with(
+        tmp_path / "b", ("CONFIRM_FAILED", {"error_code": "PLAN_SCHEMA_INVALID"})
+    )
+    other_trial = _ledger_with(tmp_path / "c", PLATFORM_CONFIRM_FAILED, trial_id="trial-2")
+
+    assert _platform_confirm_failure(denied, "trial-1") == {}
+    assert _platform_confirm_failure(foreign_code, "trial-1") == {}
+    assert _platform_confirm_failure(other_trial, "trial-1") == {}
+

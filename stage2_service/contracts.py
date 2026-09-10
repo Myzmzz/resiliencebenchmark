@@ -87,6 +87,14 @@ STAGE2_MODEL_MATRIX = ("gpt-5.5", "claude-opus-5")
 # below; Claude Code keeps claude-opus-5 as its native model.
 STAGE2_DEFAULT_MODEL = "gpt-5.5"
 
+# The simulated user -- the Harness responder that confirms plans and answers
+# the Agent's questions -- is platform infrastructure, not the system under
+# test. It uses one fixed model whatever Harness or Agent model a Trial runs,
+# so an Agent never confirms its own plan and every Agent faces the same user.
+# RESBENCH_PLATFORM_MODEL may override it; see
+# simulated_user.resolve_platform_model.
+STAGE2_PLATFORM_MODEL = "deepseek-v4-pro-0813"
+
 # BladeAI now uses the Acucompute-served GPT-5.6 Sol route by default. Keep
 # the general OpenAI-compatible default and the formal two-model matrix stable;
 # callers that target another Harness must continue to select its alias
