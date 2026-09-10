@@ -569,7 +569,15 @@ def _coroot_chart_matrix(payload: Mapping[str, Any], series_payload: Mapping[str
         for index, value in enumerate(data):
             timestamp_ms = from_ms + index * step_ms
             if to_ms is not None and timestamp_ms > to_ms:
-                raise CorootROError("invalid_backend_response", "Coroot chart series extends past ctx.to.", "Complete Coroot API qualification before using this service.")
+                # Coroot fills its step grid from ``from`` and includes the
+                # bucket that contains ``to``, so for a window that is not a
+                # multiple of the step the last point lands less than one step
+                # past ``to`` (a 44 s window over a 15 s step ends 1 s past
+                # it). Drop that point; a point a full step or more past
+                # ``to`` means the chart does not match the request.
+                if timestamp_ms >= to_ms + step_ms:
+                    raise CorootROError("invalid_backend_response", "Coroot chart series extends past ctx.to.", "Complete Coroot API qualification before using this service.")
+                continue
             values.append([int(timestamp_ms / 1000), _chart_sample_value(value)])
         matched_metadata = metadata.get(series_name or "")
         result.append(

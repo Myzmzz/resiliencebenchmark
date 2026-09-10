@@ -574,3 +574,22 @@ def test_missing_configuration_fails_the_call_not_the_server_start(monkeypatch: 
 
     with pytest.raises(CorootROError):
         observer.config
+
+
+def test_metrics_drops_the_grid_point_coroot_adds_past_ctx_to() -> None:
+    # A 44 s window over a 15 s step: Coroot's fourth point lands 1 s past
+    # ctx.to (seen live on 2026-09-10 in lxr-72505691c92e43a9, where the whole
+    # response used to be refused). It is the bucket containing ``to``; the
+    # tool drops that point and returns the rest.
+    panel = {
+        "chart": {
+            "ctx": {"from": 100_000, "to": 144_000, "step": 15_000},
+            "series": [{"name": _coroot_series_name(_native_series_labels()), "data": [1, 2, 3, 4]}],
+        }
+    }
+    observer, _ = service(panel=panel)
+
+    result = run(observer.metrics_range(metric="kube_pod_info", start=100, end=160))
+
+    assert result["ok"] is True
+    assert [point[0] for point in result["data"]["result"][0]["values"]] == [100, 115, 130]
