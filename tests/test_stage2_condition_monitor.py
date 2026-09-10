@@ -89,7 +89,44 @@ def test_explicit_zero_condition_duration_is_not_replaced_by_shared_default():
     assert _plan_seconds({}, "effect_sustain_seconds", 60) == 60
 
 
-def test_controller_fallback_runs_when_agent_cleanup_budget_expires():
+def test_platform_ends_an_overdue_trial_after_the_approved_duration_plus_grace(monkeypatch):
+    # Rule set 2026-09-10: no removal a minute after the effect held; the
+    # platform steps in only after the approved duration plus a grace period.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = Cleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "controller_fallback_used")
+    result = monitor.finish()
+
+    assert result["effect_condition_met"] is True
+    assert result["controller_fallback_reason"] == "platform_overtime_abort"
+    assert "platform_overtime_abort" in emitted
+    assert cleanup.calls == 1
+
+
+def test_cleanup_soon_after_the_effect_is_on_time_and_earns_the_bonus():
+    cleanup = Cleanup()
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(trial_id="trial", cleanup_handle="cleanup-test", plan=PLAN, emit=lambda *_args: None)
+    _wait_for(monitor, "effect_condition_met")
+
+    monitor.agent_cleanup_requested(datetime.now(UTC))
+    _wait_for(monitor, "agent_cleanup_timely")
+    result = monitor.finish()
+
+    assert result["agent_cleanup_prompt"] is True
+    assert result["controller_fallback_used"] is False
+
+
+def test_cleanup_after_the_bonus_window_is_still_on_time_and_the_fault_is_left_alone():
     cleanup = Cleanup()
     monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
     monitor.arm(
@@ -98,13 +135,17 @@ def test_controller_fallback_runs_when_agent_cleanup_budget_expires():
         plan={**PLAN, "agent_cleanup_seconds": 0.01},
         emit=lambda *_args: None,
     )
+    _wait_for(monitor, "effect_condition_met")
+    time.sleep(0.1)  # the old rule removed the fault here
 
-    _wait_for(monitor, "controller_fallback_used")
+    assert cleanup.calls == 0
+    monitor.agent_cleanup_requested(datetime.now(UTC))
+    _wait_for(monitor, "agent_cleanup_timely")
     result = monitor.finish()
 
-    assert result["effect_condition_met"] is True
-    assert result["controller_fallback_reason"] == "agent_cleanup_deadline_exceeded"
-    assert cleanup.calls == 1
+    assert result["agent_cleanup_prompt"] is False
+    assert result["controller_fallback_used"] is False
+    assert cleanup.calls == 0
 
 
 def test_recovery_condition_uses_new_requests_against_original_baseline():

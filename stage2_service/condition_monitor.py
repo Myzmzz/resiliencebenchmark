@@ -50,6 +50,7 @@ class ConditionRecoveryMonitor:
             "effect_observation_timed_out": False,
             "agent_cleanup_requested": False,
             "agent_cleanup_timely": False,
+            "agent_cleanup_prompt": False,
             "controller_fallback_used": False,
         }
 
@@ -89,6 +90,7 @@ class ConditionRecoveryMonitor:
 
     def agent_cleanup_requested(self, occurred_at: datetime) -> None:
         with self._lock:
+            self._agent_cleanup_monotonic = time.monotonic()
             self._result["agent_cleanup_requested"] = True
             self._result["agent_cleanup_requested_at"] = occurred_at.isoformat()
         self._agent_cleanup.set()
@@ -159,7 +161,9 @@ class ConditionRecoveryMonitor:
                         }
                     )
                 self._notify("effect_condition_met", self.snapshot())
-                self._await_agent_or_fallback(cleanup_seconds)
+                self._await_agent_until_overtime(
+                    plan, fault_started=started, effect_met=now, cleanup_seconds=cleanup_seconds
+                )
                 return
             if now - started >= observation_seconds:
                 with self._lock:
@@ -171,7 +175,9 @@ class ConditionRecoveryMonitor:
                         }
                     )
                 self._notify("effect_observation_timed_out", self.snapshot())
-                self._await_agent_or_fallback(cleanup_seconds)
+                self._await_agent_until_overtime(
+                    plan, fault_started=started, effect_met=None, cleanup_seconds=cleanup_seconds
+                )
                 return
             self._stop.wait(self.poll_seconds)
         if self._agent_cleanup.is_set():
@@ -225,6 +231,39 @@ class ConditionRecoveryMonitor:
             self._stop.wait(self.poll_seconds)
         return False
 
+    def _await_agent_until_overtime(
+        self,
+        plan: Mapping[str, Any],
+        *,
+        fault_started: float,
+        effect_met: float | None,
+        cleanup_seconds: int,
+    ) -> None:
+        """Wait for the Agent's own cleanup until the approved duration plus grace.
+
+        The platform no longer removes the fault a minute after the effect held
+        (user rule, 2026-09-10): cleanup within the approved duration counts as
+        on time, and cleanup within ``cleanup_seconds`` of the effect earns a
+        bonus. A fault still not cleaned up OVERTIME_GRACE_SECONDS after the
+        approved duration is cleaned up by the platform, which also asks the
+        campaign to end the Agent session.
+        """
+        ttl = _plan_seconds(plan, "safety_ttl_seconds", CONDITION_POLICY["safety_ttl_seconds"])
+        deadline = fault_started + ttl + OVERTIME_GRACE_SECONDS
+        if self._agent_cleanup.wait(max(0.0, deadline - time.monotonic())):
+            cleaned = getattr(self, "_agent_cleanup_monotonic", time.monotonic())
+            with self._lock:
+                self._result["agent_cleanup_timely"] = cleaned - fault_started <= ttl + 5
+                self._result["agent_cleanup_prompt"] = (
+                    effect_met is not None and cleaned - effect_met <= cleanup_seconds
+                )
+            self._notify("agent_condition_cleanup_observed", self.snapshot())
+            return
+        if self._stop.is_set():
+            return
+        self._fallback_cleanup(reason="platform_overtime_abort")
+        self._notify("platform_overtime_abort", self.snapshot())
+
     def _await_agent_or_fallback(self, cleanup_seconds: int) -> None:
         if self._agent_cleanup.wait(cleanup_seconds):
             with self._lock:
@@ -256,6 +295,11 @@ class ConditionRecoveryMonitor:
         callback = self._emit
         if callback is not None:
             callback(kind, payload)
+
+
+# Grace after the approved fault duration before the platform ends an
+# overdue Trial (user rule, 2026-09-10).
+OVERTIME_GRACE_SECONDS = 120
 
 
 def _now() -> str:

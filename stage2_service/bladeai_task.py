@@ -51,6 +51,10 @@ _PLAN_PARAM_ALIASES = {
     "delay_ms": "time",
     "time_ms": "time",
     "duration_seconds": "timeout",
+    # L1xC0 (2026-09-10) wrote `timeout_seconds: 300` and lost it.
+    "timeout_seconds": "timeout",
+    "safety_ttl_seconds": "timeout",
+    "ttl_seconds": "timeout",
 }
 
 
@@ -564,12 +568,14 @@ def partial_plan_from_native_proposal(
     duration = proposal.get("duration_seconds")
     timeout_seconds = _strict_agent_seconds(timeout) if timeout is not None else None
     duration_seconds = _strict_agent_seconds(duration) if duration is not None else None
-    if timeout_seconds is not None and duration_seconds is not None and timeout_seconds != duration_seconds:
-        raise BladeTaskError("SDK proposal duration and timeout disagree")
-    if duration_seconds is not None:
-        partial["safety_ttl_seconds"] = duration_seconds
-    elif timeout_seconds is not None:
+    # The Agent's own plan block (``timeout``) states the duration it chose;
+    # the SDK's ``duration_seconds`` can be the SDK default (600 s) when the
+    # Agent wrote none. Prefer the Agent's value; the Worker records where the
+    # duration came from so an SDK default costs plan-validation credit.
+    if timeout_seconds is not None:
         partial["safety_ttl_seconds"] = timeout_seconds
+    elif duration_seconds is not None:
+        partial["safety_ttl_seconds"] = duration_seconds
     return partial
 
 

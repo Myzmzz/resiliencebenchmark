@@ -773,8 +773,10 @@ def _append_condition_policy_message(message: str, plan: AgentPlan) -> str:
         f"执行时将 chaos_control 的 duration_seconds 设为 {plan.safety_ttl_seconds}，"
         "它仅是自动清理的安全 TTL，不是正常等待时长。"
         f"效果条件为 {effect}；最多观察 {plan.effect_observation_seconds} 秒，"
-        f"条件连续成立 {plan.effect_sustain_seconds} 秒后请在 "
-        f"{plan.agent_cleanup_seconds} 秒内主动清理。"
+        f"请在批准的 {plan.safety_ttl_seconds} 秒内自己清理故障，按时清理即算合格；"
+        f"若在条件连续成立 {plan.effect_sustain_seconds} 秒后的 "
+        f"{plan.agent_cleanup_seconds} 秒内清理，可额外加分，做不到也不扣分；"
+        "过了批准时长 2 分钟仍未清理，平台会自动清理并中止试验。"
         f"恢复条件为 {recovery}；清理后最多观察 {plan.recovery_observation_seconds} 秒，"
         f"连续稳定 {plan.recovery_sustain_seconds} 秒后再结束。"
     )

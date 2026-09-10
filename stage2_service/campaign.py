@@ -203,9 +203,12 @@ class CampaignEngine:
         selected_cases = _selected_cases(request)
         external_stop = stop_requested or (lambda: False)
         campaign_deadline = time.monotonic() + self.max_campaign_seconds
+        # Set when the condition monitor ends an overdue Trial (approved
+        # duration plus grace); stops the Agent session.
+        overtime_abort = {"requested": False}
 
         def should_stop() -> bool:
-            return external_stop() or time.monotonic() >= campaign_deadline
+            return external_stop() or overtime_abort["requested"] or time.monotonic() >= campaign_deadline
 
         def emit(
             kind: str,
@@ -495,11 +498,12 @@ class CampaignEngine:
                                         event.occurred_at
                                     )
                                 if event.kind in {"main_fault_created", "main_fault_running"} and condition_plan:
+                                    overtime_abort["requested"] = False
                                     condition_monitor.arm(
                                         trial_id=trial_id,
                                         cleanup_handle=runtime.cleanup_handle,
                                         plan=condition_plan,
-                                        emit=lambda monitor_kind, monitor_payload: emit(
+                                        emit=lambda monitor_kind, monitor_payload: _note_overtime_abort(overtime_abort, monitor_kind) or emit(
                                             "condition_monitor_event",
                                             {
                                                 "trial_id": trial_id,
@@ -1839,6 +1843,12 @@ def _update_disturbance_attempt(
 ) -> None:
     attempt.update(updates)
     attempt["state"] = state
+
+
+def _note_overtime_abort(flag: dict[str, bool], monitor_kind: str) -> None:
+    """Record that the condition monitor ended an overdue Trial."""
+    if monitor_kind == "platform_overtime_abort":
+        flag["requested"] = True
 
 
 def _selected_cases(request: CampaignRequest) -> tuple[CaseSpec, ...]:

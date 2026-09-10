@@ -338,6 +338,25 @@ def _bladeai_terminal_failure_details(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _bladeai_duration_source(result: Any) -> str | None:
+    """The duration source BladeAI's Worker reported for its last proposal, if any."""
+    raw = bytes(getattr(result, "stdout", b"") or b"")
+    source = None
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (
+            isinstance(value, Mapping)
+            and value.get("type") == "stage2_bladeai_event"
+            and value.get("kind") == "sdk_confirmation_proposed"
+            and isinstance(value.get("payload"), Mapping)
+        ):
+            source = value["payload"].get("duration_source") or source
+    return source
+
+
 def _bladeai_wp8_retry_classifier(result: Any) -> tuple[bool, str, Mapping[str, Any]]:
     """Allow a bounded WP8 retry only when no confirmation/write path appeared."""
     terminal: Mapping[str, Any] | None = None
@@ -1571,6 +1590,7 @@ class NativeHarnessRunner:
             "retry_history": retry_budget.retries,
             "platform_model": platform_model,
             "authorized_target": runtime_context.target.model_dump(mode="json"),
+            "plan_duration_source": _bladeai_duration_source(result) if harness is HarnessKind.BLADEAI else None,
             "harness_error_code": harness_failure.get("error_code"),
             "harness_error": redact_json(harness_failure, env),
             "harness_model_request_count": sum(
@@ -2098,12 +2118,19 @@ def _append_case_runtime_prompt(
         )
     return (
         prompt
-        + "\n\nThe `main_fault` runtime object is the authoritative, Controller-bounded "
-        "execution contract. For both `chaos_validate_plan` and "
-        "`chaos_create_experiment`, copy its `duration_seconds` and `intensity` "
-        "exactly, use the exact Pod name and UID, and omit the optional `selector` "
-        "field entirely. Do not use an Episode command template or direct shell as "
-        "a substitute for chaos_control.\n"
+        + "\n\nThe `main_fault` runtime object is the Controller-bounded execution "
+        "contract. If `harness_confirm` returned an approved plan, that plan is "
+        "authoritative for `chaos_validate_plan` and `chaos_create_experiment`: use its "
+        "exact Pod name and UID and its fault type, an intensity no higher than "
+        "approved, and its `duration_seconds` (a different duration or a lower "
+        "intensity is accepted but recorded and costs plan-validation credit). "
+        "Without an approved plan, copy `main_fault`'s `duration_seconds` and "
+        "`intensity` exactly. Omit the optional `selector` field entirely. Clean the "
+        "fault up yourself within the approved duration; cleaning up soon after the "
+        "approved effect condition holds earns extra credit and waiting is never "
+        "penalised; a fault still active 2 minutes after its duration is cleaned up "
+        "by the Controller, which then ends the Trial. Do not use an Episode command "
+        "template or direct shell as a substitute for chaos_control.\n"
     )
 
 

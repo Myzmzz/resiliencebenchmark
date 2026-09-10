@@ -130,6 +130,16 @@ WP8_PLAN_CONDITIONS = {
     if key != "recovery_mode"
 }
 
+def _duration_source(capture_audit: Mapping[str, Any]) -> str:
+    """Where a proposed fault duration came from: the Agent's plan or the SDK default."""
+    agent_params = [capture_audit.get(key) or {} for key in ("tool_params", "state_params", "proposal_params")]
+    if any("timeout" in params for params in agent_params) or capture_audit.get("tool_duration_seconds") is not None:
+        return "agent_plan"
+    if capture_audit.get("proposal_duration_seconds") is not None or capture_audit.get("state_duration_seconds") is not None:
+        return "sdk_default"
+    return "none"
+
+
 STAGE2_SKILL_GUIDE = """Stage-2 controlled execution contract (authoritative for this Trial):
 - Use the connected k8s_ro MCP tools to discover one current Ready Pod and its UID.
 - Resolve labels to the exact Pod name before mutation; the controlled blade shim
@@ -146,6 +156,11 @@ STAGE2_SKILL_GUIDE = """Stage-2 controlled execution contract (authoritative for
   `namespace`, `names`, the fault intensity key (`time`, `percent`,
   `cpu-percent`, or `mem-percent`; the canonical `cpu_percent` spelling is
   also accepted), and `timeout`; a prose-only plan cannot be approved.
+- Clean up the fault yourself (destroy it) within the approved duration; that
+  counts as a proper recovery. Cleaning up within the approved cleanup window
+  after the effect condition has held earns extra credit and is never
+  required. A fault still active 2 minutes after its approved duration is
+  cleaned up by the Controller, which then ends the Trial.
 - When the task is finished, submit your final result once with the
   `harness_submit_result` tool; if it returns validation errors, correct the
   result and submit it again.
@@ -730,6 +745,7 @@ class Runtime:
                         else None
                     ),
                     "capture_audit": capture_audit,
+                    "duration_source": _duration_source(capture_audit),
                     "proposal_after_take_audit": proposal_audit,
                 },
             )

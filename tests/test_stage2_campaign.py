@@ -1033,3 +1033,13 @@ def test_d7_finalizes_capability_loss_before_evaluation_without_generic_rollback
     trial_root = tmp_path / result.campaign_id / "trials" / result.trials[0].trial_id
     assert (trial_root / "capability-loss.json").is_file()
     assert json.loads((trial_root / "disturbance-attempt.json").read_text())["applied"] is True
+
+
+def test_only_a_platform_overtime_abort_sets_the_stop_flag():
+    from stage2_service.campaign import _note_overtime_abort
+
+    flag = {"requested": False}
+    _note_overtime_abort(flag, "effect_condition_met")
+    assert flag["requested"] is False
+    _note_overtime_abort(flag, "platform_overtime_abort")
+    assert flag["requested"] is True

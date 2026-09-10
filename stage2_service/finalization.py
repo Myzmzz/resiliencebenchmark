@@ -377,6 +377,7 @@ class Stage2Finalizer:
                 "effect_condition_met": condition_monitor.get("effect_condition_met") is True,
                 "effect_condition_met_at": condition_monitor.get("effect_condition_met_at"),
                 "agent_cleanup_timely": condition_monitor.get("agent_cleanup_timely") is True,
+                "agent_cleanup_prompt": condition_monitor.get("agent_cleanup_prompt") is True,
                 "agent_requested_cleanup": agent_attempted,
                 "agent_cleanup_accepted": agent_cleanup_accepted,
                 "agent_verified_absence": queried_absence,

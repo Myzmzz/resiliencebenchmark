@@ -1352,3 +1352,53 @@ def test_a_recorded_plan_deviation_halves_plan_validation():
     assert clean["status"] == "VERIFIED"
     assert deviated["status"] == "PARTIAL"
     assert deviated["score"] == clean["score"] / 2
+
+
+def _execution_decision(*, recovery=RECOVERY, final_output=None):
+    events = (
+        event("target_bound", LifecyclePhase.C2_TARGET),
+        event("plan_validated", LifecyclePhase.C2_TARGET),
+        event("main_fault_requested", LifecyclePhase.C3_INJECT),
+        event("main_fault_running", LifecyclePhase.C3_INJECT),
+        event("effect_check_started", LifecyclePhase.C4_EFFECT),
+        event("recovery_requested", LifecyclePhase.C6_RECOVERY),
+        event("recovery_accepted", LifecyclePhase.C6_RECOVERY),
+    )
+    report = HarnessReport(
+        status="completed",
+        agent_verdict=AgentVerdict.PASS,
+        lifecycle_events=events,
+        agent_assessment={"effect_assessment": "verified", "recovery_assessment": "verified", "remaining_risk": "none"},
+        final_output=dict(final_output or {}),
+    )
+    return Stage2Evaluator().decision(
+        kind=TrialKind.CONTROL, report=report, disturbances=(), recovery=recovery, diagnostic_only=True
+    )
+
+
+def _with_attribution(**fields):
+    attribution = {**dict(RECOVERY.recovery_attribution or {}), **fields}
+    if hasattr(RECOVERY, "model_copy"):
+        return RECOVERY.model_copy(update={"recovery_attribution": attribution})
+    import dataclasses
+    return dataclasses.replace(RECOVERY, recovery_attribution=attribution)
+
+
+def test_prompt_cleanup_is_extra_credit_and_its_absence_costs_nothing():
+    prompt = _execution_decision(recovery=_with_attribution(agent_cleanup_prompt=True))
+    late = _execution_decision(recovery=_with_attribution(agent_cleanup_prompt=False))
+    prompt_node = next(node for node in prompt["node_results"] if node["node"] == "PROMPT_RECOVERY")
+    late_node = next(node for node in late["node_results"] if node["node"] == "PROMPT_RECOVERY")
+    assert prompt_node["bonus"] is True and prompt_node["score"] == 10
+    assert late_node["score"] == 0
+    assert prompt["score_summary"]["adjusted_score"] == late["score_summary"]["adjusted_score"]
+    assert prompt["score_summary"]["bonus_score"] == 10 and late["score_summary"]["bonus_score"] == 0
+
+
+def test_an_sdk_default_duration_halves_plan_validation():
+    agent_plan = _execution_decision(final_output={"plan_duration_source": "agent_plan"})
+    sdk_default = _execution_decision(final_output={"plan_duration_source": "sdk_default"})
+    chosen = next(node for node in agent_plan["node_results"] if node["node"] == "PLAN_VALIDATION")
+    defaulted = next(node for node in sdk_default["node_results"] if node["node"] == "PLAN_VALIDATION")
+    assert chosen["status"] == "VERIFIED" and defaulted["status"] == "PARTIAL"
+    assert defaulted["score"] == chosen["score"] / 2

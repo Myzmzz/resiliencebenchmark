@@ -1186,3 +1186,19 @@ def test_fault_duration_ceiling_prefers_an_explicit_ceiling_then_the_trial_durat
     assert _fault_duration_ceiling({"fault_type": "cpu-load", "duration_seconds": 300}) == 300
     assert _fault_duration_ceiling({"fault_type": "network-delay"}) == 1200
     assert _fault_duration_ceiling({"duration_seconds": True}) == 1200
+
+
+def test_bladeai_duration_source_is_read_from_the_last_proposal_event():
+    import json as _json
+    from types import SimpleNamespace as _Namespace
+
+    from stage2_service.harness_runtime import _bladeai_duration_source
+
+    lines = [
+        {"type": "stage2_bladeai_event", "kind": "sdk_confirmation_proposed", "payload": {"duration_source": "agent_plan"}},
+        {"type": "stage2_bladeai_event", "kind": "tool_start", "payload": {}},
+        {"type": "stage2_bladeai_event", "kind": "sdk_confirmation_proposed", "payload": {"duration_source": "sdk_default"}},
+    ]
+    stdout = ("\n".join(_json.dumps(line) for line in lines) + "\nnot json\n").encode()
+    assert _bladeai_duration_source(_Namespace(stdout=stdout)) == "sdk_default"
+    assert _bladeai_duration_source(_Namespace(stdout=b"")) is None

@@ -659,15 +659,13 @@ def test_captured_sdk_fault_spec_duration_is_preserved_without_conversion():
     capture.record(proposal)
     assert partial_plan_from_native_proposal(capture.take(), target_uid_resolver=_UID())["safety_ttl_seconds"] == 60
 
+    # Rule set 2026-09-10: the Agent's own plan block (``timeout``) states the
+    # duration it chose and wins over the SDK's ``duration_seconds``, which can
+    # be the SDK default; the Worker records where the duration came from.
     conflict = _current_native_proposal()
     conflict["duration_seconds"] = 60
     conflict["params"] = {"time": "300", "timeout": "600"}
-    try:
-        partial_plan_from_native_proposal(conflict, target_uid_resolver=_UID())
-    except BladeTaskError as exc:
-        assert "disagree" in str(exc)
-    else:  # pragma: no cover
-        raise AssertionError("conflicting source durations must not be silently resolved")
+    assert partial_plan_from_native_proposal(conflict, target_uid_resolver=_UID())["safety_ttl_seconds"] == 600
 
 
 def test_captured_sdk_fault_spec_fills_short_confirmation_payload():
@@ -1035,3 +1033,23 @@ def test_a_fault_outside_the_authorised_space_is_still_refused(fault_intent):
     proposal = {**_current_native_proposal(), "fault_intent": fault_intent, "params": {"cpu-percent": "80"}}
     with pytest.raises(BladeTaskError, match="outside the authorized Stage-2 fault space"):
         partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+
+
+def test_plan_block_timeout_seconds_is_read_as_the_agents_duration():
+    # L1xC0 (2026-09-10) wrote `timeout_seconds: 300`; the alias was missing,
+    # so the Agent's duration was lost and the SDK default was approved.
+    from stage2_service.bladeai_task import _structured_plan_fields
+
+    content = (
+        "```stage2\nscope: pod\ntarget: cpu\naction: fullload\nnamespace: otel-demo\n"
+        "names: cart-a\ncpu-percent: 80\ntimeout_seconds: 300\n```"
+    )
+    assert _structured_plan_fields(content)["params"]["timeout"] == "300"
+
+
+def test_duration_source_tells_the_agents_plan_from_the_sdk_default():
+    from stage2_service.bladeai_worker import _duration_source
+
+    assert _duration_source({"tool_params": {"timeout": "300"}, "proposal_duration_seconds": 600}) == "agent_plan"
+    assert _duration_source({"tool_params": {"cpu-percent": "80"}, "state_duration_seconds": 600}) == "sdk_default"
+    assert _duration_source({"tool_params": {}}) == "none"
