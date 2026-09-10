@@ -2420,6 +2420,15 @@ class Stage2TaskService:
                 "model_request_count": final_output.get(
                     "harness_model_request_count", 0
                 ),
+                # The relay-minted request ids are the *expected* side of the
+                # gateway usage reconciliation.  Without them a consumer has
+                # nothing to compare the audit rows against, so every real call
+                # looks unexpected and the reconciliation can never do its job.
+                # Kept out of the artifact gate on purpose: they are opaque
+                # tokens, and a summary-mode consumer needs them just as much.
+                "gateway_request_ids": list(
+                    final_output.get("gateway_request_ids") or []
+                ),
                 "model_history_ref": final_output.get(
                     "harness_model_history_ref"
                 ),

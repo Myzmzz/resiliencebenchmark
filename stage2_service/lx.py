@@ -17,7 +17,7 @@ from threading import Lock
 from typing import Any, Literal, Mapping
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from controller.safety import default_policy
 
@@ -317,10 +317,14 @@ class LxService:
         variant_id = _variant_set_id(request.application, request.slots)
         existing = self.store.read(variant_id)
         if existing is not None:
-            # The content-addressed id makes a variant set immutable. A repeat
-            # request returns the original timestamp and lint result instead
-            # of silently replacing an artifact with a different rendering.
-            return existing
+            # The content-addressed id makes the prompts immutable: a repeat
+            # request returns the original rendering and timestamp rather than
+            # silently replacing an artifact.  The lint verdict is *not* part of
+            # that identity -- it is a judgement about those prompts under the
+            # current rules -- so it is re-evaluated on every read.  Freezing it
+            # let a set created before a rule existed keep a stale "passed" and
+            # still be submitted, bypassing the new rule entirely.
+            return self._relint(variant_id, existing)
         variants = []
         for level, matrix in LEVEL_MATRIX.items():
             prompt = _prompt_for(level, request.application, request.slots)
@@ -347,13 +351,54 @@ class LxService:
         self.store.write(variant_id, value)
         return value
 
+    def _relint(self, variant_id: str, value: Mapping[str, Any]) -> dict[str, Any]:
+        """Re-evaluate a stored variant set against the current lint rules.
+
+        Prompts and `created_at` stay exactly as first rendered; only the lint
+        verdict is recomputed, and the record is rewritten when the verdict
+        actually changed so disk and API agree.
+        """
+        variants = value.get("variants")
+        if not isinstance(variants, list):
+            return dict(value)
+        try:
+            slots = LxSlots.model_validate(value.get("slots") or {})
+        except ValidationError:
+            # The stored slots no longer satisfy the contract -- for instance an
+            # intensity that a later bound rejects.  Fail the set rather than
+            # let a verdict recorded under the looser contract stand.
+            violations: list[str] | None = ["slots_no_longer_valid"]
+            slots = None
+        else:
+            violations = None
+        refreshed: list[dict[str, Any]] = []
+        changed = False
+        for item in variants:
+            if not isinstance(item, Mapping):
+                refreshed.append(item)  # type: ignore[arg-type]
+                continue
+            level = str(item.get("level") or "")
+            if violations is not None or level not in LEVEL_MATRIX:
+                found = violations or ["unknown_level"]
+            else:
+                found = _lint(level, str(item.get("prompt") or ""), slots)
+            lint = {"passed": not found, "violations": list(found)}
+            if item.get("lint") != lint:
+                changed = True
+            refreshed.append({**item, "lint": lint})
+        if not changed:
+            return dict(value)
+        updated = {**dict(value), "variants": refreshed}
+        self.store.write(variant_id, updated)
+        return updated
+
     def get_variants(self, variant_set_id: str) -> dict[str, Any]:
         if not _VARIANT_ID.fullmatch(variant_set_id):
             raise KeyError(variant_set_id)
         value = self.store.read(variant_set_id)
         if value is None:
             raise KeyError(variant_set_id)
-        return value
+        return self._relint(variant_set_id, value)
 
     def create_run(self, request: LxRunRequest, *, idempotency_key: str | None = None) -> dict[str, Any]:
         if request.application != "otel-demo":

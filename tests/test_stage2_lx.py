@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -336,3 +337,106 @@ def test_percent_intensity_rejects_out_of_range_values():
         duration_seconds=300,
     )
     assert ok.fault_params["cpu_percent"] == 100
+
+
+def test_stored_variant_set_is_relinted_against_current_rules(tmp_path):
+    """A lint rule added after a set was stored must still apply to it.
+
+    The verdict used to be frozen with the set, so a variant created before a
+    rule existed kept its stale "passed" and stayed submittable.
+    """
+    from stage2_service.lx import LEVEL_MATRIX
+
+    svc = service(tmp_path)
+    request = PromptVariantRequest(
+        application="otel-demo",
+        slots=LxSlots(
+            target="cart",
+            fault_type="cpu_load",
+            fault_params={"cpu_percent": 80},
+            duration_seconds=300,
+        ),
+    )
+    # Store the set under a matrix where L4 discloses the target, so its prompt
+    # naming "cart" is legitimate and lint passes.
+    original = LEVEL_MATRIX["L4"]
+    LEVEL_MATRIX["L4"] = dict(original, disclosed_slots=("target",))
+    try:
+        stored = svc.create_variants(request)
+        assert next(v for v in stored["variants"] if v["level"] == "L4")["lint"]["passed"]
+    finally:
+        LEVEL_MATRIX["L4"] = original
+
+    # Back under the real matrix the same stored set must now fail.
+    reread = svc.get_variants(stored["variant_set_id"])
+    l4 = next(v for v in reread["variants"] if v["level"] == "L4")
+    assert l4["lint"]["passed"] is False
+    assert "withheld_target_visible" in l4["lint"]["violations"]
+    # Identity and rendering are untouched; only the verdict moved.
+    assert reread["variant_set_id"] == stored["variant_set_id"]
+    assert reread["created_at"] == stored["created_at"]
+    assert l4["prompt"] == next(v for v in stored["variants"] if v["level"] == "L4")["prompt"]
+    # A cache hit through create_variants sees the refreshed verdict too.
+    again = svc.create_variants(request)
+    assert next(v for v in again["variants"] if v["level"] == "L4")["lint"]["passed"] is False
+
+
+def test_variant_set_whose_slots_no_longer_validate_fails_closed(tmp_path):
+    """Slots stored under a looser contract must not keep a stale pass."""
+    svc = service(tmp_path)
+    stored = svc.store.read("pv-" + "0" * 16)
+    assert stored is None
+    # Write a set whose intensity the current bounds reject (percent > 100).
+    svc.store.write("pv-" + "0" * 16, {
+        "schema_version": "stage2-lx-prompt-variant-set.v1",
+        "variant_set_id": "pv-" + "0" * 16,
+        "created_at": "2026-09-01T00:00:00+00:00",
+        "application": "otel-demo",
+        "slots": {"target": "cart", "fault_type": "cpu_load",
+                  "fault_params": {"cpu_percent": 999}, "duration_seconds": 300},
+        "variants": [{"level": "L0", "prompt": "旧提示词", "disclosed_slots": [],
+                      "recovery_trigger": None, "risk_inducement": False,
+                      "lint": {"passed": True, "violations": []}}],
+    })
+    value = svc.get_variants("pv-" + "0" * 16)
+    lint = value["variants"][0]["lint"]
+    assert lint["passed"] is False
+    assert "slots_no_longer_valid" in lint["violations"]
+
+
+def test_trial_projection_carries_the_relay_request_ids():
+    """Without the expected id set the usage reconciliation cannot function."""
+    import inspect
+
+    from stage2_service import task_service
+
+    source = inspect.getsource(task_service)
+    assert '"gateway_request_ids": list(' in source, (
+        "the trial projection must expose the relay-minted request ids"
+    )
+
+
+def test_usage_reconciliation_matches_when_expected_ids_are_present(tmp_path):
+    """With the expected set exposed, matching calls reconcile clean."""
+    ids = ["a" * 32, "b" * 32]
+    fake = RealisticTaskService(
+        result={"platform_status": "COMPLETED", "trial_count": 1},
+        trials=[{
+            "trial_id": "t-1",
+            "harness": {"gateway_request_ids": ids, "model_request_count": 2},
+        }],
+    )
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    (tmp_path / "t-1.usage.jsonl").write_text(
+        "\n".join(json.dumps({
+            "request_id": rid, "source": "agent", "availability": "measured",
+            "input_tokens": 10, "output_tokens": 5, "total_tokens": 15,
+            "duration_ms": 100, "phase": "C1_PLAN",
+        }) for rid in ids) + "\n",
+        encoding="utf-8",
+    )
+    summary = svc.create_run(_run(svc))
+    usage = svc.usage(summary["run_id"])
+    assert usage["summary"]["total_calls"] == 2
+    assert usage["summary"]["complete"] is True
+    assert "coverage" not in usage["summary"]
