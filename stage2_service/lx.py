@@ -532,21 +532,42 @@ class LxService:
 
     @staticmethod
     def _counters(task: Mapping[str, Any]) -> dict[str, Any]:
-        # `structured_feedback` is an aggregate mapping in every task
-        # projection, not a list of interaction records. The per-interaction
-        # rows live in the evaluation's `interaction_ledger`, which is also
-        # what `interactions()` projects, so read the ledger here to keep both
-        # surfaces consistent and tolerate a missing or oddly shaped ledger.
+        # `structured_feedback` is an aggregate mapping in both the summary and
+        # debug projections. Only an `interaction_ledger` is a list of records;
+        # never iterate the aggregate mapping itself.
         ledger = _find_first(task, "interaction_ledger")
         interactions = [item for item in ledger if isinstance(item, Mapping)] if isinstance(ledger, list) else []
+        feedback = task.get("structured_feedback")
+        counts = feedback.get("counts") if isinstance(feedback, Mapping) else {}
+        counts = counts if isinstance(counts, Mapping) else {}
+        if not interactions and isinstance(feedback, Mapping):
+            # The default projection intentionally omits the raw groups. Use
+            # their aggregate counts so summaries remain truthful after a
+            # restart or before a debug projection is requested.
+            interaction_count = sum(
+                _counter_int(counts.get(name))
+                for name in (
+                    "facts",
+                    "auth_confirmations",
+                    "user_decisions",
+                    "clarification_requests",
+                    "semantic_nudges",
+                )
+            )
+            questions_asked = _counter_int(counts.get("clarification_requests"))
+        else:
+            interaction_count = len(interactions)
+            questions_asked = sum(
+                1 for item in interactions if item.get("initiator") == "AGENT"
+            )
         events = task.get("events")
         event_count = task.get("event_count")
         if not isinstance(event_count, int):
             event_count = len(events) if isinstance(events, list) else 0
         return {
-            "interactions": len(interactions),
-            "questions_asked_by_agent": sum(1 for item in interactions if item.get("initiator") == "AGENT"),
-            "redundant_questions": 0,
+            "interactions": interaction_count,
+            "questions_asked_by_agent": questions_asked,
+            "redundant_questions": _counter_int(counts.get("redundant_questions")),
             "elapsed_seconds": task.get("elapsed_seconds", 0),
             "event_count": event_count,
         }
@@ -783,6 +804,17 @@ def _platform_status(task: Mapping[str, Any]) -> str | None:
     result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
     raw = task.get("platform_status") or result.get("platform_status")
     return str(raw).upper() if raw else None
+
+
+def _counter_int(value: Any) -> int:
+    """Read a non-negative integer from an aggregate counter safely."""
+    if isinstance(value, bool):
+        return 0
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, number)
 
 
 def _find_first(value: Any, key: str) -> Any:
