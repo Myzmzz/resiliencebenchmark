@@ -314,6 +314,12 @@ class TrialRelay:
         if self._server is not None:
             self._server.should_exit = True
         self._thread.join(timeout=self.shutdown_timeout_seconds)
+        if self._thread.is_alive() and self._server is not None:
+            # Graceful shutdown waits, without a limit, for open requests. A
+            # cancelled Agent can leave one open upstream (2026-09-10 L2xC0:
+            # the campaign failed here and the Trial was never scored).
+            self._server.force_exit = True
+            self._thread.join(timeout=self.shutdown_timeout_seconds)
         self._close_socket()
         if self._thread.is_alive():
             raise RuntimeError("Trial relay did not terminate before the next Trial")

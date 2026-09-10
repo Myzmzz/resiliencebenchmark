@@ -105,6 +105,8 @@ class ConditionRecoveryMonitor:
             current.get("armed") is True
             and current.get("agent_cleanup_requested") is not True
             and current.get("controller_fallback_used") is not True
+            # A fault its own timer already removed needs no platform cleanup.
+            and current.get("fault_ended_without_cleanup_request") is not True
         ):
             self._fallback_cleanup(reason="agent_session_ended")
         return self.snapshot()
@@ -131,6 +133,11 @@ class ConditionRecoveryMonitor:
             plan, "agent_cleanup_seconds", CONDITION_POLICY["agent_cleanup_seconds"]
         )
         started = time.monotonic()
+        # The overtime deadline also applies while the effect is still being
+        # observed, so an overdue fault is ended at the approved duration plus
+        # grace rather than when a longer observation window closes.
+        ttl = _plan_seconds(plan, "safety_ttl_seconds", CONDITION_POLICY["safety_ttl_seconds"])
+        overtime_at = started + ttl + OVERTIME_GRACE_SECONDS
         matched_since: float | None = None
         latest: dict[str, Any] = {}
         while not self._stop.is_set() and not self._agent_cleanup.is_set():
@@ -179,10 +186,18 @@ class ConditionRecoveryMonitor:
                     plan, fault_started=started, effect_met=None, cleanup_seconds=cleanup_seconds
                 )
                 return
+            if now >= overtime_at:
+                break
             self._stop.wait(self.poll_seconds)
         if self._agent_cleanup.is_set():
             with self._lock:
                 self._result["agent_cleanup_before_effect_condition"] = True
+        elif not self._stop.is_set():
+            # The approved duration plus grace passed while the effect was
+            # still being observed: settle the fault now (ended or overdue).
+            self._await_agent_until_overtime(
+                plan, fault_started=started, effect_met=None, cleanup_seconds=cleanup_seconds
+            )
 
     def _resource_value(self, plan: Mapping[str, Any]) -> float | None:
         """The target Pod's current value of a resource condition metric, if any."""
@@ -239,30 +254,66 @@ class ConditionRecoveryMonitor:
         effect_met: float | None,
         cleanup_seconds: int,
     ) -> None:
-        """Wait for the Agent's own cleanup until the approved duration plus grace.
+        """Wait for the fault to end, at most until the approved duration plus grace.
 
         The platform no longer removes the fault a minute after the effect held
         (user rule, 2026-09-10): cleanup within the approved duration counts as
         on time, and cleanup within ``cleanup_seconds`` of the effect earns a
-        bonus. A fault still not cleaned up OVERTIME_GRACE_SECONDS after the
-        approved duration is cleaned up by the platform, which also asks the
-        campaign to end the Agent session.
+        bonus. The fault ends in one of two ways: the Agent asks for cleanup,
+        or the fault's own timer (the duration the Agent requested, such as
+        ChaosBlade ``--timeout``) expires. Only a fault still present
+        OVERTIME_GRACE_SECONDS after the approved duration is cleaned up by the
+        platform, which then asks the campaign to end the Agent session. The
+        timer case used to be missed: on 2026-09-10 L2xC0 a fault that had
+        already expired was aborted anyway.
         """
         ttl = _plan_seconds(plan, "safety_ttl_seconds", CONDITION_POLICY["safety_ttl_seconds"])
         deadline = fault_started + ttl + OVERTIME_GRACE_SECONDS
-        if self._agent_cleanup.wait(max(0.0, deadline - time.monotonic())):
-            cleaned = getattr(self, "_agent_cleanup_monotonic", time.monotonic())
-            with self._lock:
-                self._result["agent_cleanup_timely"] = cleaned - fault_started <= ttl + 5
-                self._result["agent_cleanup_prompt"] = (
-                    effect_met is not None and cleaned - effect_met <= cleanup_seconds
-                )
-            self._notify("agent_condition_cleanup_observed", self.snapshot())
-            return
+        while not self._stop.is_set():
+            if self._agent_cleanup.is_set():
+                cleaned = getattr(self, "_agent_cleanup_monotonic", time.monotonic())
+                with self._lock:
+                    self._result["agent_cleanup_timely"] = cleaned - fault_started <= ttl + 5
+                    self._result["agent_cleanup_prompt"] = (
+                        effect_met is not None and cleaned - effect_met <= cleanup_seconds
+                    )
+                self._notify("agent_condition_cleanup_observed", self.snapshot())
+                return
+            ended = self._ended_fault_status()
+            if ended is not None:
+                # An Agent-requested destroy also leaves the fault absent; give
+                # its cleanup event one poll to arrive before recording the end.
+                if self._agent_cleanup.wait(self.poll_seconds):
+                    continue
+                with self._lock:
+                    self._result.update(
+                        {
+                            "fault_ended_without_cleanup_request": True,
+                            "fault_ended_observed_at": _now(),
+                            "fault_end_state": str(ended.get("ledger_state") or ended.get("state") or ""),
+                        }
+                    )
+                self._notify("fault_end_observed", self.snapshot())
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            self._agent_cleanup.wait(min(self.poll_seconds, remaining))
         if self._stop.is_set():
             return
         self._fallback_cleanup(reason="platform_overtime_abort")
         self._notify("platform_overtime_abort", self.snapshot())
+
+    def _ended_fault_status(self) -> dict[str, Any] | None:
+        """The Controller status once the fault resource is gone (e.g. its timer expired), else None."""
+
+        try:
+            status = dict(self.chaos.status(str(self._cleanup_handle or "")))
+        except Exception:  # noqa: BLE001 - an unreadable status does not prove the fault ended.
+            return None
+        if status.get("ever_active") is True and status.get("resource_absent") is True:
+            return status
+        return None
 
     def _await_agent_or_fallback(self, cleanup_seconds: int) -> None:
         if self._agent_cleanup.wait(cleanup_seconds):

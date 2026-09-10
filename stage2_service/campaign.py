@@ -204,11 +204,15 @@ class CampaignEngine:
         external_stop = stop_requested or (lambda: False)
         campaign_deadline = time.monotonic() + self.max_campaign_seconds
         # Set when the condition monitor ends an overdue Trial (approved
-        # duration plus grace); stops the Agent session.
+        # duration plus grace). It ends only the Agent session: the Trial is
+        # still cleaned up, finalized and scored, and the campaign goes on.
         overtime_abort = {"requested": False}
 
         def should_stop() -> bool:
-            return external_stop() or overtime_abort["requested"] or time.monotonic() >= campaign_deadline
+            return external_stop() or time.monotonic() >= campaign_deadline
+
+        def cancel_agent_turn() -> bool:
+            return _agent_turn_cancelled(should_stop, overtime_abort)
 
         def emit(
             kind: str,
@@ -763,7 +767,7 @@ class CampaignEngine:
                             self.harness_runner.run
                         ).parameters
                         if "cancel_requested" in runner_parameters:
-                            runner_kwargs["cancel_requested"] = should_stop
+                            runner_kwargs["cancel_requested"] = cancel_agent_turn
                         if "decision_policy" in runner_parameters:
                             runner_kwargs["decision_policy"] = request.decision_policy
                         if "prompt_level_label" in runner_parameters:
@@ -1843,6 +1847,18 @@ def _update_disturbance_attempt(
 ) -> None:
     attempt.update(updates)
     attempt["state"] = state
+
+
+def _agent_turn_cancelled(
+    campaign_should_stop: Callable[[], bool], overtime_abort: Mapping[str, bool]
+) -> bool:
+    """Whether the running Agent turn must be cancelled.
+
+    A campaign stop cancels it, and so does a platform overtime abort. The
+    abort must not stop the campaign itself: until 2026-09-10 it shared the
+    campaign stop flag, so the aborted L2xC0 Trial was never scored.
+    """
+    return campaign_should_stop() or overtime_abort.get("requested") is True
 
 
 def _note_overtime_abort(flag: dict[str, bool], monitor_kind: str) -> None:

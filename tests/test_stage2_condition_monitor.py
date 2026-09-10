@@ -148,6 +148,79 @@ def test_cleanup_after_the_bonus_window_is_still_on_time_and_the_fault_is_left_a
     assert cleanup.calls == 0
 
 
+class TimerCleanup(Cleanup):
+    """The fault's own timer ends it: running at first, then gone."""
+
+    def __init__(self):
+        super().__init__()
+        self.status_calls = 0
+
+    def status(self, handle):
+        self.status_calls += 1
+        if self.status_calls == 1:
+            return super().status(handle)
+        return {"ever_active": True, "resource_absent": True, "ledger_state": "expired_cleaned"}
+
+
+class QuietWorkload(Workload):
+    """Traffic that never shows the effect, so observation would run its full window."""
+
+    def current(self):
+        return {
+            "sample_status": "valid",
+            "target_requests": 110,
+            "target_failures": 0,
+            "target_response_sum_ms": 1100,
+            "target_latency_ms": 10,
+        }
+
+
+def test_a_fault_that_ended_on_its_own_timer_is_not_aborted(monkeypatch):
+    # 2026-09-10 L2xC0: bladeai's 60-second timer had already ended the fault,
+    # yet the platform aborted the Trial at the approved duration plus grace.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = TimerCleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "fault_ended_without_cleanup_request")
+    result = monitor.finish()
+
+    assert result["fault_end_state"] == "expired_cleaned"
+    assert result.get("controller_fallback_used") is not True
+    assert "platform_overtime_abort" not in emitted
+    assert cleanup.calls == 0
+
+
+def test_an_overdue_fault_is_ended_at_the_deadline_while_the_effect_is_still_observed(monkeypatch):
+    # The observation window (30 s here, 300 s live) must not postpone the
+    # abort past the approved duration plus grace.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = Cleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(QuietWorkload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "effect_observation_seconds": 30, "safety_ttl_seconds": 0.05},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "controller_fallback_used")
+    result = monitor.finish()
+
+    assert result["controller_fallback_reason"] == "platform_overtime_abort"
+    assert result.get("effect_condition_met") is not True
+    assert "platform_overtime_abort" in emitted
+    assert cleanup.calls == 1
+
+
 def test_recovery_condition_uses_new_requests_against_original_baseline():
     matched, evidence = evaluate_condition(
         {

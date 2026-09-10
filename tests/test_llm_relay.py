@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from dataclasses import replace
 
 import httpx
@@ -294,6 +296,50 @@ def test_managed_relay_releases_prebound_socket_when_app_creation_fails(monkeypa
 
     assert managed._socket is None
     assert managed._thread is None
+
+
+class _HangingServer:
+    """A uvicorn stand-in whose graceful shutdown waits on an open request."""
+
+    def __init__(self):
+        self.should_exit = False
+        self.force_exit = False
+
+
+def test_relay_close_forces_exit_when_graceful_shutdown_hangs():
+    # 2026-09-10 L2xC0: a cancelled Agent left a request open, graceful
+    # shutdown never finished, and the campaign failed before scoring.
+    config, _client = relay(lambda request: httpx.Response(200))
+    managed = TrialRelay(config, shutdown_timeout_seconds=0.05)
+    server = _HangingServer()
+
+    def serve():
+        while not server.force_exit:
+            time.sleep(0.01)
+
+    managed._server = server
+    managed._thread = threading.Thread(target=serve, daemon=True)
+    managed._thread.start()
+
+    managed.close()
+
+    assert server.should_exit is True
+    assert server.force_exit is True
+    assert managed._thread is None
+
+
+def test_relay_close_still_reports_a_server_that_never_stops():
+    config, _client = relay(lambda request: httpx.Response(200))
+    managed = TrialRelay(config, shutdown_timeout_seconds=0.05)
+    released = threading.Event()
+    managed._server = _HangingServer()
+    managed._thread = threading.Thread(target=released.wait, daemon=True)
+    managed._thread.start()
+    try:
+        with pytest.raises(RuntimeError, match="did not terminate"):
+            managed.close()
+    finally:
+        released.set()
 
 
 class _Stream(httpx.AsyncByteStream):

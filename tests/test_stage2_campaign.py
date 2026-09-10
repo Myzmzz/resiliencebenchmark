@@ -1035,6 +1035,18 @@ def test_d7_finalizes_capability_loss_before_evaluation_without_generic_rollback
     assert json.loads((trial_root / "disturbance-attempt.json").read_text())["applied"] is True
 
 
+def test_an_overtime_abort_cancels_only_the_agent_turn():
+    # 2026-09-10 L2xC0: the abort shared the campaign stop flag, so the Trial
+    # was never finalized or scored. It now cancels only the Agent's turn.
+    from stage2_service.campaign import _agent_turn_cancelled
+
+    overtime_abort = {"requested": False}
+    assert _agent_turn_cancelled(lambda: False, overtime_abort) is False
+    overtime_abort["requested"] = True
+    assert _agent_turn_cancelled(lambda: False, overtime_abort) is True
+    assert _agent_turn_cancelled(lambda: True, {"requested": False}) is True
+
+
 def test_only_a_platform_overtime_abort_sets_the_stop_flag():
     from stage2_service.campaign import _note_overtime_abort
 
