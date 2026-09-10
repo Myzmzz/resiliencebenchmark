@@ -1053,3 +1053,32 @@ def test_duration_source_tells_the_agents_plan_from_the_sdk_default():
     assert _duration_source({"tool_params": {"timeout": "300"}, "proposal_duration_seconds": 600}) == "agent_plan"
     assert _duration_source({"tool_params": {"cpu-percent": "80"}, "state_duration_seconds": 600}) == "sdk_default"
     assert _duration_source({"tool_params": {}}) == "none"
+
+
+def test_a_cpu_plan_without_intensity_uses_chaosblades_default_instead_of_being_refused():
+    # 2026-09-10 L1xC0: bladeai's plan stated no parameters and the adapter
+    # refused it before the simulated user saw it. Rule (user, 2026-09-10): use
+    # ChaosBlade's documented default, record it, and halve plan validation.
+    from stage2_service.bladeai_task import proposal_intensity_source
+
+    proposal = {
+        "target": {"namespace": "otel-demo", "names": ["cart-a"]},
+        "fault_intent": {"fault_type": "pod-cpu-fullload", "scope": "pod", "target": "cpu", "action": "fullload"},
+        "params": {},
+        "duration_seconds": 600,
+    }
+    partial = partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+    assert partial["fault_type"] == "cpu-load"
+    assert partial["intensity"] == {"cpu_percent": 100}
+    assert partial["safety_ttl_seconds"] == 600
+    assert proposal_intensity_source(proposal) == "tool_default"
+
+    stated = {**proposal, "params": {"cpu-percent": "80"}}
+    assert partial_plan_from_native_proposal(stated, target_uid_resolver=_UID())["intensity"] == {"cpu_percent": 80}
+    assert proposal_intensity_source(stated) == "agent_plan"
+
+
+def test_a_plan_without_intensity_and_no_tool_default_names_the_missing_flag():
+    proposal = {**_current_native_proposal(), "params": {"timeout": "600"}}
+    with pytest.raises(BladeTaskError, match="--time"):
+        partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())

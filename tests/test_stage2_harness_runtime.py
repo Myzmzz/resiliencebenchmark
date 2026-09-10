@@ -1204,6 +1204,21 @@ def test_bladeai_duration_source_is_read_from_the_last_proposal_event():
     assert _bladeai_duration_source(_Namespace(stdout=b"")) is None
 
 
+def test_bladeai_intensity_source_is_read_from_the_last_proposal_event():
+    import json as _json
+    from types import SimpleNamespace as _Namespace
+
+    from stage2_service.harness_runtime import _bladeai_intensity_source
+
+    lines = [
+        {"type": "stage2_bladeai_event", "kind": "sdk_confirmation_proposed", "payload": {"intensity_source": "agent_plan"}},
+        {"type": "stage2_bladeai_event", "kind": "sdk_confirmation_proposed", "payload": {"intensity_source": "tool_default"}},
+    ]
+    stdout = ("\n".join(_json.dumps(line) for line in lines) + "\n").encode()
+    assert _bladeai_intensity_source(_Namespace(stdout=stdout)) == "tool_default"
+    assert _bladeai_intensity_source(_Namespace(stdout=b"")) is None
+
+
 def test_feedback_a_harness_cannot_receive_by_resume_is_queued_in_band(tmp_path):
     from datetime import UTC as _UTC, datetime as _datetime
 

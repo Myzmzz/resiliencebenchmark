@@ -373,8 +373,8 @@ def _queue_unsupported_feedback_in_band(
     return notice.notice_id
 
 
-def _bladeai_duration_source(result: Any) -> str | None:
-    """The duration source BladeAI's Worker reported for its last proposal, if any."""
+def _bladeai_proposal_source(result: Any, key: str) -> str | None:
+    """A source field (``duration_source``, ``intensity_source``) of BladeAI's last proposal."""
     raw = bytes(getattr(result, "stdout", b"") or b"")
     source = None
     for line in raw.decode("utf-8", errors="replace").splitlines():
@@ -388,8 +388,18 @@ def _bladeai_duration_source(result: Any) -> str | None:
             and value.get("kind") == "sdk_confirmation_proposed"
             and isinstance(value.get("payload"), Mapping)
         ):
-            source = value["payload"].get("duration_source") or source
+            source = value["payload"].get(key) or source
     return source
+
+
+def _bladeai_duration_source(result: Any) -> str | None:
+    """The duration source BladeAI's Worker reported for its last proposal, if any."""
+    return _bladeai_proposal_source(result, "duration_source")
+
+
+def _bladeai_intensity_source(result: Any) -> str | None:
+    """Whether BladeAI's last proposal stated its intensity or left it to the tool default."""
+    return _bladeai_proposal_source(result, "intensity_source")
 
 
 def _bladeai_wp8_retry_classifier(result: Any) -> tuple[bool, str, Mapping[str, Any]]:
@@ -1628,6 +1638,7 @@ class NativeHarnessRunner:
             "platform_model": platform_model,
             "authorized_target": runtime_context.target.model_dump(mode="json"),
             "plan_duration_source": _bladeai_duration_source(result) if harness is HarnessKind.BLADEAI else None,
+            "plan_intensity_source": _bladeai_intensity_source(result) if harness is HarnessKind.BLADEAI else None,
             "harness_error_code": harness_failure.get("error_code"),
             "harness_error": redact_json(harness_failure, env),
             "harness_model_request_count": sum(

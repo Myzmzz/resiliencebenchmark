@@ -321,6 +321,8 @@ def _execution_nodes(
     if plan_status is NodeStatus.VERIFIED and (
         _plan_deviations(report)
         or report.final_output.get("plan_duration_source") == "sdk_default"
+        # An intensity left to ChaosBlade's default costs the same (2026-09-10).
+        or report.final_output.get("plan_intensity_source") == "tool_default"
     ):
         # The fault ran with a duration or intensity other than the approved
         # one, or the approved duration was the SDK's default rather than the

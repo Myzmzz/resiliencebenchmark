@@ -29,6 +29,7 @@ from .bladeai_task import (
     McpTargetUIDResolver,
     TargetUIDResolver,
     partial_plan_from_native_proposal,
+    proposal_intensity_source,
     confirmation_granted,
 )
 from .condition_policy import WP8_CONDITION_POLICY
@@ -746,6 +747,7 @@ class Runtime:
                     ),
                     "capture_audit": capture_audit,
                     "duration_source": _duration_source(capture_audit),
+                    "intensity_source": proposal_intensity_source(proposal),
                     "proposal_after_take_audit": proposal_audit,
                 },
             )

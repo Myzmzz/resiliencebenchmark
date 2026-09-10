@@ -75,6 +75,14 @@ NATIVE_INTENSITY_FLAGS = {
     "cpu-load": ("--cpu-percent", "cpu_percent"),
     "memory-stress": ("--mem-percent", "mem_percent"),
 }
+# ChaosBlade's documented default for an intensity flag a plan leaves out
+# (pod-cpu fullload: ``--cpu-percent`` defaults to 100). Such a plan is not
+# refused: the default is used, recorded as the intensity source, and costs
+# plan-validation credit (user rule, 2026-09-10). Fault types without a
+# documented default must still state their intensity.
+NATIVE_INTENSITY_TOOL_DEFAULTS = {
+    "cpu-load": "100",
+}
 # Native flags whose value the Controller fixes. A command may omit them or
 # repeat exactly these values; any other value is refused.
 CONTROLLER_FIXED_NATIVE_FLAGS = {
@@ -517,6 +525,14 @@ def canonical_native_intensity(fault_type: str, flags: Mapping[str, Any], *, act
         if flags:
             raise BladeShimError("network drop maps only to Controller 100 percent loss")
         return {"loss_percent": 100}
+    if not flags:
+        default = NATIVE_INTENSITY_TOOL_DEFAULTS.get(fault_type)
+        if default is None:
+            raise BladeShimError(
+                f"the plan does not state {native_key} (the {fault_type} intensity) "
+                "and ChaosBlade documents no default for it"
+            )
+        flags = {native_key: default}
     if set(flags) != {native_key}:
         raise BladeShimError("native fault parameters are not exactly representable by Controller policy")
     value = flags[native_key]
@@ -525,6 +541,25 @@ def canonical_native_intensity(fault_type: str, flags: Mapping[str, Any], *, act
     if isinstance(value, bool) or not isinstance(value, (str, int)) or not str(value).isdigit() or int(value) <= 0:
         raise BladeShimError("native fault intensity must be a positive integer without units")
     return {canonical: int(value)}
+
+
+def native_intensity_source(fault_type: str, flags: Mapping[str, Any], *, action: str) -> str:
+    """Where a plan's intensity comes from: ``agent_plan`` or ``tool_default``.
+
+    ``tool_default`` means the plan left the intensity flag out and ChaosBlade's
+    documented default (NATIVE_INTENSITY_TOOL_DEFAULTS) stands in, which is
+    recorded and costs plan-validation credit.
+    """
+    native_key = NATIVE_INTENSITY_FLAGS.get(fault_type, ("", ""))[0]
+    implied_by_action = fault_type == "network-loss" and action == "drop"
+    if (
+        native_key
+        and not implied_by_action
+        and native_key not in flags
+        and fault_type in NATIVE_INTENSITY_TOOL_DEFAULTS
+    ):
+        return "tool_default"
+    return "agent_plan"
 
 
 def _parse_flags(values: Sequence[str]) -> dict[str, str | bool]:
@@ -649,8 +684,41 @@ def _operation_result_metadata(value: Mapping[str, Any]) -> dict[str, str]:
 
 
 def _require_ok(result: Mapping[str, Any], tool: str) -> None:
-    if result.get("ok") is not True:
-        raise BladeShimError(f"{tool} was denied by the controlled MCP service")
+    """Refuse with the Controller's own code, reason and next step.
+
+    The Agent used to see only "<tool> was denied by the controlled MCP
+    service" and could not tell an expired baseline pass (2026-09-10 L0xC0)
+    from any other refusal; the user asked for the reason to be passed on.
+    """
+    if result.get("ok") is True:
+        return
+    error = result.get("error") if isinstance(result.get("error"), Mapping) else {}
+    code = _bounded_reason(error.get("code") or result.get("error_code")) or "UNSPECIFIED"
+    message = (
+        _bounded_reason(error.get("message") or result.get("reason") or result.get("message"))
+        or _findings_reason(result.get("findings"))
+        or "no reason was given"
+    )
+    next_step = _bounded_reason(error.get("next_step") or result.get("next_step"))
+    detail = f"{tool} was refused by the controlled MCP service: {code}: {message}"
+    raise BladeShimError(detail + (f" Next step: {next_step}" if next_step else ""))
+
+
+def _bounded_reason(value: Any, limit: int = 400) -> str:
+    """Controller-supplied text on one line, trimmed so a refusal stays readable."""
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _findings_reason(findings: Any) -> str:
+    """The first few validation findings, as one readable reason."""
+    if not isinstance(findings, list):
+        return ""
+    parts = [
+        str(item.get("message") or item.get("code") or "") if isinstance(item, Mapping) else str(item)
+        for item in findings[:3]
+    ]
+    return _bounded_reason("; ".join(part for part in parts if part))
 
 
 def _help_text() -> str:

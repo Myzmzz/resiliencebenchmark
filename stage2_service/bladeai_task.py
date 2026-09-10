@@ -542,9 +542,15 @@ def partial_plan_from_native_proposal(
         _required_text(fault.get("target"), "proposal.fault_intent.target"),
         _required_text(fault.get("action"), "proposal.fault_intent.action"),
     )
+    # No parameters is not refused outright any more (user rule, 2026-09-10):
+    # an intensity with a documented ChaosBlade default is filled in by
+    # canonical_native_intensity and recorded; one without a default is still
+    # refused, naming the missing flag.
     params = proposal.get("params")
-    if not isinstance(params, Mapping) or not params:
-        raise BladeTaskError("BladeAI proposal is missing evidenced fault parameters")
+    if params is None:
+        params = {}
+    if not isinstance(params, Mapping):
+        raise BladeTaskError("BladeAI proposal parameters must be a mapping")
     from .bladeai_shim import BladeShimError, canonical_native_intensity
     native_params = {
         "--" + str(key).replace("_", "-"): value
@@ -577,6 +583,36 @@ def partial_plan_from_native_proposal(
     elif duration_seconds is not None:
         partial["safety_ttl_seconds"] = duration_seconds
     return partial
+
+
+def proposal_intensity_source(proposal: Mapping[str, Any]) -> str:
+    """Whether an SDK proposal states its intensity or leaves it to the tool default.
+
+    Returns ``agent_plan``, ``tool_default`` (ChaosBlade's documented default
+    stands in, see ``NATIVE_INTENSITY_TOOL_DEFAULTS``) or ``none`` when the
+    proposal cannot be read. The Worker records it next to the duration source
+    so a defaulted intensity halves plan validation (user rule, 2026-09-10).
+    """
+    fault = proposal.get("fault_intent")
+    params = proposal.get("params")
+    if not isinstance(fault, Mapping) or not (params is None or isinstance(params, Mapping)):
+        return "none"
+    try:
+        fault_type, action = _canonical_fault_type(
+            str(fault.get("scope") or ""),
+            str(fault.get("target") or ""),
+            str(fault.get("action") or ""),
+        )
+    except (BladeTaskError, KeyError, ValueError):
+        return "none"
+    from .bladeai_shim import native_intensity_source
+
+    native_params = {
+        "--" + str(key).replace("_", "-"): value
+        for key, value in (params or {}).items()
+        if str(key) != "timeout"
+    }
+    return native_intensity_source(fault_type, native_params, action=action)
 
 
 def _canonical_fault_type(scope: str, target: str, action: str) -> tuple[str, str]:
