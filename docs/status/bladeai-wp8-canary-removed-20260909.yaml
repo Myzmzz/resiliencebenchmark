@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","kind":"Pod","metadata":{"annotations":{},"labels":{"app.kubernetes.io/component":"cart","app.kubernetes.io/name":"bladeai-wp8-canary","opentelemetry.io/name":"cart","resiliencebenchmark.io/qualification":"bladeai-wp8"},"name":"bladeai-wp8-canary","namespace":"otel-demo"},"spec":{"containers":[{"env":[{"name":"OTEL_SERVICE_NAME","value":"bladeai-wp8-canary"},{"name":"OTEL_COLLECTOR_NAME","value":"otel-collector"},{"name":"OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE","value":"cumulative"},{"name":"CART_PORT","value":"8080"},{"name":"ASPNETCORE_URLS","value":"http://*:$(CART_PORT)"},{"name":"VALKEY_ADDR","value":"valkey-cart:6379"},{"name":"FLAGD_HOST","value":"flagd"},{"name":"FLAGD_PORT","value":"8013"},{"name":"OTEL_EXPORTER_OTLP_ENDPOINT","value":"http://$(OTEL_COLLECTOR_NAME):4317"}],"image":"1.94.151.57:85/observe/otel-demo:2.2.0-cart","imagePullPolicy":"IfNotPresent","name":"cart","ports":[{"containerPort":8080,"name":"service"}],"resources":{"limits":{"memory":"160Mi"},"requests":{"memory":"160Mi"}}}],"restartPolicy":"Never","serviceAccountName":"otel-demo"}}
+  creationTimestamp: "2026-09-07T03:23:32Z"
+  labels:
+    app.kubernetes.io/component: cart
+    app.kubernetes.io/name: bladeai-wp8-canary
+    opentelemetry.io/name: cart
+    resiliencebenchmark.io/qualification: bladeai-wp8
+  name: bladeai-wp8-canary
+  namespace: otel-demo
+  resourceVersion: "252195861"
+  uid: 4163db8f-5c56-452f-a881-5cb48f40258b
+spec:
+  containers:
+  - env:
+    - name: OTEL_SERVICE_NAME
+      value: bladeai-wp8-canary
+    - name: OTEL_COLLECTOR_NAME
+      value: otel-collector
+    - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+      value: cumulative
+    - name: CART_PORT
+      value: "8080"
+    - name: ASPNETCORE_URLS
+      value: http://*:$(CART_PORT)
+    - name: VALKEY_ADDR
+      value: valkey-cart:6379
+    - name: FLAGD_HOST
+      value: flagd
+    - name: FLAGD_PORT
+      value: "8013"
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://$(OTEL_COLLECTOR_NAME):4317
+    image: 1.94.151.57:85/observe/otel-demo:2.2.0-cart
+    imagePullPolicy: IfNotPresent
+    name: cart
+    ports:
+    - containerPort: 8080
+      name: service
+      protocol: TCP
+    resources:
+      limits:
+        memory: 160Mi
+      requests:
+        memory: 160Mi
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-47phs
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  nodeName: tcse-v100-02
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: Never
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: otel-demo
+  serviceAccountName: otel-demo
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - effect: NoExecute
+    key: node.kubernetes.io/not-ready
+    operator: Exists
+    tolerationSeconds: 300
+  - effect: NoExecute
+    key: node.kubernetes.io/unreachable
+    operator: Exists
+    tolerationSeconds: 300
+  volumes:
+  - name: kube-api-access-47phs
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status:
+  conditions:
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-07T03:23:32Z"
+    status: "True"
+    type: Initialized
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-07T03:23:34Z"
+    status: "True"
+    type: Ready
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-07T03:23:34Z"
+    status: "True"
+    type: ContainersReady
+  - lastProbeTime: null
+    lastTransitionTime: "2026-09-07T03:23:32Z"
+    status: "True"
+    type: PodScheduled
+  containerStatuses:
+  - containerID: docker://729aef1ec95d57bd68467707d070d89fc31349fcda0dda0e25e49edc3505518f
+    image: 1.94.151.57:85/observe/otel-demo:2.2.0-cart
+    imageID: docker-pullable://1.94.151.57:85/observe/otel-demo@sha256:07718d3a04e9d4baa164bfe9f431b2bc52bec1ba0187689a7ad28f71893599d4
+    lastState: {}
+    name: cart
+    ready: true
+    restartCount: 0
+    started: true
+    state:
+      running:
+        startedAt: "2026-09-07T03:23:33Z"
+  hostIP: 192.168.0.138
+  phase: Running
+  podIP: 10.0.1.123
+  podIPs:
+  - ip: 10.0.1.123
+  qosClass: Burstable
+  startTime: "2026-09-07T03:23:32Z"

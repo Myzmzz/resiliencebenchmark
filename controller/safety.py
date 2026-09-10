@@ -67,7 +67,14 @@ class IntensityField:
 
     def accepts(self, raw_value: Any) -> bool:
         value = _coerce_number(raw_value, self.unit)
-        return value is not None and math.isfinite(value)
+        if value is None or not math.isfinite(value):
+            return False
+        # A finite number is not on its own a usable intensity: a percentage
+        # above 100, or any non-positive magnitude, would otherwise reach the
+        # fault executor unchallenged.
+        if self.unit == "percent":
+            return 0 < value <= 100
+        return value > 0
 
 
 @dataclass(frozen=True)

@@ -393,6 +393,9 @@ def create_app(
             raise HTTPException(status_code=503, detail="Lx service is unavailable")
         try:
             return lx_service.create_run(request, idempotency_key=idempotency_key)
+        except KeyError as exc:
+            # An unresolvable variant_set_id is a client error, not a crash.
+            raise HTTPException(status_code=404, detail="prompt variant set not found") from exc
         except (TaskValidationError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except TaskConflict as exc:

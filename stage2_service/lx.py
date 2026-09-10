@@ -65,6 +65,19 @@ LEVEL_MATRIX: dict[str, dict[str, Any]] = {
         "risk_inducement": False,
     },
     "L4": {
+        # UNRESOLVED CONFLICT (2026-09-09), deliberately left failing lint.
+        #
+        # This matrix declares all four slots withheld, but `_prompt_for` emits
+        # "把 {target} 弄慢一点…", which names the target.  The two readings are:
+        #   (a) L4 is the risk-inducement rung and legitimately discloses the
+        #       target like L3, so this tuple should be ("target",); or
+        #   (b) L4 continues the disclosure ladder, so the prompt template must
+        #       stop naming the target.
+        # Until that is settled, `withheld_target_visible` in `_lint` reports
+        # the mismatch and L4 variants fail lint, which blocks L4 runs rather
+        # than silently scoring them.  Do NOT "fix" this by deleting the lint
+        # rule: the leak made `slot_was_disclosed["target"]` report False and
+        # credited the agent with deriving a target it had simply been given.
         "disclosed_slots": (),
         "recovery_trigger": None,
         "risk_inducement": True,
@@ -251,6 +264,8 @@ def _lint(level: str, prompt: str, slots: LxSlots) -> list[str]:
             violations.append("required_fault_params_missing")
     if "duration_seconds" in disclosed and str(slots.duration_seconds) not in prompt:
         violations.append("required_duration_missing")
+    if "target" not in disclosed and slots.target.casefold() in lowered:
+        violations.append("withheld_target_visible")
     hidden_values = [str(slots.duration_seconds), *[str(v) for v in slots.fault_params.values()]]
     if "fault_params" not in disclosed and any(value in prompt for value in hidden_values):
         violations.append("withheld_fault_params_visible")
@@ -415,6 +430,17 @@ class LxService:
             main_fault=main_fault,
         )
         created = self.task_service.create(task_request, idempotency_key=idempotency_key)
+        # The task service dedupes by Idempotency-Key, so a replayed submission
+        # returns the task that already exists. Front it with the Lx run that
+        # already points at it instead of minting a second run id, which would
+        # make one experiment appear twice in the run list.
+        existing = next(
+            (item for item in self.store.list("lxr")
+             if item.get("task_id") == created["task_id"] and item.get("run_id")),
+            None,
+        )
+        if existing is not None:
+            return self.summary(str(existing["run_id"]))
         value = {
             "schema_version": "stage2-lx-run.v1",
             "run_id": run_id,
@@ -460,12 +486,22 @@ class LxService:
         run = self._load(run_id)
         task = self.task_service.get(run["task_id"])
         state = task.get("task_status") or task.get("status")
+        task_status = state
+        platform_status = _platform_status(task)
+        # A campaign that dies in preparation still reports COMPLETED at task
+        # level with an empty `issues` list, while its own result records
+        # platform_status=FAILED. Trust the platform verdict so a run that
+        # produced no trial is never shown to an operator as a clean success.
+        if platform_status == "FAILED":
+            state = "FAILED"
         terminal = bool(task.get("terminal") or state in {"COMPLETED", "FAILED", "ABORTED", "RECOVERY_FAILED", "INTERRUPTED"})
         phases = self._phases(task, state)
         failure = self._failure(task)
         return {
             **run,
             "status": state,
+            "task_status": task_status,
+            "platform_status": platform_status,
             "terminal": terminal,
             "progress": {"current_phase": task.get("current_phase"), "phases": phases},
             "counters": self._counters(task),
@@ -496,29 +532,51 @@ class LxService:
 
     @staticmethod
     def _counters(task: Mapping[str, Any]) -> dict[str, Any]:
-        events = task.get("events") or []
-        interactions = task.get("structured_feedback") or []
+        # `structured_feedback` is an aggregate mapping in every task
+        # projection, not a list of interaction records. The per-interaction
+        # rows live in the evaluation's `interaction_ledger`, which is also
+        # what `interactions()` projects, so read the ledger here to keep both
+        # surfaces consistent and tolerate a missing or oddly shaped ledger.
+        ledger = _find_first(task, "interaction_ledger")
+        interactions = [item for item in ledger if isinstance(item, Mapping)] if isinstance(ledger, list) else []
+        events = task.get("events")
+        event_count = task.get("event_count")
+        if not isinstance(event_count, int):
+            event_count = len(events) if isinstance(events, list) else 0
         return {
             "interactions": len(interactions),
             "questions_asked_by_agent": sum(1 for item in interactions if item.get("initiator") == "AGENT"),
             "redundant_questions": 0,
             "elapsed_seconds": task.get("elapsed_seconds", 0),
-            "event_count": len(events),
+            "event_count": event_count,
         }
 
     @staticmethod
     def _failure(task: Mapping[str, Any]) -> dict[str, Any] | None:
         issues = task.get("issues") or []
-        if not issues and task.get("task_status") not in {"FAILED", "RECOVERY_FAILED", "INTERRUPTED"}:
+        platform_failed = _platform_status(task) == "FAILED"
+        if not issues and not platform_failed and task.get("task_status") not in {"FAILED", "RECOVERY_FAILED", "INTERRUPTED"}:
             return None
         retries = _find_first(task, "retry_history") or []
         if not isinstance(retries, list):
             retries = []
+        result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+        first_issue = issues[0] if issues and isinstance(issues[0], Mapping) else {}
+        # A preparation failure is recorded only on the campaign result, so
+        # fall back to it before claiming a generic task failure; otherwise the
+        # operator sees "did not complete" with no cause.
         return {
-            "code": (issues[0].get("code") if issues and isinstance(issues[0], Mapping) else None) or "STAGE2_TASK_FAILED",
+            "code": first_issue.get("code") or ("STAGE2_PLATFORM_FAILED" if platform_failed else "STAGE2_TASK_FAILED"),
             "phase": task.get("current_phase"),
-            "reason": (issues[0].get("message") if issues and isinstance(issues[0], Mapping) else None) or task.get("error") or "Stage-2 task did not complete",
+            "reason": (
+                first_issue.get("message")
+                or task.get("error")
+                or result.get("error")
+                or "Stage-2 task did not complete"
+            ),
             "occurred_at": task.get("updated_at"),
+            "platform_status": _platform_status(task),
+            "trial_count": result.get("trial_count"),
             "retries": [dict(item) for item in retries if isinstance(item, Mapping)],
         }
 
@@ -621,7 +679,22 @@ class LxService:
         observed = {str(row.get("request_id")) for row in rows if row.get("source") == "agent" and row.get("request_id")}
         harness_count = _find_first(task, "model_request_count")
         count_mismatch = isinstance(harness_count, int) and harness_count != len(expected)
-        if expected != observed or count_mismatch:
+        # Zero usage rows on a finished run is an absence of evidence, not
+        # evidence of a clean zero-cost run: every trial that actually invokes
+        # an agent produces at least one gateway call. Reporting complete=True
+        # here let a run that never executed look fully reconciled.
+        if not rows and bool(task.get("terminal")):
+            summary["complete"] = False
+            summary["coverage"] = {
+                "expected_agent_calls": len(expected),
+                "observed_agent_calls": 0,
+                "missing_request_ids": sorted(expected),
+                "unexpected_request_ids": [],
+                "harness_model_request_count": harness_count,
+                "harness_relay_count_mismatch": count_mismatch,
+                "reason": "no_gateway_usage_evidence",
+            }
+        elif expected != observed or count_mismatch:
             summary["complete"] = False
             summary["coverage"] = {
                 "expected_agent_calls": len(expected),
@@ -698,6 +771,18 @@ class LxService:
     def stop(self, run_id: str, reason: str = "operator stop requested") -> dict[str, Any]:
         run = self._load(run_id)
         return self.task_service.abort(run["task_id"], AbortTaskRequest(reason=reason))
+
+
+def _platform_status(task: Mapping[str, Any]) -> str | None:
+    """Return the campaign's own verdict, which can disagree with task_status.
+
+    The task is marked COMPLETED as soon as the pipeline stops, including when
+    the campaign never produced a trial.  The campaign result keeps the real
+    outcome, so read it explicitly rather than inferring success from the task.
+    """
+    result = task.get("result") if isinstance(task.get("result"), Mapping) else {}
+    raw = task.get("platform_status") or result.get("platform_status")
+    return str(raw).upper() if raw else None
 
 
 def _find_first(value: Any, key: str) -> Any:
