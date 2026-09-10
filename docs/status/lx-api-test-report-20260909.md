@@ -318,3 +318,113 @@ L4 的 target 披露冲突**未按任何一个方向定稿**（2026-09-09 决定
 **建议**：给资格验证夹具加一条约束——不得复用被测组件的
 `app.kubernetes.io/component` 与 `opentelemetry.io/name` 取值，否则同类残留会再次阻断实验，
 而且（在 P0-2 修复前）会以"成功"的形式呈现。
+
+---
+
+# 第三部分：线上复验结果
+
+- 新控制器镜像：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-09646d9@sha256:71863975e5aa3d73aef9b72cc3e5295b7728bf0d3b1ebfa45644e8f9687b40d1`
+- Agent 镜像未改（`stage2-agent-120a60b`）：`Dockerfile.agent` 只复制 `harness/` 与 blade-ai，不含 `stage2_service/` 或 `controller/`，本次改动全在控制器侧。
+- Pod `resbench-stage2-integration-68f4744c86-q2plc`：3/3 Running，零重启。
+- 复验用例 21 条，**20 条通过**，1 条失败（见 N6，属用例设计问题而非产品缺陷）。
+
+## 原报告缺陷的复验结论
+
+| 编号 | 复验结果 |
+|---|---|
+| P0-1 | `GET /runs`、`GET /runs/{id}`、`POST /runs` 全部 200/202（原 500）。`counters` 正常产出（`event_count` 160、`elapsed_seconds` 317）。 |
+| P0-2 | 旧的失败运行现在显示 `status=FAILED`、`platform_status=FAILED`、`failure.code=STAGE2_PLATFORM_FAILED`、`trial_count=0`，不再伪装成 COMPLETED。 |
+| P0-2（用量） | 真实运行下 `total_calls=13`、`complete=false`，不再零调用报"对账完整"。 |
+| P1-3 | 新建变体集 L4 `lint.passed=false`、`violations=["withheld_target_visible"]`；L4 运行被 422 `selected prompt variant failed lint` 拦下。L0–L3 全部 lint 干净。 |
+| P1-4 | `cpu_percent` 999 / -50 / 0 → 422；100 / 80 → 200。 |
+| P1-5 | 同 Idempotency-Key 重放返回同一 `run_id`（`lxr-d63ed77c0460497d`）。 |
+| P1-6 | 未知 `variant_set_id` → 404 `prompt variant set not found`（原 500）。 |
+| 环境 | `cart` 在两个选择器下恰好解析到 1 个 Ready Pod，准备阶段通过。 |
+
+## 真实执行链路终于走通
+
+L0 / bladeai / gpt-5.5 / cart / cpu_load 80% / 180s：
+
+```
+status=COMPLETED  platform_status=COMPLETED  trial_validity=VALID  platform_valid=true
+event_count=160   elapsed=317s   trial_count=1   gateway calls=13
+verdict=FAIL      experiment_verdict=FAILED
+main_fault: state=NOT_REQUESTED, injected=false, observed_fault_type=cpu-load
+failure: code=OUTPUT_UNSTRUCTURED, reason=RESULT_CONTRACT_INVALID
+```
+
+**这次 FAIL 是 Agent 的结果，不是平台缺陷**：平台判定 `trial_validity=VALID`、`platform_valid=true`，
+7 条检查中 `MAIN_FAULT_ACTIVE` 未通过，因为 bladeai 拿到把四个槽位都写明的 L0 提示后
+**始终没有请求注入故障**，最后又给出不符合契约的非结构化结果。这正是 benchmark 应该记录的东西——
+而在修复前，同样这次运行会被报成一次干净的 COMPLETED。
+
+## 复验中新发现的问题
+
+### N1. relay 对账没有"期望集"，三方对账实际未生效（必要修）
+
+```
+expected_agent_calls = 0
+observed_agent_calls = 12
+unexpected_request_ids = [12 个真实 request id 全在这里]
+```
+
+`gateway_request_ids`（per-Trial relay 侧应记录的期望列表）为空，于是 12 次真实 Agent 调用
+全部被判为"计划外"。对账逻辑本身是**失败安全**的（正确置 `complete=false`），
+但它拿不到期望集，就无法完成"relay 请求数 ↔ 网关审计 request ID ↔ Harness 调用数"的交叉核对。
+功能清单里这一项目前只有形式，没有实质。
+
+### N2. 13 次调用中 12 次是 `estimated`，只有 1 次 `measured`（建议核查）
+
+`measured=1 / estimated=12 / unavailable=0`。三态标注本身工作正常，流式无上游真值时确实标 `estimated`。
+但由此得出的 `input_tokens=168751`、`cost_usd=0.494952`（`vendor_list_price`）约九成来自估算。
+把这个成本当实测值写进论文会有问题，建议先查清为何 `measured` 路径几乎不生效。
+
+### N3. 13 次调用全部归到 `C1_PLAN`（建议修）
+
+`by_phase` 只有一项 `C1_PLAN: 13`。运行实际已走到 `DONE` 并完成了一个 trial，
+后续阶段一次调用都没有，说明 phase 归属没有随阶段推进更新。按 phase 拆分用量目前不可用。
+
+### N4. 分组用量的 `complete` 与顶层不一致（建议修）
+
+顶层 `complete=false`（对账不通过），但 `by_source.agent.complete=true`。
+`_usage_summary` 的 `complete` 只看 `unavailable == 0`，不看对账结果，分组视图因此比整体乐观。
+
+### N5. 不可变变体缓存会冻结 lint 结论（必要修）
+
+变体集按 `application + slots` 内容寻址且不可变，**lint 结果随变体集一起冻结**。
+本次实测：修复部署后，用改动前已存在的槽位组合请求变体集，返回的仍是旧记录，
+L4 依然 `lint.passed=true`；而 `create_run` 直接信任 `selected_variant["lint"]["passed"]`，
+于是**修复前生成的 L4 变体集至今仍可提交运行**，绕过新加的 lint 规则。
+
+新槽位组合（`cpu_percent=75, duration=240`）生成的变体集则正确报出 `withheld_target_visible`。
+
+建议把 lint 规则版本纳入 `variant_set_id` 的哈希，或在读取缓存时重跑 lint。
+
+### N6. `slot_was_disclosed` 仍未用真实数据验证（覆盖缺口，非缺陷）
+
+L0 运行的 `interaction_ledger` 为空（`interactions` 返回 0 条）。对 L0 这是**正确**的——
+四个槽位全部披露，自主模式下 Agent 无须提问。但这意味着逐字段 `slot_was_disclosed`
+和 0.1 来源系数投影**仍然没有被真实交互数据验证过**，需要一次 L1/L2/L3 运行（存在被隐藏的槽位、
+Agent 会发问）才能验证。复验用例 V21 断言"必须有交互记录"是我写错了，已在此说明，不计为产品缺陷。
+
+### N7. abort 会清空 `result.error`（建议修）
+
+对任务执行 abort 后，`result.error` 被置为 `null`，原先记录的
+`PreparationError: logical component cart resolved to 2 Ready Pods` 原文丢失。
+修复后的 `failure` 仍能正确报出 `platform_status=FAILED` 与 `trial_count=0`，
+但 `reason` 只能退回通用文案。失败原因不该被停止操作抹掉。
+
+## 仍然未修的项（第一部分 P2，原样保留）
+
+| 编号 | 问题 | 状态 |
+|---|---|---|
+| 7 | 网关预检窗口返回 422 而非 503 + Retry-After | 未修；本次重新部署后实测预检约 3–4 分钟，期间提交仍全部 422 |
+| 8 | `polish=true` 被静默忽略 | 未修 |
+| 9 | 未知 `/api/v1/**` 路径返回 200 + SPA HTML | 未修 |
+| 10 | `stop` 对 terminal 运行返回 202 而非 409；返回体无 `run_id`/`schema_version` | 未修 |
+
+## 结论
+
+阻断性问题（P0-1、P0-2、环境残留）已修复并线上验证，Lx 接口现在可用，真实执行链路可以走通。
+剩余必要修的是 N1（对账没有期望集）与 N5（lint 结论被缓存冻结），
+以及尚未定稿的 L4 披露语义。`slot_was_disclosed` 与 0.1 来源系数仍需一次 L1–L3 实跑才能验证。
