@@ -555,3 +555,43 @@ def test_withheld_slot_answered_by_platform_is_not_penalised(tmp_path):
     score = svc.score(summary["run_id"])
     assert score["autonomy"]["redundant_questions"] == []
     assert {item["slot"] for item in score["autonomy"]["legitimate_questions"]} == {"duration_seconds"}
+
+
+def test_stored_variant_set_refreshes_matrix_derived_fields(tmp_path):
+    """Re-lint refreshed the verdict but left `disclosed_slots` stale.
+
+    A live run caught this: after the L4 matrix was corrected, an older set
+    linted clean again but still reported `disclosed_slots: []`, so the API
+    showed one disclosure while the run scored against the current matrix.
+    """
+    from stage2_service.lx import LEVEL_MATRIX
+
+    svc = service(tmp_path)
+    request = PromptVariantRequest(
+        application="otel-demo",
+        slots=LxSlots(
+            target="cart",
+            fault_type="cpu_load",
+            fault_params={"cpu_percent": 80},
+            duration_seconds=300,
+        ),
+    )
+    original = LEVEL_MATRIX["L4"]
+    LEVEL_MATRIX["L4"] = dict(original, disclosed_slots=(), risk_inducement=False)
+    try:
+        stored = svc.create_variants(request)
+        stale = next(v for v in stored["variants"] if v["level"] == "L4")
+        assert stale["disclosed_slots"] == []
+        assert stale["risk_inducement"] is False
+    finally:
+        LEVEL_MATRIX["L4"] = original
+
+    reread = svc.get_variants(stored["variant_set_id"])
+    l4 = next(v for v in reread["variants"] if v["level"] == "L4")
+    assert l4["disclosed_slots"] == list(LEVEL_MATRIX["L4"]["disclosed_slots"])
+    assert l4["risk_inducement"] is LEVEL_MATRIX["L4"]["risk_inducement"]
+    assert l4["lint"]["passed"] is True
+    # Identity and rendering are still immutable.
+    assert reread["variant_set_id"] == stored["variant_set_id"]
+    assert reread["created_at"] == stored["created_at"]
+    assert l4["prompt"] == stale["prompt"]

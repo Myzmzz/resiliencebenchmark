@@ -378,14 +378,26 @@ class LxService:
                 refreshed.append(item)  # type: ignore[arg-type]
                 continue
             level = str(item.get("level") or "")
-            if violations is not None or level not in LEVEL_MATRIX:
+            matrix = LEVEL_MATRIX.get(level)
+            if violations is not None or matrix is None:
                 found = violations or ["unknown_level"]
             else:
                 found = _lint(level, str(item.get("prompt") or ""), slots)
             lint = {"passed": not found, "violations": list(found)}
-            if item.get("lint") != lint:
+            # Everything the matrix derives has to move with it, not just the
+            # verdict: `disclosed_slots` is what `slot_was_disclosed` and the
+            # source factor are read from, so a set that kept a stale list
+            # would show one disclosure through the API while the run scored
+            # against another. Identity stays fixed -- id, created_at, slots
+            # and the rendered prompt are never touched.
+            derived = {} if matrix is None else {
+                "disclosed_slots": list(matrix["disclosed_slots"]),
+                "recovery_trigger": matrix["recovery_trigger"],
+                "risk_inducement": matrix["risk_inducement"],
+            }
+            if item.get("lint") != lint or any(item.get(k) != v for k, v in derived.items()):
                 changed = True
-            refreshed.append({**item, "lint": lint})
+            refreshed.append({**item, **derived, "lint": lint})
         if not changed:
             return dict(value)
         updated = {**dict(value), "variants": refreshed}
