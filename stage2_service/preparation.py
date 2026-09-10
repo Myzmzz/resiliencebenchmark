@@ -41,6 +41,15 @@ class TrafficEvidenceProvider(Protocol):
     ) -> None: ...
 
 
+# Lifetime of a Trial's baseline capability, the create gate issued when the
+# Trial is prepared. It was 15 minutes, which silently refused an Agent that
+# planned for longer: on 2026-09-10 bladeai reached create 15.8 minutes after
+# preparation and got BASELINE_TOKEN_EXPIRED. The user set it to 30 days for
+# every Agent. The capability stays bound to one Trial, one target Pod and one
+# Controller, and the 30-minute Trial cap still ends every run.
+BASELINE_CAPABILITY_TTL_SECONDS = 30 * 24 * 60 * 60
+
+
 class ApplicationTrafficCapabilityIssuer:
     """Issue a create gate from application-owned traffic evidence, not a workload Job."""
 
@@ -50,7 +59,7 @@ class ApplicationTrafficCapabilityIssuer:
         ledger_dir: Path,
         controller_pod_uid: str,
         traffic_evidence: TrafficEvidenceProvider,
-        ttl_seconds: int = 900,
+        ttl_seconds: int = BASELINE_CAPABILITY_TTL_SECONDS,
     ):
         self.ledger_dir = ledger_dir.resolve()
         self.ledger_dir.mkdir(mode=0o700, parents=True, exist_ok=True)

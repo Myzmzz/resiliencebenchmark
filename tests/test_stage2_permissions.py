@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from stage2_service.contracts import HarnessKind
@@ -50,6 +51,10 @@ def test_permission_manager_gives_all_harnesses_one_mcp_only_profile(tmp_path: P
     assert codex.kubernetes_rules == blade.kubernetes_rules == ()
     assert codex.mcp_servers == blade.mcp_servers
     assert codex.mcp_tools == blade.mcp_tools
+    # Every Agent's permission lasts 30 days (user decision 2026-09-10), so no
+    # Trial can outlive it; the Trial's own time cap still ends every run.
+    for profile in (codex, blade):
+        assert profile.expires_at - datetime.now(UTC) > timedelta(days=29)
     runtime_context = manager.runtime_context(codex_trial)
     assert runtime_context["mcp_token"]
     assert runtime_context["mcp_policy_file"]

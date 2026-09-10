@@ -144,7 +144,9 @@ class Stage2PermissionManager:
             kubernetes_rules=(),
             direct_kubeconfig=False,
             allowed_fault_types=allowed_fault_types,
-            expires_at=datetime.now(UTC) + timedelta(hours=2),
+            # Same 30-day lifetime as the baseline capability (user decision
+            # 2026-09-10); the Trial's own time cap still ends every run.
+            expires_at=datetime.now(UTC) + timedelta(days=30),
         )
 
     def _default_permission_profile(self, servers: tuple[str, ...] | None = None) -> PermissionProfile:
