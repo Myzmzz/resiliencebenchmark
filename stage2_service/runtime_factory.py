@@ -874,7 +874,18 @@ class KubernetesTrafficEvidence:
         deadline = time.monotonic() + timeout_seconds
         stable = 0
         last: dict[str, Any] = {}
-        while stable < stability_samples:
+        started = time.monotonic()
+        # Every return carries the samples that led to it, so a wait that ran
+        # out of time shows which sample broke the streak.
+        trace: list[dict[str, Any]] = []
+        # Warm-up only shows the load generator is running and the target is
+        # not failing before the counters are reset; the approved sustain
+        # applies to the recovery samples below. With seven warm-up and seven
+        # recovery samples at 10 s the wait needed about 128 s of a 180 s
+        # budget, so one bad warm-up sample made a recovered service look
+        # unverified (lxr-93c8deeea4ef4932).
+        warmup_samples = min(stability_samples, RECOVERY_WARMUP_SAMPLES)
+        while stable < warmup_samples:
             try:
                 last = dict(self.current())
             except Exception as exc:  # noqa: BLE001
@@ -883,20 +894,14 @@ class KubernetesTrafficEvidence:
                     "stage": "warmup",
                     "error_type": type(exc).__name__,
                 }
-            current_rps = float(last.get("target_current_rps") or 0.0)
-            current_fail = float(last.get("target_current_fail_per_sec") or 0.0)
-            stable = (
-                stable + 1
-                if last.get("load_generator_ready") is True
-                and current_rps > 0
-                and current_fail / current_rps <= 0.05
-                else 0
-            )
-            if stable >= stability_samples:
+            warm = _warmup_sample_ok(last)
+            trace.append(_trace_entry(started, "warmup", warm, last))
+            stable = stable + 1 if warm else 0
+            if stable >= warmup_samples:
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return last
+                return _with_trace(last, trace)
             time.sleep(min(10.0, remaining))
         reset_error: dict[str, Any] = {}
         reset_count = 0
@@ -911,9 +916,10 @@ class KubernetesTrafficEvidence:
                     "stage": "stats_reset",
                     "error_type": type(exc).__name__,
                 }
+                trace.append(_trace_entry(started, "stats_reset", False, reset_error))
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return reset_error
+                return _with_trace(reset_error, trace)
             time.sleep(min(5.0, remaining))
         last = {}
         recovery_stable = 0
@@ -954,6 +960,7 @@ class KubernetesTrafficEvidence:
                     counter_anchor=counter_anchor,
                 )
             recovery_stable = recovery_stable + 1 if recovery_ok else 0
+            trace.append(_trace_entry(started, "recovery", recovery_ok, last, condition_evidence))
             last["recovery_condition_evidence"] = condition_evidence
             last["stability_samples_observed"] = recovery_stable
             last["stability_samples_required"] = stability_samples
@@ -962,11 +969,11 @@ class KubernetesTrafficEvidence:
             if recovery_stable >= stability_samples:
                 last["stats_reset_count"] = reset_count
                 last["business_healthy"] = True
-                return last
+                return _with_trace(last, trace)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 last["stats_reset_count"] = reset_count
-                return last
+                return _with_trace(last, trace)
             time.sleep(min(10.0, remaining))
 
     def wait_until_healthy(
@@ -1092,6 +1099,58 @@ def _physical_effect_queries(fault_type: str, target: Any) -> list[tuple[str, st
         ("prometheus_cgroup_path", "prometheus", f'sum(container_memory_working_set_bytes{{id=~"{cgroup}"}})'),
         ("coroot", "coroot", f'sum(container_resources_memory_rss_bytes{{container_id=~"{container}"}})'),
     ]
+
+
+# The recovery wait's warm-up needs this many healthy load-generator samples
+# before the counters are reset; the evidence keeps this many sample entries.
+RECOVERY_WARMUP_SAMPLES = 3
+RECOVERY_TRACE_LIMIT = 40
+
+
+def _warmup_sample_ok(sample: Mapping[str, Any]) -> bool:
+    """Whether a load-generator snapshot is healthy enough to reset counters.
+
+    Traffic must be flowing and the target must not be failing. A sparse
+    target (cart gets about 0.2 requests/s here) can read zero current
+    requests for a moment; the whole generator's current rate then shows the
+    traffic is still flowing, and any current target failure still blocks.
+    """
+    if sample.get("load_generator_ready") is not True:
+        return False
+    target_rps = float(sample.get("target_current_rps") or 0.0)
+    target_fail = float(sample.get("target_current_fail_per_sec") or 0.0)
+    if target_rps > 0:
+        return target_fail / target_rps <= 0.05
+    return float(sample.get("current_rps") or 0.0) > 0 and target_fail == 0
+
+
+def _trace_entry(
+    started: float,
+    phase: str,
+    ok: bool,
+    sample: Mapping[str, Any],
+    condition: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One compact recovery-wait sample for the Trial evidence."""
+    entry: dict[str, Any] = {
+        "t": round(time.monotonic() - started, 1),
+        "phase": phase,
+        "ok": bool(ok),
+        "target_current_rps": sample.get("target_current_rps"),
+        "target_current_fail_per_sec": sample.get("target_current_fail_per_sec"),
+    }
+    if sample.get("error_type"):
+        entry["error_type"] = sample.get("error_type")
+    if condition:
+        entry["observed_value"] = condition.get("observed_value")
+        entry["metric_available"] = condition.get("metric_available")
+    return entry
+
+
+def _with_trace(result: dict[str, Any], trace: list[dict[str, Any]]) -> dict[str, Any]:
+    """Attach the samples that led to this result (the last ones only)."""
+    result["sample_trace"] = trace[-RECOVERY_TRACE_LIMIT:]
+    return result
 
 
 def _resource_queries(metric: str, target: Any) -> list[tuple[str, str]]:
