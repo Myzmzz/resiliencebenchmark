@@ -223,6 +223,49 @@ def test_network_drop_maps_to_controller_loss_without_percent_units():
     assert parsed.intensity == {"loss_percent": 100}
 
 
+def test_parse_create_uses_chaosblades_default_cpu_percent_when_the_command_omits_it():
+    # ChaosBlade documents --cpu-percent defaulting to 100 for pod-cpu fullload;
+    # a command without it runs with that default (user rule, 2026-09-10).
+    parsed = parse_create(
+        ["create", "k8s", "pod-cpu", "fullload", "--names", "cart", "--timeout", "42"],
+        namespace="otel-demo",
+        max_duration_seconds=1200,
+    )
+    assert parsed.intensity == {"cpu_percent": 100}
+
+
+def test_parse_create_names_a_missing_intensity_that_has_no_tool_default():
+    from stage2_service.bladeai_shim import BladeShimError
+
+    with pytest.raises(BladeShimError, match="--time"):
+        parse_create(
+            ["create", "k8s", "pod-network", "delay", "--names", "cart", "--timeout", "42"],
+            namespace="otel-demo",
+            max_duration_seconds=1200,
+        )
+
+
+def test_a_refused_controller_call_reports_the_controllers_code_reason_and_next_step():
+    # 2026-09-10 L0xC0: bladeai saw only "denied by the controlled MCP
+    # service" and could not tell that its baseline pass had expired.
+    from stage2_service.bladeai_shim import BladeShimError, _require_ok
+
+    refused = {
+        "ok": False,
+        "error": {
+            "code": "BASELINE_TOKEN_EXPIRED",
+            "message": "Baseline capability is missing a valid future expires_at timestamp.",
+            "next_step": "Re-run baseline to obtain a fresh capability token.",
+        },
+    }
+    with pytest.raises(BladeShimError) as raised:
+        _require_ok(refused, "chaos_create_experiment")
+    text = str(raised.value)
+    assert "chaos_create_experiment" in text and "BASELINE_TOKEN_EXPIRED" in text
+    assert "expires_at" in text and "Re-run baseline" in text
+    _require_ok({"ok": True}, "chaos_create_experiment")
+
+
 def test_failed_create_and_unknown_status_do_not_persist_or_report_success(tmp_path):
     class DenyingTools(_Tools):
         def call(self, tool, arguments):
@@ -238,7 +281,8 @@ def test_failed_create_and_unknown_status_do_not_persist_or_report_success(tmp_p
         ["create", "k8s", "pod-cpu", "fullload", "--names", "cart", "--timeout", "60", "--cpu-percent", "80"]
     )
     assert code == 1
-    assert "denied" in stderr
+    assert "refused by the controlled MCP service" in stderr
+    assert "not approved" in stderr  # the Controller's own reason reaches the Agent
     assert not state_file.exists()
 
     tools = _Tools(status_response={"ok": True, "state": "unknown", "operation_outcome": "unknown"})

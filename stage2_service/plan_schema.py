@@ -162,7 +162,7 @@ class PlanSafetyEnvelope(ContractModel):
                     name: IntensityFieldEnvelope(
                         unit=field.unit,
                         min_value=_optional_numeric_attr(field, "min_value", default=0.0),
-                        max_value=_optional_numeric_attr(field, "max_value", default=None),
+                        max_value=_contract_maximum(field),
                     )
                     for name, field in contract.intensity_fields.items()
                 }
@@ -625,6 +625,27 @@ def _optional_numeric_attr(value: Any, name: str, *, default: float | None) -> f
         return None
     number = _strict_number(raw)
     return default if number is None else number
+
+
+def _contract_maximum(field: Any) -> float | None:
+    """Return the upper bound the Controller enforces for one intensity field.
+
+    Controller ``IntensityField`` objects publish their bounds through
+    ``describe()`` (percentages stop at 100). Reading that keeps plan
+    validation, the Controller and the Harness responder's parameter
+    vocabulary on one limit, instead of the envelope advertising "unbounded"
+    and the plan failing later at create time. Field objects without
+    ``describe()`` may still carry an explicit ``max_value``.
+    """
+
+    explicit = _optional_numeric_attr(field, "max_value", default=None)
+    if explicit is not None:
+        return explicit
+    describe = getattr(field, "describe", None)
+    if not callable(describe):
+        return None
+    maximum = describe().get("maximum")
+    return None if maximum is None else _strict_number(maximum)
 
 
 def _invalid(code: str, path: str, message: str, correction: str) -> PlanValidationResult:

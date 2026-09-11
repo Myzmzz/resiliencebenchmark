@@ -33,8 +33,10 @@ from .task_service import (
     TaskDetailMode,
     TaskConflict,
     TaskNotFound,
+    TaskTemporarilyUnavailable,
     TaskValidationError,
 )
+from .lx import LxRunRequest, LxService, PromptVariantRequest
 
 
 class CampaignRunner(Protocol):
@@ -298,6 +300,7 @@ def create_app(
     qualification_inventory=None,
     frontend_root: Path | None = None,
     task_service: Stage2TaskService | None = None,
+    lx_service: LxService | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Resilience Benchmark Stage-2 Service", docs_url="/api/docs")
     matrix_evidence = MatrixEvidenceStore(artifact_root) if artifact_root is not None else None
@@ -358,6 +361,121 @@ def create_app(
             raise HTTPException(status_code=503, detail="Stage2 task service is unavailable")
         return task_service.autonomy_cases()
 
+    @app.get("/api/v1/stage2/lx/levels")
+    def lx_levels() -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        return lx_service.levels()
+
+    @app.post("/api/v1/stage2/lx/prompt-variants")
+    def lx_prompt_variants(request: PromptVariantRequest) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        try:
+            return lx_service.create_variants(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/v1/stage2/lx/prompt-variants/{variant_set_id}")
+    def lx_get_prompt_variants(variant_set_id: str) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        try:
+            return lx_service.get_variants(variant_set_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="prompt variant set not found") from exc
+
+    @app.post("/api/v1/stage2/lx/runs", status_code=status.HTTP_202_ACCEPTED)
+    def lx_create_run(
+        request: LxRunRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        try:
+            return lx_service.create_run(request, idempotency_key=idempotency_key)
+        except KeyError as exc:
+            # An unresolvable variant_set_id is a client error, not a crash.
+            raise HTTPException(status_code=404, detail="prompt variant set not found") from exc
+        except TaskTemporarilyUnavailable as exc:
+            # Transient platform state, not a bad request: say so with a code
+            # the caller will retry on.
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            ) from exc
+        except (TaskValidationError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/v1/stage2/lx/runs")
+    def lx_list_runs(
+        level: str | None = Query(default=None),
+        model: str | None = Query(default=None),
+        application: str | None = Query(default=None),
+        harness: str | None = Query(default=None),
+    ) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        return lx_service.list_runs(level=level, model=model, application=application, harness=harness)
+
+    @app.get("/api/v1/stage2/lx/runs/{run_id}")
+    def lx_get_run(run_id: str) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        try:
+            return lx_service.summary(run_id)
+        except (KeyError, TaskNotFound) as exc:
+            raise HTTPException(status_code=404, detail="Lx run not found") from exc
+
+    @app.get("/api/v1/stage2/lx/runs/{run_id}/interactions")
+    def lx_interactions(
+        run_id: str,
+        phase: str | None = Query(default=None),
+        interaction_type: str | None = Query(default=None, alias="type"),
+        initiator: str | None = Query(default=None),
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=200, ge=1, le=1000),
+    ) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        try:
+            return lx_service.interactions(run_id, phase=phase, interaction_type=interaction_type, initiator=initiator, offset=offset, limit=limit)
+        except (KeyError, TaskNotFound) as exc:
+            raise HTTPException(status_code=404, detail="Lx run not found") from exc
+
+    @app.get("/api/v1/stage2/lx/runs/{run_id}/usage")
+    def lx_usage(run_id: str) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        try:
+            return lx_service.usage(run_id)
+        except (KeyError, TaskNotFound) as exc:
+            raise HTTPException(status_code=404, detail="Lx run not found") from exc
+
+    @app.get("/api/v1/stage2/lx/runs/{run_id}/score")
+    def lx_score(run_id: str) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        try:
+            return lx_service.score(run_id)
+        except (KeyError, TaskNotFound) as exc:
+            raise HTTPException(status_code=404, detail="Lx run not found") from exc
+
+    @app.post("/api/v1/stage2/lx/runs/{run_id}/stop", status_code=status.HTTP_202_ACCEPTED)
+    def lx_stop(run_id: str, payload: dict | None = None) -> dict:
+        if lx_service is None:
+            raise HTTPException(status_code=503, detail="Lx service is unavailable")
+        reason = str((payload or {}).get("reason") or "operator stop requested")
+        try:
+            return lx_service.stop(run_id, reason)
+        except (KeyError, TaskNotFound) as exc:
+            raise HTTPException(status_code=404, detail="Lx run not found") from exc
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/v1/stage2/tasks", status_code=status.HTTP_202_ACCEPTED)
     def create_stage2_task(
         request: Stage2TaskCreateRequest,
@@ -376,7 +494,19 @@ def create_app(
                     "active_task_id": exc.active_task_id,
                 },
             ) from exc
+        except TaskTemporarilyUnavailable as exc:
+            # Transient platform state, not a bad request: say so with a code
+            # the caller will retry on.
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            ) from exc
         except TaskValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ValueError as exc:
+            # Campaign contract validation (including controller-explicit
+            # fields on the legacy endpoint) is surfaced as a client error.
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/v1/stage2/tasks")

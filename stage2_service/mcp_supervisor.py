@@ -79,11 +79,11 @@ class McpSupervisor:
         log_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         urls: dict[str, str] = {}
         policy_file = _policy_file_from_token_state_files(token_state_files)
-        base_names = ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel")
+        base_names = ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel", "coroot_ro")
         missing_base = [name for name in base_names if name not in token_state_files]
         if missing_base:
             raise McpSupervisorError("required MCP token state is missing: " + ", ".join(missing_base))
-        optional_names = ("coroot_ro", "chaos_mesh_control", "code_sandbox")
+        optional_names = ("chaos_mesh_control", "code_sandbox")
         optional_present = [name for name in optional_names if name in token_state_files]
         if optional_present and len(optional_present) != len(optional_names):
             raise McpSupervisorError("optional substitution MCP token state must be all-or-none")
@@ -360,6 +360,7 @@ def _shared_runtime_environment(
         key: value
         for key, value in env.items()
         if key in {"RESBENCH_PLATFORM_LEDGER_ROOT", "RESBENCH_AUTHORIZED_RUN_ID",
+                   "RESBENCH_COROOT_APPLICATION_ID",
                    "RESBENCH_MCP_AUDIT_SOCKET", "RESBENCH_MCP_AUDIT_AUTHORITY",
                    "RESBENCH_MCP_AUDIT_TIMEOUT_SECONDS"}
     }

@@ -193,6 +193,11 @@ class LifecycleMapper:
             self.fault_running = self.fault_running or running
             payload = self._action_payload(request)
             payload.pop("tool")
+            deviations = data.get("plan_deviations")
+            if isinstance(deviations, list) and deviations:
+                # Allowed differences from the approved plan; the scorer halves
+                # plan validation when it sees them.
+                payload["plan_deviations"] = [dict(item) for item in deviations if isinstance(item, Mapping)]
             emit(LifecyclePhase.C3_INJECT, "main_fault_running" if running else "main_fault_created", **payload)
         if tool.endswith("destroy_experiment"):
             emit(LifecyclePhase.C6_RECOVERY, "recovery_accepted")

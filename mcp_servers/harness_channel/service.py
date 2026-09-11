@@ -28,6 +28,7 @@ from stage2_service.simulated_user import (
     HarnessModelTimeout,
     HarnessResponder,
     SimulatedUserPolicy,
+    resolve_platform_model,
 )
 
 from .hints import NEUTRAL_NO_INFORMATION, render_hint
@@ -62,6 +63,11 @@ class HarnessChannelError(RuntimeError):
         self.diagnostic = dict(diagnostic or {})
 
 
+# A completion that failed validation is asked for once more, with the
+# validation errors as a correction, before the confirmation fails.
+CONFIRM_COMPLETION_ATTEMPTS = 2
+
+
 @dataclass(frozen=True)
 class HarnessChannelConfig:
     trial_id: str
@@ -87,6 +93,7 @@ class HarnessChannelConfig:
     prompt_level: AutonomyLevel = AutonomyLevel.L0_COMPLETE_TASK
     model_alias: str | None = None
     original_prompt: str | None = None
+    platform_model_alias: str | None = None
     condition_policy: dict[str, Any] | None = None
 
     @classmethod
@@ -136,6 +143,7 @@ class HarnessChannelConfig:
             decision_policy=DecisionPolicy(context.get("decision_policy", "clarify_missing")),
             prompt_level=AutonomyLevel(context.get("prompt_level", AutonomyLevel.L0_COMPLETE_TASK.value)),
             model_alias=_optional_text(context.get("model_alias")),
+            platform_model_alias=_optional_text(context.get("platform_model_alias")),
             original_prompt=_optional_text(context.get("original_prompt")),
             condition_policy=(
                 dict(context["condition_policy"])
@@ -220,24 +228,7 @@ class HarnessChannelService:
             "recommendation": raw_plan,
         }
         self._append("CONFIRM_REQUESTED", {"plan": raw_plan})
-        try:
-            answer = self.responder.reply(
-                question,
-                {
-                    "source": "harness_channel",
-                    "trial_id": self.config.trial_id,
-                    "case_id": self.config.case_id,
-                    "variant": self.config.variant,
-                },
-            )
-        except Exception as exc:
-            failure = _confirmation_failure(exc)
-            self._append("CONFIRM_FAILED", {"plan": raw_plan, **failure})
-            raise HarnessChannelError(
-                failure["message"],
-                code=str(failure["error_code"]),
-                diagnostic=failure["diagnostic"],
-            ) from exc
+        answer = self._reply_with_retry(question, raw_plan)
         allowed = (
             answer.get("approved") is True
             and bool(answer.get("approved_plan"))
@@ -267,6 +258,7 @@ class HarnessChannelService:
                 "reason": answer.get("reason"),
                 "answer_mode": answer.get("answer_mode"),
                 "approved_plan": answer.get("approved_plan"),
+                "responder_model": self._responder_model(),
             },
         )
         return {
@@ -279,6 +271,74 @@ class HarnessChannelService:
             "assisted": assisted,
             "affected_nodes": answer.get("affected_nodes", []),
         }
+
+    def _reply_with_retry(
+        self,
+        question: Mapping[str, Any],
+        raw_plan: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Ask the simulated user, retrying one failed completion.
+
+        A completion that failed validation is retried with the same
+        question, so the responder hands its model the validation errors as a
+        correction (its per-question ``reply_errors``). Timeouts and internal
+        errors are not retried: a second 180-second wait would only stall the
+        Agent. The final failure is recorded as CONFIRM_FAILED, which the
+        runtime reads to mark the Trial platform-invalid instead of scoring
+        the Agent.
+        """
+
+        context = {
+            "source": "harness_channel",
+            "trial_id": self.config.trial_id,
+            "case_id": self.config.case_id,
+            "variant": self.config.variant,
+        }
+        for attempt in range(1, CONFIRM_COMPLETION_ATTEMPTS + 1):
+            try:
+                return self.responder.reply(question, context)
+            except Exception as exc:
+                failure = _confirmation_failure(exc)
+                retryable = (
+                    isinstance(exc, ConversationError)
+                    and not isinstance(exc, HarnessModelTimeout)
+                    and attempt < CONFIRM_COMPLETION_ATTEMPTS
+                )
+                if retryable:
+                    self._append(
+                        "CONFIRM_RETRIED",
+                        {
+                            "attempt": attempt,
+                            "error_code": failure["error_code"],
+                            "message": failure["message"],
+                            "responder_model": self._responder_model(),
+                        },
+                    )
+                    continue
+                self._append(
+                    "CONFIRM_FAILED",
+                    {
+                        "plan": dict(raw_plan),
+                        "attempts": attempt,
+                        "responder_model": self._responder_model(),
+                        **failure,
+                    },
+                )
+                raise HarnessChannelError(
+                    failure["message"],
+                    code=str(failure["error_code"]),
+                    diagnostic=failure["diagnostic"],
+                ) from exc
+        raise HarnessChannelError(
+            "Harness confirmation made no attempt",
+            code="HARNESS_CONFIRM_INTERNAL_ERROR",
+        )
+
+    def _responder_model(self) -> str | None:
+        """Name the model that answered, so the ledger shows who confirmed."""
+
+        model = getattr(self.responder, "model_name", None)
+        return model if isinstance(model, str) else None
 
     def submit_result(self, result: Mapping[str, Any]) -> dict[str, Any]:
         with self._locked("result"):
@@ -361,8 +421,12 @@ class HarnessChannelService:
             prompt_level=self.config.prompt_level,
         )
         if self.config.model_alias:
+            # The simulated user runs on the fixed platform model, never on
+            # the Agent's model_alias: an Agent must not confirm its own plan.
             return HarnessResponder.from_environment(
-                os.environ, self.config.model_alias, self.config.namespace,
+                os.environ,
+                self.config.platform_model_alias or resolve_platform_model(),
+                self.config.namespace,
                 self.config.max_fault_seconds, self.config.max_observation_seconds,
                 policy=policy, context={"original_prompt": self.config.original_prompt},
                 condition_policy=self.config.condition_policy,

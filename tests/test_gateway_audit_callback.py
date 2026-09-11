@@ -5,6 +5,7 @@ import hashlib
 import importlib
 import json
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 
@@ -296,3 +297,110 @@ def test_gateway_audit_callback_supports_async_writes_without_corrupting_rows(
     assert {row["request_id"] for row in rows} == {f"req-{i}" for i in range(20)}
     assert max((len(json.dumps(row, separators=(",", ":")).encode("utf-8")) for row in rows)) <= 4096
     assert (audit_dir / f"{trial_id}.jsonl").stat().st_size <= 1_000_000
+
+
+def test_gateway_post_callback_records_usage_without_changing_ingress_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    module = _load_module(monkeypatch)
+    audit_dir = tmp_path / "audit"
+    config = tmp_path / "litellm.yaml"
+    config.write_text("model_list: []\n", encoding="utf-8")
+    monkeypatch.setenv("RESBENCH_GATEWAY_AUDIT_DIR", str(audit_dir))
+    monkeypatch.setenv("STAGE2_LITELLM_CONFIG_FILE", str(config))
+    data = _data(trial_id="trial-usage", request_id="req-usage")
+    start = datetime.now(UTC)
+    asyncio.run(
+        module.logger_instance.async_log_success_event(
+            {
+                "litellm_params": {
+                    "proxy_server_request": data["proxy_server_request"]
+                },
+                "response_cost": 0.0123,
+                "stream": False,
+            },
+            {
+                "usage": {
+                    "prompt_tokens": 11,
+                    "completion_tokens": 7,
+                    "total_tokens": 18,
+                    "prompt_tokens_details": {"cached_tokens": 4},
+                }
+            },
+            start,
+            start + timedelta(milliseconds=250),
+        )
+    )
+    rows = _read_rows(audit_dir / "trial-usage.usage.jsonl")
+    assert rows == [
+        {
+            "schema_version": "stage2-gateway-usage.v1",
+            "trial_id": "trial-usage",
+            "request_id": "req-usage",
+            "harness": "codex",
+            "model_alias": "gpt-5.5",
+            "llm_tag": "gpt-5.5",
+            "source": "agent",
+            "phase": "unknown",
+            "input_tokens": 11,
+            "output_tokens": 7,
+            "cached_input_tokens": 4,
+            "total_tokens": 18,
+            "cost_usd": 0.0123,
+            "cost_availability": "measured",
+            "cost_unavailable_reason": None,
+            "started_at": str(start),
+            "ended_at": str(start + timedelta(milliseconds=250)),
+            "duration_ms": 250,
+            "is_retry": False,
+            "availability": "measured",
+            "unavailable_reason": None,
+        }
+    ]
+    assert not (audit_dir / "trial-usage.jsonl").exists()
+
+
+def test_gateway_post_callback_marks_missing_usage_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    module = _load_module(monkeypatch)
+    audit_dir = tmp_path / "audit"
+    monkeypatch.setenv("RESBENCH_GATEWAY_AUDIT_DIR", str(audit_dir))
+    data = _data(trial_id="trial-missing-usage", request_id="req-missing")
+    now = datetime.now(UTC)
+    asyncio.run(
+        module.logger_instance.async_log_success_event(
+            {"litellm_params": {"proxy_server_request": data["proxy_server_request"]}},
+            {},
+            now,
+            now,
+        )
+    )
+    row = _read_rows(audit_dir / "trial-missing-usage.usage.jsonl")[0]
+    assert row["availability"] == "unavailable"
+    assert row["unavailable_reason"] == "upstream_usage_missing"
+    assert row["total_tokens"] is None
+
+
+def test_gateway_post_callback_does_not_treat_litellm_zero_fill_as_measured(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    module = _load_module(monkeypatch)
+    audit_dir = tmp_path / "audit"
+    monkeypatch.setenv("RESBENCH_GATEWAY_AUDIT_DIR", str(audit_dir))
+    data = _data(trial_id="trial-zero-usage", request_id="req-zero")
+    now = datetime.now(UTC)
+    asyncio.run(
+        module.logger_instance.async_log_success_event(
+            {"litellm_params": {"proxy_server_request": data["proxy_server_request"]}, "stream": False},
+            {"usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}},
+            now,
+            now,
+        )
+    )
+    row = _read_rows(audit_dir / "trial-zero-usage.usage.jsonl")[0]
+    assert row["availability"] == "unavailable"
+    assert row["unavailable_reason"] == "upstream_usage_missing"

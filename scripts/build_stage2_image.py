@@ -273,6 +273,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repository", default=DEFAULT_REPOSITORY)
     parser.add_argument("--runtime-base", default=DEFAULT_RUNTIME_BASE)
     parser.add_argument("--builder")
+    parser.add_argument(
+        "--agent-base-context",
+        action="append",
+        default=[],
+        metavar="NAME=SRC",
+        help=(
+            "Override one base image of the agent build, for example "
+            "node:22.21.1-bookworm-slim=oci-layout:///abs/path@sha256:<digest>. "
+            "Use when the builder cannot reach the upstream registry but the same "
+            "upstream digests have been fetched ahead of time; the image content "
+            "is unchanged because only where the base comes from changes."
+        ),
+    )
+    parser.add_argument(
+        "--agent-build-proxy",
+        metavar="URL",
+        help=(
+            "Proxy for the agent build's RUN steps (apt/npm/pip), for example "
+            "http://host.docker.internal:7897. Sets only BuildKit's predefined "
+            "HTTP(S)_PROXY args, which are excluded from the cache key and from the "
+            "image history, so the address is not baked into the shipped image."
+        ),
+    )
     parser.add_argument("--bladeai-repo", type=Path, required=True)
     parser.add_argument(
         "--metadata",
@@ -336,6 +359,17 @@ def main(argv: list[str] | None = None) -> int:
         agent_argv = ["docker", "buildx", "build"]
         if args.builder:
             agent_argv.extend(["--builder", args.builder])
+        for override in args.agent_base_context:
+            if "=" not in override:
+                raise RuntimeError(f"--agent-base-context expects NAME=SRC, got {override!r}")
+            agent_argv.extend(["--build-context", override])
+        if args.agent_build_proxy:
+            # A base supplied as an oci-layout context has a different cache key
+            # from the same digest pulled by name, so the network-bound RUN steps
+            # rerun and need a route out.  Only the predefined proxy args are
+            # set: BuildKit keeps them out of the cache key and image history.
+            for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+                agent_argv.extend(["--build-arg", f"{key}={args.agent_build_proxy}"])
         agent_argv.extend([
             "--progress=plain", "--pull=false", "--platform", "linux/amd64",
             "--build-context", f"bladeai-src={bladeai_context}",

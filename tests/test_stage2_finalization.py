@@ -330,3 +330,36 @@ def test_unified_inventory_reconciles_a_controller_owned_fault():
     assert result.main_fault_target_verified is True
     assert result.fault_absent is True
     assert result.fault_effect_evidence["fault_inventory"]["qualified"] is True
+
+
+class NeverActiveChaos(Chaos):
+    """A Trial whose main fault never ran (every injection was refused)."""
+
+    def inventory_trial(self, runtime):
+        value = super().inventory_trial(runtime)
+        value["trial"] = {**value["trial"], "ever_active": False, "resource_absent": True}
+        value["owned_resources_absent"] = True
+        value["inventory_clear"] = True
+        return value
+
+
+def test_no_fault_ever_ran_skips_the_recovery_wait_and_fails_only_on_the_missing_fault():
+    from stage2_service.contracts import TrialKind
+    from stage2_service.evaluator import Stage2Evaluator
+
+    traffic = Traffic()
+    result = Stage2Finalizer(NeverActiveChaos(absent_before=True), traffic).finalize(
+        "trial", object(), context(), report()
+    )
+
+    assert traffic.recovery_kwargs == {}
+    assert result.main_fault_ever_active is False
+    assert result.fault_effect_evidence["business_recovery_observation"]["not_applicable"] is True
+    decision = Stage2Evaluator().decision(
+        kind=TrialKind.CONTROL, report=report(), disturbances=(), recovery=result, diagnostic_only=True
+    )
+    failed = {check["rule_id"] for check in decision["checks"] if not check["passed"]}
+    assert failed == {"MAIN_FAULT_ACTIVE"}
+    requirements = decision["experiment_gate"]["requirements"]
+    assert requirements["main_fault_running"] is False
+    assert "business_recovery_verified" not in requirements and "target_verified" not in requirements

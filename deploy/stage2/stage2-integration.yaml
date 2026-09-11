@@ -141,6 +141,12 @@ spec:
               value: /etc/litellm/config.yaml
             - name: RESBENCH_GATEWAY_AUDIT_DIR
               value: /var/lib/resbench-stage2/gateway-audit
+            # Coroot backup observation source (2026-09-10): this cluster's
+            # Coroot project, which serves reads without login.
+            - name: RESBENCH_COROOT_PROJECT_ID
+              value: 9auios5b
+            - name: RESBENCH_COROOT_ALLOW_ANONYMOUS_READ
+              value: "true"
             - name: RESBENCH_LLM_BASE_URL
               valueFrom:
                 secretKeyRef:

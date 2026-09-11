@@ -659,15 +659,13 @@ def test_captured_sdk_fault_spec_duration_is_preserved_without_conversion():
     capture.record(proposal)
     assert partial_plan_from_native_proposal(capture.take(), target_uid_resolver=_UID())["safety_ttl_seconds"] == 60
 
+    # Rule set 2026-09-10: the Agent's own plan block (``timeout``) states the
+    # duration it chose and wins over the SDK's ``duration_seconds``, which can
+    # be the SDK default; the Worker records where the duration came from.
     conflict = _current_native_proposal()
     conflict["duration_seconds"] = 60
     conflict["params"] = {"time": "300", "timeout": "600"}
-    try:
-        partial_plan_from_native_proposal(conflict, target_uid_resolver=_UID())
-    except BladeTaskError as exc:
-        assert "disagree" in str(exc)
-    else:  # pragma: no cover
-        raise AssertionError("conflicting source durations must not be silently resolved")
+    assert partial_plan_from_native_proposal(conflict, target_uid_resolver=_UID())["safety_ttl_seconds"] == 600
 
 
 def test_captured_sdk_fault_spec_fills_short_confirmation_payload():
@@ -940,3 +938,147 @@ def test_worker_reports_cleanup_failure_as_incomplete(tmp_path, monkeypatch, cap
     assert '"kind":"fatal"' in output
     assert "cleanup failed: RuntimeError" in output
     assert "cleanup token detail" not in output
+
+
+def test_canonical_underscore_intensity_spelling_is_captured():
+    """Regression: the plan bladeai actually wrote, captured from a live trial.
+
+    The block carried `cpu_percent: 80` -- the Controller's own field name and
+    the spelling the Lx prompt uses -- but the parser accepted only the CLI
+    spelling `cpu-percent`, kept just `timeout`, and the shim refused the plan
+    as "not exactly representable".  The trial was then scored as though the
+    agent had never proposed a fault.
+    """
+    block = (
+        "# Task Summary\n"
+        "- Parameters: `cpu_percent=80`, `timeout=300` seconds\n\n"
+        + (chr(96) * 3) + "stage2\n"
+        "scope: pod\n"
+        "target: cpu\n"
+        "action: fullload\n"
+        "canonical_fault: cpu-load\n"
+        "namespace: otel-demo\n"
+        "names: cart-7c58f6bb56-zdp5w\n"
+        "pod_uid: 73b2\n"
+        "cpu_percent: 80\n"
+        "timeout: 300\n"
+        + (chr(96) * 3) + "\n"
+    )
+    capture = NativeProposalCapture()
+    capture.record_tool_event("bladeai.save_fault_plan", {"arguments": {"plan_content": block}})
+    # The live state carried only the timeout; it must not win over the plan.
+    capture.record_state({"params": {"timeout": "300"}, "duration_seconds": 300})
+    proposal = capture.take()
+
+    assert proposal["params"] == {"cpu-percent": "80", "timeout": "300"}
+    assert proposal["fault_intent"] == {"scope": "pod", "target": "cpu", "action": "fullload"}
+    assert proposal["target"] == {"namespace": "otel-demo", "names": ["cart-7c58f6bb56-zdp5w"]}
+
+
+def test_prose_intensity_is_still_never_taken_as_a_parameter():
+    """Accepting a second spelling must not open the prose loophole."""
+    from stage2_service.bladeai_task import _structured_plan_fields
+
+    assert _structured_plan_fields("Parameters: cpu_percent=80, timeout=300 seconds") == {}
+
+
+@pytest.mark.parametrize(
+    ("fault_intent", "expected_type"),
+    [
+        # ChaosBlade's own action, as the SDK usually writes it.
+        ({"scope": "pod", "target": "cpu", "action": "fullload"}, "cpu-load"),
+        # Seen live on 2026-09-10 (lxr-328bb712e0d44c27): the same CPU fault
+        # named with the Stage-2 fault type; it used to be refused.
+        ({"scope": "pod", "target": "cpu", "action": "cpu-load"}, "cpu-load"),
+        ({"scope": "Pod", "target": "CPU", "action": "CPU_Load"}, "cpu-load"),
+        # The skill spelling of the scenario.
+        ({"scope": "pod", "target": "cpu", "action": "pod-cpu-fullload"}, "cpu-load"),
+        ({"scope": "pod", "target": "mem", "action": "memory-stress"}, "memory-stress"),
+        ({"scope": "pod", "target": "memory", "action": "memory-stress"}, "memory-stress"),
+        ({"scope": "pod", "target": "network", "action": "network-delay"}, "network-delay"),
+    ],
+)
+def test_equivalent_sdk_spellings_of_an_authorised_fault_map_to_one_fault_type(fault_intent, expected_type):
+    from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS
+
+    native_flag, intensity_field = NATIVE_INTENSITY_FLAGS[expected_type]
+    params = {native_flag.removeprefix("--"): "80", "timeout": "300"}
+    proposal = {**_current_native_proposal(), "fault_intent": fault_intent, "params": params}
+    partial = partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+    assert partial["fault_type"] == expected_type
+    assert partial["intensity"] == {intensity_field: 80}
+    assert partial["safety_ttl_seconds"] == 300
+
+
+def test_a_prefixed_drop_keeps_its_full_loss_meaning():
+    proposal = {
+        **_current_native_proposal(),
+        "fault_intent": {"scope": "pod", "target": "network", "action": "pod-network-drop"},
+        "params": {"timeout": "60"},
+    }
+    partial = partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+    assert (partial["fault_type"], partial["intensity"]) == ("network-loss", {"loss_percent": 100})
+
+
+@pytest.mark.parametrize(
+    "fault_intent",
+    [
+        {"scope": "pod", "target": "cpu", "action": "network-delay"},
+        {"scope": "pod", "target": "network", "action": "cpu-load"},
+        {"scope": "pod", "target": "pod", "action": "delete"},
+        {"scope": "node", "target": "cpu", "action": "fullload"},
+    ],
+)
+def test_a_fault_outside_the_authorised_space_is_still_refused(fault_intent):
+    proposal = {**_current_native_proposal(), "fault_intent": fault_intent, "params": {"cpu-percent": "80"}}
+    with pytest.raises(BladeTaskError, match="outside the authorized Stage-2 fault space"):
+        partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+
+
+def test_plan_block_timeout_seconds_is_read_as_the_agents_duration():
+    # L1xC0 (2026-09-10) wrote `timeout_seconds: 300`; the alias was missing,
+    # so the Agent's duration was lost and the SDK default was approved.
+    from stage2_service.bladeai_task import _structured_plan_fields
+
+    content = (
+        "```stage2\nscope: pod\ntarget: cpu\naction: fullload\nnamespace: otel-demo\n"
+        "names: cart-a\ncpu-percent: 80\ntimeout_seconds: 300\n```"
+    )
+    assert _structured_plan_fields(content)["params"]["timeout"] == "300"
+
+
+def test_duration_source_tells_the_agents_plan_from_the_sdk_default():
+    from stage2_service.bladeai_worker import _duration_source
+
+    assert _duration_source({"tool_params": {"timeout": "300"}, "proposal_duration_seconds": 600}) == "agent_plan"
+    assert _duration_source({"tool_params": {"cpu-percent": "80"}, "state_duration_seconds": 600}) == "sdk_default"
+    assert _duration_source({"tool_params": {}}) == "none"
+
+
+def test_a_cpu_plan_without_intensity_uses_chaosblades_default_instead_of_being_refused():
+    # 2026-09-10 L1xC0: bladeai's plan stated no parameters and the adapter
+    # refused it before the simulated user saw it. Rule (user, 2026-09-10): use
+    # ChaosBlade's documented default, record it, and halve plan validation.
+    from stage2_service.bladeai_task import proposal_intensity_source
+
+    proposal = {
+        "target": {"namespace": "otel-demo", "names": ["cart-a"]},
+        "fault_intent": {"fault_type": "pod-cpu-fullload", "scope": "pod", "target": "cpu", "action": "fullload"},
+        "params": {},
+        "duration_seconds": 600,
+    }
+    partial = partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())
+    assert partial["fault_type"] == "cpu-load"
+    assert partial["intensity"] == {"cpu_percent": 100}
+    assert partial["safety_ttl_seconds"] == 600
+    assert proposal_intensity_source(proposal) == "tool_default"
+
+    stated = {**proposal, "params": {"cpu-percent": "80"}}
+    assert partial_plan_from_native_proposal(stated, target_uid_resolver=_UID())["intensity"] == {"cpu_percent": 80}
+    assert proposal_intensity_source(stated) == "agent_plan"
+
+
+def test_a_plan_without_intensity_and_no_tool_default_names_the_missing_flag():
+    proposal = {**_current_native_proposal(), "params": {"timeout": "600"}}
+    with pytest.raises(BladeTaskError, match="--time"):
+        partial_plan_from_native_proposal(proposal, target_uid_resolver=_UID())

@@ -21,8 +21,10 @@ from .runtime_adapters import McpTokenStateRegistry
 
 
 class Stage2PermissionManager:
-    MCP_SERVERS = ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel")
-    OPTIONAL_SUBSTITUTION_SERVERS = ("coroot_ro", "chaos_mesh_control", "code_sandbox")
+    # Coroot is registered for every Trial as a backup observation source
+    # (2026-09-10); D7/D8 add only the remaining substitution tools.
+    MCP_SERVERS = ("k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel", "coroot_ro")
+    OPTIONAL_SUBSTITUTION_SERVERS = ("chaos_mesh_control", "code_sandbox")
     MCP_TOOLS = (
         "harness_consult", "harness_confirm", "harness_submit_result", "harness_poll_notices",
         "k8s_get_resource",
@@ -40,9 +42,9 @@ class Stage2PermissionManager:
         "chaos_operation_status",
         "chaos_destroy_experiment",
         "chaos_recovery_status",
+        "coroot_metrics_range", "coroot_traces_find", "coroot_logs_range",
     )
     OPTIONAL_SUBSTITUTION_TOOLS = (
-        "coroot_metrics_range", "coroot_traces_find", "coroot_logs_range",
         "chaos_mesh_validate_plan", "chaos_mesh_inventory_run", "chaos_mesh_create_experiment",
         "chaos_mesh_get_experiment", "chaos_mesh_operation_status", "chaos_mesh_destroy_experiment",
         "chaos_mesh_recovery_status", "run_python",
@@ -142,7 +144,9 @@ class Stage2PermissionManager:
             kubernetes_rules=(),
             direct_kubeconfig=False,
             allowed_fault_types=allowed_fault_types,
-            expires_at=datetime.now(UTC) + timedelta(hours=2),
+            # Same 30-day lifetime as the baseline capability (user decision
+            # 2026-09-10); the Trial's own time cap still ends every run.
+            expires_at=datetime.now(UTC) + timedelta(days=30),
         )
 
     def _default_permission_profile(self, servers: tuple[str, ...] | None = None) -> PermissionProfile:

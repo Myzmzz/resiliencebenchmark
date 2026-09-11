@@ -209,7 +209,12 @@ def create_server(
         annotations=_annotations("Submit Harness Result"),
     )
     async def harness_submit_result(result: AgentResult) -> dict[str, Any]:
-        """Submit the final Agent result for schema validation and storage."""
+        """Submit your final result once, when the task is finished.
+
+        The result is validated against the Agent result schema and stored.
+        If the response lists validation errors, correct the result and
+        submit it again.
+        """
 
         return await invoke("harness_submit_result", {"result": result}, lambda: svc().submit_result(result))
 

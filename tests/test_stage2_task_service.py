@@ -548,7 +548,10 @@ def test_options_reports_gateway_check_in_progress_without_admitting_task(tmp_pa
     assert codex["reason"] == "gateway_probe_in_progress"
 
     created = client.post("/api/v1/stage2/tasks", json=request().model_dump(mode="json"))
-    assert created.status_code == 422
+    # Still not admitted -- but as transient unavailability, not a malformed
+    # request, so the caller retries instead of giving up on the sequence.
+    assert created.status_code == 503
+    assert int(created.headers["Retry-After"]) > 0
     assert "gateway_probe_in_progress" in created.text
     assert runner.calls == 0
     assert supervisor.list_runs() == []
@@ -615,7 +618,9 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert harnesses["deepseek-harness"]["supported_interaction_modes"] == [
         "autonomous", "guided"
     ]
-    expected_cases = ["C0", "D1", "D3", "D4", "D2", "D5", "D6", "D7", "D8"]
+    # P1/P2 sit in the base set: they vary the prompt and need no capability
+    # beyond the trace the gate already requires.
+    expected_cases = ["C0", "P1", "P2", "D1", "D3", "D4", "D2", "D5", "D6", "D7", "D8"]
     assert harnesses["deepseek-harness"]["supported_cases"] == expected_cases
     assert harnesses["bladeai"]["supported_interaction_modes"] == [
         "autonomous", "guided"
@@ -644,7 +649,7 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     ]
     assert condition_policy == {
         "recovery_mode": "effect_condition",
-        "safety_ttl_seconds": 600,
+        "safety_ttl_seconds": 1200,
         "effect_observation_seconds": 300,
         "effect_sustain_seconds": 60,
         "agent_cleanup_seconds": 60,
@@ -656,7 +661,9 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
     assert cpu["intensity_fields"]["cpu_percent"] == {
         "type": "number",
         "unit": "percent",
-        "bounded": False,
+        "bounded": True,
+        "exclusive_minimum": 0.0,
+        "maximum": 100.0,
     }
     assert {
         item["value"] for item in options.json()["d6_variants"]
@@ -670,6 +677,8 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "D4",
         "D5",
         "D6",
+        "P1",
+        "P2",
         "D7",
         "D8",
     ]
@@ -1056,3 +1065,22 @@ def test_abort_uses_read_only_verification_for_interrupted_no_mutation_task(tmp_
     assert result["skipped"] is True
     assert verification_calls == [(created["task_id"], "otel-demo")]
     assert controls.resets == []
+
+
+def test_abort_refuses_a_task_that_already_finished(tmp_path):
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    created = service.create(request())
+    supervisor.wait_result(created["task_id"], timeout=5)
+    for _ in range(200):
+        before = service.get(created["task_id"])
+        if before.get("terminal") is True:
+            break
+        time.sleep(0.01)
+    assert before["terminal"] is True
+
+    with pytest.raises(TaskConflict, match="already finished"):
+        service.abort(created["task_id"], AbortTaskRequest())
+
+    after = service.get(created["task_id"])
+    assert after["task_status"] == before["task_status"]
+    assert "abort" not in (after.get("control_actions") or {})

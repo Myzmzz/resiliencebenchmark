@@ -1033,3 +1033,49 @@ def test_d7_finalizes_capability_loss_before_evaluation_without_generic_rollback
     trial_root = tmp_path / result.campaign_id / "trials" / result.trials[0].trial_id
     assert (trial_root / "capability-loss.json").is_file()
     assert json.loads((trial_root / "disturbance-attempt.json").read_text())["applied"] is True
+
+
+def test_a_session_ended_only_by_the_overtime_abort_is_still_scored():
+    # 2026-09-10 L0xC0: the abort killed bladeai (return code -15), the runner
+    # reported a failed harness and the Trial became CASE_INVALID although its
+    # experiment gate passed. The user's rule: stop, clean up, and score.
+    from stage2_service.campaign import _score_platform_ended_session
+
+    cancelled = HarnessReport(
+        status="failed",
+        agent_verdict=AgentVerdict.INCONCLUSIVE,
+        lifecycle_events=(),
+        final_output={"cancelled": True, "harness_error_code": None, "returncode": -15},
+    )
+    scored = _score_platform_ended_session(cancelled, {"requested": True})
+    assert scored.status == "completed"
+    assert scored.final_output["platform_ended_session"] is True
+
+    # Anything else stays a failed harness: no abort, or a real harness error.
+    assert _score_platform_ended_session(cancelled, {"requested": False}).status == "failed"
+    broken = cancelled.model_copy(update={"final_output": {"cancelled": True, "harness_error_code": "ADAPTER_BLIND"}})
+    assert _score_platform_ended_session(broken, {"requested": True}).status == "failed"
+    crashed = cancelled.model_copy(update={"final_output": {"cancelled": False, "harness_error_code": None}})
+    assert _score_platform_ended_session(crashed, {"requested": True}).status == "failed"
+
+
+def test_an_overtime_abort_cancels_only_the_agent_turn():
+    # 2026-09-10 L2xC0: the abort shared the campaign stop flag, so the Trial
+    # was never finalized or scored. It now cancels only the Agent's turn.
+    from stage2_service.campaign import _agent_turn_cancelled
+
+    overtime_abort = {"requested": False}
+    assert _agent_turn_cancelled(lambda: False, overtime_abort) is False
+    overtime_abort["requested"] = True
+    assert _agent_turn_cancelled(lambda: False, overtime_abort) is True
+    assert _agent_turn_cancelled(lambda: True, {"requested": False}) is True
+
+
+def test_only_a_platform_overtime_abort_sets_the_stop_flag():
+    from stage2_service.campaign import _note_overtime_abort
+
+    flag = {"requested": False}
+    _note_overtime_abort(flag, "effect_condition_met")
+    assert flag["requested"] is False
+    _note_overtime_abort(flag, "platform_overtime_abort")
+    assert flag["requested"] is True

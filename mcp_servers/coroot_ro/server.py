@@ -59,7 +59,23 @@ def create_server(
     @server.tool(name="coroot_metrics_range", title="Coroot Scoped Metric Range", annotations=_annotations("Coroot Scoped Metric Range"))
     @policy_gate.guard("coroot_metrics_range")
     async def coroot_metrics_range(metric: str, start: int, end: int, labels: dict[str, str] | None = None) -> dict[str, Any]:
-        """Read a bounded metric range after the server injects the Controller namespace matcher."""
+        """Read a bounded Coroot metric range; the server confines it to the Trial namespace.
+
+        Values are raw series samples (counters are not converted to rates).
+        Common Coroot metrics; containers are labelled
+        container_id="/k8s/<namespace>/<pod>/<container>" and apps
+        app_id="/k8s/<namespace>/<app>":
+        - container_resources_cpu_usage_seconds_total: CPU seconds (rate = cores)
+        - container_resources_memory_rss_bytes: resident memory, bytes
+        - container_resources_cpu_throttled_seconds_total: CPU throttling
+        - container_restarts_total, container_oom_kills_total: restarts, OOM kills
+        - container_http_requests_total (label status),
+          container_http_requests_duration_seconds_total_bucket/_sum/_count:
+          HTTP requests and latency, recorded on the calling container; filter by
+          destination for requests sent to a service
+        - container_net_latency_seconds: network round-trip latency
+        Pass exact label filters in labels, e.g. {"app_id": "/k8s/otel-demo/cart"}.
+        """
 
         return await _call(observer.metrics_range(metric=metric, start=start, end=end, labels=labels))
 

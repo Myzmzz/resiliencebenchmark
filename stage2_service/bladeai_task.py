@@ -35,6 +35,32 @@ _PLAN_FLAG_RE = re.compile(
     re.IGNORECASE,
 )
 _PLAN_PARAM_KEYS = frozenset({"time", "timeout", "percent", "cpu-percent", "mem-percent"})
+# The same knob is spelled three different ways across the system: the plan
+# contract asks for the ChaosBlade CLI spelling (`cpu-percent`), while both the
+# Controller's own intensity contract and every Lx prompt use the canonical
+# field name (`cpu_percent`).  An agent that copies the spelling it was given
+# in the prompt therefore had its intensity silently dropped, leaving only
+# `timeout`, which the shim then refused as "not exactly representable" -- and
+# the trial was scored as though the agent had never proposed a fault.
+# Accept either spelling and normalise to the CLI form the shim maps from.
+_PLAN_PARAM_ALIASES = {
+    "cpu_percent": "cpu-percent",
+    "mem_percent": "mem-percent",
+    "memory_percent": "mem-percent",
+    "loss_percent": "percent",
+    "delay_ms": "time",
+    "time_ms": "time",
+    "duration_seconds": "timeout",
+    # L1xC0 (2026-09-10) wrote `timeout_seconds: 300` and lost it.
+    "timeout_seconds": "timeout",
+    "safety_ttl_seconds": "timeout",
+    "ttl_seconds": "timeout",
+}
+
+
+def _canonical_param_key(key: str) -> str:
+    lowered = str(key).strip().lower()
+    return _PLAN_PARAM_ALIASES.get(lowered, lowered)
 
 
 def _structured_plan_fields(content: str) -> dict[str, Any]:
@@ -62,14 +88,16 @@ def _structured_plan_fields(content: str) -> dict[str, Any]:
         return {}
     fields = dict(candidates[-1] if candidates else {})
 
-    params: dict[str, str] = {
-        key: value
-        for key, value in fields.items()
-        if key in _PLAN_PARAM_KEYS and re.fullmatch(r"\d+(?:\.\d+)?", value)
-    }
+    params: dict[str, str] = {}
+    for key, value in fields.items():
+        canonical = _canonical_param_key(key)
+        if canonical in _PLAN_PARAM_KEYS and re.fullmatch(r"\d+(?:\.\d+)?", value):
+            # A block that spells the same knob twice is ambiguous; keep the
+            # first and let a genuine conflict surface rather than picking one.
+            params.setdefault(canonical, value)
     if not params:
         for match in _PLAN_FLAG_RE.finditer(content):
-            params[match.group("key").lower()] = match.group("value")
+            params[_canonical_param_key(match.group("key"))] = match.group("value")
     if not params:
         return {}
 
@@ -509,15 +537,20 @@ def partial_plan_from_native_proposal(
     fault = proposal.get("fault_intent")
     if not isinstance(fault, Mapping):
         raise BladeTaskError("BladeAI proposal is missing structured fault_intent")
-    action = _required_text(fault.get("action"), "proposal.fault_intent.action")
-    fault_type = _canonical_fault_type(
+    fault_type, action = _canonical_fault_type(
         _required_text(fault.get("scope"), "proposal.fault_intent.scope"),
         _required_text(fault.get("target"), "proposal.fault_intent.target"),
-        action,
+        _required_text(fault.get("action"), "proposal.fault_intent.action"),
     )
+    # No parameters is not refused outright any more (user rule, 2026-09-10):
+    # an intensity with a documented ChaosBlade default is filled in by
+    # canonical_native_intensity and recorded; one without a default is still
+    # refused, naming the missing flag.
     params = proposal.get("params")
-    if not isinstance(params, Mapping) or not params:
-        raise BladeTaskError("BladeAI proposal is missing evidenced fault parameters")
+    if params is None:
+        params = {}
+    if not isinstance(params, Mapping):
+        raise BladeTaskError("BladeAI proposal parameters must be a mapping")
     from .bladeai_shim import BladeShimError, canonical_native_intensity
     native_params = {
         "--" + str(key).replace("_", "-"): value
@@ -541,30 +574,80 @@ def partial_plan_from_native_proposal(
     duration = proposal.get("duration_seconds")
     timeout_seconds = _strict_agent_seconds(timeout) if timeout is not None else None
     duration_seconds = _strict_agent_seconds(duration) if duration is not None else None
-    if timeout_seconds is not None and duration_seconds is not None and timeout_seconds != duration_seconds:
-        raise BladeTaskError("SDK proposal duration and timeout disagree")
-    if duration_seconds is not None:
-        partial["safety_ttl_seconds"] = duration_seconds
-    elif timeout_seconds is not None:
+    # The Agent's own plan block (``timeout``) states the duration it chose;
+    # the SDK's ``duration_seconds`` can be the SDK default (600 s) when the
+    # Agent wrote none. Prefer the Agent's value; the Worker records where the
+    # duration came from so an SDK default costs plan-validation credit.
+    if timeout_seconds is not None:
         partial["safety_ttl_seconds"] = timeout_seconds
+    elif duration_seconds is not None:
+        partial["safety_ttl_seconds"] = duration_seconds
     return partial
 
 
-def _canonical_fault_type(scope: str, target: str, action: str) -> str:
-    key = (scope.lower(), target.lower(), action.lower())
-    aliases = {
-        ("pod", "network", "delay"): "network-delay",
-        ("pod", "network", "loss"): "network-loss",
-        ("pod", "network", "drop"): "network-loss",
-        ("pod", "cpu", "load"): "cpu-load",
-        ("pod", "cpu", "fullload"): "cpu-load",
-        ("pod", "memory", "load"): "memory-stress",
-        ("pod", "mem", "load"): "memory-stress",
-    }
+def proposal_intensity_source(proposal: Mapping[str, Any]) -> str:
+    """Whether an SDK proposal states its intensity or leaves it to the tool default.
+
+    Returns ``agent_plan``, ``tool_default`` (ChaosBlade's documented default
+    stands in, see ``NATIVE_INTENSITY_TOOL_DEFAULTS``) or ``none`` when the
+    proposal cannot be read. The Worker records it next to the duration source
+    so a defaulted intensity halves plan validation (user rule, 2026-09-10).
+    """
+    fault = proposal.get("fault_intent")
+    params = proposal.get("params")
+    if not isinstance(fault, Mapping) or not (params is None or isinstance(params, Mapping)):
+        return "none"
     try:
-        return aliases[key]
-    except KeyError as exc:
-        raise BladeTaskError("BladeAI fault_intent is outside the authorized Stage-2 fault space") from exc
+        fault_type, action = _canonical_fault_type(
+            str(fault.get("scope") or ""),
+            str(fault.get("target") or ""),
+            str(fault.get("action") or ""),
+        )
+    except (BladeTaskError, KeyError, ValueError):
+        return "none"
+    from .bladeai_shim import native_intensity_source
+
+    native_params = {
+        "--" + str(key).replace("_", "-"): value
+        for key, value in (params or {}).items()
+        if str(key) != "timeout"
+    }
+    return native_intensity_source(fault_type, native_params, action=action)
+
+
+def _canonical_fault_type(scope: str, target: str, action: str) -> tuple[str, str]:
+    """Map the SDK's ``fault_intent`` to a Stage-2 fault type and its native action.
+
+    Returns ``(fault_type, native_action)``. The SDK normally writes ChaosBlade's
+    own action (``{"scope": "pod", "target": "cpu", "action": "fullload"}``), but
+    it has also written the same fault as ``"cpu-load"`` -- the Stage-2 name --
+    and may use the skill spelling ``"pod-cpu-fullload"``. Those all name one
+    fault, so the action is normalised first (lower case, ``_`` to ``-``, a
+    leading ``<scope>-`` and ``<target>-`` removed), and a Stage-2 name is
+    accepted when it belongs to the same scope and resource. Anything else --
+    a network action on the CPU resource, a Pod delete, a node-scoped fault --
+    is still refused. The table is the shim's, so both paths accept one set.
+    """
+    from .bladeai_shim import CHAOSBLADE_FAULT_SCENARIOS
+
+    scope_key = scope.strip().lower()
+    target_key = target.strip().lower()
+    spelled = action.strip().lower().replace("_", "-")
+    native_action = spelled
+    for prefix in (f"{scope_key}-", f"{target_key}-"):
+        if native_action.startswith(prefix):
+            native_action = native_action[len(prefix):]
+    fault_type = CHAOSBLADE_FAULT_SCENARIOS.get((scope_key, target_key, native_action))
+    if fault_type is not None:
+        return fault_type, native_action
+    same_resource = {
+        value
+        for (known_scope, known_target, _action), value in CHAOSBLADE_FAULT_SCENARIOS.items()
+        if (known_scope, known_target) == (scope_key, target_key)
+    }
+    if spelled in same_resource:
+        return spelled, spelled
+    raise BladeTaskError("BladeAI fault_intent is outside the authorized Stage-2 fault space")
 
 
 def _strict_agent_number(value: object, field: str) -> float:

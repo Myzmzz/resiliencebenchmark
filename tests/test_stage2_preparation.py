@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 import json
@@ -113,6 +114,32 @@ def test_preparer_rebinds_current_pod_and_issues_application_traffic_capability(
     assert rebound["baseline_capability_rebound"] is True
     assert payload["target_name"] == "cart-new"
     assert payload["target_uid"] == "uid-new"
+
+
+def test_baseline_capability_outlives_long_agent_planning(tmp_path: Path):
+    """The create gate must not expire while an Agent is still planning.
+
+    With the old 15-minute lifetime, bladeai's create 15.8 minutes after
+    preparation was refused with BASELINE_TOKEN_EXPIRED (2026-09-10, L0xC0).
+    The user set the lifetime to 30 days for every Agent; the rebind after a
+    Controller-owned Pod replacement keeps the same lifetime.
+    """
+    issuer = ApplicationTrafficCapabilityIssuer(
+        ledger_dir=tmp_path / "ledger",
+        controller_pod_uid="controller-uid",
+        traffic_evidence=Traffic(),
+    )
+    trial_id = "campaign-1234567890abcdef-bladeai-c0-1"
+    issuer.issue(trial_id, namespace="otel-demo", target=None)
+    ledger_file = next((tmp_path / "ledger").glob("*.json"))
+    issued = json.loads(ledger_file.read_text())
+    issued_lifetime = datetime.fromisoformat(issued["expires_at"]) - datetime.fromisoformat(issued["issued_at"])
+    assert issued_lifetime == timedelta(days=30)
+
+    issuer.rebind(trial_id, namespace="otel-demo", target_name="cart-new", target_uid="uid-new")
+    rebound = json.loads(ledger_file.read_text())
+    remaining = datetime.fromisoformat(rebound["expires_at"]) - datetime.fromisoformat(issued["issued_at"])
+    assert remaining >= timedelta(days=30)
 
 
 def test_application_traffic_capability_fails_when_builtin_traffic_is_not_observed(tmp_path: Path):

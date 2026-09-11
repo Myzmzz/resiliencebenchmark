@@ -203,9 +203,16 @@ class CampaignEngine:
         selected_cases = _selected_cases(request)
         external_stop = stop_requested or (lambda: False)
         campaign_deadline = time.monotonic() + self.max_campaign_seconds
+        # Set when the condition monitor ends an overdue Trial (approved
+        # duration plus grace). It ends only the Agent session: the Trial is
+        # still cleaned up, finalized and scored, and the campaign goes on.
+        overtime_abort = {"requested": False}
 
         def should_stop() -> bool:
             return external_stop() or time.monotonic() >= campaign_deadline
+
+        def cancel_agent_turn() -> bool:
+            return _agent_turn_cancelled(should_stop, overtime_abort)
 
         def emit(
             kind: str,
@@ -495,11 +502,12 @@ class CampaignEngine:
                                         event.occurred_at
                                     )
                                 if event.kind in {"main_fault_created", "main_fault_running"} and condition_plan:
+                                    overtime_abort["requested"] = False
                                     condition_monitor.arm(
                                         trial_id=trial_id,
                                         cleanup_handle=runtime.cleanup_handle,
                                         plan=condition_plan,
-                                        emit=lambda monitor_kind, monitor_payload: emit(
+                                        emit=lambda monitor_kind, monitor_payload: _note_overtime_abort(overtime_abort, monitor_kind) or emit(
                                             "condition_monitor_event",
                                             {
                                                 "trial_id": trial_id,
@@ -741,6 +749,7 @@ class CampaignEngine:
                             trial_id=trial_id,
                             harness=harness,
                             model_alias=request.model_by_harness[harness],
+                            llm_tag=request.llm_tag,
                             episode=self.episode,
                             runtime_context=runtime,
                             capability=capability,
@@ -758,11 +767,13 @@ class CampaignEngine:
                             self.harness_runner.run
                         ).parameters
                         if "cancel_requested" in runner_parameters:
-                            runner_kwargs["cancel_requested"] = should_stop
+                            runner_kwargs["cancel_requested"] = cancel_agent_turn
                         if "decision_policy" in runner_parameters:
                             runner_kwargs["decision_policy"] = request.decision_policy
                         if "prompt_level_label" in runner_parameters:
                             runner_kwargs["prompt_level_label"] = request.prompt_level_label
+                        if "llm_tag" in runner_parameters:
+                            runner_kwargs["llm_tag"] = request.llm_tag
                         if "expected_outcome" in runner_parameters:
                             runner_kwargs["expected_outcome"] = request.expected_outcome
                         report = self.harness_runner.run(**runner_kwargs)
@@ -775,6 +786,7 @@ class CampaignEngine:
                                 }
                             }
                         )
+                        report = _score_platform_ended_session(report, overtime_abort)
                         emit(
                             "agent_response_captured",
                             {
@@ -1836,6 +1848,48 @@ def _update_disturbance_attempt(
 ) -> None:
     attempt.update(updates)
     attempt["state"] = state
+
+
+def _score_platform_ended_session(
+    report: HarnessReport, overtime_abort: Mapping[str, bool]
+) -> HarnessReport:
+    """Score a Trial whose Agent session the platform ended by the overtime rule.
+
+    The overtime abort cancels the Agent's process, which the runner reports as
+    a failed harness (return code -15), and a failed harness voids the Trial
+    (2026-09-10 L0xC0 was CASE_INVALID although its experiment gate passed).
+    The user's rule is that the platform stops, cleans up and scores, so a
+    session ended only by that abort counts as completed.
+    """
+    output = dict(report.final_output or {})
+    if (
+        overtime_abort.get("requested") is not True
+        or report.status != "failed"
+        or output.get("cancelled") is not True
+        or output.get("harness_error_code")
+        or output.get("output_truncated")
+    ):
+        return report
+    output["platform_ended_session"] = True
+    return report.model_copy(update={"status": "completed", "final_output": output})
+
+
+def _agent_turn_cancelled(
+    campaign_should_stop: Callable[[], bool], overtime_abort: Mapping[str, bool]
+) -> bool:
+    """Whether the running Agent turn must be cancelled.
+
+    A campaign stop cancels it, and so does a platform overtime abort. The
+    abort must not stop the campaign itself: until 2026-09-10 it shared the
+    campaign stop flag, so the aborted L2xC0 Trial was never scored.
+    """
+    return campaign_should_stop() or overtime_abort.get("requested") is True
+
+
+def _note_overtime_abort(flag: dict[str, bool], monitor_kind: str) -> None:
+    """Record that the condition monitor ended an overdue Trial."""
+    if monitor_kind == "platform_overtime_abort":
+        flag["requested"] = True
 
 
 def _selected_cases(request: CampaignRequest) -> tuple[CaseSpec, ...]:

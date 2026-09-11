@@ -279,7 +279,8 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     assert answers[-1]["responder"] == "HARNESS"
     assert answers[-1]["answer_mode"] == ("custom" if scenario in {"custom", "plain_question", "approval_repair"} else "approve_recommendation")
     assert answers[-1]["approved_plan"]["intensity"]["delay_ms"] == 300
-    assert answers[-1]["approved_plan"]["safety_ttl_seconds"] == 600
+    # These plans name no fault duration, so the 1200-second fallback applies.
+    assert answers[-1]["approved_plan"]["safety_ttl_seconds"] == 1200
     assert answers[-1]["approved_plan"]["effect_sustain_seconds"] == 60
     assert answers[-1]["approved_plan"]["effect_condition"]["threshold_tolerance_ratio"] == 0.6
     assert "minimum_requests" not in answers[-1]["approved_plan"]["effect_condition"]

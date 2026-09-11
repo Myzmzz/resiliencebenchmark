@@ -1108,6 +1108,108 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertEqual(1, result["global_unsafe_unowned_count"])
 
 
+    def _write_approved_decision(self, *, ttl: int = 120, delay_ms: int = 250) -> Path:
+        decision_file = Path(self.tempdir.name) / "user-decision.json"
+        decision_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "stage2-user-decision.v1",
+                    "question_id": "question-0123456789abcdef",
+                    "approved": True,
+                    "answer_mode": "approve_recommendation",
+                    "approved_plan": {
+                        "target": {"namespace": "otel-demo", "name": "checkoutservice-abc123", "uid": "pod-uid-1"},
+                        "fault_type": "network-delay",
+                        "safety_ttl_seconds": ttl,
+                        "intensity": {"delay_ms": delay_ms},
+                        "effect_condition": {"metric": "target_latency_ms", "operator": "increase_by_at_least", "threshold": 100},
+                        "recovery_condition": {"metric": "target_latency_ms", "operator": "within_baseline_delta", "threshold": 50},
+                        "stop_conditions": ["effect condition met"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(decision_file, 0o600)
+        return decision_file
+
+    def _approved_plan_service(self, **config_overrides):
+        return ChaosControlService(
+            replace(self.config, user_decision_file=self._write_approved_decision(), **config_overrides),
+            self.backend,
+        )
+
+    def test_approved_plan_is_the_reference_even_when_the_hidden_contract_differs(self):
+        # L3xC0 on 2026-09-10: the approved plan said 120 s, the variant set's
+        # hidden contract said 300 s, and every request matching the approved
+        # plan was refused. The approved plan is now the reference.
+        service = self._approved_plan_service(
+            expected_fault={"fault_type": "network-delay", "duration_seconds": 300, "intensity": {"delay_ms": 250}},
+        )
+        created = run(service.create_experiment(**self.create_kwargs()))
+        self.assertTrue(created["ok"])
+        self.assertNotIn("plan_deviations", created)
+
+    def test_a_duration_other_than_the_approved_one_is_allowed_and_recorded(self):
+        service = self._approved_plan_service()
+        created = run(service.create_experiment(**self.create_kwargs(duration_seconds=60)))
+        self.assertTrue(created["ok"])
+        self.assertEqual(
+            [{"field": "duration_seconds", "approved": 120, "requested": 60}],
+            created["plan_deviations"],
+        )
+
+    def test_higher_intensity_is_refused_with_both_plans_and_lower_is_recorded(self):
+        service = self._approved_plan_service()
+        refused = call(service.create_experiment(**self.create_kwargs(intensity={"delay_ms": 500})))
+        self.assertEqual("USER_DECISION_MISMATCH", refused["error"]["code"])
+        self.assertEqual(["intensity"], refused["error"]["details"]["refused_fields"])
+        self.assertEqual({"delay_ms": 250.0}, refused["error"]["details"]["approved"]["intensity"])
+        self.assertEqual({"delay_ms": 500.0}, refused["error"]["details"]["requested"]["intensity"])
+        self.assertIn("approved", refused["error"]["message"])
+        created = run(service.create_experiment(**self.create_kwargs(intensity={"delay_ms": 100})))
+        self.assertTrue(created["ok"])
+        self.assertEqual(
+            [{"field": "intensity.delay_ms", "approved": 250.0, "requested": 100.0}],
+            created["plan_deviations"],
+        )
+
+    def test_validate_plan_uses_the_approved_plan_and_reports_the_deviation(self):
+        service = self._approved_plan_service(
+            expected_fault={"fault_type": "network-delay", "duration_seconds": 300, "intensity": {"delay_ms": 250}},
+        )
+        keys = {"run_id", "namespace", "target_name", "target_uid", "fault_type", "duration_seconds", "intensity"}
+        validated = run(service.validate_plan(**{
+            key: value for key, value in self.create_kwargs(duration_seconds=60).items() if key in keys
+        }))
+        self.assertTrue(validated["ok"])
+        self.assertEqual("duration_seconds", validated["plan_deviations"][0]["field"])
+
+    def test_fault_contract_mismatch_states_the_expected_values(self):
+        service = ChaosControlService(
+            replace(
+                self.config,
+                expected_fault={"fault_type": "network-delay", "duration_seconds": 120, "intensity": {"delay_ms": 250}},
+            ),
+            self.backend,
+        )
+        rejected = call(
+            service.validate_plan(
+                run_id="episode-e2e-001-r001",
+                namespace="otel-demo",
+                target_name="checkoutservice-abc123",
+                target_uid="pod-uid-1",
+                fault_type="network-delay",
+                duration_seconds=60,
+                intensity={"delay_ms": 250},
+            )
+        )
+        self.assertEqual("FAULT_CONTRACT_MISMATCH", rejected["error"]["code"])
+        self.assertEqual(120, rejected["error"]["details"]["expected"]["duration_seconds"])
+        self.assertEqual(60, rejected["error"]["details"]["requested"]["duration_seconds"])
+        self.assertIn("duration_seconds=120", rejected["error"]["message"])
+
+
 class RecordingKubectlBackend(KubectlChaosBackend):
     def __init__(self) -> None:
         super().__init__("kubectl")

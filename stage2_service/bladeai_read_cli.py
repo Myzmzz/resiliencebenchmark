@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 PROXY_SERVER = "http://127.0.0.1:18481"
 MAX_RESPONSE_BYTES = 1_000_000
 _K8S_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$")
+_SUPPORTED_COMMANDS = "only read-only get, top, logs, exec blade, cluster-info, and config current-context are supported"
 
 
 class ReadCliError(ValueError):
@@ -77,6 +78,7 @@ class CommonOptions:
     continue_token: str | None = None
     resource_version: str | None = None
     timeout_seconds: str | None = None
+    context: str | None = None
 
 
 @dataclass
@@ -109,6 +111,7 @@ def main(
     args = list(sys.argv[1:] if argv is None else argv)
     command = _parse(args)
     kubeconfig = _load_kubeconfig(command.options.kubeconfig)
+    _check_context(command.options.context, kubeconfig)
 
     if command.verb == "config":
         print(kubeconfig.current_context)
@@ -120,6 +123,9 @@ def main(
         return 0
 
     client = transport or HTTPProxyTransport()
+    if command.verb == "cluster-info":
+        print(_cluster_info(client, command, kubeconfig))
+        return 0
     if command.verb == "get":
         body = client.get(_get_path(command, kubeconfig), kubeconfig.token)
         print(_render_get(body, command))
@@ -131,15 +137,15 @@ def main(
         body = client.get(_logs_path(command, kubeconfig), kubeconfig.token)
         print(body.decode("utf-8", errors="replace"))
         return 0
-    raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
+    raise ReadCliError(_SUPPORTED_COMMANDS)
 
 
 def _parse(argv: list[str]) -> Command:
     if not argv:
-        raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
+        raise ReadCliError(_SUPPORTED_COMMANDS)
     verb_index = _find_verb(argv)
     if verb_index is None:
-        raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
+        raise ReadCliError(_SUPPORTED_COMMANDS)
     verb = argv[verb_index]
     rest = argv[:verb_index] + argv[verb_index + 1 :]
     if verb == "config":
@@ -152,12 +158,14 @@ def _parse(argv: list[str]) -> Command:
         return _parse_logs(rest)
     if verb == "exec":
         return _parse_exec(rest)
-    raise ReadCliError("only read-only get, top, logs, exec blade, and config current-context are supported")
+    if verb == "cluster-info":
+        return _parse_cluster_info(rest)
+    raise ReadCliError(_SUPPORTED_COMMANDS)
 
 
 def _find_verb(argv: list[str]) -> int | None:
-    value_flags = {"--kubeconfig", "--namespace", "-n", "-o", "--output"}
-    verbs = {"get", "top", "logs", "exec", "config"}
+    value_flags = {"--kubeconfig", "--context", "--namespace", "-n", "-o", "--output"}
+    verbs = {"get", "top", "logs", "exec", "config", "cluster-info"}
     i = 0
     while i < len(argv):
         token = argv[i]
@@ -166,7 +174,7 @@ def _find_verb(argv: list[str]) -> int | None:
         if token in value_flags:
             i += 2
             continue
-        if token.startswith("--kubeconfig=") or token.startswith("--namespace=") or token.startswith("--output="):
+        if token.startswith(("--kubeconfig=", "--context=", "--namespace=", "--output=")):
             i += 1
             continue
         if token.startswith("-n") and token != "-n":
@@ -279,6 +287,19 @@ def _parse_config(tokens: list[str]) -> Command:
     if ns.config_command != "current-context":
         raise ReadCliError("only config current-context is supported")
     return Command("config", options=CommonOptions(kubeconfig=ns.kubeconfig, namespace=ns.namespace))
+
+
+def _parse_cluster_info(tokens: list[str]) -> Command:
+    """Parse ``cluster-info [--kubeconfig PATH] [--context NAME]`` as bladeai's startup probe sends it."""
+    parser = _common_parser(output=False, no_headers=False)
+    parser.add_argument("--context", dest="context")
+    ns, extra = parser.parse_known_args(tokens)
+    if extra:
+        raise ReadCliError(f"unsupported cluster-info argument: {extra[0]}")
+    return Command(
+        "cluster-info",
+        options=CommonOptions(kubeconfig=ns.kubeconfig, namespace=ns.namespace, context=ns.context),
+    )
 
 
 def _parse_exec(tokens: list[str]) -> Command:
@@ -419,6 +440,33 @@ def _namespace(command: Command, kubeconfig: KubeConfig) -> str:
     if not _K8S_NAME.fullmatch(ns):
         raise ReadCliError("namespace is invalid")
     return ns
+
+
+def _check_context(requested: str | None, kubeconfig: KubeConfig) -> None:
+    """Reject a ``--context`` other than the injected kubeconfig's current context.
+
+    The per-trial kubeconfig holds one proxy context; naming any other context is a
+    mistake the Agent should see, as it would with real kubectl.
+    """
+    if requested and requested != kubeconfig.current_context:
+        raise ReadCliError("provided context does not match the injected BladeAI kubeconfig")
+
+
+def _cluster_info(client: ReadTransport, command: Command, kubeconfig: KubeConfig) -> str:
+    """Answer ``kubectl cluster-info`` with one bounded read through the controlled proxy.
+
+    bladeai's startup probe (``env_info._check_k8s_available``) only checks the exit
+    code. Real cluster-info lists control-plane URLs the Agent cannot reach, so the
+    shim instead proves that a namespaced read succeeds through the proxy.
+    """
+    namespace = _namespace(command, kubeconfig)
+    path = _append_query(f"/api/v1/namespaces/{namespace}/pods", [("limit", "1")])
+    proxy = "the Stage-2 controlled read-only proxy"
+    try:
+        _ensure_json(client.get(path, kubeconfig.token))
+    except ReadCliError as exc:
+        raise ReadCliError(f"Kubernetes control plane is not reachable through {proxy}: {exc}") from exc
+    return f"Kubernetes control plane is reachable through {proxy} (namespace {namespace})."
 
 
 def _get_path(command: Command, kubeconfig: KubeConfig) -> str:
@@ -706,46 +754,304 @@ def _memory_kib(value: str) -> int:
     return int(int(value or 0) / 1024)
 
 
+# kubectl -o jsonpath= templates.
+#
+# A small, strict subset of kubectl's JSONPath template language. Syntax outside
+# the subset raises ReadCliError instead of rendering an empty line, so the Agent
+# never mistakes an unsupported expression for an empty field.
+
+_LEGACY_POD_NAME_TEMPLATE = "{range .items[*]}{.metadata.name} {end}"
+_FIELD_NAME = r"[A-Za-z0-9_-]+"
+# A path segment name may also hold "/" and escaped dots, as label and annotation
+# keys do: .metadata.labels.app\.kubernetes\.io/name
+_SEGMENT_NAME = r"(?:[A-Za-z0-9_/-]|\\\.)+"
+_QUOTED_STRING = r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'"
+# A "['key']" selector names a key of the object, e.g. .metadata.labels['app.kubernetes.io/name'].
+_QUOTED_KEY = re.compile(_QUOTED_STRING)
+# ".name" plus an optional "[...]" selector; quoted strings inside the selector may contain "]".
+_PATH_SEGMENT = re.compile(rf"\.(?P<name>{_SEGMENT_NAME})(?:\[(?P<selector>(?:[^\]\"']|{_QUOTED_STRING})*)\])?")
+_EQUALITY_FILTER = re.compile(
+    rf"\?\(\s*@\.(?P<field>{_FIELD_NAME}(?:\.{_FIELD_NAME})*)\s*==\s*(?P<value>{_QUOTED_STRING})\s*\)"
+)
+_ARRAY_INDEX = re.compile(r"-?\d+")
+_RANGE_ACTION = re.compile(r"range\s+(?P<path>.+)")
+_STRING_ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "'": "'"}
+
+
+@dataclass(frozen=True)
+class _EqualityFilter:
+    """``[?(@.field=="value")]``: keeps list items whose relative field equals a string."""
+
+    field: str
+    value: str
+
+
+@dataclass(frozen=True)
+class _PathSegment:
+    """``.name``, optionally followed by ``[N]``, ``[*]`` or an equality filter."""
+
+    name: str
+    index: int | None = None
+    wildcard: bool = False
+    equality_filter: _EqualityFilter | None = None
+
+
+@dataclass(frozen=True)
+class _TextNode:
+    """Literal output: text outside braces, or a quoted ``{"..."}`` literal."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class _PathNode:
+    """``{.path}``: prints every value the path selects, separated by one space."""
+
+    segments: tuple[_PathSegment, ...]
+
+
+@dataclass(frozen=True)
+class _RangeNode:
+    """``{range .path}...{end}``: renders ``body`` once per selected value, relative to that value."""
+
+    segments: tuple[_PathSegment, ...]
+    body: tuple[_TemplateNode, ...]
+
+
+_TemplateNode = _TextNode | _PathNode | _RangeNode
+
+
 def _jsonpath(obj: Any, expression: str) -> str:
-    expression = expression.strip("'\"")
-    if expression == "{range .items[*]}{.metadata.name} {end}":
+    """Render a kubectl ``-o jsonpath=`` template against one decoded API object.
+
+    ``main()`` prints the result followed by a newline, so a single newline that the
+    template itself ends with is dropped: newline-terminated templates then print
+    exactly what kubectl prints.
+    """
+    expression = expression.strip("'\"")  # bladeai passes jsonpath='{...}' with its quotes
+    if not expression.strip():
+        raise _unsupported_jsonpath("empty template")
+    if expression == _LEGACY_POD_NAME_TEMPLATE:
+        # bladeai's pod-name listing (agent/target_health.py) keeps the shim's historical
+        # output: no trailing space, and a single object stands in for a one-item list.
         return " ".join(str(item.get("metadata", {}).get("name") or "") for item in _items_or_self(obj)).strip()
-    if expression.startswith("{") and expression.endswith("}"):
-        expression = expression[1:-1]
-    if expression.startswith(".items[0]."):
-        items = _items_or_self(obj)
-        return _value_at_path(items[0] if items else {}, expression.removeprefix(".items[0]."))
-    if expression.startswith(".items[*]."):
-        key_path = expression.removeprefix(".items[*].")
-        return " ".join(_value_at_path(item, key_path) for item in _items_or_self(obj)).strip()
-    if expression.startswith("."):
-        return _value_at_path(obj, expression.removeprefix("."))
-    raise ReadCliError("jsonpath expression is unsupported")
+    return _render_template(_parse_template(expression), obj).removesuffix("\n")
 
 
-def _value_at_path(obj: Any, path: str) -> str:
-    current = obj
-    for part in path.split("."):
-        if "[" in part and part.endswith("]"):
-            name, index_text = part[:-1].split("[", 1)
-            current = current.get(name, []) if isinstance(current, Mapping) else []
-            if index_text == "*":
-                if not isinstance(current, list):
-                    return ""
-                return " ".join(str(item) for item in current)
-            index = int(index_text)
-            if not isinstance(current, list) or index >= len(current):
-                return ""
-            current = current[index]
+def _unsupported_jsonpath(detail: str) -> ReadCliError:
+    """The error for syntax outside the supported subset; callers ``raise`` it."""
+    return ReadCliError(f"jsonpath expression is unsupported: {detail}")
+
+
+def _parse_template(expression: str) -> tuple[_TemplateNode, ...]:
+    """Parse literal text, ``{path}``, ``{"literal"}`` and nested ``{range path}...{end}`` blocks."""
+    nodes: list[_TemplateNode] = []
+    # One entry per open {range}: its path and the node list the finished range joins.
+    open_ranges: list[tuple[tuple[_PathSegment, ...], list[_TemplateNode]]] = []
+    for is_action, text in _template_pieces(expression):
+        if not is_action:
+            nodes.append(_TextNode(text))
             continue
-        if not isinstance(current, Mapping):
-            return ""
-        current = current.get(part)
-        if current is None:
-            return ""
-    if isinstance(current, (dict, list)):
-        return json.dumps(current, separators=(",", ":"))
-    return str(current)
+        action = text.strip()
+        range_match = _RANGE_ACTION.fullmatch(action)
+        if range_match:
+            open_ranges.append((_parse_path(range_match.group("path")), nodes))
+            nodes = []
+        elif action == "end":
+            if not open_ranges:
+                raise _unsupported_jsonpath("{end} without a matching {range}")
+            segments, enclosing = open_ranges.pop()
+            enclosing.append(_RangeNode(segments, tuple(nodes)))
+            nodes = enclosing
+        elif action.startswith(('"', "'")):
+            nodes.append(_TextNode(_string_literal(action)))
+        else:
+            nodes.append(_PathNode(_parse_path(action)))
+    if open_ranges:
+        raise _unsupported_jsonpath("{range} without a matching {end}")
+    return tuple(nodes)
+
+
+def _template_pieces(expression: str) -> list[tuple[bool, str]]:
+    """Split a template into ``(is_action, text)`` pieces; action text excludes its braces."""
+    pieces: list[tuple[bool, str]] = []
+    literal_start = position = 0
+    while position < len(expression):
+        char = expression[position]
+        if char == "}":
+            raise _unsupported_jsonpath("unbalanced '}'")
+        if char != "{":
+            position += 1
+            continue
+        if position > literal_start:
+            pieces.append((False, expression[literal_start:position]))
+        end = _action_end(expression, position)
+        pieces.append((True, expression[position + 1 : end]))
+        literal_start = position = end + 1
+    if literal_start < len(expression):
+        pieces.append((False, expression[literal_start:]))
+    return pieces
+
+
+def _action_end(expression: str, start: int) -> int:
+    """Index of the ``}`` closing the ``{`` at ``start``; braces inside quotes do not count."""
+    quote = ""
+    position = start + 1
+    while position < len(expression):
+        char = expression[position]
+        if quote:
+            if char == "\\":
+                position += 1  # an escaped character cannot close the string
+            elif char == quote:
+                quote = ""
+        elif char in {'"', "'"}:
+            quote = char
+        elif char == "{":
+            raise _unsupported_jsonpath("nested '{' inside an action")
+        elif char == "}":
+            return position
+        position += 1
+    raise _unsupported_jsonpath("unbalanced '{'")
+
+
+def _string_literal(quoted: str) -> str:
+    """Decode ``"..."`` or ``'...'``; only ``\\n``, ``\\t``, ``\\\\`` and escaped quotes are accepted."""
+    quote = quoted[0]
+    if len(quoted) < 2 or quoted[-1] != quote:
+        raise _unsupported_jsonpath(f"string literal {quoted}")
+    body = quoted[1:-1]
+    decoded: list[str] = []
+    position = 0
+    while position < len(body):
+        char = body[position]
+        if char == quote:
+            raise _unsupported_jsonpath(f"string literal {quoted}")
+        if char == "\\":
+            escape = body[position + 1 : position + 2]
+            if escape not in _STRING_ESCAPES:
+                raise _unsupported_jsonpath(f"escape \\{escape} in {quoted}; only \\n, \\t, \\\\ and quotes")
+            decoded.append(_STRING_ESCAPES[escape])
+            position += 2
+            continue
+        decoded.append(char)
+        position += 1
+    return "".join(decoded)
+
+
+def _parse_path(text: str) -> tuple[_PathSegment, ...]:
+    """Parse ``.a.b[0].c[*].d[?(@.k=="v")]``; ``@.`` and ``$.`` mean the current object, as in kubectl.
+
+    A key holding dots, such as a label key, may be written with escaped dots
+    (``.labels.app\\.kubernetes\\.io/name``) or in brackets
+    (``.labels['app.kubernetes.io/name']``); both select ``app.kubernetes.io/name``.
+    """
+    path = text[1:] if text.startswith(("@.", "$.")) else text
+    if not path.startswith("."):
+        raise _unsupported_jsonpath(f"{{{text}}} is not a path starting with '.', '@.' or '$.'")
+    segments: list[_PathSegment] = []
+    position = 0
+    while position < len(path):
+        if path.startswith("..", position):
+            raise _unsupported_jsonpath(f"recursive descent '..' in {{{text}}}")
+        match = _PATH_SEGMENT.match(path, position)
+        if match is None:
+            raise _unsupported_jsonpath(f"{{{text}}} near {path[position:]!r}")
+        name = match.group("name").replace("\\.", ".")  # an escaped dot belongs to the key
+        selector = match.group("selector")
+        if selector is not None and _QUOTED_KEY.fullmatch(selector.strip()):
+            # ['app.kubernetes.io/name'] selects that key of the named object.
+            segments.extend((_PathSegment(name), _PathSegment(_string_literal(selector.strip()))))
+        else:
+            segments.append(_path_segment(name, selector))
+        position = match.end()
+    return tuple(segments)
+
+
+def _path_segment(name: str, selector: str | None) -> _PathSegment:
+    """Build one segment; ``selector`` is the text between ``[`` and ``]``, if any."""
+    if selector is None:
+        return _PathSegment(name)
+    if selector == "*":
+        return _PathSegment(name, wildcard=True)
+    if _ARRAY_INDEX.fullmatch(selector):
+        return _PathSegment(name, index=int(selector))
+    filter_match = _EQUALITY_FILTER.fullmatch(selector)
+    if filter_match:
+        equality = _EqualityFilter(filter_match.group("field"), _string_literal(filter_match.group("value")))
+        return _PathSegment(name, equality_filter=equality)
+    raise _unsupported_jsonpath(
+        f"selector {name}[{selector}]; use [N], [*], ['key'] or [?(@.field==\"value\")]"
+    )
+
+
+def _render_template(nodes: Sequence[_TemplateNode], current: Any) -> str:
+    """Render ``nodes`` against ``current``; range bodies render once per selected value."""
+    parts: list[str] = []
+    for node in nodes:
+        if isinstance(node, _TextNode):
+            parts.append(node.text)
+        elif isinstance(node, _PathNode):
+            parts.append(" ".join(_result_text(value) for value in _select_values(current, node.segments)))
+        else:
+            parts.extend(_render_template(node.body, item) for item in _select_values(current, node.segments))
+    return "".join(parts)
+
+
+def _select_values(current: Any, segments: Sequence[_PathSegment]) -> list[Any]:
+    """Follow a path from ``current``; like kubectl, each segment maps a result set to a new one."""
+    values = [current]
+    for segment in segments:
+        values = [selected for value in values for selected in _apply_segment(value, segment)]
+    return values
+
+
+def _apply_segment(value: Any, segment: _PathSegment) -> list[Any]:
+    """Values one segment selects from one value; a missing key selects nothing."""
+    if not isinstance(value, Mapping) or value.get(segment.name) is None:
+        return []  # renders empty, like kubectl's default --allow-missing-template-keys=true
+    child = value[segment.name]
+    if segment.index is not None:
+        return [_list_item(_as_list(child, segment), segment.index)]
+    if segment.wildcard:
+        return list(_as_list(child, segment))
+    if segment.equality_filter is not None:
+        equality = segment.equality_filter
+        return [item for item in _as_list(child, segment) if _filter_matches(item, equality)]
+    return [child]
+
+
+def _as_list(value: Any, segment: _PathSegment) -> list[Any]:
+    if not isinstance(value, list):
+        raise ReadCliError(f"jsonpath field {segment.name} is not a list and cannot take a [...] selector")
+    return value
+
+
+def _list_item(items: list[Any], index: int) -> Any:
+    """``[N]`` with kubectl's negative indexing and its out-of-bounds error."""
+    position = index + len(items) if index < 0 else index
+    if not 0 <= position < len(items):
+        raise ReadCliError(f"jsonpath array index out of bounds: index {index}, length {len(items)}")
+    return items[position]
+
+
+def _filter_matches(item: Any, equality: _EqualityFilter) -> bool:
+    """Whether ``item``'s field equals the filter string; items without the field never match."""
+    found = _select_values(item, [_PathSegment(name) for name in equality.field.split(".")])
+    if not found:
+        return False
+    if not isinstance(found[0], str):
+        # A boolean or number compared with a quoted string is an error, not a silent non-match.
+        raise ReadCliError(f"jsonpath filter compares non-string field @.{equality.field} with a string")
+    return found[0] == equality.value
+
+
+def _result_text(value: Any) -> str:
+    """Print one selected value like kubectl: compact JSON for objects and lists, lowercase booleans."""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"))
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return "" if value is None else str(value)
 
 
 if __name__ == "__main__":

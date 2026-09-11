@@ -1,0 +1,166 @@
+{
+  "_note": "Captured from live Lx trials on 2026-09-10 (L0xC0 lxr-92e0cb3931294626, L0xP2 lxr-a334292a9cbb4f64).",
+  "type": "stage2_bladeai_result",
+  "status": "passed",
+  "task_id": "<redacted>",
+  "trajectory_id": "traj-<redacted>-0e0e990a",
+  "summary": "pod-cpu-fullload · injected",
+  "error": null,
+  "extras": {
+    "blade_uid": "30ebcf4f-3688-4f25-b47d-cb4e0daecfe4",
+    "verification": {
+      "level": "verified",
+      "layer1": {
+        "status": "passed",
+        "details": "blade_status: Running, blade query k8s: all 1 resource(s) Success (confirmed after re-check)",
+        "resource_statuses": [
+          {
+            "state": "Success",
+            "success": true,
+            "kind": "pod",
+            "identifier": "otel-demo/cart-7c58f6bb56-zdp5w",
+            "uid": "73b2ffe1-40c9-44e3-8c54-683e0a2f835e",
+            "operation_id": "<redacted>",
+            "operation_outcome": "applied",
+            "ledger_operation_outcome": "applied",
+            "ledger_state": "active"
+          }
+        ],
+        "affected_count": 1,
+        "expired": false
+      },
+      "layer2": {
+        "status": "passed",
+        "details": "Layer 2 effect observed via kubectl_verify: target cart pod CPU was very high on 3 observations (6259m, 6432m, 6401m). Namespace-wide top showed other otel-demo pods mostly 0–23m CPU, supporting target-specific CPU-load effect; target pod remained Running/Ready with 0 restarts."
+      },
+      "warnings": [
+        "Baseline data was explicitly reported as unavailable/unusable, so verification relies on repeated absolute CPU observations plus current cross-resource comparison rather than pre-injection delta.",
+        "Negative Evidence: (1) kubectl_verify exec was unavailable/rejected, so chaos CPU process could not be directly listed; accepted as a limitation, not a contradiction of CPU metric evidence. (2) kubectl_verify logs did not show timeout/slow-request errors; accepted as valid counter-evidence that application-level degradation was not observed in sampled logs. (3) target pod remained Ready/Running with 0 restarts; this weakens any claim of severe failure but is compatible with CPU-load injection. (4) kubectl get events with field-selector was rejected by the proxy; event evidence is unavailable. (5) Baseline unavailable means exact percentage increase from pre-injection cannot be computed.",
+        "Polling requirement satisfied: CPU was checked at least 3 times by kubectl_verify and remained high (6259m → 6432m → 6401m).",
+        "Recovery was not verified in this Layer 2 active-fault check because the experiment is still active per Layer 1 context and verifier tools cannot destroy the experiment; recovery must be assessed after destroy or timeout.",
+        "Checklist-conclusion inconsistency: Step(s) [2, 3] marked 'failed' but Layer2 concluded 'passed'. The LLM may have determined these failures are benign (e.g., timing delays). Overall field is the final authority."
+      ],
+      "overall": "verified",
+      "primary_evidence_observed": true,
+      "baseline_used": false,
+      "checklist": {
+        "items": [
+          {
+            "step": 1,
+            "status": "passed",
+            "evidence": "CPU usage monitoring: baseline unavailable → current observed by kubectl_verify top pod cart-7c58f6bb56-zdp5w = 6259m, later 6401m; namespace top also showed cart = 6432m while other otel-demo pods were mostly 0–23m. This is strong primary evidence of pod-cpu fullload effect."
+          },
+          {
+            "step": 2,
+            "status": "failed",
+            "evidence": "Process confirmation inside container: baseline unavailable → current kubectl_verify exec cart-7c58f6bb56-zdp5w -- ps aux could not be executed because verifier proxy rejected exec except controlled blade commands. No process list evidence was obtainable by this method."
+          },
+          {
+            "step": 3,
+            "status": "failed",
+            "evidence": "Application log / latency symptom check: baseline unavailable → current kubectl_verify logs showed normal cart operations (GetCartAsync/AddItemAsync/EmptyCartAsync) and did not show timeout, slow request, or high-latency messages in the sampled tail. Application-level degradation was not confirmed from logs."
+          },
+          {
+            "step": 4,
+            "status": "passed",
+            "evidence": "Coverage check: baseline unavailable → current kubectl_verify get pods -n otel-demo -l app.kubernetes.io/name=cart showed exactly one current cart pod, cart-7c58f6bb56-zdp5w; current top observations showed this same pod at ~6.3–6.4 cores, so all discovered target cart pods were covered."
+          },
+          {
+            "step": 5,
+            "status": "passed",
+            "evidence": "Anomaly / non-target comparison: baseline unavailable → current kubectl_verify top pod -n otel-demo showed non-target pods low relative to cart (examples: accounting 1m, frontend 10m, otel-collector 23m, load-generator 14m) while cart was 6432m; no unexpected comparable CPU spike on non-target resources was observed."
+          },
+          {
+            "step": 6,
+            "status": "passed",
+            "evidence": "Pod health state: baseline unavailable → current kubectl_verify get pod cart-7c58f6bb56-zdp5w -n otel-demo -o wide showed READY=1/1, STATUS=Running, RESTARTS=0. Fault did not kill or restart the target pod during observation."
+          }
+        ],
+        "skipped_count": 0,
+        "non_passed_count": 2,
+        "total_count": 6,
+        "total_executed": 6
+      },
+      "baseline_confidence": "none"
+    },
+    "safety": "safe",
+    "task_state": "injected",
+    "phase": "verification_passed",
+    "duration_ms": 0,
+    "fault_type": "pod-cpu-fullload",
+    "skill_name": "k8s-chaos-skills",
+    "target": {
+      "namespace": "otel-demo",
+      "names": [],
+      "labels": {},
+      "resource_type": "pod"
+    },
+    "params": null,
+    "safety_status": "safe",
+    "safety_reason": "",
+    "needs_confirm": false,
+    "recover_verification": {
+      "level": "recovered",
+      "layer1": {
+        "status": "passed",
+        "details": "RECOVERY_EXECUTION_RESULT:\n- Status: success\n- Actions: No additional non-ChaosBlade recovery mutations were required; prior Layer 1 cleanup reported the ChaosBlade experiment destroyed.\n- Details: Performed only read-only kubectl observations afterward; target pod remained Running/Ready and CPU dro",
+        "resource_statuses": [],
+        "affected_count": 0,
+        "expired": false
+      },
+      "layer2": {
+        "status": "passed",
+        "details": "PrimaryEvidenceObserved=true: current post-recovery kubectl top for exact target pod otel-demo/cart-7c58f6bb56-zdp5w dropped from fault-state CPU 6259m/6432m/6401m to 1m on confirmation; pod is Running/Ready with 0 restarts."
+      },
+      "warnings": [
+        "No separate pre-injection CPU baseline value was available for the exact target pod, so baseline_used=false. Recovery verdict is based on same-resource comparison against injection fault-state CPU and direct current absence of the CPU-load effect."
+      ],
+      "baseline_used": false,
+      "checklist": {
+        "items": [
+          {
+            "step": 1,
+            "status": "passed",
+            "evidence": "Observed CURRENT post-recovery target CPU via kubectl top pod cart-7c58f6bb56-zdp5w -n otel-demo using required kubeconfig: first poll 1199m CPU / 56420Ki memory, no longer matching injection fault-state 6259m-6401m on the same pod."
+          },
+          {
+            "step": 2,
+            "status": "passed",
+            "evidence": "Performed namespace-wide CURRENT kubectl top pod -n otel-demo using required kubeconfig: target cart-7c58f6bb56-zdp5w was 1199m while other pods were mostly low; this was followed by target-specific confirmation rather than repeating identical checks."
+          },
+          {
+            "step": 3,
+            "status": "passed",
+            "evidence": "Confirmation CURRENT kubectl top pod cart-7c58f6bb56-zdp5w -n otel-demo using required kubeconfig showed CPU recovered to 1m / 56420Ki on the same exact target pod, demonstrating the pod-cpu load fault effect is absent."
+          },
+          {
+            "step": 4,
+            "status": "passed",
+            "evidence": "CURRENT kubectl get pod cart-7c58f6bb56-zdp5w -n otel-demo -o wide using required kubeconfig showed READY=1/1, STATUS=Running, RESTARTS=0; this is generic health evidence supporting, but not replacing, the primary CPU recovery evidence."
+          }
+        ],
+        "total_count": 4,
+        "total_executed": 4
+      },
+      "baseline_confidence": "none"
+    },
+    "side_effects": {},
+    "plan_summary": "",
+    "error": "",
+    "failure_reason": "",
+    "failure_detail": null,
+    "intent_confidence": 0.0,
+    "replan_count": 0,
+    "replan_history": [],
+    "created_at": "",
+    "updated_at": "2026-09-10T18:38:49.173703+08:00",
+    "finished_at": "2026-09-10T18:38:49.143577+08:00",
+    "baseline_data": {
+      "captured_at": "2026-09-10T18:34:10.888046+08:00",
+      "source": "none",
+      "observations": [],
+      "success_count": 0
+    },
+    "recovery_level": "recovered"
+  }
+}

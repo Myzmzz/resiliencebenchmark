@@ -29,6 +29,7 @@ from .campaign import CampaignEngine
 from .capability_preflight import harness_capabilities_from_qualification
 from .capability_loss.factory import CapabilityLossRuntimeFactory
 from .condition_monitor import ConditionRecoveryMonitor
+from .condition_policy import RESOURCE_METRICS
 from .condition_policy import evaluate_condition
 from .contracts import (
     STAGE2_BLADEAI_DEFAULT_MODEL,
@@ -142,6 +143,11 @@ class Stage2RuntimeConfig:
     d0_artifact_root: Path | None
     gateway_config_file: Path = Path("/etc/litellm/config.yaml")
     gateway_snapshot: GatewayConfigSnapshot | None = None
+    # Coroot, the backup observation source for agents (coroot_ro). The
+    # project id is per cluster; anonymous read only where Coroot has no login.
+    coroot_url: str = "http://coroot-coroot.coroot.svc:8080"
+    coroot_project_id: str = ""
+    coroot_allow_anonymous_read: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None):
@@ -199,6 +205,11 @@ class Stage2RuntimeConfig:
             ),
             gateway_config_file=gateway_config_file,
             gateway_snapshot=gateway_snapshot,
+            coroot_url=values.get("RESBENCH_COROOT_URL", "http://coroot-coroot.coroot.svc:8080").rstrip("/"),
+            coroot_project_id=values.get("RESBENCH_COROOT_PROJECT_ID", "").strip(),
+            coroot_allow_anonymous_read=(
+                values.get("RESBENCH_COROOT_ALLOW_ANONYMOUS_READ", "").strip().lower() == "true"
+            ),
         )
 
 
@@ -279,6 +290,12 @@ def _build_runtime(
         "RESBENCH_LOKI_URL": "http://loki.observability.svc:3100",
         "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": namespace,
         "RESBENCH_JAEGER_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
+        "RESBENCH_COROOT_URL": config.coroot_url,
+        "RESBENCH_COROOT_PROJECT_ID": config.coroot_project_id,
+        "RESBENCH_COROOT_ALLOWED_NAMESPACE": namespace,
+        "RESBENCH_COROOT_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
+        "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ": "true" if config.coroot_allow_anonymous_read else "false",
+        "RESBENCH_COROOT_TIMEOUT_SECONDS": "10",
         "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
         "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(private / "telemetry"),
         "RESBENCH_WORKLOAD_STATS_URL": "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
@@ -417,6 +434,8 @@ class KubernetesTrafficEvidence:
         prometheus_url: str = "http://prometheus.observability.svc:9090",
         prometheus_loader: Callable[..., Mapping[str, Any]] | None = None,
         prometheus_metadata_loader: Callable[..., Mapping[str, Any]] | None = None,
+        coroot_prometheus_url: str | None = None,
+        coroot_loader: Callable[..., Mapping[str, Any]] | None = None,
     ):
         self.gate = gate
         self.episode = episode
@@ -426,6 +445,13 @@ class KubernetesTrafficEvidence:
         self.prometheus_url = prometheus_url.rstrip("/")
         self.prometheus_loader = prometheus_loader or self._load_prometheus_range
         self.prometheus_metadata_loader = prometheus_metadata_loader or self._load_prometheus_metadata
+        # Coroot's Prometheus is the backup source for Pod resource evidence.
+        self.coroot_prometheus_url = (
+            coroot_prometheus_url
+            or os.environ.get("RESBENCH_COROOT_PROMETHEUS_URL")
+            or "http://coroot-prometheus.coroot.svc:9090"
+        ).rstrip("/")
+        self.coroot_loader = coroot_loader or self._load_coroot_range
         self._baselines: dict[str, dict[str, Any]] = {}
         self._baseline_times: dict[str, float] = {}
         self._samples: list[tuple[float, dict[str, Any]]] = []
@@ -642,7 +668,31 @@ class KubernetesTrafficEvidence:
             if isinstance(approved_plan, Mapping)
             else None
         )
-        if isinstance(condition, Mapping):
+        if isinstance(condition, Mapping) and str(condition.get("metric") or "") in RESOURCE_METRICS:
+            # Resource conditions are judged on the Pod's own samples: the
+            # first value in the fault window is the baseline and the peak is
+            # the effect (memory samples are bytes, conditions are MiB).
+            metric_name = str(condition["metric"])
+            scale = 1.0 if metric_name == "target_cpu_cores" else 1.0 / (1024 * 1024)
+            if physical.get("baseline_value") is not None and physical.get("peak_value") is not None:
+                matched, condition_evidence = evaluate_condition(
+                    condition,
+                    baseline={metric_name: float(physical["baseline_value"]) * scale},
+                    sample={metric_name: float(physical["peak_value"]) * scale},
+                )
+                service_condition = {
+                    **condition_evidence,
+                    "matched": matched,
+                    "scope": "target_pod",
+                    "source": physical.get("source"),
+                }
+            else:
+                service_condition = {
+                    "matched": False,
+                    "reason": "target Pod resource samples are unavailable",
+                    "scope": "target_pod",
+                }
+        elif isinstance(condition, Mapping):
             try:
                 matched, condition_evidence = evaluate_condition(
                     condition,
@@ -706,6 +756,15 @@ class KubernetesTrafficEvidence:
             return json.load(response)
 
     def _physical_fault_effect(self, trial_id: str, runtime) -> dict[str, Any]:
+        """Measure a CPU or memory fault on the target Pod itself.
+
+        Tries, in order: Prometheus cAdvisor series selected by Pod labels
+        (works whatever the cgroup layout), the cgroup-path selector used
+        before, and Coroot's container metrics. The first source with enough
+        samples decides; which one it was is recorded with the evidence.
+        """
+
+        del trial_id
         fault_type = str(runtime.main_fault.get("fault_type") or "")
         if fault_type not in {"cpu-load", "memory-stress"}:
             return {
@@ -718,13 +777,6 @@ class KubernetesTrafficEvidence:
             if fault_type == "cpu-load"
             else "container_memory_working_set_bytes"
         )
-        pod_uid = str(runtime.target.uid).replace("-", "_")
-        cgroup_selector = f'.*pod{pod_uid}.*scope'
-        query = (
-            f'sum(rate({metric}{{id=~"{cgroup_selector}",cpu="total"}}[2m]))'
-            if fault_type == "cpu-load"
-            else f'sum({metric}{{id=~"{cgroup_selector}"}})'
-        )
         window = runtime.main_fault.get("evidence_window") or {}
         start = _window_timestamp(window.get("start"))
         end = _window_timestamp(window.get("end"))
@@ -735,28 +787,35 @@ class KubernetesTrafficEvidence:
                 "metric": metric,
                 "reason": "metric baseline timestamp is missing",
             }
-        try:
-            response = self.prometheus_loader(
-                query=query,
-                start=start,
-                end=end,
-                step=5,
-            )
-            values = _prometheus_range_values(response)
-        except Exception as exc:  # noqa: BLE001 - evidence failure is reported, never inferred.
-            return {
-                "applicable": True,
-                "verified": False,
-                "metric": metric,
-                "reason": f"Prometheus evidence unavailable: {type(exc).__name__}",
-            }
+        attempts: list[dict[str, Any]] = []
+        values: list[float] = []
+        source = None
+        for name, backend, query in _physical_effect_queries(fault_type, runtime.target):
+            loader = self.prometheus_loader if backend == "prometheus" else self.coroot_loader
+            try:
+                candidate = _prometheus_range_values(
+                    loader(query=query, start=start, end=end, step=5)
+                )
+            except Exception as exc:  # noqa: BLE001 - evidence failure is reported, never inferred.
+                attempts.append({"source": name, "error": type(exc).__name__})
+                continue
+            attempts.append({"source": name, "sample_count": len(candidate)})
+            if len(candidate) >= 2:
+                values, source = candidate, name
+                break
         if len(values) < 2:
+            errors = [item["error"] for item in attempts if "error" in item]
             return {
                 "applicable": True,
                 "verified": False,
                 "metric": metric,
                 "sample_count": len(values),
-                "reason": "insufficient metric samples",
+                "attempts": attempts,
+                "reason": (
+                    f"Prometheus evidence unavailable: {errors[0]}"
+                    if errors and len(errors) == len(attempts)
+                    else "insufficient metric samples"
+                ),
             }
         baseline_value = values[0]
         peak_value = max(values)
@@ -771,6 +830,8 @@ class KubernetesTrafficEvidence:
             "applicable": True,
             "verified": peak_value >= required_peak,
             "metric": metric,
+            "source": source,
+            "attempts": attempts,
             "target_uid": runtime.target.uid,
             "unit": unit,
             "sample_count": len(values),
@@ -780,6 +841,25 @@ class KubernetesTrafficEvidence:
             "query_window_seconds": round(end - start, 3),
         }
 
+    def target_resource_value(self, target: Any, metric: str, *, at: float | None = None) -> float | None:
+        """The target Pod's CPU cores or memory MiB at ``at`` (default now), or None.
+
+        Feeds resource effect and recovery conditions. Prometheus is asked
+        first and Coroot is the backup; a source with no recent sample is
+        skipped.
+        """
+
+        end = time.time() if at is None else float(at)
+        for backend, query in _resource_queries(metric, target):
+            loader = self.prometheus_loader if backend == "prometheus" else self.coroot_loader
+            try:
+                values = _prometheus_range_values(loader(query=query, start=end - 60, end=end, step=15))
+            except Exception:  # noqa: BLE001 - try the backup source.
+                continue
+            if values:
+                return values[-1]
+        return None
+
     def reset_and_wait_healthy(
         self,
         *,
@@ -787,12 +867,25 @@ class KubernetesTrafficEvidence:
         stability_samples: int = 3,
         baseline: Mapping[str, Any] | None = None,
         recovery_condition: Mapping[str, Any] | None = None,
+        target: Any = None,
+        resource_baseline: float | None = None,
     ) -> Mapping[str, Any]:
         reset_url = self.stats_url.removesuffix("/stats/requests") + "/stats/reset"
         deadline = time.monotonic() + timeout_seconds
         stable = 0
         last: dict[str, Any] = {}
-        while stable < stability_samples:
+        started = time.monotonic()
+        # Every return carries the samples that led to it, so a wait that ran
+        # out of time shows which sample broke the streak.
+        trace: list[dict[str, Any]] = []
+        # Warm-up only shows the load generator is running and the target is
+        # not failing before the counters are reset; the approved sustain
+        # applies to the recovery samples below. With seven warm-up and seven
+        # recovery samples at 10 s the wait needed about 128 s of a 180 s
+        # budget, so one bad warm-up sample made a recovered service look
+        # unverified (lxr-93c8deeea4ef4932).
+        warmup_samples = min(stability_samples, RECOVERY_WARMUP_SAMPLES)
+        while stable < warmup_samples:
             try:
                 last = dict(self.current())
             except Exception as exc:  # noqa: BLE001
@@ -801,20 +894,14 @@ class KubernetesTrafficEvidence:
                     "stage": "warmup",
                     "error_type": type(exc).__name__,
                 }
-            current_rps = float(last.get("target_current_rps") or 0.0)
-            current_fail = float(last.get("target_current_fail_per_sec") or 0.0)
-            stable = (
-                stable + 1
-                if last.get("load_generator_ready") is True
-                and current_rps > 0
-                and current_fail / current_rps <= 0.05
-                else 0
-            )
-            if stable >= stability_samples:
+            warm = _warmup_sample_ok(last)
+            trace.append(_trace_entry(started, "warmup", warm, last))
+            stable = stable + 1 if warm else 0
+            if stable >= warmup_samples:
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return last
+                return _with_trace(last, trace)
             time.sleep(min(10.0, remaining))
         reset_error: dict[str, Any] = {}
         reset_count = 0
@@ -829,12 +916,26 @@ class KubernetesTrafficEvidence:
                     "stage": "stats_reset",
                     "error_type": type(exc).__name__,
                 }
+                trace.append(_trace_entry(started, "stats_reset", False, reset_error))
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return reset_error
+                return _with_trace(reset_error, trace)
             time.sleep(min(5.0, remaining))
         last = {}
         recovery_stable = 0
+        # A resource recovery condition reads the target Pod's own CPU or
+        # memory and compares it with the value before the fault.
+        resource_metric = (
+            str(recovery_condition.get("metric") or "")
+            if isinstance(recovery_condition, Mapping)
+            and str(recovery_condition.get("metric") or "") in RESOURCE_METRICS
+            else ""
+        )
+        condition_baseline = (
+            {**baseline, resource_metric: resource_baseline}
+            if resource_metric and isinstance(baseline, Mapping)
+            else baseline
+        )
         counter_anchor = {
             "target_requests": 0,
             "target_failures": 0,
@@ -845,6 +946,8 @@ class KubernetesTrafficEvidence:
                 last = dict(self.current())
             except Exception as exc:  # noqa: BLE001
                 last = {"business_healthy": False, "error_type": type(exc).__name__}
+            if resource_metric and target is not None:
+                last[resource_metric] = self.target_resource_value(target, resource_metric)
             recovery_ok = last.get("business_healthy") is True
             condition_evidence: dict[str, Any] | None = None
             if isinstance(baseline, Mapping) and isinstance(
@@ -852,11 +955,12 @@ class KubernetesTrafficEvidence:
             ):
                 recovery_ok, condition_evidence = evaluate_condition(
                     recovery_condition,
-                    baseline=baseline,
+                    baseline=condition_baseline,
                     sample=last,
                     counter_anchor=counter_anchor,
                 )
             recovery_stable = recovery_stable + 1 if recovery_ok else 0
+            trace.append(_trace_entry(started, "recovery", recovery_ok, last, condition_evidence))
             last["recovery_condition_evidence"] = condition_evidence
             last["stability_samples_observed"] = recovery_stable
             last["stability_samples_required"] = stability_samples
@@ -865,11 +969,11 @@ class KubernetesTrafficEvidence:
             if recovery_stable >= stability_samples:
                 last["stats_reset_count"] = reset_count
                 last["business_healthy"] = True
-                return last
+                return _with_trace(last, trace)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 last["stats_reset_count"] = reset_count
-                return last
+                return _with_trace(last, trace)
             time.sleep(min(10.0, remaining))
 
     def wait_until_healthy(
@@ -939,12 +1043,134 @@ class KubernetesTrafficEvidence:
             raise RuntimeConfigurationError("Prometheus range response is invalid")
         return payload
 
+    def _load_coroot_range(
+        self, *, query: str, start: float, end: float, step: int
+    ) -> Mapping[str, Any]:
+        """Range query against Coroot's Prometheus, the backup evidence source."""
+
+        params = urllib.parse.urlencode(
+            {"query": query, "start": start, "end": end, "step": step}
+        )
+        request = urllib.request.Request(
+            f"{self.coroot_prometheus_url}/api/v1/query_range?{params}",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+            payload = json.load(response)
+        if not isinstance(payload, Mapping) or payload.get("status") != "success":
+            raise RuntimeConfigurationError("Coroot Prometheus range response is invalid")
+        return payload
+
     @staticmethod
     def _reset_stats(url: str) -> None:
         request = urllib.request.Request(url, headers={"Accept": "text/html"})
         with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
             if not 200 <= int(response.status) < 300:
                 raise RuntimeConfigurationError("Locust statistics reset was rejected")
+
+
+def _target_identity(target: Any) -> tuple[str, str]:
+    """(namespace, Pod name) of a runtime target object or a plan target mapping."""
+
+    if isinstance(target, Mapping):
+        return str(target.get("namespace") or ""), str(target.get("name") or "")
+    return str(getattr(target, "namespace", "") or ""), str(getattr(target, "name", "") or "")
+
+
+def _physical_effect_queries(fault_type: str, target: Any) -> list[tuple[str, str, str]]:
+    """Candidate (source, backend, PromQL) range queries for a CPU or memory fault."""
+
+    namespace, pod = _target_identity(target)
+    uid = target.get("uid") if isinstance(target, Mapping) else getattr(target, "uid", "")
+    cgroup = f".*pod{str(uid or '').replace('-', '_')}.*scope"
+    container = f"/k8s/{namespace}/{pod}/.*"
+    if fault_type == "cpu-load":
+        return [
+            ("prometheus_pod_labels", "prometheus",
+             f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}",pod="{pod}",container=""}}[2m]))'),
+            ("prometheus_cgroup_path", "prometheus",
+             f'sum(rate(container_cpu_usage_seconds_total{{id=~"{cgroup}",cpu="total"}}[2m]))'),
+            ("coroot", "coroot",
+             f'sum(rate(container_resources_cpu_usage_seconds_total{{container_id=~"{container}"}}[2m]))'),
+        ]
+    return [
+        ("prometheus_pod_labels", "prometheus",
+         f'sum(container_memory_working_set_bytes{{namespace="{namespace}",pod="{pod}",container=""}})'),
+        ("prometheus_cgroup_path", "prometheus", f'sum(container_memory_working_set_bytes{{id=~"{cgroup}"}})'),
+        ("coroot", "coroot", f'sum(container_resources_memory_rss_bytes{{container_id=~"{container}"}})'),
+    ]
+
+
+# The recovery wait's warm-up needs this many healthy load-generator samples
+# before the counters are reset; the evidence keeps this many sample entries.
+RECOVERY_WARMUP_SAMPLES = 3
+RECOVERY_TRACE_LIMIT = 40
+
+
+def _warmup_sample_ok(sample: Mapping[str, Any]) -> bool:
+    """Whether a load-generator snapshot is healthy enough to reset counters.
+
+    Traffic must be flowing and the target must not be failing. A sparse
+    target (cart gets about 0.2 requests/s here) can read zero current
+    requests for a moment; the whole generator's current rate then shows the
+    traffic is still flowing, and any current target failure still blocks.
+    """
+    if sample.get("load_generator_ready") is not True:
+        return False
+    target_rps = float(sample.get("target_current_rps") or 0.0)
+    target_fail = float(sample.get("target_current_fail_per_sec") or 0.0)
+    if target_rps > 0:
+        return target_fail / target_rps <= 0.05
+    return float(sample.get("current_rps") or 0.0) > 0 and target_fail == 0
+
+
+def _trace_entry(
+    started: float,
+    phase: str,
+    ok: bool,
+    sample: Mapping[str, Any],
+    condition: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One compact recovery-wait sample for the Trial evidence."""
+    entry: dict[str, Any] = {
+        "t": round(time.monotonic() - started, 1),
+        "phase": phase,
+        "ok": bool(ok),
+        "target_current_rps": sample.get("target_current_rps"),
+        "target_current_fail_per_sec": sample.get("target_current_fail_per_sec"),
+    }
+    if sample.get("error_type"):
+        entry["error_type"] = sample.get("error_type")
+    if condition:
+        entry["observed_value"] = condition.get("observed_value")
+        entry["metric_available"] = condition.get("metric_available")
+    return entry
+
+
+def _with_trace(result: dict[str, Any], trace: list[dict[str, Any]]) -> dict[str, Any]:
+    """Attach the samples that led to this result (the last ones only)."""
+    result["sample_trace"] = trace[-RECOVERY_TRACE_LIMIT:]
+    return result
+
+
+def _resource_queries(metric: str, target: Any) -> list[tuple[str, str]]:
+    """(backend, PromQL) queries for a resource condition metric, Prometheus first."""
+
+    namespace, pod = _target_identity(target)
+    if not namespace or not pod:
+        return []
+    container = f"/k8s/{namespace}/{pod}/.*"
+    if metric == "target_cpu_cores":
+        return [
+            ("prometheus", f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}",pod="{pod}",container=""}}[1m]))'),
+            ("coroot", f'sum(rate(container_resources_cpu_usage_seconds_total{{container_id=~"{container}"}}[1m]))'),
+        ]
+    if metric == "target_memory_mib":
+        return [
+            ("prometheus", f'sum(container_memory_working_set_bytes{{namespace="{namespace}",pod="{pod}",container=""}}) / 1048576'),
+            ("coroot", f'sum(container_resources_memory_rss_bytes{{container_id=~"{container}"}}) / 1048576'),
+        ]
+    return []
 
 
 def _prometheus_range_values(response: Mapping[str, Any]) -> list[float]:
@@ -1000,6 +1226,17 @@ class DirectChaosCleanup:
     def destroy(self, cleanup_handle: str):
         """Controller fallback cleanup; never attributed to the Agent MCP."""
         return asyncio.run(self._destroy(cleanup_handle))
+
+    def reap_expired(self, cleanup_handle: str):
+        """Reap expired leases of the handle's executor now (principal TIMER).
+
+        The chaos MCP deadline watchdog runs only while an Agent session is
+        connected, so a fault whose own timer ran out could stay on the cluster
+        (2026-09-10 L0xC0). The condition monitor calls this at the deadline.
+        """
+        executor_id, service = self._service_for_handle(cleanup_handle)
+        result = asyncio.run(service.cleanup_expired_leases())
+        return {**dict(result), "executor_id": executor_id}
 
     async def _inventory_trial(self, runtime) -> dict[str, Any]:
         ledgers: dict[str, list[dict[str, Any]]] = {}

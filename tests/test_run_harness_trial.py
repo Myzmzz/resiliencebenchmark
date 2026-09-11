@@ -318,10 +318,12 @@ def test_claude_build_argv_removes_no_session_persistence_for_native_resume():
 
 
 def test_claude_resume_builder_uses_official_resume_flag(tmp_path):
+    first_turn_tools = "mcp__k8s_ro,mcp__harness_channel,mcp__coroot_ro"
     builder = trial.build_claude_resume_argv_builder(
         command="claude",
         model_alias="claude-opus-5",
         paths={"mcp_config_file": tmp_path / "mcp.json"},
+        allowed_tools=first_turn_tools,
     )
 
     argv = list(builder("claude-session-1", 1))
@@ -330,6 +332,9 @@ def test_claude_resume_builder_uses_official_resume_flag(tmp_path):
     assert "--resume" in argv
     assert argv[argv.index("--resume") + 1] == "claude-session-1"
     assert "--no-session-persistence" not in argv
+    # A resumed turn keeps the first turn's MCP tools; it used to hard-code four
+    # servers and lose harness_channel and coroot_ro.
+    assert argv[argv.index("--allowedTools") + 1] == first_turn_tools
 
 
 def test_dry_run_records_template_hashes_without_resolved_urls_or_homes(tmp_path):

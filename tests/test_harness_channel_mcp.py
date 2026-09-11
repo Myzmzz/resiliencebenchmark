@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import asyncio
 import json
 import tempfile
@@ -32,6 +34,7 @@ from stage2_service.plan_schema import PlanSafetyEnvelope
 from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.simulated_user import HarnessResponder, SimulatedUserPolicy
 from stage2_service.simulated_user import ConversationError, HarnessModelTimeout
+from stage2_service.contracts import STAGE2_PLATFORM_MODEL
 
 
 AGENT_RESULT_SCHEMA = Path(__file__).resolve().parents[1] / "harness" / "schemas" / "agent-result.schema.json"
@@ -597,3 +600,114 @@ def test_parallel_consults_cannot_receive_the_one_hint_twice(tmp_path: Path, mon
     with ThreadPoolExecutor(max_workers=4) as pool:
         answers = list(pool.map(service.consult, ["工具停用了，请帮助"] * 4))
     assert sum(answer["hint_delivered"] for answer in answers) == 1
+
+
+def _confirm_config(tmp_path: Path, ledger: PlatformLedger, **overrides) -> HarnessChannelConfig:
+    return HarnessChannelConfig(
+        trial_id="trial-1",
+        trial_dir=tmp_path / "trial",
+        ledger_root=ledger.root,
+        policy_file=None,
+        decision_file=tmp_path / "trial" / "decision.json",
+        **overrides,
+    )
+
+
+def test_confirm_retries_one_failed_completion_with_the_same_question(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+
+    class FlakyResponder:
+        model_name = "deepseek-v4-pro-0813"
+
+        def __init__(self) -> None:
+            self.question_ids: list[str] = []
+
+        def reply(self, question, _context):
+            self.question_ids.append(question["question_id"])
+            if len(self.question_ids) == 1:
+                raise ConversationError("confirmation completion failed validation")
+            return {
+                "approved": True,
+                "approved_plan": {"fault_type": "network-delay"},
+                "answer_mode": "custom",
+                "decision_supplied": True,
+                "reason": "harness_supplied_decision",
+                "message": "同意按补全后的方案执行。",
+                "affected_nodes": ["PLAN_VALIDATION"],
+            }
+
+    responder = FlakyResponder()
+    service = HarnessChannelService(_confirm_config(tmp_path, ledger), ledger=ledger, responder=responder)
+
+    result = service.confirm({"fault_type": "network-delay"})
+
+    assert result["allowed"] is True
+    # Same question both times, so the responder's correction reaches the model.
+    assert len(responder.question_ids) == 2
+    assert len(set(responder.question_ids)) == 1
+    events = ledger.query()
+    assert [event.event_type for event in events][:2] == ["CONFIRM_REQUESTED", "CONFIRM_RETRIED"]
+    assert events[-1].event_type == "CONFIRM_GRANTED"
+    assert events[-1].payload["responder_model"] == "deepseek-v4-pro-0813"
+
+
+def test_confirm_fails_after_the_retry_and_records_both_attempts(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+
+    class ExplodingResponder:
+        def reply(self, _question, _context):
+            raise ConversationError("confirmation completion failed validation")
+
+    service = HarnessChannelService(
+        _confirm_config(tmp_path, ledger), ledger=ledger, responder=ExplodingResponder()
+    )
+
+    with pytest.raises(HarnessChannelError) as caught:
+        service.confirm({"fault_type": "network-delay"})
+
+    assert caught.value.code == "HARNESS_MODEL_COMPLETION_FAILED"
+    kinds = [event.event_type for event in ledger.query()]
+    assert kinds == ["CONFIRM_REQUESTED", "CONFIRM_RETRIED", "CONFIRM_FAILED"]
+    assert ledger.query()[-1].payload["attempts"] == 2
+
+
+def test_confirm_does_not_retry_a_model_timeout(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    calls: list[int] = []
+
+    class SlowResponder:
+        def reply(self, _question, _context):
+            calls.append(1)
+            raise HarnessModelTimeout({"request_id": "request-1", "timeout_seconds": 180})
+
+    service = HarnessChannelService(
+        _confirm_config(tmp_path, ledger), ledger=ledger, responder=SlowResponder()
+    )
+
+    with pytest.raises(HarnessChannelError) as caught:
+        service.confirm({"fault_type": "network-delay"})
+
+    assert caught.value.code == "HARNESS_MODEL_TIMEOUT"
+    assert len(calls) == 1
+    assert ledger.query()[-1].payload["attempts"] == 1
+
+
+def test_channel_simulated_user_runs_on_the_platform_model_not_the_agent_model(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("RESBENCH_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("RESBENCH_LLM_BASE_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.delenv("RESBENCH_PLATFORM_MODEL", raising=False)
+    ledger = PlatformLedger(tmp_path / "ledger")
+    config = _confirm_config(
+        tmp_path, ledger, model_alias="gpt-5.5", platform_model_alias="qwen3.8-max"
+    )
+
+    from_context = HarnessChannelService(config, ledger=ledger)
+    default = HarnessChannelService(
+        dataclasses.replace(config, platform_model_alias=None), ledger=ledger
+    )
+
+    assert from_context.responder.model_name == "qwen3.8-max"
+    assert default.responder.model_name == STAGE2_PLATFORM_MODEL
+

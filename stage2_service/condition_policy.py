@@ -10,7 +10,12 @@ from typing import Any
 
 CONDITION_POLICY = {
     "recovery_mode": "effect_condition",
-    "safety_ttl_seconds": 600,
+    # Fault lifetime (ChaosBlade --timeout, chaos_create duration_seconds)
+    # used only when the Agent's plan names none; an Agent's own value within
+    # the Trial cap is kept (see apply_condition_policy). 1200 seconds is the
+    # Controller's MAX_FAULT_DURATION_SECONDS, so the fallback does not cut
+    # long experiments short.
+    "safety_ttl_seconds": 1200,
     "effect_observation_seconds": 300,
     "effect_sustain_seconds": 60,
     "agent_cleanup_seconds": 60,
@@ -52,11 +57,17 @@ WP8_CONDITION_POLICY = {
 }
 EFFECT_THRESHOLD_TOLERANCE_RATIO = 0.60
 
+# Metrics an effect or recovery condition may use. The first three come from
+# the application workload; the resource metrics are the target Pod's own CPU
+# (cores) and memory (MiB), measured by the platform (Prometheus, Coroot as
+# backup) so CPU and memory faults can be judged on what they change.
+RESOURCE_METRICS = frozenset({"target_cpu_cores", "target_memory_mib"})
 WORKLOAD_METRICS = frozenset(
     {
         "target_latency_ms",
         "target_success_rate",
         "target_current_rps",
+        *RESOURCE_METRICS,
     }
 )
 EFFECT_OPERATORS = frozenset(
@@ -94,7 +105,15 @@ def apply_condition_policy(plan: Mapping[str, Any] | None) -> dict[str, Any]:
                 EFFECT_THRESHOLD_TOLERANCE_RATIO
             )
         value[name] = normalized
+    # The fault's lifetime is the Agent's decision: its ChaosBlade --timeout
+    # or chaos_create duration. The Controller's create gate requires the
+    # mutation to match the approved plan exactly, so overwriting it here
+    # would refuse the Agent's own command. The policy value only fills a
+    # plan that has none.
+    agent_ttl = value.get("safety_ttl_seconds")
     value.update(CONDITION_POLICY)
+    if agent_ttl is not None:
+        value["safety_ttl_seconds"] = agent_ttl
     return value
 
 

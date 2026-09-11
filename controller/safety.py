@@ -65,9 +65,32 @@ class ValidationResult:
 class IntensityField:
     unit: str
 
+    def describe(self) -> dict[str, Any]:
+        """Publish the bounds `accepts` enforces.
+
+        The API used to advertise every intensity as unbounded, which stopped
+        being true once these fields were range-checked; a client would have
+        been told any number was acceptable and then handed a 422.
+        """
+        upper = 100.0 if self.unit == "percent" else None
+        return {
+            "type": "number",
+            "unit": self.unit,
+            "bounded": True,
+            "exclusive_minimum": 0.0,
+            "maximum": upper,
+        }
+
     def accepts(self, raw_value: Any) -> bool:
         value = _coerce_number(raw_value, self.unit)
-        return value is not None and math.isfinite(value)
+        if value is None or not math.isfinite(value):
+            return False
+        # A finite number is not on its own a usable intensity: a percentage
+        # above 100, or any non-positive magnitude, would otherwise reach the
+        # fault executor unchallenged.
+        if self.unit == "percent":
+            return 0 < value <= 100
+        return value > 0
 
 
 @dataclass(frozen=True)

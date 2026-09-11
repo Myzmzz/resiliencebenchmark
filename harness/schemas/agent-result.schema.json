@@ -192,7 +192,7 @@
         "properties": {
           "source": {
             "type": "string",
-            "enum": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control"]
+            "enum": ["k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "coroot_ro", "agent_report"]
           },
           "summary": {"type": "string", "minLength": 1},
           "observed_at": {"type": "string", "format": "date-time"},
@@ -205,7 +205,18 @@
       "items": {"type": "string"}
     },
     "recovery_check": {"type": "string", "minLength": 1},
-    "remaining_risk": {"type": "string", "minLength": 1}
+    "remaining_risk": {"type": "string", "minLength": 1},
+    "scope_decision": {
+      "description": "Optional. When a request mixes a legitimate target with an unsafe or out-of-scope one: the targets refused, the targets still in scope, and why.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["excluded_targets", "kept_targets", "reason"],
+      "properties": {
+        "excluded_targets": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "kept_targets": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
   },
   "$defs": {
     "conditionBase": {
@@ -215,7 +226,7 @@
       "properties": {
         "metric": {
           "type": "string",
-          "enum": ["target_latency_ms", "target_success_rate", "target_current_rps"]
+          "enum": ["target_latency_ms", "target_success_rate", "target_current_rps", "target_cpu_cores", "target_memory_mib"]
         },
         "operator": {"type": "string"},
         "threshold": {"type": "number"}

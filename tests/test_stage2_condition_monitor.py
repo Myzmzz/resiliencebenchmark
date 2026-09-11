@@ -89,7 +89,44 @@ def test_explicit_zero_condition_duration_is_not_replaced_by_shared_default():
     assert _plan_seconds({}, "effect_sustain_seconds", 60) == 60
 
 
-def test_controller_fallback_runs_when_agent_cleanup_budget_expires():
+def test_platform_ends_an_overdue_trial_after_the_approved_duration_plus_grace(monkeypatch):
+    # Rule set 2026-09-10: no removal a minute after the effect held; the
+    # platform steps in only after the approved duration plus a grace period.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = Cleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "controller_fallback_used")
+    result = monitor.finish()
+
+    assert result["effect_condition_met"] is True
+    assert result["controller_fallback_reason"] == "platform_overtime_abort"
+    assert "platform_overtime_abort" in emitted
+    assert cleanup.calls == 1
+
+
+def test_cleanup_soon_after_the_effect_is_on_time_and_earns_the_bonus():
+    cleanup = Cleanup()
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(trial_id="trial", cleanup_handle="cleanup-test", plan=PLAN, emit=lambda *_args: None)
+    _wait_for(monitor, "effect_condition_met")
+
+    monitor.agent_cleanup_requested(datetime.now(UTC))
+    _wait_for(monitor, "agent_cleanup_timely")
+    result = monitor.finish()
+
+    assert result["agent_cleanup_prompt"] is True
+    assert result["controller_fallback_used"] is False
+
+
+def test_cleanup_after_the_bonus_window_is_still_on_time_and_the_fault_is_left_alone():
     cleanup = Cleanup()
     monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
     monitor.arm(
@@ -98,13 +135,154 @@ def test_controller_fallback_runs_when_agent_cleanup_budget_expires():
         plan={**PLAN, "agent_cleanup_seconds": 0.01},
         emit=lambda *_args: None,
     )
+    _wait_for(monitor, "effect_condition_met")
+    time.sleep(0.1)  # the old rule removed the fault here
+
+    assert cleanup.calls == 0
+    monitor.agent_cleanup_requested(datetime.now(UTC))
+    _wait_for(monitor, "agent_cleanup_timely")
+    result = monitor.finish()
+
+    assert result["agent_cleanup_prompt"] is False
+    assert result["controller_fallback_used"] is False
+    assert cleanup.calls == 0
+
+
+class TimerCleanup(Cleanup):
+    """The fault's own timer ends it: running at first, then gone."""
+
+    def __init__(self):
+        super().__init__()
+        self.status_calls = 0
+
+    def status(self, handle):
+        self.status_calls += 1
+        if self.status_calls == 1:
+            return super().status(handle)
+        return {"ever_active": True, "resource_absent": True, "ledger_state": "expired_cleaned"}
+
+
+class QuietWorkload(Workload):
+    """Traffic that never shows the effect, so observation would run its full window."""
+
+    def current(self):
+        return {
+            "sample_status": "valid",
+            "target_requests": 110,
+            "target_failures": 0,
+            "target_response_sum_ms": 1100,
+            "target_latency_ms": 10,
+        }
+
+
+def test_a_fault_that_ended_on_its_own_timer_is_not_aborted(monkeypatch):
+    # 2026-09-10 L2xC0: bladeai's 60-second timer had already ended the fault,
+    # yet the platform aborted the Trial at the approved duration plus grace.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = TimerCleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "fault_ended_without_cleanup_request")
+    result = monitor.finish()
+
+    assert result["fault_end_state"] == "expired_cleaned"
+    assert result.get("controller_fallback_used") is not True
+    assert "platform_overtime_abort" not in emitted
+    assert cleanup.calls == 0
+
+
+def test_an_overdue_fault_is_ended_at_the_deadline_while_the_effect_is_still_observed(monkeypatch):
+    # The observation window (30 s here, 300 s live) must not postpone the
+    # abort past the approved duration plus grace.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = Cleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(QuietWorkload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "effect_observation_seconds": 30, "safety_ttl_seconds": 0.05},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
 
     _wait_for(monitor, "controller_fallback_used")
     result = monitor.finish()
 
-    assert result["effect_condition_met"] is True
-    assert result["controller_fallback_reason"] == "agent_cleanup_deadline_exceeded"
+    assert result["controller_fallback_reason"] == "platform_overtime_abort"
+    assert result.get("effect_condition_met") is not True
+    assert "platform_overtime_abort" in emitted
     assert cleanup.calls == 1
+
+
+class LingeringCleanup(Cleanup):
+    """The fault's own deadline has passed, but its resource stays listed until reaped."""
+
+    def __init__(self, *, reaper: bool = True):
+        super().__init__()
+        self.reaps = 0
+        self.reaped = False
+        if not reaper:
+            self.reap_expired = None  # a fault client without the reaper
+
+    def status(self, handle):
+        if self.reaped:
+            return {"ever_active": True, "resource_absent": True, "ledger_state": "expired_cleaned"}
+        return {**super().status(handle), "deadline_at": "2026-09-10T00:00:00+00:00"}
+
+    def reap_expired(self, _handle):
+        self.reaps += 1
+        self.reaped = True
+        return {"ok": True}
+
+
+def test_a_fault_past_its_own_deadline_is_reaped_as_a_timer_end_not_aborted(monkeypatch):
+    # 2026-09-10 L0xC0: the fault's 300 s had run out, but its ChaosBlade object
+    # was still listed (the MCP watchdog was not running), so it was aborted.
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = LingeringCleanup()
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "fault_ended_without_cleanup_request")
+    result = monitor.finish()
+
+    assert cleanup.reaps == 1
+    assert result["fault_end_state"] == "expired_cleaned"
+    assert "platform_overtime_abort" not in emitted
+    assert cleanup.calls == 0
+
+
+def test_a_fault_past_its_own_deadline_is_not_aborted_even_without_a_reaper(monkeypatch):
+    monkeypatch.setattr("stage2_service.condition_monitor.OVERTIME_GRACE_SECONDS", 0)
+    cleanup = LingeringCleanup(reaper=False)
+    emitted = []
+    monitor = ConditionRecoveryMonitor(Workload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={**PLAN, "safety_ttl_seconds": 0.05, "agent_cleanup_seconds": 0.01},
+        emit=lambda kind, _payload: emitted.append(kind),
+    )
+
+    _wait_for(monitor, "fault_ended_without_cleanup_request")
+    result = monitor.finish()
+
+    assert "platform_overtime_abort" not in emitted
+    assert result.get("controller_fallback_used") is not True
+    assert cleanup.calls == 0
 
 
 def test_recovery_condition_uses_new_requests_against_original_baseline():
@@ -192,3 +370,35 @@ def test_effect_below_tolerated_threshold_stays_unverified():
     assert matched is False
     assert evidence["observed_value"] == 49
     assert evidence["effective_threshold"] == 40
+
+
+def test_cpu_effect_condition_reads_the_target_pods_cpu():
+    """A resource condition compares the Pod's CPU during the fault with its value at approval."""
+
+    class PodCpuWorkload(Workload):
+        def __init__(self) -> None:
+            self.values = iter([0.1])  # sampled at arm time, before injection
+
+        def target_resource_value(self, target, metric):
+            assert metric == "target_cpu_cores" and target["name"] == "cart-a"
+            return next(self.values, 2.0)  # the fault is burning CPU afterwards
+
+    cleanup = Cleanup()
+    monitor = ConditionRecoveryMonitor(PodCpuWorkload(), cleanup, poll_seconds=0.01)
+    monitor.arm(
+        trial_id="trial",
+        cleanup_handle="cleanup-test",
+        plan={
+            **PLAN,
+            "effect_condition": {"metric": "target_cpu_cores", "operator": "increase_by_at_least", "threshold": 0.5},
+            "target": {"namespace": "otel-demo", "name": "cart-a", "uid": "uid-a"},
+        },
+        emit=lambda *_args: None,
+    )
+    _wait_for(monitor, "effect_condition_met")
+    monitor.agent_cleanup_requested(datetime.now(UTC))
+    result = monitor.finish()
+
+    evidence = result["effect_condition_evidence"]
+    assert result["effect_condition_met"] is True
+    assert (evidence["baseline_value"], evidence["observed_value"]) == (0.1, 2.0)

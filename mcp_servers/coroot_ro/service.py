@@ -29,6 +29,9 @@ COROOT_ALLOWED_NAMESPACE_ENV = "RESBENCH_COROOT_ALLOWED_NAMESPACE"
 COROOT_ALLOWED_SERVICES_ENV = "RESBENCH_COROOT_ALLOWED_SERVICES"
 COROOT_TIMEOUT_ENV = "RESBENCH_COROOT_TIMEOUT_SECONDS"
 COROOT_SESSION_COOKIE_ENV = "RESBENCH_COROOT_SESSION_COOKIE"
+# "true" when the Controller runs Coroot without login. The service only
+# issues fixed read-only GET requests, so it may then read anonymously.
+COROOT_ALLOW_ANONYMOUS_ENV = "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ"
 
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_OUTPUT_CHARS = 25_000
@@ -80,6 +83,7 @@ class RuntimeConfig:
     allowed_services: frozenset[str]
     timeout_seconds: float = 5.0
     session_cookie: str | None = None
+    allow_anonymous_read: bool = False
 
     @classmethod
     def from_env(cls) -> "RuntimeConfig":
@@ -109,7 +113,9 @@ class RuntimeConfig:
             raise CorootROError("invalid_timeout", "Coroot timeout must be numeric.", "Use 0.5 to 30 seconds.") from exc
         if not 0.5 <= timeout <= 30:
             raise CorootROError("invalid_timeout", "Coroot timeout is outside the permitted range.", "Use 0.5 to 30 seconds.")
-        session_cookie = _session_cookie(os.environ.get(COROOT_SESSION_COOKIE_ENV))
+        allow_anonymous = (os.environ.get(COROOT_ALLOW_ANONYMOUS_ENV) or "").strip().lower() == "true"
+        raw_cookie = os.environ.get(COROOT_SESSION_COOKIE_ENV)
+        session_cookie = None if allow_anonymous and not raw_cookie else _session_cookie(raw_cookie)
         return cls(
             base_url=base_url,
             project_id=project_id,
@@ -117,6 +123,7 @@ class RuntimeConfig:
             allowed_services=services,
             timeout_seconds=timeout,
             session_cookie=session_cookie,
+            allow_anonymous_read=allow_anonymous,
         )
 
 
@@ -187,8 +194,17 @@ class CorootROService:
     """Safe projection of Coroot metrics, trace, and log observations."""
 
     def __init__(self, config: RuntimeConfig | None = None, transport: CorootTransport | None = None) -> None:
-        self.config = config if config is not None else RuntimeConfig.from_env()
+        # Read on first use, not at start-up: the server is registered for
+        # every Trial, so a missing Coroot setting must fail the call that
+        # needs it rather than the whole Trial.
+        self._config = config
         self.transport = transport if transport is not None else UrlLibCorootTransport()
+
+    @property
+    def config(self) -> RuntimeConfig:
+        if self._config is None:
+            self._config = RuntimeConfig.from_env()
+        return self._config
 
     async def metrics_range(self, *, metric: str, start: int, end: int, labels: Mapping[str, str] | None = None) -> dict[str, Any]:
         """Query Coroot's authenticated dashboard panel API with an injected namespace matcher."""
@@ -302,7 +318,8 @@ class CorootROService:
         )
 
     async def _get(self, *, path: str, params: Mapping[str, Any]) -> Mapping[str, Any]:
-        await self._verify_viewer_session()
+        if not self._anonymous_read():
+            await self._verify_viewer_session()
         response = await self._request(path=path, params=params)
         if response.status_code in {401, 403}:
             raise CorootROError(
@@ -321,6 +338,9 @@ class CorootROService:
         if not isinstance(response.json_data, Mapping):
             raise CorootROError("invalid_backend_response", "Coroot returned an invalid JSON object.", "Complete Coroot API qualification before using this service.")
         return response.json_data
+
+    def _anonymous_read(self) -> bool:
+        return self.config.allow_anonymous_read and self.config.session_cookie is None
 
     async def _verify_viewer_session(self) -> None:
         response = await self._request(path="/api/user", params={})
@@ -349,8 +369,10 @@ class CorootROService:
             )
 
     async def _request(self, *, path: str, params: Mapping[str, Any]) -> HttpResponse:
-        session_cookie = _session_cookie(self.config.session_cookie)
-        headers = {"Cookie": f"coroot_session={session_cookie}"}
+        headers: dict[str, str] = {}
+        if not self._anonymous_read():
+            session_cookie = _session_cookie(self.config.session_cookie)
+            headers["Cookie"] = f"coroot_session={session_cookie}"
         return await self.transport.get_json(
             base_url=self.config.base_url,
             path=path,
@@ -430,7 +452,12 @@ def _metric_query(*, metric: str, namespace: str, labels: Mapping[str, str]) -> 
         raise CorootROError("invalid_metric", "metric must be a Prometheus metric identifier.", "Use a metric name without an expression.")
     if len(labels) > MAX_LABELS:
         raise CorootROError("too_many_labels", "Too many metric label filters were requested.", "Use at most twelve exact label filters.")
-    matchers = [f'namespace="{_prometheus_literal(namespace)}"']
+    if metric.startswith("container_"):
+        # Coroot's node agent labels container series by container_id
+        # ("/k8s/<namespace>/<pod>/<container>") and has no namespace label.
+        matchers = [f'container_id=~"/k8s/{_prometheus_literal(namespace)}/.*"']
+    else:
+        matchers = [f'namespace="{_prometheus_literal(namespace)}"']
     for key, value in sorted(labels.items()):
         if key in _NAMESPACE_LABELS:
             raise CorootROError("namespace_override", "The namespace matcher is Controller-owned.", "Do not supply a namespace label; it is injected automatically.")
@@ -542,7 +569,15 @@ def _coroot_chart_matrix(payload: Mapping[str, Any], series_payload: Mapping[str
         for index, value in enumerate(data):
             timestamp_ms = from_ms + index * step_ms
             if to_ms is not None and timestamp_ms > to_ms:
-                raise CorootROError("invalid_backend_response", "Coroot chart series extends past ctx.to.", "Complete Coroot API qualification before using this service.")
+                # Coroot fills its step grid from ``from`` and includes the
+                # bucket that contains ``to``, so for a window that is not a
+                # multiple of the step the last point lands less than one step
+                # past ``to`` (a 44 s window over a 15 s step ends 1 s past
+                # it). Drop that point; a point a full step or more past
+                # ``to`` means the chart does not match the request.
+                if timestamp_ms >= to_ms + step_ms:
+                    raise CorootROError("invalid_backend_response", "Coroot chart series extends past ctx.to.", "Complete Coroot API qualification before using this service.")
+                continue
             values.append([int(timestamp_ms / 1000), _chart_sample_value(value)])
         matched_metadata = metadata.get(series_name or "")
         result.append(

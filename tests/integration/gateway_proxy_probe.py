@@ -133,7 +133,8 @@ general_settings:
                     headers = {"Authorization": "Bearer sk-offline-placeholder", "Content-Type": "application/json",
                                "anthropic-version": "2023-06-01", "x-resbench-trial-id": "qualification-offline",
                                "x-resbench-harness": harnesses[index // len(routes)], "x-resbench-model-alias": "probe-alias",
-                               "x-resbench-request-id": f"offline-{index}", "x-resbench-gateway-config-sha256": "wrong"}
+                               "x-resbench-request-id": f"offline-{index}", "x-resbench-phase": "C1_PLAN",
+                               "x-resbench-gateway-config-sha256": "wrong"}
                     request = Request("http://127.0.0.1:18732" + path, data=json.dumps({"model": "probe-alias", **payload}).encode(), headers=headers)
                     try:
                         with urlopen(request, timeout=20) as response:
@@ -141,17 +142,31 @@ general_settings:
                             statuses.append({"path": path, "status": response.status})
                     except HTTPError as error:
                         statuses.append({"path": path, "status": error.code})
+                # LiteLLM dispatches custom callbacks through its background
+                # logging worker; give the final pass-through request a bounded
+                # flush window before inspecting the durable usage file.
+                time.sleep(1.0)
                 path = audit / "qualification-offline.jsonl"
                 raw = path.read_text() if path.exists() else ""
                 rows = [json.loads(line) for line in raw.splitlines()]
+                usage_path = audit / "qualification-offline.usage.jsonl"
+                usage_raw = usage_path.read_text() if usage_path.exists() else ""
+                usage_rows = [json.loads(line) for line in usage_raw.splitlines()]
                 expected_version = hashlib.sha256(config.read_bytes()).hexdigest()
                 passed = (len(rows) == 16 and {row["request_id"] for row in rows} == {f"offline-{n}" for n in range(16)}
                           and all(value["status"] == 200 for value in statuses)
                           and {row["harness"] for row in rows} == set(harnesses)
                           and all(row["gateway_config_sha256"] == expected_version and row["outcome"] == "received" for row in rows)
+                          and len(usage_rows) == 16
+                          and {row.get("request_id") for row in usage_rows} == {f"offline-{n}" for n in range(16)}
+                          and all(row.get("source") == "agent" for row in usage_rows)
+                          and all(row.get("phase") == "C1_PLAN" for row in usage_rows)
+                          and all(row.get("availability") in {"measured", "estimated", "unavailable"} for row in usage_rows)
                           and "DO_NOT_LOG_PROMPT" not in raw and "placeholder" not in raw)
                 print(json.dumps({"mode": "offline_proxy_fake_provider", "statuses": statuses, "receipts": rows,
-                                  "authentication": authentication, "passed": passed, "live_model_called": False}))
+                                  "usage_count": len(usage_rows),
+                                  "usage_request_ids": [row.get("request_id") for row in usage_rows],
+                                  "usage": usage_rows, "authentication": authentication, "passed": passed, "live_model_called": False}), flush=True)
                 if not passed:
                     print(log.read_text(errors="replace")[:6000])
                     print(log.read_text(errors="replace")[-8000:])

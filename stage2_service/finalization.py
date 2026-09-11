@@ -16,6 +16,7 @@ from .contracts import (
 )
 from .condition_policy import CONDITION_POLICY
 from .request_observation import timestamp as evidence_timestamp
+from .condition_policy import RESOURCE_METRICS
 from .reset_policy import classify_reset_policy
 from .trial_facts import assistance_level_from_report
 
@@ -217,18 +218,33 @@ class Stage2Finalizer:
                 approved_plan,
                 default=self.recovery_timeout_seconds,
             )
-            evidence = dict(
-                self.recovery_evidence.reset_and_wait_healthy(
-                    timeout_seconds=recovery_observation_seconds,
-                    stability_samples=max(1, recovery_sustain_seconds // 10 + 1),
-                    baseline=self.recovery_evidence.baseline(trial_id),
-                    recovery_condition=(
-                        approved_plan.get("recovery_condition")
-                        if isinstance(approved_plan, Mapping)
-                        else None
-                    ),
-                )
+            recovery_condition = (
+                approved_plan.get("recovery_condition")
+                if isinstance(approved_plan, Mapping)
+                else None
             )
+            if pre_inventory.get("qualified") is True and pre_status.get("ever_active") is False:
+                # A complete inventory shows the main fault never ran, so there
+                # is nothing to recover from. (An incomplete inventory proves
+                # nothing either way and still gets the recovery check.)
+                # The Trial already fails on the missing fault; waiting here only
+                # recorded a false "business not recovered" after 180 idle
+                # seconds (L2xC0 lxr-e09aec3cd174491e).
+                evidence = {
+                    "business_healthy": False,
+                    "not_applicable": True,
+                    "reason": "main fault never ran; business recovery check skipped",
+                }
+            else:
+                evidence = dict(
+                    self.recovery_evidence.reset_and_wait_healthy(
+                        timeout_seconds=recovery_observation_seconds,
+                        stability_samples=max(1, recovery_sustain_seconds // 10 + 1),
+                        baseline=self.recovery_evidence.baseline(trial_id),
+                        recovery_condition=recovery_condition,
+                        **self._resource_recovery_inputs(recovery_condition, evidence_runtime, fault_contract),
+                    )
+                )
         except Exception as exc:  # noqa: BLE001
             evidence = {
                 "business_healthy": False,
@@ -361,6 +377,7 @@ class Stage2Finalizer:
                 "effect_condition_met": condition_monitor.get("effect_condition_met") is True,
                 "effect_condition_met_at": condition_monitor.get("effect_condition_met_at"),
                 "agent_cleanup_timely": condition_monitor.get("agent_cleanup_timely") is True,
+                "agent_cleanup_prompt": condition_monitor.get("agent_cleanup_prompt") is True,
                 "agent_requested_cleanup": agent_attempted,
                 "agent_cleanup_accepted": agent_cleanup_accepted,
                 "agent_verified_absence": queried_absence,
@@ -388,6 +405,32 @@ class Stage2Finalizer:
                 "application://builtin-load-generator/recovery",
             ),
         )
+
+    def _resource_recovery_inputs(
+        self,
+        recovery_condition: Mapping[str, Any] | None,
+        runtime,
+        fault_contract: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Target and pre-fault value for a CPU or memory recovery condition.
+
+        Only a resource condition needs them, and only a workload evidence
+        source that can sample the Pod provides them; everything else keeps
+        the original call unchanged.
+        """
+
+        metric = str((recovery_condition or {}).get("metric") or "")
+        sampler = getattr(self.recovery_evidence, "target_resource_value", None)
+        if metric not in RESOURCE_METRICS or not callable(sampler):
+            return {}
+        start = evidence_timestamp(dict(fault_contract.get("evidence_window") or {}).get("start"))
+        baseline_value = None
+        if start is not None:
+            try:
+                baseline_value = sampler(runtime.target, metric, at=float(start) - 30)
+            except Exception:  # noqa: BLE001 - a missing baseline leaves recovery unverified.
+                baseline_value = None
+        return {"target": runtime.target, "resource_baseline": baseline_value}
 
     @staticmethod
     def _remaining_fault_seconds(
