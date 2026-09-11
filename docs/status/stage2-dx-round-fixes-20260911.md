@@ -245,4 +245,293 @@ python -m stage2_service.capability_loss.qualification_probe --namespace otel-de
 
 ## 六、部署与使用
 
-（待补：镜像标签与 digest、Coroot 相关环境变量、资格重做记录、生成器运行记录、哪些评测运行用了哪个镜像。）
+**镜像**（2026-09-11 08:13 UTC，由本分支提交 `35c9e2c` 构建，构建时工作树干净，Harbor 上核对过 digest）：
+- 控制器：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-35c9e2c@sha256:ac915a01ea412c35e7e07d5e6189b3b7f912a29323b0130ffc7078710bfe6f84`
+- Agent：`1.94.151.57:85/observe/resbench-stage2:stage2-agent-35c9e2c@sha256:891e1e8e3d7ead901a863e1bafef2f11761958712ad3bb2c162b090476200ede`
+
+**新环境 Coroot 配置**（与本分支代码无关，是环境配置）：用户 09-11 自装 Coroot，并开启匿名只读，项目 `p1nar0hw`。07:57 UTC 给 `stage2` 容器加了两个环境变量：`RESBENCH_COROOT_PROJECT_ID=p1nar0hw`、`RESBENCH_COROOT_ALLOW_ANONYMOUS_READ=true`。`RESBENCH_COROOT_URL` 用代码默认值 `http://coroot-coroot.coroot.svc:8080`。部署本分支镜像时要保留这两个变量。
+
+**各段评测用的是哪个平台版本：**
+
+| 评测 | 平台镜像 | Coroot |
+|---|---|---|
+| C0 × codex、C0 × claude-code | `5746ecf` | 没有 |
+| C0 × deepseek-harness、D1–D6 × 三家 | `5746ecf` | 有 |
+| D7-A、D7-B、D8-A、D8-B × 三家 | 本分支 `35c9e2c` | 有 |
+
+本分支只改动 D7/D8 的路径，D1–D6 在两个版本上的行为相同。
+
+**上线顺序**（执行结果随后补在这里）：
+
+> 2026-09-11 更新：`35c9e2c` 镜像没有部署。08:47 的事故之后，用户决定先在本分支补上第二批修复（第七节），用包含第一、二批修复的新镜像一次部署，再补跑作废的 5 次并继续 D1–D6、D7/D8。下面的原计划仅作记录。
+
+1. D1–D6 全部跑完后，再部署本分支镜像。平台是 Recreate 部署，会中断正在跑的评测，所以要等。
+2. 按第三节重做三家的替代档资格，再发布能力文件。
+3. 跑 `qualification_probe`，做 D7 样本和两个试注入。
+4. 用 `PRE_RUN_HOOK=refresh_d7.sh` 跑 D7/D8 批次。每次 D7 之前都会刷新样本。
+
+## 七、第二批修复（2026-09-11 上午事故之后）
+
+**事故经过。** 08:47 UTC，L0×D1×codex（`lxr-cb9b67e0168f44e8`，平台 `5746ecf`）出事：
+1. D1 撤掉注入权限后，恢复权限这一步抛出 `TypeError`（见 7.2）。
+2. 这个异常让评测进入紧急清理，复位策略升级为全量重装：`helm uninstall otel-demo` 成功，被测系统被删；随后的重装因为控制器服务账号没有修改命名空间的权限而失败（见 7.3）。
+3. 之后 4 次评测（D1×claude-code、D1×deepseek、D2×codex、D2×claude-code）都被环境门挡住（BLOCKED），智能体一次都没启动。
+
+09:10 UTC 我用原来的 chart 和新环境的 values 手工重装了 OTel Demo，内存上限仍是用户批准的值。用户看过原因后，同意先在本分支修下面三处再继续。
+
+### 7.1 确认门：驳回时告诉智能体合法值
+
+**问题**（在 `5746ecf` 上核实，本分支修复前代码相同）。codex 配 qwen3.8-max 时，C0 一轮 29 次提交只批准 1 次，D1 一轮 18 次提交 0 次批准，两次都耗尽了 30 分钟时限。Lx 的设计本意是平台代智能体补上缺的值，而不是卡关（`lx.py:552-556`）。实际情况是：
+1. `SimulatedUser.reply()` 只补智能体**没写**的字段。只要字段写了但写法不合平台用词（算子写成 `>=`、指标写成 `cpu_usage`），或者多写了平台不认的键（`baseline`、`scope`、顶层 `namespace`/`target_uid`），就直接驳回（simulated_user.py 修复前 :373-374）。
+2. 驳回理由只有"路径: 错误码"（`_issues_message`）。纠正提示被丢掉了，而且本身就不全：指标提示只列了 5 个里的 3 个，恰好漏了测 CPU 要用的 `target_cpu_cores`。
+3. `harness_confirm(plan: dict)` 不公布任何字段或可选值。完整的可选值清单和示例方案只给了平台自己的模型。
+4. 多写的顶层 `target_uid` 被误报成 `MISSING_TARGET_UID`，提示智能体"重新读取 Pod"，codex 就一遍遍去读 Pod。
+
+用户确认的修法只有两部分：驳回时给出合法值和示例；在工具说明里写明方案格式。**不做**自动改写、同义词归一或代填条件：那样会悄悄改变阈值，也会替智能体做掉 L2 本来要测的能力。
+
+**改动（行号为改后）。**
+
+`stage2_service/plan_schema.py`：
+
+| 位置 | 改前 | 改后 | 为什么 |
+|---|---|---|---|
+| 29–51 | 指标提示只列 3/5 个；算子提示只有一句 "Use an operator supported for this condition phase." | 新增 `legal_values()` 和四条纠正文案（指标、效果算子、恢复算子、target.uid）；合法值全部从 `condition_policy` 读取、排序、列全，效果和恢复两阶段分开写 | 智能体要知道到底该填什么；合法值只保留一份来源，不另外手抄 |
+| 305–381 | — | 新增 `CONTROLLER_TIMING_FIELDS`（由 `CONDITION_POLICY` 推出）、`AGENT_PLAN_FIELDS`（由 `AgentPlan.model_fields` 推出）、放错位置的键映射 `MISPLACED_TARGET_KEYS`（`namespace`/`target_namespace`/`name`/`target_name`/`uid`/`target_uid` → `target.*`）、各字段的格式说明，以及只含占位符的方案骨架 `AGENT_PLAN_SKELETON` | 这几个平铺的键名正是 chaos_control 的参数名，智能体常照抄进方案 |
+| 671–679、685–721、749–751 | 多余键（pydantic 报 `extra_forbidden`）按路径后缀猜错误码：顶层 `target_uid`、`target.pod_uid` 被报成 `MISSING_TARGET_UID`，`effect_condition.window_threshold` 被报成 `INVALID_CONDITION_THRESHOLD`；只错在条件指标或算子时，还会多出一条 `<root>: PLAN_SCHEMA_INVALID` | 多余键一律报新代码 `PLAN_UNKNOWN_FIELD`：放错位置的键提示"把值挪到 target.uid"；`baseline`/`scope`/`scope_decision` 提示"删掉，它不属于方案"；target 或条件里的多余键会列出该对象接受的字段。那条重复的根级报错挂回它所指的字段并去重 | 修掉误导；同一个问题不报两遍 |
+| 757–776 | 字段缺失或格式错时，纠正只写 "Repair AgentPlan field X" | 写出这个字段应有的格式 | 让提示真正能照着改 |
+| 430、508 | `MISSING_TARGET_UID` 的纠正是 "Re-read the exact Pod…" | "Set target.uid to the target Pod's metadata.uid (read the Pod first if you do not have it yet)." | 只有 `target.uid` 真缺失时才会报这一条 |
+
+`stage2_service/simulated_user.py`：
+
+| 位置 | 改前 | 改后 | 为什么 |
+|---|---|---|---|
+| 603–606 | `_reject_invalid_plan` 的 `message` 只有"路径: 代码; …" | 改为调用 `_plan_feedback()` | 驳回理由要能照着改 |
+| 1012–1082 | — | 新增 `_plan_feedback`：每一项写出路径、代码、问题说明和纠正；再附上方案的顶层字段说明（其中计时字段由平台填写）和骨架；只有策略允许平台补全条件时，才加一句"effect_condition 和 recovery_condition 可以省略，省略时由平台补全并记为平台协助"。`FAULT_TYPE_NOT_ALLOWED`、`SAFETY_TTL_EXCEEDED`、`TIMING_BUDGET_EXCEEDED` 这三类在给智能体的文字里换成不带具体数值的纠正 | 平台内部的故障类型白名单和时长上限，是从 Lx 隐藏参数裁出来的（`permissions.py:128-132`、`harness_runtime.py:184-196`）。原样透出纠正，会第一次告诉智能体 "Choose one of: cpu-load"、"Use safety_ttl_seconds <= 300"，等于泄露被隐藏的信息 |
+
+`_issues_message` 没有改（平台模型的纠正输入和 CONFIRM_RETRIED/FAILED 日志还用它）。`_reject_without_authority`、`_reject_unauthorized_supply`、`_safe_refusal_answer` 也没有改。
+
+逐字节核对过：一份没写条件的方案走平台补全后批准，改动前后的回复 JSON 完全相同，平台模型输入的 sha256 也相同。批准或驳回的判断逻辑没有变。
+
+`mcp_servers/harness_channel/server.py`：
+
+| 位置 | 改前 | 改后 | 为什么 |
+|---|---|---|---|
+| 21–31 | — | 新增 import | — |
+| 102–226 | `harness_confirm` 只有两句说明，参数是不带任何字段的 `dict` | 新增工具说明 `CONFIRM_TOOL_DESCRIPTION`（1,776 字符，控制在 2 KB 内，防止客户端截断）和参数格式 `_confirm_plan_schema`。说明写明方案格式、全部合法值、两个条件可选、计时字段由平台填写、多余的键会被驳回。格式里指标和算子带枚举，threshold 为不小于 0 的数字；方案内部不设任何必填项，条件保持可选；fault_type 仍是自由字符串，因为平台也接受别名 | 不给格式，智能体只能猜。所有智能体看到的文字完全相同，也不含任何试验参数 |
+| 331–335 | 注册时用 docstring 当说明 | `description=CONFIRM_TOOL_DESCRIPTION`，参数类型改为 `plan: ConfirmPlan` | 同上 |
+
+**改后的驳回原文**（codex 式方案：算子写 `>=`，指标写 `cpu_usage`，另带顶层 `target_uid`；Lx 策略下仍然驳回，全文 1,791 字符）：
+
+```
+不批准执行：计划未通过类型化校验。请逐项修正：
+- effect_condition.metric: INVALID_CONDITION_METRIC — Condition metric is not supported. Use one of these metrics: target_cpu_cores, target_current_rps, target_latency_ms, target_memory_mib, target_success_rate.
+- effect_condition.operator: INVALID_EFFECT_OPERATOR — Condition operator is not supported for this phase. Use one of these effect_condition operators: at_or_above, at_or_below, decrease_by_at_least, increase_by_at_least.
+- recovery_condition.metric: INVALID_CONDITION_METRIC — Condition metric is not supported. Use one of these metrics: target_cpu_cores, target_current_rps, target_latency_ms, target_memory_mib, target_success_rate.
+- recovery_condition.operator: INVALID_RECOVERY_OPERATOR — Condition operator is not supported for this phase. Use one of these recovery_condition operators: at_or_above, at_or_below, within_baseline_delta.
+- target_uid: PLAN_UNKNOWN_FIELD — target_uid is not an AgentPlan field. Move its value to target.uid.
+计划的顶层字段：target, fault_type, intensity, effect_condition, recovery_condition, stop_conditions, safety_ttl_seconds；计时字段 effect_observation_seconds, effect_sustain_seconds, agent_cleanup_seconds, recovery_observation_seconds, recovery_sustain_seconds 由平台填写，可以不写；除此之外的键都不属于计划。
+effect_condition 和 recovery_condition 可以省略：省略时由平台补全，并记为平台协助。
+合法计划骨架（把每个 <...> 换成你自己的值，数值写成 JSON 数字、不带单位）：{"target": {"namespace": "<namespace>", "name": "<Pod name>", "uid": "<Pod metadata.uid>", "kind": "Pod"}, "fault_type": "<fault type>", "intensity": {"<intensity field>": <number>}, "effect_condition": {"metric": "<metric>", "operator": "<effect operator>", "threshold": <number>}, "recovery_condition": {"metric": "<metric>", "operator": "<recovery operator>", "threshold": <number>}, "stop_conditions": ["<when to stop early>"]}
+```
+
+对照：修复前同一类方案（不带 `target_uid`）只会返回 `请修正：effect_condition.metric: INVALID_CONDITION_METRIC; …; <root>: PLAN_SCHEMA_INVALID`；带多余键的方案返回的是 `target_uid: MISSING_TARGET_UID`。
+
+**测试**：只新增测试和 import，没有改动任何已有断言。
+
+- `tests/test_stage2_plan_schema.py`（:237-350，6 个）：顶层 `target_uid` 等多余键报 `PLAN_UNKNOWN_FIELD`；嵌套的多余键同样处理；`target.uid` 真缺失时仍报 `MISSING_TARGET_UID`；合法值列全，每个字段只报一次；只错算子时只报一条；缺失或格式错的字段给出具体纠正。
+- `tests/test_stage2_simulated_user.py`（:577-842，7 个）：
+  - codex 式方案仍被驳回，但列出全部合法值并附示例；
+  - 多余键和真缺失的区分；
+  - 没写条件的方案照旧补全、批准，回复和平台模型输入逐字节不变；
+  - 反馈里不含隐藏参数（80%、300 秒、目标 Pod UID）；
+  - 更严格的策略下不出现"可省略"那句；
+  - `_reject_without_authority` 原文不变。
+- `tests/test_harness_channel_mcp.py`（:290-376，3 个）：
+  - 工具说明和参数格式里有全部合法值，条件可选；
+  - 不同试验看到的文字完全相同，且不含试验参数；
+  - 经 MCP 驳回后 `error_code` 和账本不变。
+
+三个主测试文件 83 passed，修复前 67。相关的 28 个测试文件共 582 passed。都在沙箱外运行。
+
+**风险与备注。**
+- **消息变长：** 这类驳回从约 250 字符变为约 1.8K 字符。已查到的读取方都不截断它；`harness_runtime.py:287` 的 300 字符截断只作用于 CONFIRM_FAILED，是另一条路径。
+- **错误码的变化：** 没有代码解析旧的"路径: 代码"格式。读取方只看 `allowed`、`reason`、`error_code`，或把消息原样转发，这几项都没变。issue 代码有两处变化：多余键改报 `PLAN_UNKNOWN_FIELD`，重复的根级条目消失。它们只出现在消息文字、CONFIRM_RETRIED/FAILED 日志和 chaos_core 的错误详情里，没有评分代码读取。
+- **有意没改的两处：**
+  - `_reject_without_authority` 没有加逐项反馈。在 clarify_missing 策略下，列出"缺哪些字段、怎么填"会诱导智能体自己补全而不是去澄清，改变这一级在测的东西。Lx（agent_delegated）不会走到这条路径。
+  - `target.uid` 格式不对（而不是缺失）时，仍报 `MISSING_TARGET_UID`，和原来一样。
+- **可比性：** 驳回反馈和工具说明都变了，所有智能体看到的提交工具说明也跟着变了。修复前 codex 的 1/29、0/18 通过率，不宜和修复后的结果合并比较。按用户决定保留的 C0 结果，是在修复前的平台上跑的。
+
+### 7.2 D1 恢复权限时的程序错误
+
+**根因。** 出错的是 `stage2_service/runtime_adapters.py:770` 的 `for item in evidence["revoked"]:`（35c9e2c 行号），调用链是 `rollback`（:452）→ `_restore_mcp_capability`（:717）→ `_policy_snapshot_from_record`（:769-770）。
+- D1 撤权时，把 `_revoke_mcp_capability` 的单条结果原样存成 `application_evidence`，其中 `revoked` 是 token 注册表返回的布尔值 `True`（:311、:317、:706-709）。
+- D3/D4 撤权时，把多条结果包成列表 `"revoked": [...]`（:329）。
+- 恢复代码只看有没有 `revoked` 这个键（:769），有就当成 D3/D4 的列表去遍历，遇到 D1 的 `True` 就崩。
+
+撤权一侧存下的格式才是约定：评估器按它读取，`evaluator.py:538`、`:769` 要求 D1 的 `revoked is True`，`:854-858` 要求 D3/D4 是列表。所以改的是恢复一侧。
+
+事故中 :716 已经先把 token 写回，:717 才崩，结果恢复了一半：token 回来了，策略里的 `chaos_create_experiment` 仍是 disabled。这个状态一直留到 trial 结束时 `permissions.restore` 删掉该 trial 的 token 和策略目录。
+
+之前的单测只调用过 D1 的撤权，没调用过恢复，所以没发现。
+
+**改动（`stage2_service/runtime_adapters.py`，行号为改后）。**
+
+| 位置 | 改前 | 改后 | 为什么 |
+|---|---|---|---|
+| 448–465 `rollback()` | D1 调 `_restore_mcp_capability`；D3/D4 在分支里自己写了一套恢复代码 | D1（:452）和 D3/D4（:462）调用同一个函数 | 两套写法各自假设证据格式，正是出错的根源 |
+| 691–720 `_restore_mcp_capabilities`（取代 `_restore_mcp_capability`） | 先恢复 token，再解码快照；D1 在解码时崩 | 先解码证据和快照、拿到策略登记表，再恢复 token，最后恢复策略。返回值统一为 `{"restored": [...], "policy": {"sequence", "restored": True}, "verified": True}`，与原 D3/D4 一致 | 先解码可以避免证据有问题时只恢复一半。D1 原来返回 `{server, capability, verified, policy}`，已核实没有代码按键读取它：`evaluator.py:1158`、`scripts/generate_stage2_matrix_tables_pdf.py:456` 只是原样拷贝或打印，`evaluator.py:764` 只对 D7/D8 读 `verified` |
+| 757–791 `_mcp_revocation_entries`（取代 `_policy_snapshot_from_record`） | 靠有没有 `revoked` 键来猜格式 | 按 `record.plan.type` 解码：权限类取 `[evidence]`；观测类要求 `revoked` 是非空的列表；其他类型或格式不对，抛出明确的 `RuntimeAdapterError` | 格式由扰动类型决定，不靠猜 |
+| `_earliest_policy_snapshot` | 有一个 D1 永远走不到的回退分支 | 改为接收上面解出的条目，删掉该分支 | 简化 |
+
+撤权一侧的代码（:308-332、:660-689）没有改动。
+
+**测试。**
+- `tests/fixtures/stage2_disturbance/d1-rollback-failed-attempt-20260911.json`：事故现场的 disturbance-attempt 记录，逐字节拷贝，已用 `cmp` 核对，不含密钥。
+- `tests/test_stage2_disturbance_cases.py` 新增：
+  - `test_d1_rollback_restores_the_recorded_2026_09_11_incident_record`：先用真实撤权代码复现事故时的状态，并断言它产出的证据和事故记录格式一致；再执行恢复，断言策略还原成记录里的快照、工具级的禁用被撤掉、token 恢复原值；
+  - `test_mcp_policy_rollback_accepts_the_evidence_its_apply_persisted`：D1、D3、D4 各一例，撤权后把记录存成 JSON 再读回来恢复；
+  - `test_d1_rollback_rejects_evidence_without_snapshot_before_restoring_anything`：证据缺快照时直接报错，token 和策略都不动；
+  - `test_target_change_rollback_defers_to_environment_reset`（D2）；
+  - `test_d6_rollback_returns_the_record_reconciled_at_apply`（D6）。
+- `tests/test_stage2_d5_async.py` 新增 `test_d5_rollback_after_executor_restart_restores_the_persisted_snapshot`，覆盖执行器重启后的 D5 恢复分支，这个分支原来没有测试。
+
+测试都用真实的策略登记表和 token 登记表，只把 Kubernetes 换成替身，和现有测试做法一致。
+
+结果：
+- 用旧代码跑新测试，有 3 个失败，都是 D1 相关，报错与线上一致（`TypeError: 'bool' object is not iterable`，:452 → :717 → :770）。
+- 用新代码跑，全部通过。涉及 runtime_adapters、disturbance、rollback 的 40 个测试文件共 457 passed，修复前是 449 passed。
+
+**D2–D6 的恢复路径也查了一遍：**
+- **D3/D4：** 撤权和恢复的格式本来一致，没有这个错误。但有两个同类隐患随共用函数一起修掉了：一是证据格式不对时会先恢复 token 造成恢复一半；二是那个走不到的回退分支。
+- **D5：** 撤权时写入的字段正是恢复时读取的字段，存成 JSON 再读回也没问题。执行器重启后的分支已补测试。
+- **D2：** 恢复不读撤权证据，直接交给环境复位（:470-475），与评估器和 campaign 的处理一致。
+- **D6：** 格式没问题，但它的恢复证据是撤权时写死的，没有真正核实（:439-444）。这一类问题见 7.4，这次没改。
+
+### 7.3 紧急复位加保护：确认能重装成功之前，不卸载被测系统
+
+**问题。** 复位被判为 T3（全量重装）后，`reset.py` 的 `_full_reinstall` 第一步就执行 `helm uninstall otel-demo --wait`，删掉被测系统，接着才用 `scripts/deploy_application.py --execute` 重装。重装命令是 `helm upgrade --install … --create-namespace --server-side=true --force-conflicts`，要对 namespace 做一次 PATCH。可仓库给控制器的 RBAC 对 namespaces 只有 get/list（`deploy/stage2/stage2.yaml:20-21`），所以这一步在任何环境都可能失败。事故里正是先删成功、后装失败。
+
+用户确认的原则是：平台在确认能重装成功之前，不得卸载被测系统；最坏的结果是报"复位失败"，等人处理。"重装时用各环境自己的 values"这个更大的问题，用户决定整轮结束后再做。
+
+**关键的设计判断。** 查过 Helm v4.1.1 源码（`pkg/action/install.go`、`upgrade.go`）：`--dry-run=server` 在执行 `--create-namespace` 和创建任何对象之前就返回了，不会模拟事故里被拒的那次 namespace PATCH。所以预检不能只靠 helm 的 dry-run，还要用 kubectl `--dry-run=server` 把这些写操作逐个真实地走一遍。create 权限单独用 `kubectl auth can-i` 检查；没有用 `kubectl create --dry-run`，因为 chart 里写死了 NodePort 30881，create 的 dry-run 会误报"端口已被占用"。
+
+**T3 流程，改前与改后。** 进入 `_full_reinstall` 之前的步骤不变：campaign 先清理（收尾故障、扰动回滚、恢复权限，各级复位都做），再由 `reset_with_policy` → `classify_reset_policy` 判为 T3。
+
+- 改前：`helm uninstall --wait`（被测系统被删）→ 复制运行时 env → `deploy_application.py --execute` → 资格与流量验证。
+- 改后：
+  1. 复制运行时 env，只是本地文件操作。
+  2. 预检：`deploy_application.py --server-dry-run`，只有读操作和 dry-run 写操作。
+  3. 预检失败：抛出 `ResetError`，不卸载。紧急路径最终为 `RESET_FAILED`；正常路径最终为 `BLOCKED`，原因 `POST_TRIAL_ENVIRONMENT_NOT_READY`。两者都是现有的失败处理。
+  4. 预检通过：`helm uninstall`，再用和改前完全相同的参数 `--execute` 重装，然后验证（验证部分未改）。
+
+在本分支上核对过顺序：`_full_reinstall` 里 :16 先调用 `_reinstall_preflight`，:17 之后才执行 `helm uninstall`。运维手动触发的复位（`task_service` → `runtime_factory.reset_environment` → `_full_reinstall`）也会先过预检。
+
+**改动（行号为改后）。**
+
+`stage2_service/reset.py`：
+
+| 位置 | 改前 | 改后 | 为什么 |
+|---|---|---|---|
+| 5、7-8、20-28 | — | 新增 import 和常量：通过判定值、摘录长度、脱敏正则 | — |
+| 31-38 `ResetError` | 空类 | 可以带一个 `evidence` 字典；旧的用法照样兼容 | 让 campaign 能把结构化证据写进记录 |
+| 176-252 `_full_reinstall` | 第一步就卸载 | 181-191 先复制私有 env，再跑 `_reinstall_preflight`，失败就在这里抛出。卸载和重装的命令、超时都不变。卸载失败、重装失败时的报错文字不变，但附上证据（stage、是否已卸载、预检结果、退出码、stderr 摘录）。成功结果多一个 `reinstall_preflight` 字段 | 这是要求的核心 |
+| 254-275 `_deploy_argv` | — | 预检和真正的重装共用同一套参数，唯一区别是同一位置上 `--server-dry-run` 换成 `--execute` | 保证预检检查的就是随后要执行的那条命令 |
+| 277-323 `_reinstall_preflight` | — | 超时为 `timeout_seconds+180`，生产上是 300 秒，与重装一致。以下任何一种都算失败：退出码非零、超时、进程起不来、stdout 不是 `result=="server-dry-run-passed"` 的报告。失败时抛出 `reinstall preflight failed; OTel Demo was left installed: <原因>: <stderr 末尾 400 字>`，证据包括 `stage:"reinstall_preflight"`、`uninstall_attempted:false`、`uninstalled:false`、`reinstalled:false`，以及预检的命令、退出码、是否超时、stderr 摘录 | 失败时不卸载，并留下事后查因的证据 |
+| 346-391 | — | 辅助函数：stderr 优先取部署脚本失败 JSON 里的 `error` 字段；压缩空白；把 `password/token/secret/api_key=…` 这类键值脱敏，最多保留 1500 字。命令用 `shlex.join` 拼接，含敏感词的参数替换为 `<redacted-argument>` | 证据里不能带密钥 |
+
+`scripts/deploy_application.py`：
+
+| 位置 | 改前 | 改后 |
+|---|---|---|
+| 4-9、40-51 | — | 说明文字；新增常量 `SERVER_DRY_RUN`，`HELM_FIELD_MANAGER="helm"`（Helm v4 用二进制名作 field manager），以及写进报告的"无法证明"清单 `SERVER_DRY_RUN_GAPS` |
+| 263-265 | — | 新增 `dry_run_flags()` |
+| 327-336 `create_namespace` | — | 新增 `server_dry_run` 参数；默认时命令不变 |
+| 385-413 `helm_upgrade` | 返回 None | 返回 stdout。dry-run 时在原命令末尾追加 `--dry-run=server --output json`，原有部分一字不改 |
+| 415-454 `helm_release_objects` | — | 从 release JSON 取出 manifest 和安装钩子（排除测试钩子），补上 Helm 的归属标签和注解；解析失败报 `DeployError`，即预检失败 |
+| 457-466 `kubectl_output_objects` | — | 解析 kubectl `-o json` 的输出 |
+| 469-532 `server_dry_run_helm_writes` | — | 依次做三件事：namespace 的 SSA dry-run（不加 force，等同 `--create-namespace` 那次写入）；全部对象的 SSA `--force-conflicts` dry-run，返回数量对不上即算失败；按服务端返回的对象类型逐类 `auth can-i create` |
+| 636-699 `apply_otel_demo` | — | 打注解、扩缩容、补充清单的 apply 都带上 dry-run 标志，并返回检查项清单；非 dry-run 时命令不变 |
+| 870-877 `assert_server_dry_run_supported` | — | 访问集群之前先校验：不能和 `--execute` 同时用；只支持 otel-demo 的 apply；namespace 必须是 `otel-demo`；不能带 `--fresh`；必须给 `--kubeconfig` |
+| 880-930 `execute` | — | dry-run 时不执行 `wait_ready`；报告里写入 `serverDryRun` 和 `result`。`main()` 未改，dry-run 时 stdout 只有一份 JSON |
+| 963-970 | — | 新增 `--server-dry-run` 参数。没叫 `--dry-run`，是因为这个脚本不带 `--execute` 时的默认模式已经叫 "dry-run"（只输出计划），再加一个会有歧义 |
+
+`stage2_service/campaign.py:1657-1662`（新增 6 行）：原来复位异常只记 `str(exc)[:800]`；现在异常若带 `evidence`，就一并写进 `environment-reset.json` 和 `emergency-cleanup.json`。状态判定完全没变。之所以要改：生产上的命令约 250–300 字，stderr 摘录最多 1500 字，800 字的消息装不下，结构化字段也会丢。
+
+**预检命令**（生产配置，`timeout_seconds=120`）：
+
+```
+<python> <repo>/scripts/deploy_application.py --application otel-demo --mode apply --server-dry-run --kubeconfig <kubeconfig> --runtime-env-file <kubeconfig目录>/<trial_id>-reset-XXXX/otel-demo.env --timeout 120
+env: KUBECONFIG=<kubeconfig>  OTEL_DEMO_CHART_FILE=/opt/resiliencebenchmark/charts/opentelemetry-demo-0.40.5.tgz
+```
+
+它依次访问集群：
+1. `kubectl get namespace otel-demo`
+2. `helm upgrade --install … --dry-run=server --output json`，和重装同一套参数
+3. namespace 的 SSA dry-run，也就是事故里被拒的那次 PATCH
+4. 全部渲染出来的对象的 SSA dry-run。按仓库 values 实测是 51 个：Deployment×23、Service×21、ConfigMap×3、ServiceAccount×2、ClusterRole、ClusterRoleBinding
+5. `auth can-i create`，每类对象一次，共 6 次
+6. 补充 PVC 清单的 `apply --dry-run=server`
+
+- **能证明：** 集群可达、release 状态可读；chart、版本、values 能渲染并通过校验；namespace 修改的 RBAC 与准入；每个对象修改时的 RBAC、准入、字段校验和 SSA 冲突；每类对象的创建权限；补充清单能 apply。
+- **不能证明：**
+  - `--wait` 之后能否就绪：拉镜像、调度、存储、探针，生产上只给 120 秒。
+  - 只拦截 CREATE 的准入策略：对象都已存在，dry-run 走的是 UPDATE。
+  - 按"安装"渲染的结果：release 还在时 Helm 按"升级"渲染，`lookup` 读的是现场数据，grafana 等地方用到了。
+  - 预检之后、重装之前集群发生的变化。
+  - 卸载本身会不会失败。
+
+**测试**（新增 20 个：reset 8 个、deploy 11 个、campaign 1 个）：
+- 原来的"成功重装"测试改为要求第一个调用是预检，并断言预检命令就是重装命令，只换了模式标志。
+- `test_forbidden_reinstall_preflight_leaves_otel_demo_installed`：预检被拒时不卸载，抛出 `ResetError`，证据里有 stderr。
+- `test_any_reinstall_preflight_failure_blocks_the_uninstall`，5 种：超时、输出无法解析 ×2、OSError、退出码 2 且需要脱敏。
+- `test_passing_preflight_then_uninstalls_and_reinstalls_on_full_reinstall_tier`：预检通过后，照旧卸载再重装。
+- `test_otel_server_dry_run_is_the_reinstall_with_every_write_dry_run`：和 `--execute` 对比，helm 命令与 stdin 相同，只多了 dry-run 标志；所有 kubectl 写操作都带 `--dry-run=server`；没有 rollout，也没有 delete。另测了 namespace 被拒、创建权限被拒、6 种非法参数组合、命令行解析、helm 输出无法解析。
+- `test_emergency_full_reinstall_with_failed_preflight_never_uninstalls`：紧急路径预检失败时结果为 `RESET_FAILED`，从未卸载，两份记录里都有证据。
+
+结果（沙箱外，`KUBECONFIG` 指向一个不存在的路径作防护）：改动的 3 个测试文件 57 passed；21 个相关测试文件 283 passed，改前基线 249 passed。另外在本机用 helm v4.1.1 的 `--dry-run=client` 渲染真实 chart 和仓库 values，确认能解析出上面那 51 个对象。以上都没有连集群。
+
+**剩余风险。**
+1. **当前 RBAC 下，T3 实际上走不通。** 在新集群上，每次 T3 都会停在预检第 3 步，结果是复位失败、OTel Demo 保留、要人工处理，这符合"最坏只报失败"的原则。要让 T3 真正可用，有两种办法，都会改变重装行为，这次都没做，留到整轮结束后：
+   - 给控制器在 `otel-demo` 里加一个允许 patch namespaces 的 Role；
+   - namespace 已存在时，重装不再带 `--create-namespace`。
+
+   无论选哪种，都还要解决"重装用的是仓库 values，而不是环境适配版"的问题。
+2. **预检通过、真正重装仍可能失败**（见"不能证明"）。报错文字没有写明被测系统已被卸载，这一点只在证据里（`stage=reinstall`、`uninstalled=true`），建议后续改一下措辞。
+3. **运维查因不方便。** 紧急路径下，campaign 的 error 字段显示的是原来那个 trial 的异常，预检失败的原因要去 `trials/<id>/environment-reset.json` 里看。运维手动触发的复位只留下 800 字的报错。
+4. **可能误拦，但不会误删。** release 处于 pending、namespace 不存在、kubectl 输出格式与预期不符等情况，只会拦下复位、保留 OTel Demo。
+5. **耗时与脱敏。** 每次 T3 多出约 11 次集群命令，最长 300 秒。helm 的 JSON 输出里含 values 中的密码，只存在于脚本内存中，经 stdin 交给 kubectl；证据里 stderr 的脱敏只认 `key=value` 形式，识别不了 base64 格式的密文。
+
+### 7.4 查到但这次没改的问题（留给整轮结束后的优化方案）
+
+- **单是恢复失败，就会升级成全量重装。** 调用链是：campaign.py:930-947 恢复一抛异常就中止 trial；:1285-1320 进入 `_emergency_cleanup`；:1587-1598 紧急清理会重试恢复，但重试结果只记成证据；:1599-1605 交给 `_restore_and_reset` 的仍是原记录（`rolled_back=False`）；接着 reset.py:78-79 → reset_policy.py:286-289（`_rollback_failed`）→ :95-97 判为 `T3_FULL_REINSTALL`。可 D1、D3、D4、D5、D6 改的只是 trial 私有的 token 和策略文件，`permissions.restore`（permissions.py:170-190）会把它们删掉，重装 OTel Demo 既修不了这部分，还会把被测系统卸掉。建议两点：把紧急清理里重试成功的结果交给复位；只有会改动应用本身的扰动，恢复失败才升级为全量重装。
+- **D7/D8 在紧急路径上也会被推向全量重装。** `_emergency_cleanup` 对 D7/D8 的记录（TOOL_SUBSTITUTION）也调用 `rollback()`，但 `rollback()` 没有这个类型的分支，只返回 `rolled_back=False`（campaign.py:1588-1597）。
+- **token 恢复依赖进程内存。** 恢复要用进程内的 `_original` 字典（runtime_adapters.py:136、:179-181）。如果控制器在撤权和恢复之间重启，恢复会报 "restoration state is missing"，进而走紧急路径。
+- **D6 的"一次性"不是它自己保证的。** D6 写进策略的 `chaos_create_uncertainty_variant` 在整个 trial 期间都留着：`set_server` 没法把它清成 None（capability_policy.py:115-116），恢复也是直接原样返回。实际起作用的是基线凭证只能用一次（mcp_servers/chaos_core/service.py:1065）。trial 结束时整个策略目录会被删掉，所以不影响下一个 trial。
+- **D2 的状态会短暂显示成 ROLLBACK_FAILED。** campaign.py:956-965 先把 D2 记成 `ROLLBACK_FAILED`，要等复位验证通过（:1350-1371）后才改成 `ROLLED_BACK`。只是显示问题，不会触发全量重装。
+
+**正常跑完时，各用例走哪一级复位**（2026-09-11 按本分支代码核对，决定继续跑之前查的）。复位分级在 `reset_policy.classify_reset_policy` → `_infer_tier`（reset_policy.py），只在两种情况下升级为全量重装（T3）：
+- **恢复失败，或结果对不上：** `unknown_or_failed_rollback = rollback_failed or (outcome_uncertain and not outcome_reconciled)`。
+- **盘点出不属于本次评测的故障：** 有外来或无主的在跑故障、盘点不完整，或 `fault_inventory_qualified` 为 False。
+
+其余情况都比 T3 轻：主故障跑过或目标被替换，走 T2（清故障、核对目标、核对业务）；只改了权限或通道，走 T1（恢复权限、重绑凭证、核对基线）；什么都没改，走 T0。
+
+各用例的输入来自 `campaign._reset_mutation_evidence`（campaign.py:1902-1958）：
+- **D2（替换 Pod）：** 不计入"恢复"统计（:1949-1953），走 T2。
+- **D1、D3、D4、D5：** 恢复成功就走 T1，主故障跑过则走 T2。修复前 D1 必然恢复失败，所以必然走到 T3。
+- **D6：** 只有平台记下的操作结果不属于 absent / applied / executed / already_present 时，才会走到 T3。
+- **D7/D8：** 记录由 `harness_runtime.py:1772-1795` 生成，`rolled_back` 取自替代工具运行时自己的恢复结果（`outcome.restored`）。恢复成功就不会走到 T3。
+
+也就是说，正常跑完不会重装。只有出错时才会走到 T3；在新环境里，7.3 的保护会把它变成"复位失败、被测系统保留"，批跑随即停下（scratchpad 的 `run_dx.py` 遇到 RESET_FAILED 或 BLOCKED 会以 50 退出）。
+
+### 7.5 第二批修复的测试结果
+
+测试环境：Python 3.13，命令 `python -m pytest … -o addopts="" -q -p no:cacheprovider`，在本机 Claude 沙箱外运行，`KUBECONFIG` 指向一个不存在的路径，防止误连集群。
+
+| 范围 | 结果 |
+|---|---|
+| 7.1 确认门：涉及 simulated_user、plan_schema、harness_channel 的 28 个测试文件 | 582 passed，修复前 566 |
+| 7.2 D1 恢复权限：涉及 runtime_adapters、disturbance、rollback 的 40 个测试文件 | 457 passed，修复前 449 |
+| 7.3 复位保护：涉及 reset、deploy_application、emergency 的 21 个测试文件 | 283 passed，修复前 249 |
+| **全量 `tests/`**（2026-09-11 10:15 UTC，第一、二批修复都已包含） | **2004 passed，10 skipped，0 failed** |
+
+对账：第一批修复完成时（08:10 UTC）全量是 1960 passed。第二批新增 44 个测试：确认门 16 个、D1 及其他恢复路径 8 个、复位保护 20 个。1960 + 44 = 2004。

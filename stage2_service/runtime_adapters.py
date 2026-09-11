@@ -449,7 +449,7 @@ class CompositeDisturbanceExecutor:
         if record.plan.type is DisturbanceType.PERMISSION_CHANGE:
             capability = str(record.plan.parameters["revoke_capability"])
             if record.plan.backend == "mcp_policy":
-                evidence = self._restore_mcp_capability(record, capability)
+                evidence = self._restore_mcp_capabilities(record, (capability,))
             else:
                 raise RuntimeAdapterError("unsupported permission restoration backend")
             return record.model_copy(
@@ -459,29 +459,9 @@ class CompositeDisturbanceExecutor:
             capabilities = tuple(
                 str(item) for item in record.plan.parameters["revoke_capabilities"]
             )
-            evidence = [
-                self.mcp_tokens.restore(record.plan.trial_id, capability)
-                for capability in capabilities
-            ]
-            policy_snapshot = _earliest_policy_snapshot(record)
-            if policy_snapshot is None:
-                raise RuntimeAdapterError("MCP policy restoration snapshot is missing")
-            restored_policy = self._policy_registry_for(record.plan.trial_id).restore(
-                policy_snapshot,
-                source="disturbance-runtime-rollback",
-            )
+            evidence = self._restore_mcp_capabilities(record, capabilities)
             return record.model_copy(
-                update={
-                    "rolled_back": True,
-                    "rollback_evidence": {
-                        "restored": evidence,
-                        "policy": {
-                            "sequence": restored_policy.sequence,
-                            "restored": True,
-                        },
-                        "verified": True,
-                    },
-                }
+                update={"rolled_back": True, "rollback_evidence": evidence}
             )
         if record.plan.type is DisturbanceType.TOOL_CHANNEL_INTERRUPTION:
             return self._rollback_d5(record)
@@ -708,23 +688,36 @@ class CompositeDisturbanceExecutor:
             "policy": policy_evidence,
         }
 
-    def _restore_mcp_capability(
+    def _restore_mcp_capabilities(
         self,
         record: DisturbanceRecord,
-        capability: str,
+        capabilities: tuple[str, ...],
     ) -> dict[str, Any]:
-        token_evidence = self.mcp_tokens.restore(record.plan.trial_id, capability)
-        policy_snapshot = _policy_snapshot_from_record(record, capability)
+        """Undo ``_revoke_mcp_capability`` for D1 and D3/D4 alike.
+
+        The pre-revocation policy snapshot and the policy registry are resolved
+        before any token or policy is written, so a malformed record fails
+        without leaving a half-restored capability behind.
+        """
+        policy_snapshot = _earliest_policy_snapshot(_mcp_revocation_entries(record))
         if policy_snapshot is None:
             raise RuntimeAdapterError("MCP policy restoration snapshot is missing")
         registry = self._policy_registry_for(record.plan.trial_id)
-        restored = registry.restore(policy_snapshot, source="disturbance-runtime-rollback")
+        restored_tokens = [
+            self.mcp_tokens.restore(record.plan.trial_id, capability)
+            for capability in capabilities
+        ]
+        restored_policy = registry.restore(
+            policy_snapshot,
+            source="disturbance-runtime-rollback",
+        )
         return {
-            **token_evidence,
+            "restored": restored_tokens,
             "policy": {
-                "sequence": restored.sequence,
+                "sequence": restored_policy.sequence,
                 "restored": True,
             },
+            "verified": True,
         }
 
     def _policy_target_for_capability(self, capability: str) -> tuple[str, str | None]:
@@ -761,30 +754,40 @@ def _validate_trial_id(trial_id: str) -> None:
         raise RuntimeAdapterError("invalid token-state identity")
 
 
-def _policy_snapshot_from_record(
-    record: DisturbanceRecord,
-    capability: str,
-) -> CapabilityPolicyDocument | None:
+def _mcp_revocation_entries(record: DisturbanceRecord) -> tuple[Mapping[str, Any], ...]:
+    """Return the per-capability entries ``_revoke_mcp_capability`` recorded.
+
+    Every entry carries the token registry's ``"revoked": True`` flag.  D1
+    stores its single entry as the whole application evidence, while D3/D4
+    wrap theirs in a ``"revoked"`` list, so the key name alone cannot tell the
+    two shapes apart.  Decode by disturbance type, exactly as ``apply`` wrote
+    the evidence and as the evaluator reads it.
+    """
     evidence = record.application_evidence
-    if "revoked" in evidence:
-        for item in evidence["revoked"]:
-            if item.get("capability") == capability:
-                snapshot = (item.get("policy") or {}).get("snapshot")
-                return CapabilityPolicyDocument(**snapshot) if snapshot else None
-        return None
-    snapshot = (evidence.get("policy") or {}).get("snapshot")
-    return CapabilityPolicyDocument(**snapshot) if snapshot else None
+    if record.plan.type is DisturbanceType.PERMISSION_CHANGE:
+        entries: list[Any] = [evidence]
+    elif record.plan.type is DisturbanceType.OBSERVABILITY_CHANGE:
+        revoked = evidence.get("revoked")
+        entries = list(revoked) if isinstance(revoked, (list, tuple)) else []
+    else:
+        raise RuntimeAdapterError("disturbance type has no MCP revocation evidence")
+    if not entries or not all(isinstance(entry, Mapping) for entry in entries):
+        raise RuntimeAdapterError("MCP revocation evidence is malformed")
+    return tuple(entries)
 
 
-def _earliest_policy_snapshot(record: DisturbanceRecord) -> CapabilityPolicyDocument | None:
+def _earliest_policy_snapshot(
+    entries: tuple[Mapping[str, Any], ...],
+) -> CapabilityPolicyDocument | None:
+    """Return the policy snapshot taken before the disturbance's first revocation."""
     snapshots: list[CapabilityPolicyDocument] = []
-    for item in record.application_evidence.get("revoked") or ():
-        snapshot = (item.get("policy") or {}).get("snapshot")
+    for entry in entries:
+        policy = entry.get("policy")
+        snapshot = policy.get("snapshot") if isinstance(policy, Mapping) else None
         if snapshot:
             snapshots.append(CapabilityPolicyDocument(**snapshot))
     if not snapshots:
-        snapshot = (record.application_evidence.get("policy") or {}).get("snapshot")
-        return CapabilityPolicyDocument(**snapshot) if snapshot else None
+        return None
     return min(snapshots, key=lambda document: document.sequence)
 
 

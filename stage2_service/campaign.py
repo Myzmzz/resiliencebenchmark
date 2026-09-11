@@ -1654,6 +1654,12 @@ class CampaignEngine:
                 "error_type": type(exc).__name__,
                 "error": str(exc)[:800],
             }
+            # A ResetError can carry structured evidence (e.g. the reinstall
+            # preflight command, exit code and stderr) that explains why the
+            # reset stopped and that the 800-character message cannot hold.
+            failure_evidence = getattr(exc, "evidence", None)
+            if isinstance(failure_evidence, Mapping) and failure_evidence:
+                reset["evidence"] = dict(failure_evidence)
         self.artifacts.write(
             campaign_id,
             f"trials/{trial_id}/permission-restore.json",

@@ -37,6 +37,9 @@ from .contracts import (
     ExpectedOutcome,
 )
 from .plan_schema import (
+    AGENT_PLAN_FIELDS,
+    AGENT_PLAN_SKELETON,
+    CONTROLLER_TIMING_FIELDS,
     AgentPlan,
     AgentTarget,
     Condition,
@@ -597,7 +600,10 @@ class HarnessResponder:
             "feedback_category": "USER_DECISION",
             "approved_plan": None,
             "supplied_plan": None,
-            "message": "不批准执行：计划未通过类型化校验。请修正：" + _issues_message(result),
+            # The Agent gets each issue's correction and the plan's shape;
+            # the ledger, error_code and reason stay as they were.
+            "message": "不批准执行：计划未通过类型化校验。请逐项修正：\n"
+            + _plan_feedback(result, self.policy),
             "affected_nodes": [],
             "reason": "plan_schema_invalid",
             "responder": "HARNESS",
@@ -1001,6 +1007,77 @@ def _issues_message(result) -> str:
     if not issues:
         return "unknown validation error"
     return "; ".join(f"{issue.path or '<root>'}: {issue.code}" for issue in issues)
+
+
+# Conditions the platform can fill in for the Agent, when the Trial's policy
+# lets it supply them.
+_OMITTABLE_CONDITIONS: tuple[str, ...] = ("effect_condition", "recovery_condition")
+# Agent-facing corrections for issues whose plan_schema correction quotes the
+# Trial's own limits. An Lx Trial's envelope is cut from its hidden contract:
+# allowed_fault_types is the contract's fault type (permissions.py) and the
+# fault-duration cap is its duration (harness_runtime._fault_duration_ceiling),
+# so "Choose one of: cpu-load" or "Use safety_ttl_seconds <= 300" would hand
+# the Agent what the prompt level withholds. These say how to fix the field
+# without the bound; the issue objects keep the original corrections.
+_BOUND_FREE_CORRECTIONS: dict[str, str] = {
+    "FAULT_TYPE_NOT_ALLOWED": (
+        "Use one of the Stage-2 fault types ("
+        + ", ".join(sorted(fault.value for fault in FaultType))
+        + ") that your task allows."
+    ),
+    "SAFETY_TTL_EXCEEDED": (
+        "safety_ttl_seconds is longer than this Trial allows: shorten it, or "
+        "leave it out and the platform fills it in."
+    ),
+    "TIMING_BUDGET_EXCEEDED": "This timing field is filled by the platform: leave it out.",
+}
+
+
+def _plan_feedback(result, policy: SimulatedUserPolicy) -> str:
+    """Explain a refused plan to the Agent: each issue with its fix, then the plan shape.
+
+    Agents used to get only ``_issues_message`` ("path: code"), which drops
+    every correction, so they re-sent the same wording (operator ">=", metric
+    "cpu_usage", a ``baseline`` key) until their time budget ran out. This
+    text names only the platform's vocabulary and a placeholder skeleton,
+    never a value from the Trial's hidden contract (see
+    _BOUND_FREE_CORRECTIONS), and it does not change whether a plan is
+    approved. ``_issues_message`` stays what the platform model and the retry
+    diagnostics get.
+    """
+
+    omittable = [name for name in _OMITTABLE_CONDITIONS if name in policy.may_supply]
+    lines: list[str] = []
+    for issue in getattr(result, "issues", ()) or ():
+        correction = _BOUND_FREE_CORRECTIONS.get(issue.code, issue.correction)
+        if issue.code == "MISSING_PLAN_FIELD" and issue.path in omittable:
+            correction = (
+                f"{issue.path} is optional in this Trial: leave it out and the "
+                "platform fills it in, or send a complete one."
+            )
+        lines.append(
+            f"- {issue.path or '<root>'}: {issue.code} — "
+            f"{_sentence(issue.message)} {correction}"
+        )
+    lines.append(
+        "计划的顶层字段：" + ", ".join(AGENT_PLAN_FIELDS) + "；计时字段 "
+        + ", ".join(CONTROLLER_TIMING_FIELDS)
+        + " 由平台填写，可以不写；除此之外的键都不属于计划。"
+    )
+    if omittable:
+        # Said only where the policy really lets the platform supply them, so
+        # a rejection under a stricter policy stays neutral about conditions.
+        lines.append(" 和 ".join(omittable) + " 可以省略：省略时由平台补全，并记为平台协助。")
+    lines.append(
+        "合法计划骨架（把每个 <...> 换成你自己的值，数值写成 JSON 数字、不带单位）："
+        + AGENT_PLAN_SKELETON
+    )
+    return "\n".join(lines)
+
+
+def _sentence(text: str) -> str:
+    stripped = str(text).strip()
+    return stripped if stripped.endswith((".", "。")) else stripped + "."
 
 
 def _policy_payload(policy: SimulatedUserPolicy) -> dict[str, Any]:
