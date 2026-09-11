@@ -263,6 +263,12 @@ python -m stage2_service.capability_loss.qualification_probe --namespace otel-de
 
 **上线顺序**（执行结果随后补在这里）：
 
+> 2026-09-11 部署的实际镜像（10:18 UTC，由第二批提交 `4db18ab` 在干净的工作树中构建，Harbor 上的 digest 已核对）：
+> - 控制器 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-4db18ab@sha256:2a2785e65bf81e5fc1ec8f75a1019a4859558846fb4c2ed936c24514cce75e68`
+> - Agent `1.94.151.57:85/observe/resbench-stage2:stage2-agent-4db18ab@sha256:25277847c90c318b6808c65b38d972128a08d69f6b38bbede03c6c50d11747b4`
+>
+> 部署时只替换镜像（stage2、agent-runtime、initContainer `agent-workspace-permissions`，以及模板 label `resiliencebenchmark.io/source-head`），两个 Coroot 环境变量保留不变。补跑和后续评测的备注记为 `image 4db18ab+coroot`。
+
 > 2026-09-11 更新：`35c9e2c` 镜像没有部署。08:47 的事故之后，用户决定先在本分支补上第二批修复（第七节），用包含第一、二批修复的新镜像一次部署，再补跑作废的 5 次并继续 D1–D6、D7/D8。下面的原计划仅作记录。
 
 1. D1–D6 全部跑完后，再部署本分支镜像。平台是 Recreate 部署，会中断正在跑的评测，所以要等。
@@ -522,6 +528,31 @@ env: KUBECONFIG=<kubeconfig>  OTEL_DEMO_CHART_FILE=/opt/resiliencebenchmark/char
 - **D7/D8：** 记录由 `harness_runtime.py:1772-1795` 生成，`rolled_back` 取自替代工具运行时自己的恢复结果（`outcome.restored`）。恢复成功就不会走到 T3。
 
 也就是说，正常跑完不会重装。只有出错时才会走到 T3；在新环境里，7.3 的保护会把它变成"复位失败、被测系统保留"，批跑随即停下（scratchpad 的 `run_dx.py` 遇到 RESET_FAILED 或 BLOCKED 会以 50 退出）。
+
+### 7.6 部署后发现：控制器镜像里的部署脚本是旧版（补在第三个提交里）
+
+**发现经过。** 10:21 UTC 部署 `4db18ab` 后，我在真实集群上用平台自己的身份手动空跑了一次复位预检：
+
+```
+python scripts/deploy_application.py --application otel-demo --mode apply --server-dry-run --kubeconfig /var/lib/resbench-stage2/integration/private/service.kubeconfig --runtime-env-file /etc/resbench-stage2/otel-demo.env --timeout 120
+```
+
+结果不是预期的"修改命名空间被拒"，而是 `deploy_application.py: error: unrecognized arguments: --server-dry-run`（退出码 2）。OTel Demo 没受影响：23 个 Deployment 全部就绪，helm release 仍是 rev 1。
+
+**原因。** 控制器镜像由 `deploy/stage2/Dockerfile.runtime-overlay` 在基础镜像上叠一层。这一层只复制一份固定的脚本清单，其中没有 `scripts/deploy_application.py`，所以容器里用的一直是基础镜像自带的旧版。核对过，它和 `5746ecf` 的版本逐字节相同（sha256 前缀 `d35645e40b13`）。它读取的 `environment/applications/otel-demo.yaml`，以及 `environment/kubernetes/otel-demo/` 下的 `deployment.yaml`、`values.yaml`、`supplemental-manifests.yaml`，都与仓库一致。
+
+**影响。** 保护本身仍然有效：预检只要失败就不卸载，所以复位不会删掉被测系统。但预检是"因为参数不认识而失败"，没有真正检查能不能重装，记下的失败原因也不对。等以后 RBAC 修好，T3 也会一直卡在这一步。
+
+**改动。**
+
+| 位置 | 改前 | 改后 | 为什么 |
+|---|---|---|---|
+| `deploy/stage2/Dockerfile.runtime-overlay` 第 33–38 行 | 不复制 `scripts/deploy_application.py`，容器里是基础镜像的旧版 | 在复制清单末尾加 `COPY --chown=10001:10001 scripts/deploy_application.py /app/scripts/deploy_application.py`，并写注释说明原因 | 让复位用的部署脚本与本分支代码一致。旧版与 `5746ecf` 相同，所以带进镜像的只有 7.3 的改动 |
+| `scripts/build_stage2_image.py` 的 `source_digest()` 文件清单 | 不含这个脚本 | 加入 `REPO_ROOT / "scripts/deploy_application.py"` | 镜像的源码指纹（`source_sha256`）要覆盖所有复制进镜像的文件 |
+
+`environment/` 下的文件不需要复制：基础镜像里的与仓库一致。
+
+**部署后的验证**（第三个提交的镜像上线后补在这里）：同一条预检命令应在第 3 步（namespace 的 SSA dry-run）被 RBAC 拒绝，与事故一致，并且不改动集群。
 
 ### 7.5 第二批修复的测试结果
 
