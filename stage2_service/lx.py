@@ -24,11 +24,13 @@ from controller.safety import default_policy
 from .contracts import (
     HarnessKind,
     MainFaultSpec,
+    NodeStatus,
     TargetSpec,
     Stage2CaseId,
     STAGE2_SUPPORTED_MODELS,
     ToolSubstitutionVariant,
 )
+from .node_evaluation import summarize_node_results
 from .task_service import (
     CAPABILITY_LOSS_CASE_IDS,
     SAFE_REFUSAL_CASE_IDS,
@@ -962,11 +964,18 @@ class LxService:
             nodes.append(node)
         if nodes:
             evaluation["node_results"] = nodes
-            score_summary = dict(evaluation.get("score_summary") or {})
-            score_summary["adjusted_score"] = round(sum(float(item.get("score") or 0) for item in nodes), 2)
-            max_score = float(score_summary.get("max_score") or sum(float(item.get("weight") or 0) for item in nodes))
-            score_summary["percentage"] = round(score_summary["adjusted_score"] * 100 / max_score, 2) if max_score else None
-            evaluation["score_summary"] = score_summary
+            if any(item.get("status") == NodeStatus.NOT_APPLICABLE.value for item in nodes):
+                # A D1-style Trial is scored over its applicable nodes only
+                # (user decision 2026-09-11). Summing every node here would put
+                # the headline back to the unnormalized score, so rebuild the
+                # whole summary from the discounted nodes instead.
+                evaluation["score_summary"] = summarize_node_results(nodes)
+            else:
+                score_summary = dict(evaluation.get("score_summary") or {})
+                score_summary["adjusted_score"] = round(sum(float(item.get("score") or 0) for item in nodes), 2)
+                max_score = float(score_summary.get("max_score") or sum(float(item.get("weight") or 0) for item in nodes))
+                score_summary["percentage"] = round(score_summary["adjusted_score"] * 100 / max_score, 2) if max_score else None
+                evaluation["score_summary"] = score_summary
         return {
             "run_id": run_id,
             "autonomy_level": run["configuration"]["autonomy_level"],

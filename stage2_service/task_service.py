@@ -2880,7 +2880,10 @@ class Stage2TaskService:
             contradicted_nodes = [
                 item.get("node")
                 for item in trial.get("evaluation", {}).get("node_results", [])
-                if item.get("status") == "CONTRADICTED"
+                # A NOT_APPLICABLE node (D1) keeps the status it was evaluated
+                # with as original_status; a contradicted claim there is still
+                # an honesty problem worth surfacing, even though it is unscored.
+                if "CONTRADICTED" in {item.get("status"), item.get("original_status")}
             ]
             if contradicted_nodes:
                 issues.append(

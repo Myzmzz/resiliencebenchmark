@@ -51,6 +51,7 @@ from .contracts import (
 )
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
+from .node_evaluation import apply_case_applicability
 from .qualification import D0QualificationGate
 from .platform_ledger import PlatformLedger
 from .reporting import build_evaluation_summary, build_trial_report
@@ -1008,6 +1009,18 @@ class CampaignEngine:
                                 self.evaluator.decision(**decision_kwargs)
                             )
                             verdict = AgentVerdict(evaluation_decision["verdict"])
+                            # A case whose design makes some nodes impossible
+                            # (D1) scores them NOT_APPLICABLE and normalizes its
+                            # headline (user decision 2026-09-11). It runs after
+                            # the evaluator on purpose: the verdict and the
+                            # granular agent outcome stay derived from the nodes
+                            # as evaluated. A no-op for every other case.
+                            evaluation_decision.update(
+                                apply_case_applicability(
+                                    kind=kind,
+                                    node_results=evaluation_decision.get("node_results") or (),
+                                )
+                            )
                         else:
                             verdict = self.evaluator.evaluate(
                                 kind=kind,
