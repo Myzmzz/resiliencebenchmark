@@ -1,12 +1,17 @@
-"""Publish basic Harness capabilities from verified native channel evidence.
+"""Publish Harness capabilities from verified native channel evidence.
 
-This does not grant D0 fault qualification or D7/D8 substitution capabilities.
-BladeAI basic channel evidence is retained but cannot replace its WP8 full chain.
+A base record grants the basic in-band channel.  A verified WP11 substitution
+record for the same non-BladeAI Harness additionally grants
+``code_execution=platform_sandbox``: the Harness ran Agent code through the
+platform ``code_sandbox`` MCP, which D7/D8 require.  Nothing here grants D0
+fault qualification.  BladeAI always keeps ``code_execution=none``; its basic
+channel evidence is retained but cannot replace its WP8 full chain.
 """
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -28,6 +33,9 @@ BASE_CHECKS = frozenset({
     "notice_ack_verified", "result_submission_verified", "gateway_evidence_verified",
     "tool_evidence_verified",
 })
+# Equals channel_qualification.CHANNEL_QUALIFICATION_MODE (a test pins this).  It
+# is literal so that publishing base records alone does not import that module.
+SUBSTITUTION_QUALIFICATION_TYPE = "CHANNEL_QUALIFICATION"
 MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
 BASE_SERVERS = frozenset({"k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel"})
 REQUIRED_TOOLS = frozenset({"harness_channel.harness_confirm", "harness_channel.harness_consult",
@@ -75,14 +83,31 @@ def _artifact(record: dict[str, Any], root: Path, name: str) -> Path:
     return path
 
 
-def _native_tool_modes(path: Path, record: dict[str, Any]) -> tuple[bool, bool]:
-    """Verify basic MCP coverage and derive native delivery mode from those tools."""
+@dataclass(frozen=True)
+class _CanonicalToolEvidence:
+    """Closed tool pairs from one Trial archive, bound to the record's exchanges."""
+
+    server_results: dict[str, dict[str, str]]
+    server_payloads: dict[str, Any]
+    native_tools: frozenset[str]
+    native_modes: frozenset[bool]
+
+
+def _canonical_tool_evidence(path: Path, record: dict[str, Any], servers: frozenset[str],
+                             label: str) -> _CanonicalToolEvidence:
+    """Pair canonical native/MCP tool rows and bind the MCP rows to the record.
+
+    Only non-mutating catalog operations of ``servers`` count as evidence.  A
+    mutation attempt, an unknown MCP tool, an unclosed call or a recorded
+    exchange that differs from the archive rejects the record.
+    """
     catalog = yaml.safe_load((Path(__file__).resolve().parents[1] / "harness/mcp-tools.yaml").read_text())
-    permitted = {f"{server}.{tool}" for server in BASE_SERVERS
+    permitted = {f"{server}.{tool}" for server in servers
                  for tool in catalog["tools"][server]["allowed_operations"]} - MUTATIONS
     calls: dict[tuple[str, str], dict[str, Any]] = {}
     completed: set[tuple[str, str]] = set()
     server_results: dict[str, dict[str, str]] = {}
+    server_payloads: dict[str, Any] = {}
     native_tools: set[str] = set()
     modes: set[bool] = set()
     for line in _read(path).splitlines():
@@ -104,7 +129,7 @@ def _native_tool_modes(path: Path, record: dict[str, Any]) -> tuple[bool, bool]:
             if key in calls or tool is None:
                 raise ValueError("native tool call identity is ambiguous")
             if tool in MUTATIONS:
-                raise ValueError("base channel evidence contains a mutation attempt")
+                raise ValueError(f"{label} channel evidence contains a mutation attempt")
             calls[key] = {**row, "tool": tool}
         else:
             call = calls.get(key)
@@ -114,8 +139,9 @@ def _native_tool_modes(path: Path, record: dict[str, Any]) -> tuple[bool, bool]:
             tool = call["tool"]
             if row["source"] == "mcp_server":
                 if tool not in permitted:
-                    raise ValueError("base channel evidence contains an unknown or extension MCP tool")
+                    raise ValueError(f"{label} channel evidence contains an unknown or extension MCP tool")
                 server_results[call_id] = {"tool": tool, "status": row.get("status", "")}
+                server_payloads[call_id] = row.get("payload")
             elif tool in permitted and row.get("status") == "completed":
                 modes.add(row["replayed"])
                 native_tools.add(tool)
@@ -133,39 +159,47 @@ def _native_tool_modes(path: Path, record: dict[str, Any]) -> tuple[bool, bool]:
                 "tool": exchange.get("tool"), "status": exchange.get("status")}:
             raise ValueError("record exchange identity does not match canonical MCP evidence")
         seen.add(call_id)
-    server_tools = {value["tool"] for value in server_results.values() if value["status"] == "completed"}
-    for observed in (server_tools, native_tools):
+    return _CanonicalToolEvidence(server_results=server_results, server_payloads=server_payloads,
+                                  native_tools=frozenset(native_tools), native_modes=frozenset(modes))
+
+
+def _native_tool_modes(path: Path, record: dict[str, Any]) -> tuple[bool, bool]:
+    """Verify basic MCP coverage and derive native delivery mode from those tools."""
+    evidence = _canonical_tool_evidence(path, record, BASE_SERVERS, "base")
+    server_tools = {value["tool"] for value in evidence.server_results.values() if value["status"] == "completed"}
+    for observed in (server_tools, evidence.native_tools):
         if (not REQUIRED_TOOLS <= observed or not any(tool.startswith("k8s_ro.") for tool in observed)
                 or not any(tool.startswith("telemetry_ro.") for tool in observed)):
             raise ValueError("basic tool coverage is missing from actual native or MCP evidence")
-    if not modes:
+    if not evidence.native_modes:
         raise ValueError("native tool result evidence is missing")
-    return False in modes, True in modes
+    return False in evidence.native_modes, True in evidence.native_modes
 
 
-def _entry(path: Path, artifact_root: Path, gateway: GatewayConfigSnapshot) -> tuple[str, dict[str, Any]]:
+def _read_record(path: Path) -> dict[str, Any]:
     try:
         record = json.loads(_read(path))
     except ValueError as error:
         raise ValueError("invalid channel qualification record") from error
     if not isinstance(record, dict):
         raise ValueError("channel qualification record must be an object")
-    if record.get("qualification_type") == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION":
-        return _wp8_entry(path, record, artifact_root, gateway)
-    if (record.get("schema_version") != "stage2-channel-qualification.v1"
-            or record.get("qualification_type") != BASE_QUALIFICATION_TYPE
-            or record.get("qualification_profile") != BASE_QUALIFICATION_TYPE):
-        raise ValueError("a base channel qualification record is required")
-    checks = record.get("base_checks")
-    if (record.get("passed") is not True or record.get("status") != "passed"
-            or record.get("harness_report_status") != "completed"
-            or record.get("failure_reasons") != [] or record.get("cleanup_errors") != []
-            or not isinstance(checks, dict) or any(checks.get(key) is not True for key in BASE_CHECKS)):
-        raise ValueError("basic channel qualification did not pass every required check")
-    try:
-        harness = HarnessKind(record.get("harness"))
-    except ValueError as error:
-        raise ValueError("unknown qualified Harness") from error
+    return record
+
+
+@dataclass(frozen=True)
+class _GatewayIdentity:
+    """Model route of one qualification Trial, re-verified against its receipts."""
+
+    model: str
+    trial_id: str
+    config_sha256: str
+    request_ids: list[str]
+    canonical_path: Path
+
+
+def _verified_gateway_identity(record: dict[str, Any], harness: HarnessKind, artifact_root: Path,
+                               gateway: GatewayConfigSnapshot) -> _GatewayIdentity:
+    """Bind a record to the current gateway route and to one archive's receipts."""
     model = record.get("model")
     trial = record.get("trial_id")
     version = record.get("gateway_config_sha256")
@@ -193,7 +227,31 @@ def _entry(path: Path, artifact_root: Path, gateway: GatewayConfigSnapshot) -> t
     )
     if receipts is None:
         raise ValueError("gateway receipt artifact does not verify this qualification")
-    streamed, replayed = _native_tool_modes(canonical_path, record)
+    return _GatewayIdentity(model=model, trial_id=trial, config_sha256=version, request_ids=ids,
+                            canonical_path=canonical_path)
+
+
+def _entry(path: Path, record: dict[str, Any], artifact_root: Path,
+           gateway: GatewayConfigSnapshot) -> tuple[str, dict[str, Any]]:
+    """Verify one base or BladeAI WP8 record into its published entry."""
+    if record.get("qualification_type") == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION":
+        return _wp8_entry(path, record, artifact_root, gateway)
+    if (record.get("schema_version") != "stage2-channel-qualification.v1"
+            or record.get("qualification_type") != BASE_QUALIFICATION_TYPE
+            or record.get("qualification_profile") != BASE_QUALIFICATION_TYPE):
+        raise ValueError("a base channel qualification record is required")
+    checks = record.get("base_checks")
+    if (record.get("passed") is not True or record.get("status") != "passed"
+            or record.get("harness_report_status") != "completed"
+            or record.get("failure_reasons") != [] or record.get("cleanup_errors") != []
+            or not isinstance(checks, dict) or any(checks.get(key) is not True for key in BASE_CHECKS)):
+        raise ValueError("basic channel qualification did not pass every required check")
+    try:
+        harness = HarnessKind(record.get("harness"))
+    except ValueError as error:
+        raise ValueError("unknown qualified Harness") from error
+    identity = _verified_gateway_identity(record, harness, artifact_root, gateway)
+    streamed, replayed = _native_tool_modes(identity.canonical_path, record)
     # A basic channel run cannot establish BladeAI's shim/approval execution path.
     # Keep that missing gate explicit rather than quietly granting stream mode.
     qualified = harness != HarnessKind.BLADEAI
@@ -202,17 +260,127 @@ def _entry(path: Path, artifact_root: Path, gateway: GatewayConfigSnapshot) -> t
         execution_model=("stream" if streamed else "post_hoc") if qualified else "controller_driven",
         streams_tool_results=streamed, post_hoc_trace=replayed,
         supports_resume=False, supports_mid_turn_feedback=True,
+        # Base evidence never proves sandboxed code execution; only a verified
+        # substitution record for the same Harness upgrades this field.
         feedback_channels=("in_band_mcp",), code_execution="none",
         qualification_passed=qualified,
-        probe={"qualification_profile": BASE_QUALIFICATION_TYPE, "channel_trial_id": trial,
-               "model_alias": model, "gateway_config_sha256": version,
-               "gateway_request_ids": ids, "base_checks": checks},
+        probe={"qualification_profile": BASE_QUALIFICATION_TYPE, "channel_trial_id": identity.trial_id,
+               "model_alias": identity.model, "gateway_config_sha256": identity.config_sha256,
+               "gateway_request_ids": identity.request_ids, "base_checks": checks},
     )
     return harness.value, {
         "qualification": {"status": "passed" if qualified else "platform_integration_incomplete",
                           "evidence_ref": str(path.resolve()), "qualification_type": BASE_QUALIFICATION_TYPE,
                           "reason": None if qualified else "bladeai_full_chain_qualification_required"},
         "capability": descriptor.model_dump(mode="json"),
+    }
+
+
+def _substitution_proof(path: Path, record: dict[str, Any], artifact_root: Path,
+                        gateway: GatewayConfigSnapshot) -> tuple[str, dict[str, Any]]:
+    """Verify one WP11 substitution record as proof of platform sandbox execution.
+
+    The record must carry the evaluator's positive checks, not merely an empty
+    failure list, so records from evaluators that predate those checks are
+    refused.  Its archive must show the recorded ``code_sandbox.run_python``
+    call succeeding at the Controller MCP boundary and in the Harness's own
+    tool stream.  Any gap raises; nothing is inferred.
+    """
+    # Imported here: the evaluator module composes the Stage-2 runtime, which a
+    # publication of base or WP8 records alone does not need.
+    from .channel_qualification import (
+        CHANNEL_QUALIFICATION_MODE,
+        EXPECTED_HINT_BODY,
+        SUBSTITUTION_CHECKS,
+        SUBSTITUTION_MCP_SERVERS,
+        TELEMETRY_DENIAL_BODY,
+    )
+
+    if (record.get("schema_version") != "stage2-channel-qualification.v1"
+            or record.get("qualification_type") != CHANNEL_QUALIFICATION_MODE
+            or record.get("qualification_profile") != CHANNEL_QUALIFICATION_MODE):
+        raise ValueError("a substitution channel qualification record is required")
+    checks = record.get("substitution_checks")
+    if (record.get("passed") is not True or record.get("status") != "passed"
+            or record.get("harness_report_status") != "completed"
+            or record.get("failure_reasons") != [] or record.get("cleanup_errors") != []
+            or record.get("scored_as_d7") is not False
+            or record.get("telemetry_denial_body") != TELEMETRY_DENIAL_BODY
+            or record.get("hint_body") != EXPECTED_HINT_BODY
+            or not isinstance(checks, dict)
+            or any(checks.get(key) is not True for key in SUBSTITUTION_CHECKS)):
+        raise ValueError("substitution channel qualification did not pass every required check")
+    try:
+        harness = HarnessKind(record.get("harness"))
+    except ValueError as error:
+        raise ValueError("unknown qualified Harness") from error
+    if harness is HarnessKind.BLADEAI:
+        # BladeAI is promoted only by its WP8 full chain; a channel run does not
+        # prove its worker's code path, so it never grants BladeAI a sandbox.
+        raise ValueError("BladeAI code execution cannot be qualified by channel substitution evidence")
+    identity = _verified_gateway_identity(record, harness, artifact_root, gateway)
+    evidence = _canonical_tool_evidence(identity.canonical_path, record, SUBSTITUTION_MCP_SERVERS,
+                                        "substitution")
+    return harness.value, {
+        "qualification_profile": CHANNEL_QUALIFICATION_MODE,
+        "evidence_ref": str(path.resolve()),
+        "channel_trial_id": identity.trial_id,
+        "model_alias": identity.model,
+        "gateway_config_sha256": identity.config_sha256,
+        "gateway_request_ids": identity.request_ids,
+        "substitution_checks": checks,
+        "sandbox_run": _verified_sandbox_run(record, evidence),
+    }
+
+
+def _is_zero_exit(value: Any) -> bool:
+    # ``False == 0`` in Python; a JSON boolean must not pass as an exit code.
+    return type(value) is int and value == 0
+
+
+def _verified_sandbox_run(record: dict[str, Any], evidence: _CanonicalToolEvidence) -> dict[str, Any]:
+    """Bind the recorded ``SANDBOX_RUN`` ledger event to a successful run_python call.
+
+    Only the evaluator saw the Controller ledger, so the record names the ledger
+    event and the call it belongs to: the first run_python exchange, which is
+    the one the evaluator checked.  The event must fall inside that call's
+    window, and the record, the Controller MCP row and the Harness stream must
+    all show a completed, untruncated, zero-exit execution.
+    """
+    observed = record.get("observed_capability_evidence")
+    run = observed.get("sandbox_run") if isinstance(observed, dict) else None
+    sandbox = next((item for item in record["ordered_exchanges"]
+                    if item.get("tool") == "code_sandbox.run_python"), None)
+    if not isinstance(run, dict) or sandbox is None or run.get("call_id") != sandbox.get("call_id"):
+        raise ValueError("platform sandbox run evidence is missing or belongs to another call")
+    window = (sandbox.get("call_sequence"), run.get("ledger_sequence"), sandbox.get("result_sequence"))
+    if (not all(type(value) is int for value in window) or not window[0] < window[1] < window[2]
+            or (run.get("call_sequence"), run.get("result_sequence")) != (window[0], window[2])):
+        raise ValueError("platform sandbox run is not inside its run_python call")
+    if (run.get("status") != "completed" or not _is_zero_exit(run.get("exit_code"))
+            or run.get("truncated") is not False):
+        raise ValueError("platform sandbox run did not complete successfully")
+    if sandbox.get("status") != "completed":
+        raise ValueError("run_python did not complete at the Controller MCP boundary")
+    for payload in (sandbox.get("payload"), evidence.server_payloads.get(sandbox["call_id"])):
+        if (not isinstance(payload, dict) or payload.get("ok") is not True
+                or not _is_zero_exit(payload.get("exit_code")) or payload.get("truncated") is not False):
+            raise ValueError("run_python result does not show a successful sandbox execution")
+    if "code_sandbox.run_python" not in evidence.native_tools:
+        raise ValueError("the Harness stream does not show its run_python call completing")
+    return dict(run)
+
+
+def _with_platform_sandbox(entry: dict[str, Any], proof: dict[str, Any]) -> dict[str, Any]:
+    """Add ``platform_sandbox`` to the passed base entry of the same Harness."""
+    capability = HarnessCapability.model_validate({
+        **entry["capability"],
+        "code_execution": "platform_sandbox",
+        "probe": {**entry["capability"]["probe"], "substitution_qualification": proof},
+    })
+    return {
+        "qualification": {**entry["qualification"], "substitution_evidence_ref": proof["evidence_ref"]},
+        "capability": capability.model_dump(mode="json"),
     }
 
 
@@ -439,18 +607,36 @@ def publish_capabilities(record_files: Sequence[Path], *, artifact_root: Path, o
                          gateway: GatewayConfigSnapshot) -> Path:
     """Atomically publish exactly the supplied evidence set, never inferred entries.
 
-    To retain previously qualified Harnesses, explicitly include their records.
-    Invalid input leaves any existing publication unchanged. No output is D0 proof.
+    Each Harness needs one base (or BladeAI WP8) record.  An optional WP11
+    substitution record for the same non-BladeAI Harness adds
+    ``code_execution=platform_sandbox``; every other Harness is published with
+    ``none``.  To retain previously qualified Harnesses, explicitly include
+    their records.  Invalid input leaves any existing publication unchanged.
+    No output is D0 proof.
     """
     root = _no_links(artifact_root)
     if not root.is_dir() or not record_files:
         raise ValueError("an existing artifact root and qualification records are required")
     entries: dict[str, dict[str, Any]] = {}
+    sandbox_proofs: dict[str, dict[str, Any]] = {}
     for path in record_files:
-        name, entry = _entry(Path(path), root, gateway)
+        record = _read_record(Path(path))
+        if record.get("qualification_type") == SUBSTITUTION_QUALIFICATION_TYPE:
+            name, proof = _substitution_proof(Path(path), record, root, gateway)
+            if name in sandbox_proofs:
+                raise ValueError("duplicate substitution qualification records")
+            sandbox_proofs[name] = proof
+            continue
+        name, entry = _entry(Path(path), record, root, gateway)
         if name in entries:
             raise ValueError("duplicate Harness qualification records")
         entries[name] = entry
+    for name, proof in sandbox_proofs.items():
+        # The sandbox grant extends a verified base channel; it never stands alone.
+        base = entries.get(name)
+        if base is None or base["qualification"]["status"] != "passed":
+            raise ValueError("a substitution record requires a passed base record for the same Harness")
+        entries[name] = _with_platform_sandbox(base, proof)
     payload = {"schema_version": CAPABILITY_QUALIFICATION_SCHEMA, "harnesses": entries}
     destination = _no_links(output)
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

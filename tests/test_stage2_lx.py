@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -177,7 +178,7 @@ class RealisticTaskService:
         return {"task_id": task_id, "stop_requested": True}
 
 
-def _run(svc, level="L0", case=None):
+def _run(svc, level="L0", case=None, *, harness="bladeai", tool_substitution_variant=None):
     request = PromptVariantRequest(
         application="otel-demo",
         slots=LxSlots(
@@ -190,17 +191,46 @@ def _run(svc, level="L0", case=None):
     variants = svc.create_variants(request)
     prompt = next(item["prompt"] for item in variants["variants"] if item["level"] == level)
     extra = {"case": case} if case is not None else {}
+    if tool_substitution_variant is not None:
+        extra["tool_substitution_variant"] = tool_substitution_variant
     return LxRunRequest(
         autonomy_level=level,
         prompt=prompt,
         application="otel-demo",
-        harness="bladeai",
+        harness=harness,
         model="gpt-5.5",
         llm_tag="regression",
         duration_seconds=300,
         variant_set_id=variants["variant_set_id"],
         **extra,
     )
+
+
+def test_d7_d8_require_a_tool_substitution_variant(tmp_path):
+    """The task service refuses D7/D8 without A/B, so the Lx request does too."""
+    svc = service(tmp_path)
+    for case in ("D7", "D8"):
+        with pytest.raises(ValidationError, match="requires tool_substitution_variant"):
+            _run(svc, case=case, harness="codex")
+
+
+def test_tool_substitution_variant_is_refused_outside_d7_d8(tmp_path):
+    svc = service(tmp_path)
+    for case in (None, "D1", "D6"):
+        with pytest.raises(ValidationError, match="only valid for D7/D8"):
+            _run(svc, case=case, harness="codex", tool_substitution_variant="A")
+
+
+@pytest.mark.parametrize(("case", "variant"), [("D7", "A"), ("D7", "B"), ("D8", "A"), ("D8", "B")])
+def test_d7_d8_variant_reaches_the_task_request(tmp_path, case, variant):
+    """Regression: create_run dropped the variant, so every D7/D8 Lx run got 422."""
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    summary = svc.create_run(_run(svc, case=case, harness="codex", tool_substitution_variant=variant))
+    (task_request,) = fake.created.values()
+    assert [item.value for item in task_request.cases] == [case]
+    assert task_request.tool_substitution_variant == variant
+    assert summary["configuration"]["tool_substitution_variant"] == variant
 
 
 def test_summary_reads_aggregate_structured_feedback_without_crashing(tmp_path):
