@@ -27,8 +27,20 @@ kex_exchange_identification: Connection closed by remote host
 
 另外**镜像仓库地址还空着**（启动语里是 `<仓库地址待填>`），构建推镜像那步要用。
 
-盘点脚本已备好：[tools/env3/inventory.sh](../../tools/env3/inventory.sh)，12 个章节，
-纯只读、不装不改不启服务，没 root 也能跑完（拿不到的标 N/A）。一开通就能出结果。
+盘点与差距分析都已备好，一开通就能出结果：
+
+```bash
+bash tools/env3/inventory.sh > inventory-node60.txt      # 三台各跑一次
+python tools/env3/gap_report.py inventory-node*.txt      # 自动出差距表
+```
+
+- [tools/env3/inventory.sh](../../tools/env3/inventory.sh)：12 个章节的人类可读报告，
+  末尾附一段 `FACT key=value` 的机器可读事实。纯只读、不装不改不启服务，
+  没 root 也能跑完（拿不到的标 `unknown`，**不猜**）。
+- [tools/env3/gap_report.py](../../tools/env3/gap_report.py)：把事实与目标状态逐条比对，
+  直接产出差距表和待装清单。目标状态的每个数值都注明出处，
+  并且**"未采集到"永远不算通过**。21 条测试守着它，其中一条拿第二套环境的实测值
+  当输入，要求"零阻塞级差距"——目标状态自己必须先过得了自己定的检查。
 
 ---
 
@@ -205,8 +217,8 @@ Dockerfile COPY 了不存在的源会**直接失败**，不会再产出一个悄
 
 | 阶段 | 做什么 | 验收 | 失败回滚 |
 |---|---|---|---|
-| **P0** | 跑 `tools/env3/inventory.sh`，三台各一份 | 拿到 12 章完整输出 | 无副作用 |
-| **P1** | 填本文档"现状"列，列出真实差距，**发你确认** | 你点头 | — |
+| **P0** | 跑 `tools/env3/inventory.sh`，三台各一份 | 拿到 12 章输出 + 末尾的 `FACTS` 段 | 无副作用 |
+| **P1** | `python tools/env3/gap_report.py inventory-*.txt` 自动出差距表，**发你确认** | 你点头 | — |
 | **P2** | 底座：k8s（若无）、存储类、cgroup v2 确认、AppArmor profile 装载 | `kubectl get nodes` 全 Ready；`aa-status` 里 profile 是 `(enforce)`；`stat -fc %T /sys/fs/cgroup` = `cgroup2fs` | 卸载 profile；`kubeadm reset`（仅限我们新装的） |
 | **P3** | OTel Demo：`deploy_application.py --server-dry-run` → `--execute` | 23 个 Deployment 全就绪；`load-generator` 有流量 | `helm uninstall otel-demo` |
 | **P4** | 可观测栈 + Coroot + ChaosBlade + Chaos Mesh | Prometheus/Loki/Jaeger 能查；Coroot 匿名只读通；ChaosBlade CPU 注入能起能清；Chaos Mesh Controller 1/1、daemon 全就绪 | 逐个 `helm uninstall`，互不影响 |

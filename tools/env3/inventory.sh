@@ -124,3 +124,47 @@ done
 
 echo
 echo "========== 盘点结束 =========="
+
+# ---------------------------------------------------------------------------
+# 机器可读事实：附在人类可读报告之后，供 gap_report.py 生成差距表。
+# 每行 key=value，取不到的一律 value=unknown（不猜、不留空）。
+# ---------------------------------------------------------------------------
+emit() { printf 'FACT %s=%s\n' "$1" "${2:-unknown}"; }
+val()  { v="$($* 2>/dev/null | head -1 | tr -d '\r')"; [ -n "$v" ] && printf '%s' "$v" || printf 'unknown'; }
+
+echo
+echo "========== FACTS =========="
+emit host           "$(hostname -f 2>/dev/null || hostname)"
+emit os             "$(. /etc/os-release 2>/dev/null && printf '%s %s' "$ID" "$VERSION_ID")"
+emit kernel         "$(uname -r)"
+emit cpu_cores      "$(nproc 2>/dev/null)"
+emit mem_total_mb   "$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)"
+emit disk_root_avail "$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}')"
+emit cgroup_version "$(stat -fc %T /sys/fs/cgroup 2>/dev/null | sed 's/cgroup2fs/v2/; s/tmpfs/v1/')"
+emit swap_on        "$(swapon --show --noheadings 2>/dev/null | head -1 >/dev/null && echo yes || echo no)"
+emit time_synced    "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)"
+
+for c in docker containerd crictl kubectl kubeadm helm; do
+  if command -v "$c" >/dev/null 2>&1; then emit "has_$c" yes; else emit "has_$c" no; fi
+done
+emit docker_version    "$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
+emit kubelet_active    "$(systemctl is-active kubelet 2>/dev/null)"
+emit k8s_server        "$(kubectl version -o json 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["serverVersion"]["gitVersion"])' 2>/dev/null)"
+emit k8s_nodes         "$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+emit k8s_runtime       "$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.containerRuntimeVersion}' 2>/dev/null)"
+emit storageclass      "$(kubectl get sc --no-headers 2>/dev/null | awk '{print $1}' | paste -sd, -)"
+emit cni               "$(ls /etc/cni/net.d/ 2>/dev/null | paste -sd, -)"
+emit apparmor_profile  "$(grep -c '^resbench-agent-runtime' /sys/kernel/security/apparmor/profiles 2>/dev/null)"
+
+for ns in otel-demo observability coroot chaos-mesh resiliencebenchmark-system; do
+  emit "ns_$ns" "$(kubectl get ns "$ns" -o name 2>/dev/null | head -1 >/dev/null && echo present || echo absent)"
+done
+emit chaosblade_operator "$(kubectl -n default get deploy chaosblade-operator -o name 2>/dev/null | head -1 >/dev/null && echo present || echo absent)"
+emit chaosblade_wrapper  "$(kubectl -n default get cm chaosblade-cgroupns-wrapper -o name 2>/dev/null | head -1 >/dev/null && echo present || echo absent)"
+
+for u in https://registry-1.docker.io/v2/ https://ghcr.io/v2/ https://quay.io/v2/ https://registry.k8s.io/v2/; do
+  code="$(curl -sk -o /dev/null -m 8 -w '%{http_code}' "$u" 2>/dev/null)"
+  emit "egress_$(printf '%s' "$u" | sed -E 's#https://([^/]+)/.*#\1#; s/[.:]/_/g')" "${code:-000}"
+done
+emit egress_old_harbor "$(curl -s -o /dev/null -m 8 -w '%{http_code}' http://1.94.151.57:85/v2/ 2>/dev/null)"
+echo "========== END FACTS =========="
