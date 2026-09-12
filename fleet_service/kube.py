@@ -80,6 +80,25 @@ class KubeClient:
         except json.JSONDecodeError as exc:
             raise KubeError("kubectl response is not JSON") from exc
 
+    def api_server_endpoints(self) -> list[str]:
+        """Addresses behind the ``kubernetes`` Service, for an egress rule.
+
+        A NetworkPolicy cannot name a Service, and kube-proxy rewrites the
+        destination before the policy is applied, so the replica's egress rule
+        has to name the real endpoints.
+        """
+        try:
+            payload = self.get_json(["get", "endpoints", "kubernetes", "-n", "default"])
+        except KubeError:
+            return []
+        addresses: list[str] = []
+        for subset in payload.get("subsets") or []:
+            for entry in subset.get("addresses") or []:
+                address = str(entry.get("ip") or "").strip()
+                if address and address not in addresses:
+                    addresses.append(address)
+        return addresses
+
     def namespace_exists(self, namespace: str) -> bool:
         completed = self.runner.run(
             self._base() + ["get", "namespace", namespace, "-o", "name"], timeout=60

@@ -92,6 +92,9 @@ class FleetConfig(FleetModel):
     resources: SlotResources = Field(default_factory=SlotResources)
     node_spread: bool = True
     nodes: tuple[str, ...] = ()
+    # Addresses of the Kubernetes API server, for the replica NetworkPolicy.
+    # The provisioner reads them from the cluster when this is empty.
+    api_server_endpoints: tuple[str, ...] = ()
     source_head: str = "unknown"
     max_concurrency: int = Field(default=5, ge=1, le=999)
 

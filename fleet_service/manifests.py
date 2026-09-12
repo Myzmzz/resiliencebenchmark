@@ -12,6 +12,7 @@ returns, and ``POST /provision?dry_run=true`` returns it unapplied.
 from __future__ import annotations
 
 import copy
+from collections.abc import Sequence
 from typing import Any
 
 from .contracts import FleetConfig
@@ -40,7 +41,9 @@ def slot_labels(config: FleetConfig, index: int) -> dict[str, str]:
     }
 
 
-def replica_namespace_manifests(config: FleetConfig, index: int) -> list[dict[str, Any]]:
+def replica_namespace_manifests(
+    config: FleetConfig, index: int, api_server_endpoints: Sequence[str] = ()
+) -> list[dict[str, Any]]:
     """Namespace, resource bounds and a default-deny-ish NetworkPolicy.
 
     The quota and LimitRange keep one replica's CPU fault inside its own
@@ -107,6 +110,18 @@ def replica_namespace_manifests(config: FleetConfig, index: int) -> list[dict[st
                     {"to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}}],
                      "ports": [{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}]},
                     {"to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": config.control_namespace}}}]},
+                    # The collector's k8sattributes processor reads the API
+                    # server to put k8s.namespace.name on every span. Without
+                    # it a replica's traces carry no namespace and the agent's
+                    # namespace-scoped trace view returns nothing at all.
+                    *(
+                        [{
+                            "to": [{"ipBlock": {"cidr": _cidr(address)}} for address in api_server_endpoints],
+                            "ports": [{"protocol": "TCP", "port": 443}, {"protocol": "TCP", "port": 6443}],
+                        }]
+                        if api_server_endpoints
+                        else []
+                    ),
                 ],
             },
         },
@@ -456,9 +471,19 @@ def controller_manifests(config: FleetConfig, index: int) -> list[dict[str, Any]
     return objects
 
 
-def slot_manifests(config: FleetConfig, index: int) -> list[dict[str, Any]]:
+def _cidr(address: str) -> str:
+    """A bare address becomes a single-host CIDR; an explicit CIDR is kept."""
+    return address if "/" in address else f"{address}/32"
+
+
+def slot_manifests(
+    config: FleetConfig, index: int, api_server_endpoints: Sequence[str] = ()
+) -> list[dict[str, Any]]:
     """Everything one slot owns: its replica namespace and its Controller."""
-    return replica_namespace_manifests(config, index) + controller_manifests(config, index)
+    return (
+        replica_namespace_manifests(config, index, api_server_endpoints)
+        + controller_manifests(config, index)
+    )
 
 
 def fleet_manifests(config: FleetConfig) -> list[dict[str, Any]]:

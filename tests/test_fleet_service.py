@@ -586,3 +586,37 @@ def test_a_blocked_campaign_is_not_recorded_as_a_finished_trial(fleet):
     assert after["platform_retries"] == 1
     assert after["failure"]["code"] == "STAGE2_PLATFORM_BLOCKED"
     assert after["failure"]["owner"] == "platform"
+
+
+def test_replica_egress_allows_the_api_server_the_collector_needs():
+    """Without it, k8sattributes cannot label spans and the agent sees no traces."""
+    config = FleetConfig.model_validate(CONFIG)
+
+    policy = next(
+        item for item in slot_manifests(config, 1, ["172.21.0.13", "172.21.0.10"])
+        if item["kind"] == "NetworkPolicy"
+    )
+
+    rule = policy["spec"]["egress"][-1]
+    assert rule["to"] == [{"ipBlock": {"cidr": "172.21.0.13/32"}},
+                          {"ipBlock": {"cidr": "172.21.0.10/32"}}]
+    assert {entry["port"] for entry in rule["ports"]} == {443, 6443}
+    # Still fenced: no blanket egress to the rest of the cluster or the internet.
+    destinations = [entry for item in policy["spec"]["egress"] for entry in item["to"]]
+    assert all("ipBlock" in entry or "namespaceSelector" in entry or "podSelector" in entry
+               for entry in destinations)
+
+
+def test_provisioning_reads_the_api_server_endpoints_when_unset(fleet):
+    endpoints: list[str] = []
+
+    def fake(namespace_endpoints=endpoints):
+        namespace_endpoints.append("read")
+        return ["172.21.0.13"]
+
+    fleet["provisioner"].kube.api_server_endpoints = fake
+    record = fleet["client"].post("/api/v1/fleet/provision?dry_run=true").json()
+
+    assert endpoints, "the provisioner must ask the cluster when the config is empty"
+    kinds = {row["kind"] for row in record["slots"][0]["objects"]}
+    assert "NetworkPolicy" in kinds

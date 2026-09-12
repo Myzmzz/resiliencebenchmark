@@ -150,7 +150,8 @@ class Provisioner:
                        actor: str = "api") -> dict[str, Any]:
         namespace = replica_namespace(config.namespace_prefix, index)
         assert_operable_namespace(config.namespace_prefix, namespace)
-        objects = slot_manifests(config, index)
+        endpoints = list(config.api_server_endpoints) or self.kube.api_server_endpoints()
+        objects = slot_manifests(config, index, endpoints)
         self.store.audit_event(
             action="provision_slot", namespace=namespace, dry_run=dry_run, actor=actor,
             detail={"slot_id": slot_id(index), "objects": len(objects)},
