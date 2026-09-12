@@ -287,6 +287,12 @@ python -m stage2_service.capability_loss.qualification_probe --namespace otel-de
 >   跑完后集群里没有 ChaosBlade 或 Chaos Mesh 对象，cart Pod 没有变化。
 > - 随后启动批跑 `round2b.sh`：先补跑作废的 5 次，再跑剩下的 D1–D6。
 
+> **2026-09-12 新环境实际部署记录（本分支 `60309d3`）。** 11:08 UTC 的第一次正式部署在修改前预检阶段因本机 `28080` 隧道断开而中止，没有改动 Deployment；重建持久隧道后于 11:10:54 UTC 通过空闲闸重新执行。Harbor 两个镜像 digest 校验通过，server-side dry-run 通过（仅有 Kubernetes 对旧 AppArmor annotation 的弃用提示），随后只替换允许的四处镜像引用并完成 rollout。
+>
+> 11:12:26 UTC rollout 成功。Deployment `source-head=60309d3`，Pod `resbench-stage2-integration-6d6597c857-wxhqw` 的 `agent-runtime`、`litellm`、`stage2` 均 Ready，实际 digest 为：控制器 `sha256:dbe4f85eaf69d73b4c271fcc113906f2ddbd77a5859e7f35131daf4e7bac6340`，Agent/init `sha256:cae928c7c7b9ddd95ede2733bbb060c9645614b67b56e217b184c9bb7f3128f6`，LiteLLM 保持 `sha256:237ed94c2b4bd821d44f4abd4b57b2ae7b3108a7b4a768d1d8cd7c1b3884c604`。`RESBENCH_COROOT_PROJECT_ID=p1nar0hw`、`RESBENCH_COROOT_ALLOW_ANONYMOUS_READ=true` 仍在；Pod security context 保留 `fsGroup=10001`、`fsGroupChangePolicy=OnRootMismatch`；`/var/lib/resbench-stage2/integration` 私有文件权限检查为 `PRIVATE_PERMS_OK`。
+>
+> 部署脚本重启的后台隧道在命令会话结束后再次退出，后续使用持久 port-forward 会话维持 `127.0.0.1:28080`。11:15:49 UTC 三家 Harness 与 `qwen3.8-max` 均恢复 `runnable=true`，随后进入 D7/D8 批跑。
+
 > 2026-09-11 更新：`35c9e2c` 镜像没有部署。08:47 的事故之后，用户决定先在本分支补上第二批修复（第七节），用包含第一、二批修复的新镜像一次部署，再补跑作废的 5 次并继续 D1–D6、D7/D8。下面的原计划仅作记录。
 
 1. D1–D6 全部跑完后，再部署本分支镜像。平台是 Recreate 部署，会中断正在跑的评测，所以要等。
