@@ -493,3 +493,70 @@ def test_cli_parses_server_dry_run_separately_from_execute():
 def test_helm_release_objects_fail_closed_on_unparsable_output():
     with pytest.raises(deploy.DeployError, match="release JSON"):
         deploy.helm_release_objects("NAME: otel-demo\nSTATUS: pending-upgrade\n", release="otel-demo", namespace="otel-demo")
+
+
+def _replica_values(tmp_path):
+    runtime = {
+        "HARBOR_REGISTRY": "registry.example",
+        "OTEL_DEMO_POSTGRES_PASSWORD": "otel",
+        "OTEL_DEMO_OPENAI_API_KEY": "unused",
+        "OTEL_DEMO_GRAFANA_ADMIN_PASSWORD": "unused",
+    }
+    base = deploy.REPO_ROOT / "environment/kubernetes/otel-demo"
+    return deploy.render_values(
+        base / "values.yaml", runtime, "otel-demo", "otel-demo-01",
+        deploy.values_profile_path("otel-demo", "replica"),
+    )
+
+
+def test_values_overlay_merges_maps_replaces_lists_and_deletes_nulls():
+    base = {"a": {"b": 1, "c": 2}, "list": [1, 2], "gone": {"x": 1}}
+    overlay = {"a": {"c": 3, "d": 4}, "list": [9], "gone": None}
+
+    assert deploy.merge_values(base, overlay) == {"a": {"b": 1, "c": 3, "d": 4}, "list": [9]}
+
+
+def test_replica_profile_keeps_only_what_a_verdict_reads(tmp_path):
+    values = _replica_values(tmp_path)
+
+    enabled = sorted(name for name, item in values["components"].items() if item.get("enabled"))
+    assert enabled == ["cart", "flagd", "frontend", "load-generator", "valkey-cart"]
+    # Every retained Pod is bounded; one CPU fault must not spill onto neighbours.
+    for name in enabled:
+        assert values["components"][name]["resources"]["limits"]["cpu"]
+    # Retained components keep the full system's settings.
+    full = deploy.render_values(
+        deploy.REPO_ROOT / "environment/kubernetes/otel-demo/values.yaml",
+        {"HARBOR_REGISTRY": "registry.example", "OTEL_DEMO_POSTGRES_PASSWORD": "otel",
+         "OTEL_DEMO_OPENAI_API_KEY": "unused", "OTEL_DEMO_GRAFANA_ADMIN_PASSWORD": "unused"},
+        "otel-demo", "otel-demo-01",
+    )
+    assert values["components"]["cart"]["env"] == full["components"]["cart"]["env"]
+
+
+def test_replica_collector_drops_the_receivers_its_presets_no_longer_support():
+    """hostmetrics without the preset's /hostfs mount makes the collector exit."""
+    values = _replica_values(None)
+
+    config = values["opentelemetry-collector"]["config"]
+    assert sorted(config["receivers"]) == ["jaeger", "otlp", "prometheus", "zipkin"]
+    assert config["service"]["pipelines"]["metrics"]["receivers"] == ["otlp", "spanmetrics"]
+    # The trace pipeline, which the agent's Jaeger view depends on, is untouched.
+    assert config["service"]["pipelines"]["traces"]["receivers"] == ["otlp"]
+    assert "k8sattributes" in config["service"]["pipelines"]["traces"]["processors"]
+
+
+def test_replica_workload_is_the_committed_cart_only_locustfile():
+    """The values overlay embeds the file; they must not drift apart."""
+    values = _replica_values(None)
+
+    mounted = values["components"]["load-generator"]["mountedConfigMaps"]
+    embedded = mounted[0]["data"]["locustfile.py"]
+    on_disk = (deploy.REPO_ROOT / "environment/workloads/otel-demo/replica-cart-locustfile.py").read_text(
+        encoding="utf-8"
+    )
+    assert embedded == on_disk
+    assert 'name=CART_ROUTE' in embedded and 'CART_ROUTE = "/api/cart"' in embedded
+    env = {item["name"]: item["value"] for item in values["components"]["load-generator"]["env"]}
+    assert env["LOCUST_LOCUSTFILE"] == mounted[0]["mountPath"] + "/locustfile.py"
+    assert env["LOCUST_HOST"] == "http://frontend:8080"

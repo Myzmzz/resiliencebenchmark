@@ -2,16 +2,18 @@
 
 Two things the platform needs from this file:
 
-* the statistics row must be named exactly ``/api/cart``.  Business health,
+* the statistics row must be named exactly ``/api/cart``. Business health,
   fault effect and recovery are all read from that row
   (``runtime_factory.KubernetesTrafficEvidence``); anything else falls back to
   the global aggregate, which a trimmed system would pollute.
-* nothing may call a service the trimmed profile switched off, or its failures
-  would land in the same aggregate.
+* nothing may reach a service the trimmed profile switched off, or its
+  failures would land in that same aggregate.
 
-Each iteration creates a fresh session, adds one item and reads that cart
-back, so the cart stays a single item and the read path keeps its product
-lookup without growing over time.
+Both requests go to the cart service and nowhere else. ``POST /api/cart``
+adds an item and returns the raw cart, and ``GET /api/cart`` reads a session
+that was never written to, so it comes back empty. That matters: the frontend
+looks a product up in product-catalog for every item it returns, and
+product-catalog needs a database this profile does not run.
 """
 
 import os
@@ -28,11 +30,10 @@ class CartUser(HttpUser):
     wait_time = constant_pacing(PACING_SECONDS)
 
     @task
-    def add_then_view_cart(self):
-        session_id = str(uuid.uuid4())
+    def write_then_read_cart(self):
         self.client.post(
             CART_ROUTE,
-            json={"item": {"productId": PRODUCT_ID, "quantity": 1}, "userId": session_id},
+            json={"item": {"productId": PRODUCT_ID, "quantity": 1}, "userId": str(uuid.uuid4())},
             name=CART_ROUTE,
         )
-        self.client.get(CART_ROUTE, params={"sessionId": session_id}, name=CART_ROUTE)
+        self.client.get(CART_ROUTE, params={"sessionId": str(uuid.uuid4())}, name=CART_ROUTE)

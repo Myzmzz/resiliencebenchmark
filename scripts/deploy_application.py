@@ -243,12 +243,20 @@ def render_manifest(
 def merge_values(base: Any, overlay: Any) -> Any:
     """Deep-merge ``overlay`` onto ``base`` with Helm's ``-f a -f b`` semantics.
 
-    Maps merge key by key; anything else, lists included, is replaced whole.
+    Maps merge key by key; anything else, lists included, is replaced whole;
+    and a null in the overlay deletes the key, as Helm documents for values
+    files. Deleting is the only way to drop a receiver the base config
+    defines, since a null left in place would reach the chart as a value.
     """
     if isinstance(base, dict) and isinstance(overlay, dict):
         merged = dict(base)
         for key, value in overlay.items():
-            merged[key] = merge_values(merged[key], value) if key in merged else value
+            if value is None:
+                merged.pop(key, None)
+            elif key in merged:
+                merged[key] = merge_values(merged[key], value)
+            else:
+                merged[key] = value
         return merged
     return overlay
 

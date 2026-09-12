@@ -9,13 +9,14 @@
 #   cart            the only fault target
 #   valkey-cart     cart blocks in an init container until it answers
 #   frontend        serves /api/cart, the one route every verdict reads
-#   product-catalog frontend calls it while rendering a non-empty cart
 #   load-generator  Locust is the only source of business evidence
 #   flagd           cart and frontend resolve flags through it
 #   otel-collector  the agent's Jaeger/Prometheus/Coroot data comes from it
 #
 # Everything else is off: no verdict reads it, and its traffic would land in
-# the Locust aggregate row as failures.
+# the Locust aggregate row as failures. product-catalog is off with them
+# because it needs the demo's Postgres, and the cart-only workload never
+# returns a non-empty cart, which is the only thing that would call it.
 #
 # Every retained Pod gets a CPU limit. One CPU fault in the full system was
 # measured eating 19-25 cores; with many replicas on two nodes that would drag
@@ -93,19 +94,21 @@ components:
     - data:
         locustfile.py: "\"\"\"Cart-only Locust profile for a Stage-2 replica of OTel Demo.\n\nTwo things\
           \ the platform needs from this file:\n\n* the statistics row must be named exactly ``/api/cart``.\
-          \  Business health,\n  fault effect and recovery are all read from that row\n  (``runtime_factory.KubernetesTrafficEvidence``);\
+          \ Business health,\n  fault effect and recovery are all read from that row\n  (``runtime_factory.KubernetesTrafficEvidence``);\
           \ anything else falls back to\n  the global aggregate, which a trimmed system would pollute.\n\
-          * nothing may call a service the trimmed profile switched off, or its failures\n  would land\
-          \ in the same aggregate.\n\nEach iteration creates a fresh session, adds one item and reads\
-          \ that cart\nback, so the cart stays a single item and the read path keeps its product\nlookup\
-          \ without growing over time.\n\"\"\"\n\nimport os\nimport uuid\n\nfrom locust import HttpUser,\
-          \ constant_pacing, task\n\nCART_ROUTE = \"/api/cart\"\nPRODUCT_ID = os.environ.get(\"RESBENCH_CART_PRODUCT_ID\"\
-          , \"OLJCESPC7Z\")\nPACING_SECONDS = float(os.environ.get(\"RESBENCH_CART_PACING_SECONDS\", \"\
-          1\"))\n\n\nclass CartUser(HttpUser):\n    wait_time = constant_pacing(PACING_SECONDS)\n\n  \
-          \  @task\n    def add_then_view_cart(self):\n        session_id = str(uuid.uuid4())\n      \
-          \  self.client.post(\n            CART_ROUTE,\n            json={\"item\": {\"productId\": PRODUCT_ID,\
-          \ \"quantity\": 1}, \"userId\": session_id},\n            name=CART_ROUTE,\n        )\n    \
-          \    self.client.get(CART_ROUTE, params={\"sessionId\": session_id}, name=CART_ROUTE)\n"
+          * nothing may reach a service the trimmed profile switched off, or its\n  failures would land\
+          \ in that same aggregate.\n\nBoth requests go to the cart service and nowhere else. ``POST /api/cart``\n\
+          adds an item and returns the raw cart, and ``GET /api/cart`` reads a session\nthat was never\
+          \ written to, so it comes back empty. That matters: the frontend\nlooks a product up in product-catalog\
+          \ for every item it returns, and\nproduct-catalog needs a database this profile does not run.\n\
+          \"\"\"\n\nimport os\nimport uuid\n\nfrom locust import HttpUser, constant_pacing, task\n\nCART_ROUTE\
+          \ = \"/api/cart\"\nPRODUCT_ID = os.environ.get(\"RESBENCH_CART_PRODUCT_ID\", \"OLJCESPC7Z\"\
+          )\nPACING_SECONDS = float(os.environ.get(\"RESBENCH_CART_PACING_SECONDS\", \"1\"))\n\n\nclass\
+          \ CartUser(HttpUser):\n    wait_time = constant_pacing(PACING_SECONDS)\n\n    @task\n    def\
+          \ write_then_read_cart(self):\n        self.client.post(\n            CART_ROUTE,\n        \
+          \    json={\"item\": {\"productId\": PRODUCT_ID, \"quantity\": 1}, \"userId\": str(uuid.uuid4())},\n\
+          \            name=CART_ROUTE,\n        )\n        self.client.get(CART_ROUTE, params={\"sessionId\"\
+          : str(uuid.uuid4())}, name=CART_ROUTE)\n"
       mountPath: /etc/resbench-locust
       name: resbench-cart-workload
     resources:
@@ -120,13 +123,7 @@ components:
   postgresql:
     enabled: false
   product-catalog:
-    resources:
-      limits:
-        cpu: 500m
-        memory: 80Mi
-      requests:
-        cpu: 50m
-        memory: 80Mi
+    enabled: false
   product-reviews:
     enabled: false
   quote:
@@ -144,6 +141,18 @@ components:
         cpu: 25m
         memory: 40Mi
 opentelemetry-collector:
+  config:
+    receivers:
+      hostmetrics: null
+      k8s_cluster: null
+      kubeletstats: null
+      receiver_creator/metrics: null
+    service:
+      pipelines:
+        metrics:
+          receivers:
+          - otlp
+          - spanmetrics
   presets:
     annotationDiscovery:
       logs:
