@@ -132,9 +132,19 @@ F14 要分三类错误，但全语料 10 条 `error` **全是我方 `/cancel`**�
 而平台正式接入**必须**挂（`mcp_supervisor.py` 里那套 SSE 地址）。也就是说
 "黑盒驱动 + 挂载 MCP"这个组合是正式链路的必要条件，却零验证。
 
-交接文档说 `BLADE_AI_MCP_CONFIG_PATH` 只声明不读、实际读 `~/.blade-ai/mcp.json`、
-要靠设 `HOME` 指定——**这条没能核实**：0.7.0 的代码在 `_internal/` 里是压缩字节码，
-连确认生效的 `BLADE_AI_MODEL_NAME` 都搜不到，所以"搜不到"证明不了任何事。
+**【2026-09-12 更新】这条已经查了一大半**（只读，没起服务，详见
+[核验记录第 5 节](bladeai-result-contract-verification-20260912.md)）：
+
+- `/root/.blade-ai/mcp.json` **存在**，`url` 用 `${ENV}` 插值，
+  四个变量名与 `mcp_supervisor.py:176-179` 导出的**完全一致**——契约是对齐的
+- **`BLADE_AI_CONFIG_DIR` 是真变量**（正在跑的 server 环境里就有），不必靠 `HOME` 偏方
+- 那两轮评测没挂 MCP 的原因确认：`cfg-qwen/` 里没有 `mcp.json`，
+  且进程环境里一个 URL 变量都没有——所以日志里 0 行 mcp
+- **新发现两个原方案没提的字段**：`attach_to` 决定挂给哪个角色（现有文件里三个只读服务
+  都是 `["verifier"]`），`enabled` 可单独关掉某个服务。**如果注入侧也要用 MCP，
+  `attach_to` 得改，不能照抄**
+
+**仍然没证的只剩一条**：0.7.0 是否真的解析 `mcp.json` 并连上去。这必须实跑。
 
 **建议**：在 WP-B 之前或并行，单独做一次 MCP 挂载连通性验证——起一台服务、
 按某种方式提供 mcp.json、让它调用一次平台的 MCP 工具、确认事件流里出现对应的 `tool_start`。

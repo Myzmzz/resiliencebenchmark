@@ -174,7 +174,76 @@ WP-C 的实现侧结论（与口径无关，先定下来）：
 
 ---
 
-## 5. 复现方式
+## 5. WP-A.2（MCP 挂载）：从"完全没核实"缩小到"只差一次实跑"
+
+修订路线的**未核验风险 1** 说：黑盒模式下怎么给 BladeAI 挂 MCP **方案完全没覆盖**，
+交接文档关于 `mcp.json` 路径的说法"我没能核实"（0.7.0 代码是压缩字节码，搜不到证明不了什么）。
+
+不起任何服务，只读旧集群上的配置目录和运行中进程的环境，查到了这些：
+
+### 5.1 `mcp.json` 存在，而且 schema 与平台**完全对得上**
+
+`/root/.blade-ai/mcp.json`（1110 字节，2026-08-21），结构是：
+
+```json
+{
+  "mcpServers": {
+    "k8s_ro": {
+      "transport": "http",
+      "url": "${RESBENCH_BLADEAI_K8S_MCP_SSE_URL}",
+      "headers": {"Authorization": "<28 字符>"},
+      "attach_to": ["verifier"],
+      "timeout_seconds": 30
+    },
+    "telemetry_ro": { ... "${RESBENCH_BLADEAI_TELEMETRY_MCP_SSE_URL}" ... },
+    "source_ro":    { ... "${RESBENCH_BLADEAI_SOURCE_MCP_SSE_URL}" ... },
+    "chaos_control": {
+      "enabled": false,
+      "attach_to": [],
+      "url": "${RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL}"
+    }
+  }
+}
+```
+
+**`url` 用 `${ENV}` 插值，四个变量名与 `stage2_service/mcp_supervisor.py:176-179`
+导出的名字 1:1 完全一致。** 这不是巧合——契约就是"平台导出环境变量，`mcp.json` 插值"。
+
+两个原方案没提的字段：
+- **`attach_to`** 决定这个 MCP 服务挂给哪个角色。这份文件里三个只读服务都是 `["verifier"]`，
+  `chaos_control` 是 `[]` 且 `enabled: false`。**如果平台希望注入侧也能用 MCP 工具，
+  这个字段要改**——WP-A.2 必须把它作为一个显式参数，而不是照抄。
+- **`enabled`** 可以单独关掉某个服务。
+
+### 5.2 `BLADE_AI_CONFIG_DIR` 是真变量，不必靠 `HOME` 的偏方
+
+交接文档说要靠设 `HOME` 来指定配置目录。实测：正在跑的评测 server（PID 275236）
+环境里**就有 `BLADE_AI_CONFIG_DIR`**，和 `BLADE_AI_MODEL_NAME`、`BLADE_AI_KUBECONFIG_PATH`、
+`BLADE_AI_MAX_INJECT_SECONDS` 等一起。**配置目录有正规入口。**
+
+### 5.3 为什么那两轮评测"全程没挂 MCP"——原因确认了
+
+两件事叠加：
+
+1. 评测用的配置目录 `/root/bladeai-eval/cfg-qwen/` 里**没有 `mcp.json`**（只有 `memory/` 和 `postmortems/`）；
+2. 那个 server 进程的环境里**一个 `RESBENCH_BLADEAI_*_MCP_SSE_URL` 都没有**，只有 `RESBENCH_MCP_TOKEN`。
+
+所以它的全部日志里 **0 行** 提到 mcp，不是"读不了"，是**根本没给它可读的东西**。
+
+### 5.4 还剩什么没证
+
+**仍然没证的只有一条**：0.7.0 是否真的会解析 `mcp.json` 并连上去。
+这必须实跑——起一个自己的 server、给全那四个环境变量、指一个带 `mcp.json` 的配置目录、
+看事件流里有没有对应的 `tool_start`。
+
+风险等级从"方案完全没覆盖"降到"**格式、路径、变量名三样都已对齐，只差一次连通验证**"。
+
+**起服务是写操作**，而且那台机器上有两个不能碰的常驻 server、`/cancel` 还是服务级的，
+所以这一步我没做，等你点头（见设计确认单第 5 节）。
+
+---
+
+## 6. 复现方式
 
 语料在旧集群 `1.94.151.57:/root/bladeai-eval/runs/<case>/events.jsonl`，
 信封是 `{recv_ts, raw}`，`raw` 可能是字符串也可能是对象，解析时要两种都兜住。
