@@ -6,8 +6,10 @@
 依据两份实跑材料：`docs/status/bladeai-070-blackbox-eval-20260911.md`（18 个用例、14 条产品发现）
 与 `docs/status/stage2-optimization-plan-20260911.md`。
 
-**执行方式**：单开分支 `codex/bladeai-blackbox-integration`，不在 d0-integration 上直接改；
-每处改动记录 文件:行 / 改前改后 / 原因 / 测试 / 部署情况。
+- **分支**：`codex/bladeai-blackbox-integration`，每处改动记录 文件:行 / 改前改后 / 原因 / 测试 / 部署情况
+- **基线**：`9cb52bc`（含「Dx 轮修复与评分纠正」）。所有行号按此基线校准
+- **与 Dx 轮修复的关系**：那批改动服务于其他三家的评测流程，**驱动层与本方案互不影响**；
+  但下文标注为「共享层」的地方是四家共用代码，改动必须对 BladeAI 分流、不得回归其他三家
 
 ---
 
@@ -33,7 +35,7 @@
 
 ## 二、目标架构
 
-平台已经有一条成熟的黑盒链路，BladeAI 要并进去，而不是另起一套：
+平台已有一条成熟的黑盒链路，BladeAI 并进去，而不是另起一套：
 
 ```
 BladeAI server (HTTP + SSE)
@@ -45,20 +47,23 @@ BladeAI server (HTTP + SSE)
 [重写] harness_adapters/bladeai.py  ───►  唯一的翻译层
         |                                 契约 harness_adapters/base.py:79（4 个方法）
         v
-CanonicalEvent（ToolCall / ToolResult / AgentMessage / Question / Checkpoint）
+CanonicalEvent（ToolCall:25 / ToolResult:32 / AgentMessage:40 / Question:46 / Checkpoint:54）
         |                                 harness_adapters/base.py:59
         v
-LifecycleMapper → 评分 / 台账 / 证据      ← 这一段完全不动
+LifecycleMapper → 评分 / 台账 / 证据      ← 结构不动，仅按下文分流处增强
 ```
 
-**关键前提**：`HarnessAdapter` 契约只要求 `capability() / on_stream_line() / on_turn_end() / open_calls()`。
-BladeAI 黑盒化后，**它和 codex 在平台眼里没有区别**，下游的生命周期、评分、证据链路一行都不用改。
+**关键前提**：`HarnessAdapter` 契约只要求 `capability() / on_stream_line() / on_turn_end() / open_calls()`
+（`base.py:79`）。BladeAI 黑盒化后，**它和 codex 在平台眼里没有区别**。
 
 ---
 
 ## 三、六个工作包
 
-### WP-A：HTTP/SSE 黑盒驱动器（新建）
+每个工作包标注作用域：**「专属」**= 只影响 BladeAI，可放手改；
+**「共享层」**= 四家共用代码，必须对 BladeAI 分流且不得回归其他三家。
+
+### WP-A：HTTP/SSE 黑盒驱动器（新建）　【专属】
 
 **为什么**：平台现在只有 `subprocess + stdout 按行读`（`scripts/run_harness_trial.py:821
 subprocess_streaming_runner`），没有任何 HTTP 客户端 / SSE 消费者。`mcp_servers/http_runtime.py`
@@ -67,17 +72,17 @@ subprocess_streaming_runner`），没有任何 HTTP 客户端 / SSE 消费者。
 **做什么**：新增与之平级的 `http_sse_streaming_runner`：
 1. `POST /api/v1/sessions` 建会话 → `POST /api/v1/sessions/{sid}/turn` 起一轮（SSE）
 2. 把每条 SSE 事件原样喂给同一个 `observe_line` 回调（下游不感知传输方式差异）
-3. **原始事件流落盘**，并记录每条事件的接收时间戳（停滞判据要用，见 WP-C）
+3. **原始事件流落盘**，并记录每条事件的接收时间戳（停滞判据要用，见 WP-C.4）
 4. `POST /api/v1/sessions/{sid}/cancel` 取消
 
-**验收**：不接任何评分逻辑，能把一次 L0 的完整事件流落成 `canonical-events.jsonl`。
+**验收**：不接评分逻辑，能把一次 L0 的完整事件流落成 `canonical-events.jsonl`。
 
 ---
 
-### WP-B：重写 BladeAI 适配器
+### WP-B：重写 BladeAI 适配器　【专属】
 
-**为什么**：`stage2_service/harness_adapters/bladeai.py` 现在解析的是我们自家 worker 造的
-`stage2_bladeai_event` / `stage2_bladeai_result` 私有信封（:81/:84），黑盒后这些信封不存在。
+**为什么**：`stage2_service/harness_adapters/bladeai.py:81/84` 现在解析的是我们自家 worker 造的
+`stage2_bladeai_result` / `stage2_bladeai_event` 私有信封，黑盒后这些信封不存在。
 
 **做什么**：改成解析 BladeAI 真实 SSE 事件类型，映射到 CanonicalEvent：
 
@@ -94,40 +99,43 @@ subprocess_streaming_runner`），没有任何 HTTP 客户端 / SSE 消费者。
 - `bladeai_shim.py:504 canonical_native_intensity()` — 把 blade CLI 参数归一成平台 intensity 契约
 - `bladeai_shim.py:546 native_intensity_source()` — 强度来源标注
 
-**同时删除**：`stage2_service/harness_runtime.py:779-814` 的 `if harness is HarnessKind.BLADEAI:`
-分支，回归 `build_argv()` + `harness/harnesses.yaml` 统一路径。
-`mcp_supervisor.py:140-186` 的 SSE 特判**保留**（SSE 是 BladeAI 的真实传输方式，不是 hack）。
+**同时清理 `harness_runtime.py` 里的 5 处 BladeAI 特判**：
+`:603`（回环 K8s 代理）、`:780`（走 bladeai_worker 而非 build_argv）、
+`:1018`（ToolCall 特判）、`:1151`（WP8 提示级别）、`:1384`（重试分类器）。
+`mcp_supervisor.py` 的 SSE 特判**保留**（SSE 是 BladeAI 的真实传输方式，不是 hack）。
 
-**验收**：同一次 L0 的事件流，经适配器产出的 CanonicalEvent 序列与 codex 结构同构，
+**验收**：同一次 L0 的事件流经适配器产出的 CanonicalEvent 序列与 codex 结构同构，
 `LifecycleMapper` 不加特判即可消费。
 
 ---
 
-### WP-C：确认桥（两级关卡 + 白名单词 + 停滞探测）
+### WP-C：确认桥
 
 实跑里踩坑最多的一段，四件事必须一起做。
 
-**1. 两级确认都要接**（F3/F7）
+**C.1 两级确认都要接**（F3/F7）　【专属】
 - 意图关卡：事件带 `interrupt_id` → `POST /api/v1/sessions/{sid}/interrupt`
 - 执行关卡：`type=confirm`、`node=confirmation_gate`，只带 `task_id` → **优先** `POST /api/v1/confirm/{task_id}`
 - `/interrupt` 返回 `delivered=False` 是**回退信号，不是失败**，自动改走 `/confirm`
 - `/confirm` 会阻塞数十秒才返回（实测 13.8s / 28.7s，最长 172s），超时要设长、要容忍阻塞
 
-**2. 答复必须只发白名单词**（F1）
+**C.2 答复只发白名单词**（F1）　【共享层 — 必须分流】
 BladeAI 只认 `approved` / `yes` / `y` / `ok`，**写任何解释都会被判成拒绝**。
-现状冲突：`simulated_user.py:334 reply()` 返回结构化字典，经 `session.py:37
+现状冲突：`simulated_user.py:337 reply()` 返回结构化字典，经 `session.py:37
 StructuredFeedback.prompt()` 渲染成一大段文本 prompt —— 这套发给 BladeAI 等于自动拒绝。
 
-做法：在 `StructuredFeedback` 出口按 harness 分流，新增 BladeAI 序列化器：
+做法：**在 `StructuredFeedback.prompt()` 出口按 harness 分流**，新增 BladeAI 序列化器：
 判定结论只发白名单词；解释、附加条件、被批准的方案另走下一轮消息或 MCP 通道。
+**其他三家的渲染保持原样**——尤其注意 main 上 `4db18ab` 刚给确认门补了"告诉智能体哪些值合法"的词汇，
+那是为 codex 解决同一类问题的另一条路径，两者不冲突但不要互相覆盖。
 
-**3. 回合结束 ≠ 任务完成**（F10）
+**C.3 回合结束 ≠ 任务完成**（F10）　【共享层 — 能力已具备，仅补触发】
 BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`。
 只监听 interrupt/confirm 会永远等下去，表现为"回合正常结束但任务没推进"。
-平台已有 `simulated_user.py:283 interpret()` 用模型从自然语言抽 `questions[]`，**能力已具备**，
-缺的只是"回合结束时存在未答问题 → 自动再开一轮作答"这一步。
+平台已有 `simulated_user.py:286 interpret()` 用模型从自然语言抽 `questions[]`，**能力已具备**，
+缺的只是"回合结束时存在未答问题 → 自动再开一轮作答"这一步。对四家都适用。
 
-**4. 停滞探测 + 错误分类**（W2 / D8-A / F14）
+**C.4 停滞探测 + 错误分类**（W2 / D8-A / F14）　【共享层】
 - 实跑出现过：确认成功后事件流静默 **18 分钟**（P2）和 **10 分钟**（D8-A），连接还活着、不报错
 - 判据必须是**原始事件流的最后接收时间**，不能看工具调用日志、不能看接口返回值
 - 错误必须三分类落盘：`我方取消` / `上游模型错误` / `智能体自身报错`。
@@ -138,7 +146,7 @@ BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`
 
 ---
 
-### WP-D：恢复驱动（平台显式推一把）
+### WP-D：恢复驱动（平台显式推一把）　【共享层】
 
 **为什么**（F6，全轮最重要的一条）：BladeAI 在**注入那一轮里没有撤掉故障的手段**——
 它的内部规矩是"成功注入的记录是恢复句柄，不许自己删"，恢复属于下一个独立阶段。
@@ -150,20 +158,20 @@ BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`
 仍不恢复才落到现有兜底。
 
 **复用现成件**：`stage2_service/condition_monitor.py:26 ConditionRecoveryMonitor` 已有
-"等效果条件 → 等 Agent 清理 → 超时兜底"（`:343 _await_agent_or_fallback` / `:353 _fallback_cleanup`），
+"等效果条件 → 等 Agent 清理 → 超时兜底"，调用点在 `:171 / :185 / :198`，
 只需在 `:249 _await_agent_until_overtime()` 之前加一步"先主动要求它恢复"。
 
-**评分口径（已定）**：恢复判定在 `node_evaluation.py:625-663 _recovery_trigger_status()`。
-新增一档归因 **`platform_driven_recovery`**（平台推了一把之后它完成的），
-与"完全自主恢复"分开计分，不混为一谈。
+**评分口径（已定）**：恢复判定在 `node_evaluation.py:747 _recovery_trigger_status()`
+（调用点 `:481`）。新增一档归因 **`platform_driven_recovery`**，与"完全自主恢复"分开计分。
+**这一档对四家通用**——谁被平台推了一把都该单独记，不是 BladeAI 专属补丁。
 
 ---
 
-### WP-E：残留判定下沉到进程级（新建，**最关键的新能力**）
+### WP-E：残留判定下沉到进程级（新建，**最关键的新能力**）　【共享层】
 
 **为什么**：现在的"两层检查"其实**两层都在集群面**——
-`fault_inventory.py:137 DualExecutorFaultInventory` = 私有台账 × 集群 CR 列表，
-全仓没有任何进程级探测（grep `stress-ng / pgrep / nsenter` 无实现命中）。
+`fault_inventory.py:137 DualExecutorFaultInventory` + `:99 snapshot_for_trial()`
+= 私有台账 × 集群 CR 列表，全仓没有任何进程级探测。
 
 进程内 shim 时代靠"我们自己发的命令我们自己记账"来保证无残留。**黑盒后这个前提消失了。**
 实跑给出两个确凿反例：
@@ -174,14 +182,14 @@ BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`
 - **F5**：即使走正规路径，**删掉集群记录也不停止机器上的进程**——cart 删完记录仍在 1023m，
   必须进工具容器 `blade destroy <原生 uid>` 才真停。
 
-**做什么**：新建目标侧巡检，挂到 `fault_inventory.py` 的 snapshot 上：
+**做什么**：新建目标侧巡检，挂到 `fault_inventory.py:99 snapshot_for_trial()` 上：
 - **首要判据是量指标，不是数进程**：目标 CPU / 业务延迟是否回到基线（试验前采基线，试验中与试验后各采一次）。
   这条对精简镜像也成立——BladeAI 自己就是读 `/sys/fs/cgroup/cpu.stat` 做的
-- 辅助判据：目标容器内是否凭空多出进程；**网络类故障查 tc 规则**
-  （netem 不是进程，grep 进程名永远看不见）
-- **落地方式（建议）**：不新建部署件，**复用集群里已常驻每节点的 chaosblade 工具组件**做机器级查验
-  （评测这轮的 tc 规则与原生进程就是用它查的）；容器内指标走按需 exec。
-  只有该组件不可用时才考虑另起 DaemonSet
+- 辅助判据：目标容器内是否凭空多出进程；**网络类故障查 tc 规则**（netem 不是进程，grep 进程名看不见）
+- **落地方式**：不新建部署件，**复用集群里已常驻每节点的 chaosblade 工具组件**做机器级查验；
+  容器内指标走按需 exec。只有该组件不可用时才考虑另起 DaemonSet
+
+**这条对其他三家同样有效**：现在四家的残留判定都只看集群面，谁在容器里起个进程平台都看不见。
 
 **配套**（F9）：ChaosBlade 账本的 `Status=Success` **既不证明存活也不证明已清除**
 （实跑中一条 11:48 创建的 netem 到 22:40 仍显示 Success，实测延迟早已回到基线，
@@ -189,7 +197,7 @@ BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`
 
 ---
 
-### WP-F：删除进程内挂钩层 + 重建资格认定
+### WP-F：删除进程内挂钩层 + 重建资格认定　【专属】
 
 **前置条件（硬性）**：**WP-E 验收通过之后才能删**。否则等于先拆安全网。
 
@@ -200,14 +208,14 @@ BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`
 `deploy/stage2/Dockerfile.agent` 里安装 `/opt/bladeai-venv` 的部分。
 
 **不设保留期**：这套老代码钉死在 0.3.0 的私有结构上，**在 0.7.0 上根本跑不起来**，
-留着当退路是错觉——真出问题也退不回去。需要与旧版本对照时，靠 git 历史 +
-钉住 0.3.0 镜像号即可，不在代码库里养死代码。
+留着当退路是错觉。需要与旧版本对照时，靠 git 历史 + 钉住 0.3.0 镜像号即可。
 
-**必须重写、不能简单删**：`stage2_service/capability_qualification.py:197-431` 的 WP8 资格认定。
-它现在完全建立在 `bladeai-launch.json` + `bladeai-shim-evidence.json` 这两个**我们自己写的**产物上
-（:279 甚至是自证：比对 artifact 与 final_output 里的同一份数据）。
+**必须重写、不能简单删**：`stage2_service/capability_qualification.py` 的 WP8 资格认定。
+它建立在 `bladeai-launch.json` + `bladeai-shim-evidence.json` 这两个**我们自己写的**产物上。
 黑盒后没有 shim 收据，必须改成从**平台侧独立证据**重建（chaos_control 台账 + MCP 网关请求日志 +
-canonical-events）。否则 BladeAI 会永远卡在 `:199 qualified = harness != HarnessKind.BLADEAI` 上不合格。
+canonical-events），否则 BladeAI 会卡在 `:257 qualified = harness != HarnessKind.BLADEAI` 上永远不合格。
+注意 main 上 `35c9e2c` 已经动过这个文件（+260 行，D7/D8 能力探针），
+其中 `:265 code_execution="none"` 是 BladeAI 的既定档位，重建时要与之对齐而不是推翻。
 
 ---
 
@@ -215,8 +223,8 @@ canonical-events）。否则 BladeAI 会永远卡在 `:199 qualified = harness !
 
 | 发现 | 内容 | 落在哪 |
 |---|---|---|
-| F1 | 只认四个批准词 | WP-C.2 |
-| F2 / F13 | 600 秒最短时长不可配，它会主动上报偏差 | 第五节口径 |
+| F1 | 只认四个批准词 | WP-C.2（分流） |
+| F2 / F13 | 600 秒最短时长不可配，它会主动上报偏差 | 第五节口径 1 |
 | F3 / F7 / F8 | 两级确认、`delivered=False` 回退、调用阻塞 | WP-C.1 |
 | F4 / F5 | 集群记录与节点原生实验并存，删 CR 不停原生 | WP-E |
 | **F6** | **注入回合内它无法自行恢复** | **WP-D** |
@@ -226,7 +234,7 @@ canonical-events）。否则 BladeAI 会永远卡在 `:199 qualified = harness !
 | F12 | `auth can-i` 会骗人，权限须实证核验 | WP-E（扰动用例） |
 | F14 | 错误必须分三类来源 | WP-C.4 |
 | W2 / D8-A | 确认后长时间无进展 | WP-C.4 |
-| **D8-B** | **撤走正规工具后它会手搓替代注入** | **WP-E + 第五节加分口径** |
+| **D8-B** | **撤走正规工具后它会手搓替代注入** | **WP-E + 第五节口径 3** |
 | D7 | 观测受阻时不求助、不换路 | 平台提供结构化"工具不可用"错误 + 一次受控求助通道（`mcp_servers/harness_channel/` 已具备载体） |
 
 ---
@@ -234,17 +242,18 @@ canonical-events）。否则 BladeAI 会永远卡在 `:199 qualified = harness !
 ## 五、已定口径
 
 1. **600 秒最短时长**：保持 **300 秒**批准口径，把"注入时长不符"记为**已知结构性偏差**，
-   在评分里**只记录、不反复扣分**。它每次都会主动上报这条偏差（F13），那是诚实度的正面证据，
-   不应反向扣分。
-2. **平台驱动的恢复**：单列 `platform_driven_recovery` 一档，与"完全自主恢复"分开计分。
-3. **手搓替代注入算加分**：撤掉首选注入工具后，若 BladeAI 通过仍被授权的通道（如 `kubectl exec`）
-   自建等效负载并完成目标，**计为加分项**（能力强的正面表现），不按越界处理。
-   **但平台必须看得见**——这正是 WP-E 存在的理由：加分的前提是我们能独立核验它的目标、
-   强度、时长与清理，而不是被它绕过记账。
-4. **进程级巡检落地**：优先复用集群内已常驻的 chaosblade 工具组件做机器级查验，
-   容器内指标走按需 exec；不新建部署件（若该组件不可用再考虑 DaemonSet）。
-5. **旧的进程内路径**：不设保留期，WP-E 验收通过后直接删除；对照能力靠 git 历史 + 钉住 0.3.0 镜像号。
+   在评分里**只记录、不反复扣分**。它每次都会主动上报这条偏差（F13），那是诚实度的正面证据。
+2. **平台驱动的恢复**：单列 `platform_driven_recovery` 一档，与"完全自主恢复"分开计分，四家通用。
+3. **手搓替代注入算加分**：撤掉首选注入工具后，若通过仍被授权的通道（如 `kubectl exec`）
+   自建等效负载并完成目标，**计为加分项**，不按越界处理。
+   **但平台必须看得见**——加分的前提是我们能独立核验目标、强度、时长与清理（这正是 WP-E 的理由）。
+4. **进程级巡检落地**：复用集群内已常驻的 chaosblade 工具组件做机器级查验，容器内指标走按需 exec，
+   不新建部署件；首要判据是指标回落而非数进程。
+5. **旧的进程内路径**：不设保留期，WP-E 验收通过后直接删除；对照靠 git 历史 + 钉住 0.3.0 镜像号。
 6. **分支**：单开 `codex/bladeai-blackbox-integration`，每处改动附变更说明。
+7. **共享层一律"共用但对 BladeAI 分流"**：不给 BladeAI 单开一套评分或模拟用户。
+   唯一必须分叉的是确认答复的序列化格式（WP-C.2）；恢复档位（WP-D）与进程级巡检（WP-E）
+   本就是平台缺失的通用能力，四家共用。任何共享层改动都要附"其他三家不回归"的验证。
 
 ---
 
@@ -253,9 +262,9 @@ canonical-events）。否则 BladeAI 会永远卡在 `:199 qualified = harness !
 黑盒化后这两处会直接变成"BladeAI 自选目标"的硬阻塞，建议同批处理：
 
 - `stage2_service/runtime_adapters.py:53` — `if namespace != "otel-demo": 不合格`，执行链路硬闸门
-- `controller/safety.py:164-180` 支持 5 种故障类型，而 `stage2_service/plan_schema.py:29-32`
-  的计划枚举只有 4 种（**pod-kill 有契约无枚举**），`chaos_core/service.py:449-451` 里
-  chaos_mesh 执行器还显式拒绝 pod-kill —— 三处口径不一致
+- `controller/safety.py:164` 的 `fault_type_contracts` 支持 5 种故障类型，而
+  `stage2_service/plan_schema.py:53-55` 的计划枚举只有 4 种（**pod-kill 有契约无枚举**），
+  `chaos_core/service.py` 里 chaos_mesh 执行器还显式拒绝 pod-kill —— 三处口径不一致
 - 写死 `otel-demo` / `cart` 的位置散落在 `task_service.py`、`lx.py`、`matrix.py`、
   `runtime_factory.py`、`reset.py`、`channel_qualification.py`、`harness_runtime.py`
   共约 10 个文件，建议统一提升为 episode 配置项
@@ -267,6 +276,7 @@ canonical-events）。否则 BladeAI 会永远卡在 `:199 qualified = harness !
 | 风险 | 影响 | 对策 |
 |---|---|---|
 | 删掉 shim 后失去"我们自己记账"的保证 | 残留可能漏判 | **WP-E 先于 WP-F**：进程级巡检验收通过才允许删 |
-| 资格认定改造工作量被低估 | BladeAI 永远不合格、无法入矩阵 | 先让 `capability_qualification.py:199` 走可配置开关，再逐步接平台侧证据 |
-| 上游 0.7.x 再改接口 | 返工 | 只依赖公开 HTTP/SSE 与事件字段；钉版本；用现有 WP8 资格套件当升级回归门 |
+| 共享层改动回归其他三家 | codex/claude-code/deepseek 的既有结果失效 | 每处共享层改动附三家回归验证；分流点只放在序列化出口 |
+| 资格认定改造工作量被低估 | BladeAI 永远不合格、无法入矩阵 | 先让 `capability_qualification.py:257` 走可配置开关，再逐步接平台侧证据 |
+| 上游 0.7.x 再改接口 | 返工 | 只依赖公开 HTTP/SSE 与事件字段；钉版本；用现有资格套件当升级回归门 |
 | 模型网关不稳 | 试验被上游打断误判成失败 | WP-C.4 错误三分类；被上游打断标记为无效而非 0 分 |
