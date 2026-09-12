@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -560,3 +562,11 @@ def test_replica_workload_is_the_committed_cart_only_locustfile():
     env = {item["name"]: item["value"] for item in values["components"]["load-generator"]["env"]}
     assert env["LOCUST_LOCUSTFILE"] == mounted[0]["mountPath"] + "/locustfile.py"
     assert env["LOCUST_HOST"] == "http://frontend:8080"
+    # Locust reads its file once at startup and a ConfigMap update does not
+    # restart it, so the workload's digest is a Pod annotation: editing the
+    # file changes the Pod template and rolls the load generator.
+    annotations = values["components"]["load-generator"]["podAnnotations"]
+    assert annotations["resiliencebenchmark.io/workload-sha256"] == hashlib.sha256(
+        on_disk.encode("utf-8")
+    ).hexdigest()
+    assert "resource.opentelemetry.io/service.namespace" in annotations

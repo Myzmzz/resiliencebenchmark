@@ -111,6 +111,8 @@ components:
           : str(uuid.uuid4())}, name=CART_ROUTE)\n"
       mountPath: /etc/resbench-locust
       name: resbench-cart-workload
+    podAnnotations:
+      resiliencebenchmark.io/workload-sha256: 0caa5e7e33344da454832d60b832625e559a9c645950a2eb67755a6f88a717a8
     resources:
       limits:
         cpu: '1'
