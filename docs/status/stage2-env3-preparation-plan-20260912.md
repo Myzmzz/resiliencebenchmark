@@ -128,16 +128,21 @@ code_sandbox / harness_channel` 列成了待装组件。实际上在 Stage-2 流
 | 10 | ChaosBlade `chaosblade-cgroupns-wrapper` ConfigMap | CPU/内存注入必须靠它 | **无**——操作手册只说"不要动它" | — | — |
 | 11 | Chaos Mesh | 官方 Chart（旧集群 2.7.3 / 新集群 2.8.0，**按 k8s 版本选**） | [deploy/chaos-mesh/](../../deploy/chaos-mesh/)：`values-old-cluster.yaml`、`controller-bootstrap-rbac.yaml`、`namespace.yaml` | 控制面 + 各节点 daemon | `helm uninstall chaos-mesh -n chaos-mesh` |
 
-**#7–#10 是这次最大的风险**。四项里三项**仓库没有可复现的安装资产**，只有"它应该长这样"的描述。
-在另外两套环境里它们是手工装的。要在第三套环境复现，需要你补：
+**#7–#10 原本是这次最大的风险**（仓库没有可复现的安装资产）。
+**2026-09-12 已从第二套环境只读查实**，结果见
+[stage2-env3-reference-state-20260912.md](stage2-env3-reference-state-20260912.md)：
 
-- 可观测栈各组件的 **chart 名 + 版本 + values**（`environment/observability/` 里的补丁是往既有安装上打的，不是从零装）
-- Coroot 的 **chart 版本与 values**，以及匿名只读怎么开
-- ChaosBlade 的 **chart/清单来源**
-- **`chaosblade-cgroupns-wrapper` 的内容**——这是 CPU/内存注入能不能用的关键，操作手册只说别动，没说它是什么
+| 原缺口 | 现状 |
+|---|---|
+| `chaosblade-cgroupns-wrapper` 是什么 | **✅ 完全解决并已入库**：[deploy/chaosblade/](../../deploy/chaosblade/)。两行 `nsenter -t 1 -C` 包装，依赖 `hostPID: true` |
+| Coroot 版本与匿名只读怎么开 | **✅ 解决**：operator chart 0.8.2；匿名只读靠 CR 的 `authAnonymousRole: Viewer` |
+| 可观测栈 | **部分**：查实它**不是 Helm 管的**，是 5 个 Deployment + 2 个 DaemonSet，镜像与版本已记录；**还缺对象清单导出** |
+| ChaosBlade | **部分**：operator 1.8.0 + tool 1.8.0，也**不是 Helm**；**还缺对象清单导出** |
 
-**或者**：允许我从新环境（`62.234.93.223`）把这些实际对象导出来（`helm get values` + `kubectl get -o yaml`），
-作为第三套环境的安装依据。**这需要你点头**，因为要读那套集群。
+**并且查出一条原方案低估的**：这些组件的镜像**几乎全部来自旧集群的 HTTP 明文 Harbor
+`1.94.151.57:85`**（可观测栈走 `train-ticket/*`、Coroot 走 `observe/*`、
+ChaosBlade operator 走 `ischaos/*`）。第三套环境在 CSTNET 网段，大概率路由不到它——
+**P5 的镜像搬运范围要从"平台那两个镜像"扩大到"再加十几个第三方镜像"**。
 
 **#11 Chaos Mesh 有资产但绑死旧集群**：`values-old-cluster.yaml` 里写死了
 `tcse-v100-03` 之类的节点名和 Harbor 镜像引用，第三套环境要另出一份 values。

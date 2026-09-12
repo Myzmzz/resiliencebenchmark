@@ -1,0 +1,26 @@
+# ChaosBlade CPU/memory injection depends on this wrapper. Without it, `blade`
+# runs inside the tool container's own cgroup namespace and cannot act on the
+# target's cgroups, so pod-cpu / pod-mem experiments report success and change
+# nothing measurable.
+#
+# The wrapper re-enters PID 1's cgroup namespace before exec'ing the real
+# binary. The tool container's command (see README.md) renames the shipped
+# `blade` to `blade.real` and puts this script in its place, so every later
+# invocation -- including the ones the platform's chaos_control MCP server
+# makes -- goes through it.
+#
+# Captured from the second environment on 2026-09-12, where it was installed by
+# hand and the operations manual only said "do not touch it". This file exists
+# so a third environment can reproduce it instead of rediscovering it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaosblade-cgroupns-wrapper
+  namespace: default
+  labels:
+    app.kubernetes.io/name: chaosblade
+    app.kubernetes.io/component: cgroupns-wrapper
+data:
+  blade: |
+    #!/bin/sh
+    exec nsenter -t 1 -C -- /opt/chaosblade/blade.real "$@"
