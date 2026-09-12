@@ -86,6 +86,61 @@ Chaos Mesh 和 Coroot 的镜像也都来自 `1.94.151.57:85`。
 
 MCP 八个服务不用单独装（由 stage2 Pod 内的 `McpSupervisor` 现起现停）。
 
+## 4.5 确认前的只读深挖（2026-09-12 追加）
+
+为了让第 5 节那几个拍板项好定，又做了一轮只读核查。
+
+### 4.5.1 Chaos Mesh：D8 要的三类**全在**，但这是个大幅扩展的分支
+
+| 项 | 实测 |
+|---|---|
+| `networkchaos` / `podchaos` / `stresschaos` | **三类 CRD 全部存在**（外加 `NetworkChaos` 内部要的 `podnetworkchaos`） |
+| 当前活跃实验 | **三类都是 0**（没人正在用） |
+| `chaos-daemon` | **3/3 就绪**，覆盖三台节点，144 天 |
+| CRD 总数 | **43 个** —— 官方 2.7/2.8 没有的就有 `bladechaos`、`nginxchaos`、`systemdchaos`、`stracechaos`、`redischaos`，以及 **23 个 `jvm*chaos`**（clickhouse / druid / dubbo / elasticsearch / hbase / mongodb / redis / zookeeper …） |
+
+**这不是官方版本打了个补丁，是一个专门扩展过的分支。**
+
+### 4.5.2 ⚠️ `bladechaos` 不能替代 ChaosBlade，而且可能**冲突**
+
+这个分支的 `bladechaos.chaos-mesh.org` CRD 字段是
+`target` / `action` / `createFlags` / `prepareFlags` / `duration` / `selector`——
+**就是 ChaosBlade 的命令模型包了一层**。
+
+但平台要的是**另一个 CRD**：`chaosblades.chaosblade.io`
+（[runtime_adapters.py:75](../../stage2_service/runtime_adapters.py#L75)、
+`mcp_servers/chaos_core/backends/chaosblade.py`）。实测该 CRD **不存在**。
+
+所以：
+
+- **ChaosBlade 仍然必须装**，`bladechaos` 顶不了；
+- **但两者都要在节点上执行 `blade`**。官方 ChaosBlade 的 tool DaemonSet 会往
+  `/opt/chaosblade` 放二进制并用 `/var/run/chaosblade.dat` 当账本；这个分支的
+  chaos-daemon 大概率也在做类似的事。**两套同时跑会不会互相干扰，装之前必须先问清楚这个分支怎么实现 `bladechaos`**，
+  这是原方案里没有的新风险。
+
+### 4.5.3 业务流量**是有的**（先前的怀疑是误报）
+
+`frontend` 近 11 小时没有日志，一度让我怀疑没有业务流量。**查实是误报**——
+frontend 不记录每条请求。直接问 locust 自己：
+
+```
+state=running   用户=5   总 RPS=0.8
+累计请求=125,540   失败=3,467（失败率 2.76%）
+```
+
+配置是 `LOCUST_USERS=5` / `LOCUST_SPAWN_RATE=1` / `LOCUST_AUTOSTART=true` /
+`LOCUST_HOST=http://frontend-proxy:8080`。
+
+两点要留意：
+
+- **上次重启是 `OOMKilled`**（exitCode 137，2026-09-11T07:03），这是第 9 次重启。
+  内存限额可能偏紧——第二套环境的操作手册特意说过 accounting / ad / fraud-detection
+  三个的限额是环境所有者批准过的、不要擅自改，这里要不要调**得你定**。
+- **基线失败率 2.76%**。做效果判定时这个底噪要算进去，不能把它当成故障引起的。
+
+---
+
 ## 5. 差距与风险
 
 ### 阻塞级 1 项
@@ -97,11 +152,12 @@ MCP 八个服务不用单独装（由 stage2 Pod 内的 `McpSupervisor` 现起�
 
 ### 需要你拍板的 3 项
 
-1. **Chaos Mesh 是自定义构建**（chart `0.0.0`，镜像打过补丁：`nomongo`、`fix`）。
-   仓库里 `deploy/chaos-mesh/values-old-cluster.yaml` 是官方 2.7.3 的配置，对不上。
-   **而且它可能是 `aiops` 那个项目在用。** 三个选择：沿用现有的（要先验 D8 需要的
-   `NetworkChaos`/`PodChaos`/`StressChaos` 三类能不能用）、并排装一套我们自己的、
-   或者先问清楚它归谁。
+1. **Chaos Mesh 是大幅扩展的分支**（chart `0.0.0`，43 个 CRD，含 `bladechaos` 和
+   23 个 `jvm*chaos`）。**D8 要的三类 CRD 全在、当前零活跃实验、daemon 3/3 就绪**（见 4.5.1），
+   所以"沿用现有的"技术上可行。但仓库里 `deploy/chaos-mesh/values-old-cluster.yaml`
+   是官方 2.7.3 的配置，对不上；而且**它很可能是 `aiops` 在用**。
+   **更要紧的是 4.5.2 那条**：它自带的 `bladechaos` 与我们要装的官方 ChaosBlade
+   都会在节点上跑 `blade`，会不会打架，装之前得问清这个分支怎么实现的。
 2. **共享集群**：`aiops` 是别人的项目。`chaos-mesh`、`coroot`、`otel-demo` 是不是也归他们、
    我们能不能改，需要确认。**尤其 OTel Demo——如果它是别人在用的，我们注故障会影响他们。**
 3. **swap 三台全开着**。kubelet 默认要求关闭，但集群已经跑了 183 天，
