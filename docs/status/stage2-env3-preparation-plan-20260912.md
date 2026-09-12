@@ -206,11 +206,37 @@ Dockerfile COPY 了不存在的源会**直接失败**，不会再产出一个悄
 | **P3** | OTel Demo：`deploy_application.py --server-dry-run` → `--execute` | 23 个 Deployment 全就绪；`load-generator` 有流量 | `helm uninstall otel-demo` |
 | **P4** | 可观测栈 + Coroot + ChaosBlade + Chaos Mesh | Prometheus/Loki/Jaeger 能查；Coroot 匿名只读通；ChaosBlade CPU 注入能起能清；Chaos Mesh Controller 1/1、daemon 全就绪 | 逐个 `helm uninstall`，互不影响 |
 | **P5** | 构建并推镜像到公开仓库 | `build-<sha>-image.json` 产出；两个 tag 在仓库里 | 不覆盖同名 tag，重建换新 sha |
-| **P6** | 平台：RBAC → Secret/ConfigMap → PVC → Deployment（**用 env3 专属 overlay**） | 三容器 Ready；私有文件 0600；`fsGroupChangePolicy=OnRootMismatch` 在位；两个 Coroot 环境变量是**第三套环境自己的值** | `kubectl delete deploy`；PVC 保留 |
+| **P6** | 平台：RBAC → Secret/ConfigMap → PVC → Deployment（**用 env3 专属 overlay**） | 三容器 Ready；**跑 `scripts/verify_stage2_deployment.py` 全绿**（见下） | `kubectl delete deploy`；PVC 保留 |
 | **P7** | 验收：`/api/v1/stage2/options` 三家可跑 | 三家 `runnable=true`，模型探测 complete | 看熔断与探测状态（O03/O10 新增的 `provider_circuits` / `serving_stale_result` 字段能直接看出是网关问题还是资格问题） |
 | **P8** | 跑通一次 C0 | 完整结束、有结构化结果、残留检查 `none` | 按平台复位流程；**注意 O04 改动后，恢复未验证时平台会停下而不是重装** |
 
 P2–P6 每一步**先说一声再动手**（整改说明第 2 节的协调规则）。
+
+### P6 的验收已经脚本化
+
+操作手册第 4 节和整改说明第 8.3 节都要求每次换镜像后**手工核对三件事**。
+这三件事失败时是**静默的**：Pod 起来了、rollout 成功了，坏的是下一次运行。
+现在有脚本了：
+
+```bash
+python scripts/verify_stage2_deployment.py \
+  --namespace resiliencebenchmark-system \
+  --coroot-project <第三套环境自己的 Coroot 项目 id> \
+  --require-node-selector \
+  --private-listing <在 stage2 容器里抓的 "mode path" 清单>
+```
+
+只读，不写集群。检查：三个容器齐、`fsGroup=10001`、
+`fsGroupChangePolicy=OnRootMismatch`、两个 Coroot 环境变量在位**且项目 id 是本集群的**、
+nodeSelector 在位、私有文件没有组或其他用户可读写。任一不过退出码 1。
+
+**拿它跑仓库里那份清单会直接爆三条**，正好说明了"永远不要 `kubectl apply` 仓库清单"是什么意思：
+
+```
+FAIL  fsGroupChangePolicy: is None, expected 'OnRootMismatch'
+FAIL  RESBENCH_COROOT_PROJECT_ID: is '9auios5b', expected 'p1nar0hw' for this cluster
+FAIL  nodeSelector: absent, but this cluster pins the workload to an AppArmor-enabled node
+```
 
 ---
 
