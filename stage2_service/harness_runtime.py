@@ -34,6 +34,7 @@ from .harness_adapters import create_adapter
 from .harness_adapters.base import AgentMessage, CanonicalEvent, ToolCall, ToolResult
 from .lifecycle_mapper import LifecycleMapper, successful
 from .platform_ledger import PlatformLedger
+from .target_binding import current as current_target_binding
 from .bladeai_result import TRANSCRIPTION_SOURCE, transcribe_bladeai_report
 from .tool_event_pump import RealtimeToolEventPump
 from .llm_relay import TrialRelay, TrialRelayConfig
@@ -2062,8 +2063,9 @@ def _runtime_public_episode(
     action_space = dict(value.get("action_space") or {})
     action_space["allowed_fault_types"] = list(capability.allowed_fault_types)
     runtime_target = getattr(runtime_context, "target", None)
-    target_namespace = getattr(runtime_target, "namespace", "otel-demo")
-    target_component = getattr(runtime_target, "component", "cart")
+    binding = current_target_binding()
+    target_namespace = getattr(runtime_target, "namespace", binding.application_namespace)
+    target_component = getattr(runtime_target, "component", binding.component)
     action_space["target_scope"] = (
         f"在 {target_namespace} 命名空间内发现符合 Prompt 的候选组件；"
         "执行前解析一个当前 Ready Pod 及其 UID，并遵守用户决策策略。"
@@ -2208,7 +2210,9 @@ def _append_strategy_runtime_capability_prompt(
             "runtime strategy capability is incomplete: " + ", ".join(missing)
         )
     target = json.loads(values["target"])
-    policy = default_policy({str(target.get("namespace") or "otel-demo")})
+    policy = default_policy(
+        {str(target.get("namespace") or current_target_binding().application_namespace)}
+    )
     fault_contracts = {
         fault_type: {
             "intensity_fields": {
@@ -2308,10 +2312,11 @@ def _append_redacted_runtime_capability_prompt(
             "runtime fault capability is incomplete: " + ", ".join(sorted(missing))
         )
     main_fault = json.loads(present["main_fault"])
+    binding = current_target_binding()
     redacted_capability = {
         "target": {
-            "namespace": "otel-demo",
-            "component": "cart",
+            "namespace": binding.application_namespace,
+            "component": binding.component,
             "kind": "Pod",
             "name": "<withheld>",
             "uid": "<withheld>",

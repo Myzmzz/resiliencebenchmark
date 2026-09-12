@@ -55,6 +55,7 @@ from .preparation import ApplicationTrafficCapabilityIssuer, KubernetesTrialPrep
 from .qualification import D0QualificationGate
 from .kubernetes_identities import CONTROLLER_SERVICE_ACCOUNT, prepare_execution_identities
 from .reset import OtelDemoResetter
+from .target_binding import current as current_target_binding
 from .runtime_adapters import (
     CompositeDisturbanceExecutor,
     KubernetesEnvironmentGate,
@@ -93,6 +94,17 @@ def _probe_report_has_error(report: Mapping[str, Any]) -> bool:
         isinstance(issue, Mapping) and issue.get("severity") == "ERROR"
         for issue in issues
     ) if isinstance(issues, list) else False
+
+
+# The chart's own service names; identical in every replica namespace, so the
+# agent-visible allowlists stay the same text whatever replica runs a trial.
+OBSERVED_SERVICES = "frontend,frontend-proxy,checkout,cart,payment,shipping"
+
+
+def workload_stats_url(namespace: str | None = None) -> str:
+    """Locust ``/stats/requests`` of the load generator inside ``namespace``."""
+    target = namespace or current_target_binding().application_namespace
+    return f"http://load-generator.{target}.svc.cluster.local:8089/stats/requests"
 
 
 def _model_probe_failure_reason(failure_classes: tuple[str, ...]) -> str:
@@ -233,9 +245,10 @@ def build_runtime(
     episode,
     request_model_by_harness: Mapping[Any, str],
     *,
-    namespace: str = "otel-demo",
+    namespace: str | None = None,
 ) -> Stage2Components:
     """Build the production Stage-2 runtime from process configuration."""
+    namespace = namespace or current_target_binding().application_namespace
     config = Stage2RuntimeConfig.from_env()
     for path in (config.private_root, config.artifact_root):
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -289,19 +302,29 @@ def _build_runtime(
         "RESBENCH_JAEGER_URL": "http://jaeger-query.observability.svc:16686",
         "RESBENCH_LOKI_URL": "http://loki.observability.svc:3100",
         "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": namespace,
-        "RESBENCH_JAEGER_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
+        "RESBENCH_JAEGER_ALLOWED_SERVICES": OBSERVED_SERVICES,
         "RESBENCH_COROOT_URL": config.coroot_url,
         "RESBENCH_COROOT_PROJECT_ID": config.coroot_project_id,
         "RESBENCH_COROOT_ALLOWED_NAMESPACE": namespace,
-        "RESBENCH_COROOT_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
+        "RESBENCH_COROOT_ALLOWED_SERVICES": OBSERVED_SERVICES,
         "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ": "true" if config.coroot_allow_anonymous_read else "false",
         "RESBENCH_COROOT_TIMEOUT_SECONDS": "10",
         "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
+        # Replicas share Jaeger and run identically named services, so a trace
+        # must also carry this replica's namespace. Off for the single-system
+        # binding, which keeps the default agent-visible behaviour unchanged.
+        **(
+            {"RESBENCH_TELEMETRY_REQUIRE_TRACE_NAMESPACE": "true"}
+            if not current_target_binding().is_default
+            else {}
+        ),
         "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(private / "telemetry"),
-        "RESBENCH_WORKLOAD_STATS_URL": "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
+        "RESBENCH_WORKLOAD_STATS_URL": workload_stats_url(namespace),
         "RESBENCH_WORKLOAD_STAT_NAME": "/api/cart",
         "RESBENCH_SOURCE_ROOT": str(config.source_root),
-        "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": "otel-demo",
+        # The frozen source snapshot is shared by every replica, so the
+        # source_ro allowlist stays this binding's application id.
+        "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": current_target_binding().application,
         "RESBENCH_CHAOS_EXECUTE_ENABLED": "true",
         "RESBENCH_CHAOS_KUBECONFIG": str(identities.executor_kubeconfig),
         "RESBENCH_CHAOS_CLEANUP_KUBECONFIG": str(identities.finalizer_kubeconfig),
@@ -428,7 +451,7 @@ class KubernetesTrafficEvidence:
         gate: KubernetesEnvironmentGate,
         episode,
         *,
-        stats_url: str = "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
+        stats_url: str | None = None,
         stats_loader: Callable[[str], Mapping[str, Any]] | None = None,
         stats_resetter: Callable[[str], None] | None = None,
         prometheus_url: str = "http://prometheus.observability.svc:9090",
@@ -439,7 +462,7 @@ class KubernetesTrafficEvidence:
     ):
         self.gate = gate
         self.episode = episode
-        self.stats_url = stats_url
+        self.stats_url = stats_url or workload_stats_url()
         self.stats_loader = stats_loader or self._load_stats
         self.stats_resetter = stats_resetter or self._reset_stats
         self.prometheus_url = prometheus_url.rstrip("/")
@@ -1798,10 +1821,13 @@ class Stage2System:
             if isinstance(item, Mapping) and item.get("id")
         }, None
 
-    def build_runtime(self, episode, request_model_by_harness, *, namespace="otel-demo") -> Stage2Components:
+    def build_runtime(self, episode, request_model_by_harness, *, namespace=None) -> Stage2Components:
         """Compose one attempt with this system's pinned configuration."""
-        return _build_runtime(config=self.config, episode=episode,
-                              request_model_by_harness=request_model_by_harness, namespace=namespace)
+        return _build_runtime(
+            config=self.config, episode=episode,
+            request_model_by_harness=request_model_by_harness,
+            namespace=namespace or current_target_binding().application_namespace,
+        )
 
     def run(
         self,
@@ -1887,7 +1913,7 @@ class Stage2System:
         }
 
     def reset_environment(self, operation_id: str, application: str) -> Mapping[str, Any]:
-        if application != "otel-demo":
+        if application != current_target_binding().application:
             return {
                 "verified": False,
                 "reason": f"unsupported application: {application}",
@@ -1912,7 +1938,7 @@ class Stage2System:
 
     def verify_environment(self, operation_id: str, application: str) -> Mapping[str, Any]:
         """Verify a clean OTel Demo state without mutating the namespace."""
-        if application != "otel-demo":
+        if application != current_target_binding().application:
             return {
                 "verified": False,
                 "reason": f"unsupported application: {application}",
@@ -1971,7 +1997,7 @@ def write_incluster_kubeconfig(path: Path) -> None:
                 "context": {
                     "cluster": "kubernetes",
                     "user": CONTROLLER_SERVICE_ACCOUNT,
-                    "namespace": "otel-demo",
+                    "namespace": current_target_binding().application_namespace,
                 },
             }
         ],

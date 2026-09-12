@@ -57,6 +57,7 @@ from mcp_servers.telemetry_ro.service import TelemetryROError, TelemetryROServic
 from mcp_servers.telemetry_ro.service import RuntimeConfig as TelemetryRuntimeConfig
 from mcp_servers.telemetry_ro.service import error_envelope as telemetry_error_envelope
 from stage2_service.preparation import _ready
+from stage2_service.target_binding import current as current_target_binding
 from stage2_service.runtime_lock import RuntimeLock, RuntimeLockError
 
 from .factory import (
@@ -72,8 +73,9 @@ from .records import D7HistoricalSample, D8CanaryEvidence
 
 EVIDENCE_SCHEMA = "stage2-capability-loss-qualification-evidence.v1"
 GENERATOR = "stage2_service.capability_loss.qualification_probe"
-# ``CapabilityLossRuntimeFactory._qualification`` accepts only this application.
-APPLICATION = "otel-demo"
+# ``CapabilityLossRuntimeFactory._qualification`` accepts only the application
+# this Controller instance is bound to.
+APPLICATION = current_target_binding().application
 OUTPUT_ENV = "STAGE2_SUBSTITUTION_QUALIFICATION_FILE"
 OUTPUT_FILENAME = "capability-loss-qualification.json"
 PRIVATE_ROOT_ENV = "STAGE2_PRIVATE_ROOT"
@@ -1202,7 +1204,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--d8-server", action="append", choices=D8_SERVERS, metavar="SERVER",
         help=f"run only this D8 canary ({' or '.join(D8_SERVERS)}); repeatable; implies --d8",
     )
-    parser.add_argument("--namespace", default=APPLICATION, choices=(APPLICATION,), help="application namespace")
+    parser.add_argument(
+        "--namespace",
+        default=current_target_binding().application_namespace,
+        choices=(current_target_binding().application_namespace,),
+        help="application namespace",
+    )
     parser.add_argument(
         "--target", action="append", metavar="COMPONENT",
         help=f"logical target component, bound like a Trial target; repeatable (default: {DEFAULT_TARGET})",

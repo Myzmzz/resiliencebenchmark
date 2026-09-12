@@ -34,6 +34,10 @@ MARKER_NAME = "resbench-active-system"
 STANDBY_ANNOTATION = "resiliencebenchmark.io/standby-replicas"
 SUPPORTED_APPLICATIONS = ("train-ticket", "sock-shop", "otel-demo")
 LIVE_NAMESPACES = {name: name for name in SUPPORTED_APPLICATIONS}
+# A replica namespace of an application: its live namespace plus a numeric
+# suffix, for example ``otel-demo-03``.  Matching is exact, never a prefix
+# test, so ``otel-demo`` itself never matches a replica rule.
+REPLICA_SUFFIX_RE = re.compile(r"^(?P<application>[a-z0-9][a-z0-9-]*[a-z0-9])-(?P<index>[0-9]{1,3})$")
 PROTECTED_NAMESPACES = frozenset({"observability", "ischaos", "resiliencebenchmark-system", "resilience-benchmark-system"})
 PLACEHOLDER_RE = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 SAFE_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
@@ -286,6 +290,28 @@ def namespace_inventory(runner: CommandRunner, kubeconfig: Path, namespace: str)
     )
 
 
+def replica_index(application: str, namespace: str) -> int | None:
+    """The replica number when ``namespace`` is ``<live namespace>-<NN>``.
+
+    ``None`` for the live namespace itself and for any unrelated name, so a
+    caller can never confuse ``otel-demo`` with ``otel-demo-01``.
+    """
+    match = REPLICA_SUFFIX_RE.fullmatch(namespace)
+    if match is None or match.group("application") != LIVE_NAMESPACES.get(application):
+        return None
+    return int(match.group("index"))
+
+
+def marker_namespace(application: str, namespace: str) -> str:
+    """Where this target's active-system marker ConfigMap lives.
+
+    A replica owns the marker in its own namespace so parallel replicas do not
+    overwrite one another; every other target keeps the single historical
+    marker namespace.
+    """
+    return namespace if replica_index(application, namespace) is not None else MARKER_NAMESPACE
+
+
 def protected_resources(application: str) -> list[str]:
     config = application_config(application)
     return list(config.get("spec", {}).get("resetContract", {}).get("protectedResources", []))
@@ -295,8 +321,15 @@ def assert_delete_boundary(application: str, namespace: str) -> None:
     if namespace in PROTECTED_NAMESPACES:
         raise DeployError(f"refusing to delete protected namespace {namespace}")
     live = LIVE_NAMESPACES[application]
-    if namespace != live and not namespace.startswith(("rb-", "resbench-", "tmp-")):
-        raise DeployError("non-default delete targets must use an rb-, resbench-, or tmp- namespace")
+    if (
+        namespace != live
+        and replica_index(application, namespace) is None
+        and not namespace.startswith(("rb-", "resbench-", "tmp-"))
+    ):
+        raise DeployError(
+            "non-default delete targets must be a numbered replica namespace of the "
+            "application or use an rb-, resbench-, or tmp- prefix"
+        )
 
 
 def assert_inventory_not_protected(
@@ -813,15 +846,17 @@ def wait_ready(
         )
 
 
-def update_active_marker(runner: CommandRunner, kubeconfig: Path, active: str) -> None:
-    if not namespace_exists(runner, kubeconfig, MARKER_NAMESPACE):
+def update_active_marker(
+    runner: CommandRunner, kubeconfig: Path, active: str, namespace: str = MARKER_NAMESPACE
+) -> None:
+    if not namespace_exists(runner, kubeconfig, namespace):
         return
     marker = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
         "metadata": {
             "name": MARKER_NAME,
-            "namespace": MARKER_NAMESPACE,
+            "namespace": namespace,
             "labels": {"app.kubernetes.io/managed-by": "resiliencebenchmark"},
         },
         "data": {"active-system": active, "inactive-strategy": "reversible-scale-to-zero"},
@@ -829,8 +864,10 @@ def update_active_marker(runner: CommandRunner, kubeconfig: Path, active: str) -
     run_checked(runner, kube_base(kubeconfig) + ["apply", "-f", "-"], stdin=yaml.safe_dump(marker, sort_keys=False))
 
 
-def current_active_marker(runner: CommandRunner, kubeconfig: Path) -> str | None:
-    result = runner.run(kube_base(kubeconfig) + ["get", "configmap", MARKER_NAME, "-n", MARKER_NAMESPACE, "-o", "json"], timeout=30)
+def current_active_marker(
+    runner: CommandRunner, kubeconfig: Path, namespace: str = MARKER_NAMESPACE
+) -> str | None:
+    result = runner.run(kube_base(kubeconfig) + ["get", "configmap", MARKER_NAME, "-n", namespace, "-o", "json"], timeout=30)
     if result.returncode != 0:
         return None
     return str(json.loads(result.stdout).get("data", {}).get("active-system") or "") or None
@@ -871,8 +908,16 @@ def assert_server_dry_run_supported(args: argparse.Namespace, namespace: str) ->
     """Reject --server-dry-run combinations that could mutate or that it does not mirror."""
     if args.execute:
         raise DeployError("--server-dry-run and --execute are mutually exclusive")
-    if args.application != "otel-demo" or args.mode != "apply" or args.fresh or namespace != LIVE_NAMESPACES["otel-demo"]:
-        raise DeployError("--server-dry-run supports only --application otel-demo --mode apply in namespace otel-demo without --fresh")
+    if (
+        args.application != "otel-demo"
+        or args.mode != "apply"
+        or args.fresh
+        or (namespace != LIVE_NAMESPACES["otel-demo"] and replica_index("otel-demo", namespace) is None)
+    ):
+        raise DeployError(
+            "--server-dry-run supports only --application otel-demo --mode apply in namespace "
+            "otel-demo or one of its numbered replica namespaces, without --fresh"
+        )
     if args.kubeconfig is None:
         raise DeployError("--server-dry-run requires --kubeconfig")
 
@@ -933,8 +978,9 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
         return report
     if args.mode == "standby":
         report["standby"] = standby_application(runner, kubeconfig, namespace)
-        if current_active_marker(runner, kubeconfig) == application:
-            update_active_marker(runner, kubeconfig, "none")
+        marker_ns = marker_namespace(application, namespace)
+        if current_active_marker(runner, kubeconfig, marker_ns) == application:
+            update_active_marker(runner, kubeconfig, "none", marker_ns)
         report["result"] = "standby"
         return report
     if namespace == LIVE_NAMESPACES[application]:
@@ -945,7 +991,7 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
             if namespace_exists(runner, kubeconfig, other_ns):
                 standby_application(runner, kubeconfig, other_ns)
     report["activate"] = activate_application(runner, kubeconfig, application, namespace, args.timeout)
-    update_active_marker(runner, kubeconfig, application)
+    update_active_marker(runner, kubeconfig, application, marker_namespace(application, namespace))
     report["result"] = "active-ready"
     return report
 

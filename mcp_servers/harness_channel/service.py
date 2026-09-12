@@ -23,6 +23,7 @@ from stage2_service.capability_policy import (
 )
 from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutcome
 from stage2_service.platform_ledger import PlatformLedger
+from stage2_service.target_binding import DEFAULT_APPLICATION_NAMESPACE
 from stage2_service.simulated_user import (
     ConversationError,
     HarnessModelTimeout,
@@ -77,7 +78,7 @@ class HarnessChannelConfig:
     decision_file: Path
     case_id: str | None = None
     variant: str | None = None
-    namespace: str = "otel-demo"
+    namespace: str = DEFAULT_APPLICATION_NAMESPACE
     allowed_fault_types: tuple[str, ...] = (
         "network-delay",
         "network-loss",
@@ -129,7 +130,7 @@ class HarnessChannelConfig:
             decision_file=decision_file,
             case_id=_optional_text(context.get("case_id")),
             variant=_optional_text(context.get("variant")),
-            namespace=_optional_text(context.get("namespace")) or "otel-demo",
+            namespace=_optional_text(context.get("namespace")) or DEFAULT_APPLICATION_NAMESPACE,
             allowed_fault_types=allowed_fault_types,
             max_fault_seconds=_positive_int(
                 context.get("max_fault_seconds"),

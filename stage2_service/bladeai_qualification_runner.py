@@ -21,6 +21,7 @@ from typing import Any
 from mcp_servers.chaos_control.service import new_cleanup_handle
 
 from .artifacts import ArtifactStore
+from .target_binding import current as current_target_binding
 from .capability_qualification import evaluate_wp8_artifacts
 from .channel_qualification import QUALIFICATION_NOTICE_TYPE
 from .contracts import (
@@ -76,10 +77,14 @@ class BladeAIQualificationRunner:
         *,
         artifact_store: ArtifactStore | None = None,
         runtime_lock: RuntimeLock | None = None,
-        namespace: str = "otel-demo",
+        namespace: str | None = None,
     ) -> None:
-        if namespace != "otel-demo":
-            raise ValueError("BladeAI WP8 qualification currently supports only otel-demo")
+        namespace = namespace or current_target_binding().application_namespace
+        if namespace != current_target_binding().application_namespace:
+            raise ValueError(
+                "BladeAI WP8 qualification runs only in this Controller's bound namespace: "
+                f"{current_target_binding().application_namespace}"
+            )
         self.system = system
         self.namespace = namespace
         self.artifact_store = artifact_store or ArtifactStore(system.config.artifact_root)

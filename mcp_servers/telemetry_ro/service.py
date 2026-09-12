@@ -22,6 +22,10 @@ TIMEOUT_ENV = "RESBENCH_TELEMETRY_TIMEOUT_SECONDS"
 NAMESPACE_ALLOWLIST_ENV = "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES"
 JAEGER_SERVICE_ALLOWLIST_ENV = "RESBENCH_JAEGER_ALLOWED_SERVICES"
 ALLOW_RAW_QUERIES_ENV = "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES"
+# Replica fleets run many copies of the same services, so a Jaeger service name
+# no longer identifies one system under test. With this set, a trace is in
+# scope only when it also carries this runtime's Kubernetes namespace.
+REQUIRE_TRACE_NAMESPACE_ENV = "RESBENCH_TELEMETRY_REQUIRE_TRACE_NAMESPACE"
 DISTURBANCE_DIR_ENV = "RESBENCH_TELEMETRY_DISTURBANCE_DIR"
 WORKLOAD_STATS_URL_ENV = "RESBENCH_WORKLOAD_STATS_URL"
 WORKLOAD_STAT_NAME_ENV = "RESBENCH_WORKLOAD_STAT_NAME"
@@ -42,6 +46,13 @@ MAX_FILTERS = 12
 MAX_FILTER_VALUE_LENGTH = 256
 MAX_LITERAL_CONTAINS_LENGTH = 200
 NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace")
+# Resource attributes the OTel k8sattributes processor puts on every span.
+TRACE_NAMESPACE_TAG_KEYS = (
+    "k8s.namespace.name",
+    "k8s_namespace_name",
+    "namespace",
+    "service.namespace",
+)
 PROMETHEUS_GROUP_BY_ALLOWLIST = frozenset(
     {
         "namespace",
@@ -118,6 +129,7 @@ class RuntimeConfig:
     jaeger_service_allowlist: frozenset[str] = frozenset()
     timeout_seconds: float = 5.0
     allow_raw_queries: bool = False
+    require_trace_namespace: bool = False
     workload_stats_url: str | None = None
     workload_stat_name: str = "/api/cart"
 
@@ -165,6 +177,9 @@ class RuntimeConfig:
             jaeger_service_allowlist=_parse_service_allowlist(os.environ.get(JAEGER_SERVICE_ALLOWLIST_ENV)),
             timeout_seconds=timeout,
             allow_raw_queries=_parse_bool_env(os.environ.get(ALLOW_RAW_QUERIES_ENV), ALLOW_RAW_QUERIES_ENV),
+            require_trace_namespace=_parse_bool_env(
+                os.environ.get(REQUIRE_TRACE_NAMESPACE_ENV), REQUIRE_TRACE_NAMESPACE_ENV
+            ),
             workload_stats_url=_clean_base_url(
                 os.environ.get(WORKLOAD_STATS_URL_ENV), WORKLOAD_STATS_URL_ENV
             ),
@@ -602,7 +617,11 @@ class TelemetryROService:
         if max_duration:
             params["maxDuration"] = _validate_duration(max_duration, "max_duration")
         data = await self._request("jaeger", "/api/traces", params)
-        scoped = _scope_filter_traces(data.get("data"), self.config.jaeger_service_allowlist)
+        scoped = _scope_filter_traces(
+            data.get("data"),
+            self.config.jaeger_service_allowlist,
+            namespace=self.config.namespace if self.config.require_trace_namespace else None,
+        )
         traces = _limited_result(scoped.items, limit)
         return envelope(
             {
@@ -617,7 +636,12 @@ class TelemetryROService:
                 **_scope_metadata(
                     self.config,
                     scoped.scoped_out_count,
-                    warning="Traces containing services outside the Jaeger allowlist are removed.",
+                    warning=(
+                        "Traces containing services outside the Jaeger allowlist, or "
+                        "spans from another Kubernetes namespace, are removed."
+                        if self.config.require_trace_namespace
+                        else "Traces containing services outside the Jaeger allowlist are removed."
+                    ),
                 ),
                 "traces": traces["items"],
             }
@@ -633,11 +657,15 @@ class TelemetryROService:
             )
         data = await self._request("jaeger", f"/api/traces/{trace_id.lower()}", {})
         traces = _expect_sequence(data.get("data"), "Jaeger trace data")
-        scoped = _scope_filter_traces(traces, self.config.jaeger_service_allowlist)
+        scoped = _scope_filter_traces(
+            traces,
+            self.config.jaeger_service_allowlist,
+            namespace=self.config.namespace if self.config.require_trace_namespace else None,
+        )
         if scoped.scoped_out_count:
             raise TelemetryROError(
                 "trace_outside_service_scope",
-                "trace contains a service outside the configured Jaeger allowlist.",
+                "trace contains a service outside the configured Jaeger allowlist or namespace.",
                 "Use telemetry_jaeger_find_traces for an allowed service and do not fetch trace ids from another scope.",
             )
         return envelope({"service": "jaeger", "operation": "get_trace", "traceId": trace_id.lower(), "traces": traces})
@@ -1407,13 +1435,65 @@ def _trace_service_names(trace: Any) -> set[str]:
     return names
 
 
-def _scope_filter_traces(value: Any, allowlist: frozenset[str]) -> ScopedItems:
+def _trace_namespaces(trace: Any) -> set[str]:
+    """Kubernetes namespaces named by a trace's process tags.
+
+    Jaeger keeps a span's resource attributes on its process. An empty result
+    means the trace carries no namespace evidence at all.
+    """
+    if not isinstance(trace, Mapping):
+        return set()
+    found: set[str] = set()
+
+    def collect(tags: Any) -> None:
+        if not isinstance(tags, list):
+            return
+        for tag in tags:
+            if not isinstance(tag, Mapping):
+                continue
+            if str(tag.get("key") or "") in TRACE_NAMESPACE_TAG_KEYS:
+                value = tag.get("value")
+                if isinstance(value, str) and value:
+                    found.add(value)
+
+    processes = trace.get("processes")
+    if isinstance(processes, Mapping):
+        for process in processes.values():
+            if isinstance(process, Mapping):
+                collect(process.get("tags"))
+    spans = trace.get("spans")
+    if isinstance(spans, list):
+        for span in spans:
+            if not isinstance(span, Mapping):
+                continue
+            process = span.get("process")
+            if isinstance(process, Mapping):
+                collect(process.get("tags"))
+    return found
+
+
+def _scope_filter_traces(
+    value: Any, allowlist: frozenset[str], *, namespace: str | None = None
+) -> ScopedItems:
+    """Keep traces whose services are allowed and, optionally, whose namespace matches.
+
+    ``namespace`` is used by replica fleets, where every replica runs services
+    with the same names: a trace is kept only when it carries namespace
+    evidence and every namespace it names is exactly this one. A trace with no
+    namespace tag is dropped rather than guessed at, so another replica's data
+    can never be read as this replica's.
+    """
     traces = _expect_sequence(value or [], "Jaeger trace data")
     scoped: list[Any] = []
     for trace in traces:
         names = _trace_service_names(trace)
-        if names and names.issubset(allowlist):
-            scoped.append(trace)
+        if not names or not names.issubset(allowlist):
+            continue
+        if namespace is not None:
+            namespaces = _trace_namespaces(trace)
+            if not namespaces or namespaces != {namespace}:
+                continue
+        scoped.append(trace)
     return ScopedItems(scoped, len(traces) - len(scoped))
 
 

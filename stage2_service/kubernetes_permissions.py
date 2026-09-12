@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+from .target_binding import current as current_target_binding
+
 
 class KubernetesPermissionError(RuntimeError):
     pass
@@ -24,6 +26,11 @@ class KubernetesPermissionBackend:
         self.core_api = core_api
         self.rbac_api = rbac_api
         self.auth_api = auth_api
+        # The class constants document the single-system defaults; the live
+        # namespaces follow this Controller instance's target binding.
+        binding = current_target_binding()
+        self.control_namespace = binding.control_namespace
+        self.application_namespace = binding.application_namespace
 
     @classmethod
     def from_incluster(cls):
@@ -106,7 +113,7 @@ class KubernetesPermissionBackend:
         try:
             self.rbac_api.delete_namespaced_role_binding(
                 name=name,
-                namespace=self.APPLICATION_NAMESPACE,
+                namespace=self.application_namespace,
             )
         except ApiException as exc:
             if exc.status != 404:
@@ -133,7 +140,7 @@ class KubernetesPermissionBackend:
         for name in (state["read_binding"], state["metrics_binding"]):
             try:
                 self.rbac_api.delete_namespaced_role_binding(
-                    name=name, namespace=self.APPLICATION_NAMESPACE
+                    name=name, namespace=self.application_namespace
                 )
             except ApiException as exc:
                 if exc.status != 404:
@@ -141,14 +148,14 @@ class KubernetesPermissionBackend:
         for name in (state["read_role"], state["metrics_role"]):
             try:
                 self.rbac_api.delete_namespaced_role(
-                    name=name, namespace=self.APPLICATION_NAMESPACE
+                    name=name, namespace=self.application_namespace
                 )
             except ApiException as exc:
                 if exc.status != 404:
                     raise
         try:
             self.core_api.delete_namespaced_service_account(
-                name=state["service_account"], namespace=self.CONTROL_NAMESPACE
+                name=state["service_account"], namespace=self.control_namespace
             )
         except ApiException as exc:
             if exc.status != 404:
@@ -172,7 +179,7 @@ class KubernetesPermissionBackend:
         )
         response = self.core_api.create_namespaced_service_account_token(
             name=service_account,
-            namespace=self.CONTROL_NAMESPACE,
+            namespace=self.control_namespace,
             body=request,
         )
         token = str(response.status.token)
@@ -204,7 +211,7 @@ class KubernetesPermissionBackend:
                     "context": {
                         "cluster": "kubernetes",
                         "user": service_account,
-                        "namespace": self.APPLICATION_NAMESPACE,
+                        "namespace": self.application_namespace,
                     },
                 }
             ],
@@ -235,13 +242,13 @@ class KubernetesPermissionBackend:
         )
         try:
             self.core_api.create_namespaced_service_account(
-                namespace=self.CONTROL_NAMESPACE, body=body
+                namespace=self.control_namespace, body=body
             )
         except ApiException as exc:
             if exc.status != 409:
                 raise
             self.core_api.replace_namespaced_service_account(
-                name=name, namespace=self.CONTROL_NAMESPACE, body=body
+                name=name, namespace=self.control_namespace, body=body
             )
 
     def _create_or_replace_role(self, name, rules, labels) -> None:
@@ -253,13 +260,13 @@ class KubernetesPermissionBackend:
         )
         try:
             self.rbac_api.create_namespaced_role(
-                namespace=self.APPLICATION_NAMESPACE, body=body
+                namespace=self.application_namespace, body=body
             )
         except ApiException as exc:
             if exc.status != 409:
                 raise
             self.rbac_api.replace_namespaced_role(
-                name=name, namespace=self.APPLICATION_NAMESPACE, body=body
+                name=name, namespace=self.application_namespace, body=body
             )
 
     def _create_or_replace_binding(self, name, role, service_account, labels) -> None:
@@ -275,19 +282,19 @@ class KubernetesPermissionBackend:
                 client.RbacV1Subject(
                     kind="ServiceAccount",
                     name=service_account,
-                    namespace=self.CONTROL_NAMESPACE,
+                    namespace=self.control_namespace,
                 )
             ],
         )
         try:
             self.rbac_api.create_namespaced_role_binding(
-                namespace=self.APPLICATION_NAMESPACE, body=body
+                namespace=self.application_namespace, body=body
             )
         except ApiException as exc:
             if exc.status != 409:
                 raise
             self.rbac_api.replace_namespaced_role_binding(
-                name=name, namespace=self.APPLICATION_NAMESPACE, body=body
+                name=name, namespace=self.application_namespace, body=body
             )
 
     def _create_or_replace_cluster_binding(
@@ -307,7 +314,7 @@ class KubernetesPermissionBackend:
                 client.RbacV1Subject(
                     kind="ServiceAccount",
                     name=service_account,
-                    namespace=self.CONTROL_NAMESPACE,
+                    namespace=self.control_namespace,
                 )
             ],
         )

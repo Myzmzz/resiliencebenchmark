@@ -19,6 +19,11 @@ from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 from .capability_policy import CapabilityPolicyDocument, CapabilityPolicyRegistry
 from .contracts import DisturbanceRecord, DisturbanceType
 from .platform_ledger import PlatformLedger
+from .target_binding import current as current_target_binding
+
+
+# The Controller stamps this label on every fault it creates.
+CHAOSBLADE_NAMESPACE_LABEL = "benchmark.namespace"
 
 
 class RuntimeAdapterError(RuntimeError):
@@ -41,6 +46,63 @@ class SubprocessRunner:
         )
 
 
+def _chaosblade_target_namespace(item: Mapping[str, Any]) -> str | None:
+    """The namespace a ChaosBlade CR aims at, from the platform label or its spec.
+
+    The Controller labels every experiment it creates with
+    ``benchmark.namespace``. An unlabelled CR is attributed through its first
+    experiment's ``namespace`` matcher, which is how ChaosBlade itself scopes
+    a Pod-level experiment. Returns ``None`` when neither is present.
+    """
+    metadata = item.get("metadata") if isinstance(item, Mapping) else None
+    labels = metadata.get("labels") if isinstance(metadata, Mapping) else None
+    if isinstance(labels, Mapping):
+        labelled = str(labels.get(CHAOSBLADE_NAMESPACE_LABEL) or "").strip()
+        if labelled:
+            return labelled
+    spec = item.get("spec") if isinstance(item, Mapping) else None
+    experiments = spec.get("experiments") if isinstance(spec, Mapping) else None
+    if isinstance(experiments, list):
+        for experiment in experiments:
+            matchers = experiment.get("matchers") if isinstance(experiment, Mapping) else None
+            if not isinstance(matchers, list):
+                continue
+            for matcher in matchers:
+                if not isinstance(matcher, Mapping) or str(matcher.get("name") or "") != "namespace":
+                    continue
+                values = matcher.get("value")
+                if isinstance(values, list) and values:
+                    return str(values[0]).strip() or None
+                if isinstance(values, str) and values.strip():
+                    return values.strip()
+    return None
+
+
+def _partition_chaosblade_inventory(
+    items: list[Any], namespace: str
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """Split a cluster-wide ChaosBlade inventory into own, foreign and unattributed.
+
+    Matching is exact equality, never a prefix test: ``otel-demo`` is a prefix
+    of ``otel-demo-01`` and a ``startswith`` would treat one replica's fault as
+    another's. An experiment with no discoverable target namespace stays in the
+    blocking set, so an unattributable leftover still fails the gate.
+    """
+    own: list[Any] = []
+    foreign: list[Any] = []
+    unattributed: list[Any] = []
+    for item in items:
+        target = _chaosblade_target_namespace(item) if isinstance(item, Mapping) else None
+        if target is None:
+            unattributed.append(item)
+            own.append(item)
+        elif target == namespace:
+            own.append(item)
+        else:
+            foreign.append(item)
+    return own, foreign, unattributed
+
+
 class KubernetesEnvironmentGate:
     """Read-only gate; the service never starts or scales the application load generator."""
 
@@ -50,8 +112,14 @@ class KubernetesEnvironmentGate:
 
     def qualify(self, episode) -> Mapping[str, Any]:
         namespace = episode.public.environment_snapshot.get("namespace", "")
-        if namespace != "otel-demo":
-            return {"qualified": False, "reason": "fixed Episode namespace is not otel-demo"}
+        bound_namespace = current_target_binding().application_namespace
+        # Exact equality only: ``otel-demo`` and ``otel-demo-01`` share a
+        # prefix, and a prefix match would mix a replica with the full system.
+        if namespace != bound_namespace:
+            return {
+                "qualified": False,
+                "reason": f"fixed Episode namespace is not {bound_namespace}",
+            }
         deployments = self._json(
             ["get", "deployments", "-n", namespace, "-o", "json"]
         )
@@ -70,17 +138,21 @@ class KubernetesEnvironmentGate:
         )
         load_desired = int(load.get("spec", {}).get("replicas") or 0) if load else 0
         load_ready = int(load.get("status", {}).get("readyReplicas") or 0) if load else 0
+        # ChaosBlade CRs are cluster-scoped, so the inventory is listed across
+        # namespaces and then attributed. Only experiments aimed at *this*
+        # replica may block it; a sibling replica's injection must not.
         chaos = self._json(
             ["get", "chaosblades.chaosblade.io", "-A", "-o", "json"]
         )
         chaos_items = chaos.get("items") if isinstance(chaos, dict) else None
         if not isinstance(chaos_items, list):
             raise RuntimeAdapterError("ChaosBlade inventory is invalid")
+        own, foreign, unattributed = _partition_chaosblade_inventory(chaos_items, namespace)
         qualified = (
             load_desired >= 1
             and load_ready >= 1
             and desired == ready
-            and len(chaos_items) == 0
+            and len(own) == 0
         )
         return {
             "qualified": qualified,
@@ -90,7 +162,12 @@ class KubernetesEnvironmentGate:
             "ready_replicas": ready,
             "built_in_load_generator_desired": load_desired,
             "built_in_load_generator_ready": load_ready,
-            "active_chaosblade_count": len(chaos_items),
+            "active_chaosblade_count": len(own),
+            "cluster_chaosblade_count": len(chaos_items),
+            "foreign_chaosblade_count": len(foreign),
+            "unattributed_chaosblade_names": [
+                str((item.get("metadata") or {}).get("name") or "") for item in unattributed
+            ],
             "reason": (
                 "ready"
                 if qualified

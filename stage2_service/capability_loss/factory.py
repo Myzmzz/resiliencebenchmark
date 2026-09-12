@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from stage2_service.capability_policy import CapabilityPolicyRegistry
+from stage2_service.target_binding import current as current_target_binding
 from stage2_service.platform_ledger import PlatformLedger
 
 from .precheck import CapabilityLossPrecheck, PrecheckResult
@@ -104,7 +105,7 @@ class CapabilityLossRuntimeFactory:
         if not isinstance(value, dict) or value.get("schema_version") != QUALIFICATION_SCHEMA:
             return None
         scope = _mapping(value.get("scope"))
-        if scope.get("application") != "otel-demo" or scope.get("namespace") != runtime_context.target.namespace:
+        if scope.get("application") != current_target_binding().application or scope.get("namespace") != runtime_context.target.namespace:
             return None
         issued = _time(scope.get("issued_at"))
         expires = _time(scope.get("expires_at"))

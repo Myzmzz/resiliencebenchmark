@@ -37,6 +37,7 @@ from .contracts import (
     default_case_specs,
 )
 from .platform_ledger import PlatformEvent
+from .target_binding import current as current_target_binding
 from .mcp_supervisor import McpSupervisorError
 from .runtime_factory import Stage2Components, Stage2System
 
@@ -266,9 +267,9 @@ class QualificationHarnessChannelSupervisor:
 class ChannelQualificationRunner:
     """Run one or more no-fault channel qualifications with production pieces."""
 
-    def __init__(self, system: Stage2System, *, namespace: str = "otel-demo") -> None:
+    def __init__(self, system: Stage2System, *, namespace: str | None = None) -> None:
         self.system = system
-        self.namespace = namespace
+        self.namespace = namespace or current_target_binding().application_namespace
 
     def run_all(
         self,
