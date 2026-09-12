@@ -18,3 +18,20 @@
 `tests/test_stage2_golden_replay.py` 已验证 Claude L1 的 100 对、L3 的 46 对、Codex L3 的 29 对、DeepSeek L3 的 35 对调用/结果闭合，以及 L4 的三次创建尝试。L4 原始流有三个独立 call ID，计划文字中的两次遗漏了第一次 selector 拒绝；不为贴合旧文字删掉真实尝试。DSH 含一次内置 exit_plan_mode 的文本错误，不强行改成 MCP 成功结果。
 
 源方案写“8 份”，其表格实际列 7 份；前述 DeepSeek 求助日志是另一独立资格运行。`synthetic_canonical_adapters/` 仍只用于协议边界单元测试，不冒充历史证据。
+
+## BladeAI 0.7.0 黑盒 SSE 夹具
+
+- 文件：`golden/bladeai_L0.sse`（原始 SSE 线格式）、`golden/bladeai_L0.recv.jsonl`（接收时刻侧车）。
+- 来源：评测机 `1.94.151.57` 的 `/root/bladeai-eval/runs/L0/events.jsonl`，会话 `sess_8a686003edf5`，
+  2026-09-11 16:26:32–17:20:26，模型 qwen3.8-max。只读既有记录，**未重新执行任何模型或故障注入**。
+- 裁剪：原 16,655 条裁到 582 条。结构类事件（confirm / tool_start / tool_end / result / done /
+  node_message / node_start / node_end / llm_start / usage / context_size）**一条不删**；
+  只对 `thinking` / `token` 逐字流抽样（前 12 条保留，其后每 400 条留 1 条），
+  保留首轮连续段以便重放时仍是真实的流式节奏。
+- 线格式事实：BladeAI 只发 `data:` 字段，**不发 `event:` 名**，事件种类在 JSON 体的 `type` 里；
+  行尾是 LF，帧间空行分隔。`tests/test_bladeai_http_replay.py` 按 997 字节乱切重放，
+  验证分帧不依赖网络分块边界。
+- 隐私：未经 `import_stage2_harness_fixtures.py` 脱敏（该程序针对 CLI 原生流），改为逐模式扫描核验：
+  私钥、JWT、`sk-`/`AKIA` 密钥、Bearer/Authorization、`client-certificate-data`、
+  password/secret/credential 均 **0 命中**；18 处 `kubeconfig` 全部是命令行参数与文件路径，非凭据内容。
+- 证据边界：这是**传输层**夹具，证明分帧与落盘完整，**不**代表适配器语义映射（WP-B）或确认桥（WP-C）已完成。
