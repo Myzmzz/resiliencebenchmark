@@ -111,13 +111,29 @@ MCP 八个服务不用单独装（由 stage2 Pod 内的 `McpSupervisor` 现起�
 （[runtime_adapters.py:75](../../stage2_service/runtime_adapters.py#L75)、
 `mcp_servers/chaos_core/backends/chaosblade.py`）。实测该 CRD **不存在**。
 
-所以：
+所以 **ChaosBlade 仍然必须装**，`bladechaos` 顶不了。
 
-- **ChaosBlade 仍然必须装**，`bladechaos` 顶不了；
-- **但两者都要在节点上执行 `blade`**。官方 ChaosBlade 的 tool DaemonSet 会往
-  `/opt/chaosblade` 放二进制并用 `/var/run/chaosblade.dat` 当账本；这个分支的
-  chaos-daemon 大概率也在做类似的事。**两套同时跑会不会互相干扰，装之前必须先问清楚这个分支怎么实现 `bladechaos`**，
-  这是原方案里没有的新风险。
+**至于两者会不会打架——查了，风险比一开始判断的小得多。**
+
+`chaos-daemon` 容器里 `/usr/local/bin` 的内容是：
+
+```
+cdh  chaos-daemon  memStress  nsexec  pause  toda  tproxy
+```
+
+全是 Chaos Mesh 自己的工具（`toda` 做 IO chaos、`tproxy` 做 HTTP chaos、
+`memStress` 做内存压力、`nsexec` 进命名空间）。**没有 `blade` 二进制，
+也没有 `/opt/chaosblade*` 目录。** 宿主挂载只有三处：`/var/run`、`/sys`、`/lib/modules`——
+**没挂 `/opt/chaosblade`**。
+
+结论：这个分支的 `bladechaos` **不自带 blade**，多半是要求 ChaosBlade 单独安装
+（chaosblade-operator 本来就是独立部署的）。**装官方 ChaosBlade 不会跟 chaos-daemon
+里的二进制撞车。**
+
+**唯一残留的重叠**：chaos-daemon 把整个 `/var/run` 挂进去了，而 ChaosBlade 的账本
+就在 `/var/run/chaosblade.dat`。装完之后**验一次两边互不干扰**即可，不必事先阻塞。
+
+（原来我把这条写成"装之前必须先问清楚"，那个判断过重了。）
 
 ### 4.5.3 业务流量**是有的**（先前的怀疑是误报）
 
@@ -156,8 +172,9 @@ state=running   用户=5   总 RPS=0.8
    23 个 `jvm*chaos`）。**D8 要的三类 CRD 全在、当前零活跃实验、daemon 3/3 就绪**（见 4.5.1），
    所以"沿用现有的"技术上可行。但仓库里 `deploy/chaos-mesh/values-old-cluster.yaml`
    是官方 2.7.3 的配置，对不上；而且**它很可能是 `aiops` 在用**。
-   **更要紧的是 4.5.2 那条**：它自带的 `bladechaos` 与我们要装的官方 ChaosBlade
-   都会在节点上跑 `blade`，会不会打架，装之前得问清这个分支怎么实现的。
+   **4.5.2 那条冲突风险已经查清并降级**：chaos-daemon 里没有 blade 二进制、
+   也没挂 `/opt/chaosblade`，装官方 ChaosBlade 不会撞车，装完验一次即可。
+   所以这一项现在只剩归属问题，不再是技术阻塞。
 2. **共享集群**：`aiops` 是别人的项目。`chaos-mesh`、`coroot`、`otel-demo` 是不是也归他们、
    我们能不能改，需要确认。**尤其 OTel Demo——如果它是别人在用的，我们注故障会影响他们。**
 3. **swap 三台全开着**。kubelet 默认要求关闭，但集群已经跑了 183 天，
