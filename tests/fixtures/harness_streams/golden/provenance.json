@@ -92,6 +92,28 @@
       "recompressed": false,
       "new_trial_executed": false,
       "note": "bladeai_L0.sse 的接收时刻侧车（评测机原 recv_ts，Unix 秒）。"
+    },
+    {
+      "name": "bladeai_upstream_auth_failure.events.jsonl",
+      "task_id": "sess_9c53cf0745a6",
+      "native_rows": 10,
+      "fixture_rows": 10,
+      "bytes": 2907,
+      "redacted": false,
+      "recompressed": false,
+      "new_trial_executed": true,
+      "note": "WP-A.2 口径 9 专门构造采集的「上游模型错误」真样本：无效 API key 打真网关（LiteLLM 回 400 No connected db.）。2026-09-12 在 1.94.151.57 的独占服务实例上跑一个只读问题，不碰集群、未注入任何故障。价值在于证明：上游失败时**不产生 error 事件**，终态是 done、returncode 0、仅 7 条事件，从平台视角是一次「正常完成」。扫描核验不含凭据（私钥/JWT/sk-/Bearer 均 0 命中）。"
+    },
+    {
+      "name": "bladeai_upstream_conn_failure.events.jsonl",
+      "task_id": "sess_7d21f06bfc27",
+      "native_rows": 10,
+      "fixture_rows": 10,
+      "bytes": 2909,
+      "redacted": false,
+      "recompressed": false,
+      "new_trial_executed": true,
+      "note": "WP-A.2 口径 9 专门构造采集的「上游模型错误」真样本：网关地址指向不可达端口（OpenAIConnectionError）。2026-09-12 在 1.94.151.57 的独占服务实例上跑一个只读问题，不碰集群、未注入任何故障。价值在于证明：上游失败时**不产生 error 事件**，终态是 done、returncode 0、仅 7 条事件，从平台视角是一次「正常完成」。扫描核验不含凭据（私钥/JWT/sk-/Bearer 均 0 命中）。"
     }
   ]
 }

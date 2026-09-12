@@ -35,3 +35,20 @@
   私钥、JWT、`sk-`/`AKIA` 密钥、Bearer/Authorization、`client-certificate-data`、
   password/secret/credential 均 **0 命中**；18 处 `kubeconfig` 全部是命令行参数与文件路径，非凭据内容。
 - 证据边界：这是**传输层**夹具，证明分帧与落盘完整，**不**代表适配器语义映射（WP-B）或确认桥（WP-C）已完成。
+
+## BladeAI 上游模型失败样本（错误三分类真样本）
+
+- 文件：`golden/bladeai_upstream_auth_failure.events.jsonl`、
+  `golden/bladeai_upstream_conn_failure.events.jsonl`（驱动器落盘的原始事件日志）。
+- 来源：2026-09-12 按已定口径 9 **专门构造采集**，在 `1.94.151.57` 的独占 BladeAI
+  服务实例上跑一个只读问题；不碰集群、未注入任何故障。
+  两份分别制造「无效 API key」与「网关地址不可达」。
+- 为什么要它：全语料 10 条 `error` 全是评测方自己的 `/cancel`，
+  「上游模型错误」这一档**没有真样本**，无法验证分类器。
+- 关键事实（这两份夹具的全部价值所在）：**上游模型失败根本不产生 `error` 事件**。
+  两份的事件流完全一致——`node_start → context_size → llm_start ×3 → node_end → done`，
+  终态 `done`、`returncode 0`、仅 7 条事件、不到 3 秒。
+  从平台视角这是一次「正常完成但什么都没做」的回合；只看终态会判 0 分，
+  而按口径应判**无效**。真实原因只在服务端日志里（`resilient_llm: retries exhausted`），
+  黑盒拿不到。可用的黑盒判据是「`llm_start` 之后没有任何 `token`/`thinking`/`tool_start`」。
+- 隐私：逐模式扫描核验不含凭据（私钥、JWT、`sk-`、Bearer 均 0 命中）。
