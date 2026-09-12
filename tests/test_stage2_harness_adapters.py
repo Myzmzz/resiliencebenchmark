@@ -30,7 +30,10 @@ def test_factory_exports_four_harnesses_without_claiming_qualification():
         HarnessKind.CODEX: "stream",
         HarnessKind.CLAUDE_CODE: "stream",
         HarnessKind.DEEPSEEK: "post_hoc",
-        HarnessKind.BLADEAI: "controller_driven",
+        # Black-box BladeAI streams its own SSE events exactly as codex
+        # streams JSONL; it is no longer driven in-process by us replacing
+        # its private functions.
+        HarnessKind.BLADEAI: "stream",
     }
 
     for kind, execution_model in expected.items():
@@ -566,32 +569,22 @@ def test_deepseek_result_without_tool_call_remains_unclosed_evidence(tmp_path: P
     assert events[0].call_id == "missing-call"
 
 
-def test_bladeai_preserves_steps_without_inventing_tool_calls():
+def test_bladeai_node_lifecycle_does_not_invent_tool_calls():
+    """BladeAI's node lifecycle is structure, not tool use.
+
+    Same intent as the pre-black-box version of this test, restated against the
+    real 0.7.0 event vocabulary: the old ``stage2_bladeai_event`` envelope was
+    minted by our own in-process worker and no longer exists.
+    """
     adapter = create_adapter(HarnessKind.BLADEAI)
 
-    calls = adapter.on_stream_line(
-        _line(
-            {
-                "type": "stage2_bladeai_event",
-                "kind": "step_start",
-                "payload": {"name": "planning", "attrs": {"phase": "C1"}},
-            }
-        )
+    started = adapter.on_stream_line(
+        _line({"type": "node_start", "node": "execute_loop", "task_id": "turn-1"})
     )
-    results = adapter.on_stream_line(
-        _line(
-            {
-                "type": "stage2_bladeai_event",
-                "kind": "step_end",
-                "payload": {"name": "planning", "attrs": {"phase": "C1"}},
-            }
-        )
+    ended = adapter.on_stream_line(
+        _line({"type": "node_end", "node": "execute_loop", "task_id": "turn-1"})
     )
 
-    assert len(calls) == 1
-    assert isinstance(calls[0], Checkpoint)
-    assert calls[0].values["event"] == "step_start"
-    assert len(results) == 1
-    assert isinstance(results[0], Checkpoint)
-    assert results[0].values["event"] == "step_end"
+    assert started == []
+    assert ended == []
     assert adapter.open_calls() == []

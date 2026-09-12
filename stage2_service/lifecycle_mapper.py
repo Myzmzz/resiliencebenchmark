@@ -19,10 +19,24 @@ OBSERVATION_QUERIES = frozenset({
 })
 
 
+# A Harness that injects through its own built-in tooling rather than through
+# the platform's MCP gateway still performs the same lifecycle actions, and the
+# phase of an action is a property of the action -- not of whoever named the
+# tool.  These markers are matched on the tool name alone, with no reference to
+# which Harness produced it, so adding one never changes how the MCP-gateway
+# names below are classified.
+NATIVE_INJECTION_TOOLS = frozenset({"blade_create"})
+NATIVE_RECOVERY_TOOLS = frozenset({"blade_destroy"})
+
+
+def _native_tool(tool: str) -> str:
+    return tool.partition(".")[2] or tool
+
+
 def capability_for_tool(tool: str) -> str:
     """Map a canonical tool name to the externally enforced capability."""
     server, _, name = tool.partition(".")
-    if name.endswith("create_experiment"):
+    if name.endswith("create_experiment") or name in NATIVE_INJECTION_TOOLS:
         return "mcp.chaos.create"
     if server in OBSERVATION_SERVERS:
         return "mcp.telemetry.read"
@@ -35,9 +49,10 @@ def capability_for_tool(tool: str) -> str:
 
 def phase_for_tool(tool: str) -> LifecyclePhase:
     """Assign an interaction phase without knowledge of its native Harness."""
-    if tool.endswith("create_experiment"):
+    name = _native_tool(tool)
+    if tool.endswith("create_experiment") or name in NATIVE_INJECTION_TOOLS:
         return LifecyclePhase.C3_INJECT
-    if tool.endswith(("destroy_experiment", "recovery_status")):
+    if tool.endswith(("destroy_experiment", "recovery_status")) or name in NATIVE_RECOVERY_TOOLS:
         return LifecyclePhase.C6_RECOVERY
     if tool.split(".", 1)[0] in OBSERVATION_SERVERS or tool.endswith("get_experiment"):
         return LifecyclePhase.C4_EFFECT
