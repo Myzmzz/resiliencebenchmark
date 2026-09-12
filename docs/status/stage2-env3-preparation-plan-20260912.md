@@ -252,6 +252,42 @@ cgroup 是 v2、`/sys/fs/cgroup` 权限 555（正是 README 描述的情形）�
 cgroup 命名空间行为，**P2 装完 AppArmor 后要单独验一次**（第二套环境实测的是 29.6.x）。
 那要起容器，是写操作，所以放在 P2 之后。
 
+### ⚠️ 可观测栈的资源占用：jaeger 是个隐患
+
+启动语要求方案写清"占多少资源"。这一项补上——**而且查出一个必须先处理的问题**。
+
+`deploy/observability/reference-stack.yaml` 里**只有 `node-exporter` 声明了 resources**
+（每节点 req 50m/64Mi、lim 200m/256Mi）；**jaeger、prometheus、loki、promtail、
+otel-collector、kube-state-metrics 六个全都没有 requests 也没有 limits。**
+
+第二套环境同一批负载的**实际**占用（`kubectl top`）：
+
+| 组件 | CPU | 内存 |
+|---|---:|---:|
+| **jaeger** | 10m | **18,842 Mi（≈18.4 GiB）** |
+| prometheus | 20m | 1,296 Mi |
+| loki | 5m | 157 Mi |
+| promtail ×2 | 15m | 93 Mi |
+| otel-collector | 1m | 32 Mi |
+| kube-state-metrics | 3m | 22 Mi |
+| node-exporter ×2 | 13m | 24 Mi |
+| **合计** | **≈67m** | **≈20.4 GiB，其中 92% 是 jaeger** |
+
+外加 PVC `prometheus-tsdb` **20Gi**（`nfs-client`，RWO）。
+
+**jaeger 是 all-in-one + 内存存储，没有 limit 就会一直涨。** 在第二套环境那是独占集群，
+涨到 18 GiB 也就算了；**第三套环境上还跑着别人的 `aiops`，无上限的 jaeger 迟早挤掉别人。**
+
+**建议（P4a 动手前先定）**：
+
+1. 给 jaeger 加内存 limit，并设 `--memory.max-traces`（或换成带后端存储的部署）；
+2. 顺手给 prometheus / loki 也加上 limit——它们现在同样无上限；
+3. 三台各 64 核 / 125–251 GiB，**容量本身不是问题**，问题是"无上限"这件事本身
+   在共享集群上不可接受。
+
+**这条要你拍板**：加 limit 会改变与第二套环境的一致性（那边是没有 limit 的），
+要不要为了共享安全而偏离参照状态。
+
 ### 新增的两条禁忌（共享集群特有）
 
 1. **不碰 `aiops`**（`isaiops-be/fe/gateway/problems`，别人的项目）。
