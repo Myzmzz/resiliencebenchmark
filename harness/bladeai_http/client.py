@@ -34,7 +34,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -153,7 +153,7 @@ class EventLog:
     def record_driver(self, action: str, detail: Mapping[str, Any] | None = None) -> dict[str, Any]:
         return self._write({
             "kind": "driver",
-            "received_at": datetime.now(UTC).isoformat(),
+            "received_at": datetime.now(timezone.utc).isoformat(),
             "action": action,
             "detail": dict(detail or {}),
         })
@@ -209,7 +209,7 @@ class BladeAIHttpClient:
             return time.monotonic() - self._last_event_monotonic
 
     def _mark_event(self) -> datetime:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         with self._state_lock:
             self._last_event_at = now
             self._last_event_monotonic = time.monotonic()
