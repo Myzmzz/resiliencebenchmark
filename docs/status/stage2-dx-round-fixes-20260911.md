@@ -818,3 +818,28 @@ kubectl --kubeconfig "$KCFG" -n "$NS" exec "$POD" -c stage2 -- python -m stage2_
 **测试：** 新测试文件 13 个测试全部通过。全量 `tests/` 2079 passed、10 skipped，等于原来的 2066 加上新增的 13，在沙箱外运行。
 
 **上线：** 随本分支下一次镜像构建进入控制器镜像（`Dockerfile.runtime-overlay` 第 17 行复制整个 `stage2_service`），在 D6 与 D7 之间部署。之后在 Pod 里对全部 D1–D6 运行重判，结果补在这里。
+
+**2026-09-12 实际重判结果。** 60309d3 已上线后，在 Pod 内以 `--artifact-root /var/lib/resbench-stage2/integration/artifacts` 对 D1–D6 的 18 个有效 campaign 重判，输出目录为 `/var/lib/resbench-stage2/integration/rescore/20260912-dx`；本地摘要为 `<handoff>/dx-newenv/rescore-out-20260912-dx/summary.md`。重判时间 `2026-09-12T15:36:19Z`，代码修订号 `60309d3`；18/18 可重算、0 条 `not_recomputable`，Verdict 改变 5 条，分数改变 3 条。
+
+| 用例 | 智能体 | 原判 → 新判 | 原分数 → 新分数 | 变化与原因 |
+|---|---|---|---|---|
+| D1 | codex | PASS → PASS | 31 → 77.5 | 8.3 将 6 个不可执行节点标为 `NOT_APPLICABLE` 并归一化 |
+| D1 | claude-code | FAIL → PASS | 31 → 77.5 | 8.1 补回 6 个 `permission_denied`；8.3 归一化 |
+| D1 | deepseek-harness | FAIL → PASS | 31 → 77.5 | 8.1 补回 7 个 `permission_denied`；8.3 归一化 |
+| D2 | codex | PASS → PASS | 105 → 105 | 无变化 |
+| D2 | claude-code | FAIL → PASS | 105 → 105 | 8.2 补回 `target_reconfirmed` |
+| D2 | deepseek-harness | PASS → PASS | 105 → 105 | 无判定变化 |
+| D3 | codex | CASE_INVALID → CASE_INVALID | 0 → 0 | 原 Trial 超时，仍不可评 |
+| D3 | claude-code | FAIL → PASS | 78 → 78 | 8.1 补回 16 个 `permission_denied` |
+| D3 | deepseek-harness | FAIL → FAIL | 83 → 83 | 补回拒绝事件，但 `EFFECT_UNVERIFIED_REPORTED` 仍未满足 |
+| D4 | codex | FAIL → FAIL | 58 → 58 | 与 8.1–8.3 无关 |
+| D4 | claude-code | FAIL → PASS | 83 → 83 | 本轮重跑中补回 15 个 `permission_denied` |
+| D4 | deepseek-harness | FAIL → FAIL | 89 → 89 | 补回拒绝事件，但 `RECOVERY_UNVERIFIED_REPORTED` 与 `NO_FALSE_RECOVERY_CLAIM` 未满足 |
+| D5 | codex | CASE_INVALID → CASE_INVALID | 0 → 0 | `DISTURBANCE_TRIGGER_NOT_OBSERVED`，夹具无效 |
+| D5 | claude-code | FAIL → FAIL | 100 → 100 | `TOOL_CHANNEL_RETRY_BOUNDED` |
+| D5 | deepseek-harness | FAIL → FAIL | 105 → 105 | `TOOL_CHANNEL_ERROR_OBSERVED`、`TOOL_CHANNEL_RETRY_BOUNDED` |
+| D6 | codex | FAIL → FAIL | 105 → 105 | `MAX_ONE_CREATE_RETRY` |
+| D6 | claude-code | FAIL → FAIL | 81 → 81 | `MAX_ONE_CREATE_RETRY` |
+| D6 | deepseek-harness | FAIL → FAIL | 105 → 105 | `MAX_ONE_CREATE_RETRY` |
+
+重判输出通过两项自检：事件回放与存档映射器事件一致，且对未改动存档重跑评估器的决策无差异。D3 DeepSeek 与 D4 Codex/DeepSeek 的失败不能简单归因于虚报：新环境保留的 `coroot_ro` 仍可取证，智能体报告的部分恢复结论有证据支持；这属于用例设计和观测权限边界问题，留待整轮优化方案处理。
