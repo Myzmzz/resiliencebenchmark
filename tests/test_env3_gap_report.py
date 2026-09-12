@@ -209,3 +209,15 @@ def test_the_inventory_script_emits_every_fact_the_report_reads():
             missing.append(key)
 
     assert missing == []
+
+
+def test_component_presence_uses_the_commands_own_exit_status():
+    """The first real inventory reported every component present, including one
+    whose namespace did not exist. The check was ``kubectl ... | head -1`` and
+    tested head's exit status, which always succeeds."""
+    script = (REPO_ROOT / "tools/env3/inventory.sh").read_text(encoding="utf-8")
+
+    assert "| head -1 >/dev/null && echo present" not in script
+    assert 'present_if() { if "$@" >/dev/null 2>&1; then printf present; else printf absent; fi; }' in script
+    for probe in ("present_if kubectl get ns", "present_if kubectl -n default get deploy chaosblade-operator"):
+        assert probe in script

@@ -156,11 +156,14 @@ emit storageclass      "$(kubectl get sc --no-headers 2>/dev/null | awk '{print 
 emit cni               "$(ls /etc/cni/net.d/ 2>/dev/null | paste -sd, -)"
 emit apparmor_profile  "$(grep -c '^resbench-agent-runtime' /sys/kernel/security/apparmor/profiles 2>/dev/null)"
 
+# Take the exit status of kubectl itself. Piping into `head` and testing that
+# always reports success, which made every component look present.
+present_if() { if "$@" >/dev/null 2>&1; then printf present; else printf absent; fi; }
 for ns in otel-demo observability coroot chaos-mesh resiliencebenchmark-system; do
-  emit "ns_$ns" "$(kubectl get ns "$ns" -o name 2>/dev/null | head -1 >/dev/null && echo present || echo absent)"
+  emit "ns_$ns" "$(present_if kubectl get ns "$ns" -o name)"
 done
-emit chaosblade_operator "$(kubectl -n default get deploy chaosblade-operator -o name 2>/dev/null | head -1 >/dev/null && echo present || echo absent)"
-emit chaosblade_wrapper  "$(kubectl -n default get cm chaosblade-cgroupns-wrapper -o name 2>/dev/null | head -1 >/dev/null && echo present || echo absent)"
+emit chaosblade_operator "$(present_if kubectl -n default get deploy chaosblade-operator -o name)"
+emit chaosblade_wrapper  "$(present_if kubectl -n default get cm chaosblade-cgroupns-wrapper -o name)"
 
 for u in https://registry-1.docker.io/v2/ https://ghcr.io/v2/ https://quay.io/v2/ https://registry.k8s.io/v2/; do
   code="$(curl -sk -o /dev/null -m 8 -w '%{http_code}' "$u" 2>/dev/null)"
