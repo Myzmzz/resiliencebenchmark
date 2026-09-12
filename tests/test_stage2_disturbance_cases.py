@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from stage2_service.contracts import (
+    DisturbanceRecord,
     DisturbanceType,
     HarnessKind,
     LifecycleEvent,
@@ -13,7 +15,7 @@ from stage2_service.contracts import (
     PermissionProfile,
     TrialKind,
 )
-from stage2_service.capability_policy import CapabilityPolicyRegistry
+from stage2_service.capability_policy import CapabilityPolicyDocument, CapabilityPolicyRegistry
 from stage2_service.disturbance import RuntimeDisturbancePlanner
 from stage2_service.runtime_adapters import (
     CompositeDisturbanceExecutor,
@@ -23,6 +25,20 @@ from stage2_service.runtime_adapters import (
 
 
 TRIAL_ID = "campaign-1234567890abcdef-codex-d1-4"
+ORIGINAL_TOKENS = {
+    "k8s_ro": "k" * 48,
+    "telemetry_ro": "t" * 48,
+    "chaos_control": "c" * 48,
+    "source_ro": "s" * 48,
+}
+# The persisted attempt of the 2026-09-11 L0 x D1 run whose rollback raised
+# ``TypeError: 'bool' object is not iterable`` (copied verbatim; no secrets).
+INCIDENT_D1_ATTEMPT = (
+    Path(__file__).parent
+    / "fixtures"
+    / "stage2_disturbance"
+    / "d1-rollback-failed-attempt-20260911.json"
+)
 
 
 def event(kind: str, phase: LifecyclePhase, **payload):
@@ -52,18 +68,15 @@ def _policy(tmp_path: Path):
 
 def _tokens(tmp_path: Path, policy: CapabilityPolicyRegistry | None = None):
     registry = McpTokenStateRegistry(tmp_path / "tokens")
-    registry.initialize(
-        TRIAL_ID,
-        {
-            "k8s_ro": "k" * 48,
-            "telemetry_ro": "t" * 48,
-            "chaos_control": "c" * 48,
-            "source_ro": "s" * 48,
-        },
-    )
+    registry.initialize(TRIAL_ID, ORIGINAL_TOKENS)
     if policy is not None:
         registry.register_policy_root(TRIAL_ID, policy.root)
     return registry
+
+
+def _token_on_disk(registry: McpTokenStateRegistry, trial_id: str, server: str) -> str:
+    """Return the token file content an MCP server currently authenticates against."""
+    return (registry.root / trial_id / f"{server}.token").read_text(encoding="utf-8")
 
 
 def test_case_planner_maps_only_dynamic_cases_to_runtime_disturbances():
@@ -360,3 +373,223 @@ def test_d6_uses_explicit_variant_from_event_payload_not_trial_id(tmp_path: Path
         .value
         == "D6-B"
     )
+
+
+# --- Rollback regressions: rollback must read exactly what apply() recorded ---
+
+
+def test_d1_rollback_restores_the_recorded_2026_09_11_incident_record(tmp_path: Path):
+    """Replay the persisted L0 x D1 attempt whose rollback raised TypeError.
+
+    ``application_evidence.revoked`` is the token registry's boolean (not the
+    D3/D4 list of revocations) and the policy snapshot is the provisioned
+    sequence-1 document, both exactly as recorded on 2026-09-11.
+    """
+    attempt = json.loads(INCIDENT_D1_ATTEMPT.read_text(encoding="utf-8"))
+    trial_id = attempt["trial_id"]
+    recorded_evidence = attempt["application_evidence"]
+    recorded_snapshot = recorded_evidence["policy"]["snapshot"]
+    assert recorded_evidence["revoked"] is True
+    # Rebuild the Controller state the rollback ran against: the provisioned
+    # policy and tokens for the recorded servers, then the same D1 revocation.
+    policy = CapabilityPolicyRegistry(tmp_path / "policy")
+    policy.initialize(
+        trial_id,
+        PermissionProfile(
+            profile_id="p0-full-authorized",
+            mcp_servers=tuple(recorded_snapshot["servers"]),
+        ),
+        source=recorded_snapshot["source"],
+    )
+    original_tokens = {
+        server: f"{server}-original-token-".ljust(48, "x")
+        for server in recorded_snapshot["servers"]
+    }
+    tokens = McpTokenStateRegistry(tmp_path / "tokens")
+    tokens.initialize(trial_id, original_tokens)
+    tokens.register_policy_root(trial_id, policy.root)
+    planned = RuntimeDisturbancePlanner().plan(
+        TrialKind.CHAOS_PERMISSION_REVOKED,
+        event("plan_validated", LifecyclePhase.C2_TARGET),
+    )
+    assert planned is not None
+    plan = planned.model_copy(
+        update={
+            "trial_id": trial_id,
+            "disturbance_id": attempt["disturbance_id"],
+            "trigger_event_id": attempt["trigger_event_id"],
+        }
+    )
+    assert (plan.type.value, plan.backend) == (
+        attempt["disturbance_type"],
+        attempt["backend"],
+    )
+    executor = CompositeDisturbanceExecutor(
+        kubernetes_client=NoKubernetes(),
+        mcp_tokens=tokens,
+    )
+    applied = executor.apply(plan)
+    # Today's apply() still produces exactly the recorded evidence shape.
+    assert applied.application_evidence.keys() == recorded_evidence.keys()
+    assert applied.application_evidence["policy"].keys() == recorded_evidence["policy"].keys()
+    assert (
+        applied.application_evidence["policy"]["sequence"]
+        == recorded_evidence["policy"]["sequence"]
+    )
+    assert (
+        policy.snapshot().tool_policy("chaos_control", "chaos_create_experiment").state
+        == "disabled"
+    )
+    assert _token_on_disk(tokens, trial_id, "chaos_control") != original_tokens["chaos_control"]
+
+    restored = executor.rollback(
+        DisturbanceRecord(
+            plan=plan,
+            applied=attempt["applied"],
+            application_evidence=recorded_evidence,
+        )
+    )
+
+    assert restored.rolled_back is True
+    assert restored.rollback_evidence == {
+        "restored": [
+            {"server": "chaos_control", "capability": "mcp.chaos.create", "verified": True}
+        ],
+        "policy": {
+            "sequence": recorded_evidence["policy"]["sequence"] + 1,
+            "restored": True,
+        },
+        "verified": True,
+    }
+    live_policy = policy.snapshot()
+    assert live_policy.servers == CapabilityPolicyDocument(**recorded_snapshot).servers
+    assert live_policy.tool_policy("chaos_control", "chaos_create_experiment") is None
+    assert _token_on_disk(tokens, trial_id, "chaos_control") == original_tokens["chaos_control"]
+
+
+@pytest.mark.parametrize(
+    ("trial_kind", "trigger_kind", "trigger_phase"),
+    [
+        (TrialKind.CHAOS_PERMISSION_REVOKED, "plan_validated", LifecyclePhase.C2_TARGET),
+        (TrialKind.EFFECT_OBSERVABILITY_REVOKED, "main_fault_running", LifecyclePhase.C3_INJECT),
+        (TrialKind.RECOVERY_OBSERVABILITY_REVOKED, "recovery_accepted", LifecyclePhase.C6_RECOVERY),
+    ],
+    ids=["D1", "D3", "D4"],
+)
+def test_mcp_policy_rollback_accepts_the_evidence_its_apply_persisted(
+    tmp_path: Path,
+    trial_kind: TrialKind,
+    trigger_kind: str,
+    trigger_phase: LifecyclePhase,
+):
+    """apply() -> JSON persistence -> rollback() on a fresh executor restores all."""
+    policy = _policy(tmp_path)
+    provisioned = policy.snapshot()
+    registry = _tokens(tmp_path, policy)
+    plan = RuntimeDisturbancePlanner().plan(trial_kind, event(trigger_kind, trigger_phase))
+    assert plan is not None
+    applied = CompositeDisturbanceExecutor(
+        kubernetes_client=NoKubernetes(),
+        mcp_tokens=registry,
+    ).apply(plan)
+    rotated_servers = {
+        server
+        for server, token in ORIGINAL_TOKENS.items()
+        if _token_on_disk(registry, TRIAL_ID, server) != token
+    }
+    assert rotated_servers
+    assert policy.snapshot().servers != provisioned.servers
+    persisted = DisturbanceRecord.model_validate_json(applied.model_dump_json())
+
+    restored = CompositeDisturbanceExecutor(
+        kubernetes_client=NoKubernetes(),
+        mcp_tokens=registry,
+    ).rollback(persisted)
+
+    assert restored.rolled_back is True
+    assert restored.rollback_evidence["verified"] is True
+    assert {item["server"] for item in restored.rollback_evidence["restored"]} == rotated_servers
+    assert all(item["verified"] is True for item in restored.rollback_evidence["restored"])
+    assert restored.rollback_evidence["policy"] == {
+        "sequence": policy.snapshot().sequence,
+        "restored": True,
+    }
+    assert policy.snapshot().servers == provisioned.servers
+    for server, token in ORIGINAL_TOKENS.items():
+        assert _token_on_disk(registry, TRIAL_ID, server) == token
+
+
+def test_d1_rollback_rejects_evidence_without_snapshot_before_restoring_anything(
+    tmp_path: Path,
+):
+    """Evidence is decoded before any write, so a bad record cannot half-restore."""
+    policy = _policy(tmp_path)
+    registry = _tokens(tmp_path, policy)
+    plan = RuntimeDisturbancePlanner().plan(
+        TrialKind.CHAOS_PERMISSION_REVOKED,
+        event("plan_validated", LifecyclePhase.C2_TARGET),
+    )
+    assert plan is not None
+    executor = CompositeDisturbanceExecutor(
+        kubernetes_client=NoKubernetes(),
+        mcp_tokens=registry,
+    )
+    applied = executor.apply(plan)
+    evidence = dict(applied.application_evidence)
+    evidence["policy"] = {
+        key: value for key, value in evidence["policy"].items() if key != "snapshot"
+    }
+    revoked_sequence = policy.snapshot().sequence
+
+    with pytest.raises(RuntimeAdapterError, match="snapshot is missing"):
+        executor.rollback(applied.model_copy(update={"application_evidence": evidence}))
+
+    assert _token_on_disk(registry, TRIAL_ID, "chaos_control") != ORIGINAL_TOKENS["chaos_control"]
+    assert policy.snapshot().sequence == revoked_sequence
+
+
+def test_target_change_rollback_defers_to_environment_reset(tmp_path: Path):
+    """D2 rollback reads no apply evidence: the replacement Pod is the new baseline."""
+    plan = RuntimeDisturbancePlanner().plan(
+        TrialKind.TARGET_CHANGE,
+        event(
+            "target_bound",
+            LifecyclePhase.C2_TARGET,
+            target={"namespace": "otel-demo", "name": "cart-old", "uid": "uid-old"},
+        ),
+    )
+    assert plan is not None
+    executor = CompositeDisturbanceExecutor(
+        kubernetes_client=ReplacingKubernetes(),
+        mcp_tokens=McpTokenStateRegistry(tmp_path / "tokens"),
+        target_rebinder=Rebinder(),
+    )
+    applied = executor.apply(plan)
+
+    rolled_back = executor.rollback(
+        DisturbanceRecord.model_validate_json(applied.model_dump_json())
+    )
+
+    assert rolled_back.rolled_back is False
+    assert rolled_back.rollback_evidence == {"deferred_to_environment_reset": True}
+    assert rolled_back.application_evidence == applied.application_evidence
+
+
+def test_d6_rollback_returns_the_record_reconciled_at_apply(tmp_path: Path):
+    """D6 is reconciled when applied; rollback must not rewrite that evidence."""
+    policy = _policy(tmp_path)
+    plan = RuntimeDisturbancePlanner().plan(
+        TrialKind.OPERATION_OUTCOME_UNCERTAIN,
+        event("main_fault_requested", LifecyclePhase.C3_INJECT, case_variant="D6-B"),
+    )
+    assert plan is not None
+    executor = CompositeDisturbanceExecutor(
+        kubernetes_client=NoKubernetes(),
+        mcp_tokens=McpTokenStateRegistry(tmp_path / "tokens"),
+        mcp_supervisor=UncertaintyStatus(),
+        policy_registry=policy,
+    )
+    applied = executor.apply(plan)
+
+    assert applied.rolled_back is True
+    assert executor.rollback(applied) == applied

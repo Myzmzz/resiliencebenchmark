@@ -8,8 +8,10 @@ import sys
 
 import pytest
 
+from mcp_servers.http_runtime import TOOL_DISABLED_RESPONSE
 from stage2_service.capability_preflight import harness_capabilities_from_qualification
-from stage2_service.capability_qualification import publish_capabilities
+from stage2_service.capability_qualification import SUBSTITUTION_QUALIFICATION_TYPE, publish_capabilities
+from stage2_service.channel_qualification import CHANNEL_QUALIFICATION_MODE, EXPECTED_HINT_BODY, SUBSTITUTION_CHECKS
 from stage2_service.gateway_config import GatewayConfigSnapshot
 
 
@@ -72,6 +74,69 @@ def qualification(tmp_path: Path, harness: str = "codex", *, replayed: bool = Fa
         "artifact_refs": [f"{harness}/gateway-requests.json", f"{harness}/canonical-events.jsonl"],
     }
     path = tmp_path / f"base-{harness}.json"
+    path.write_text(json.dumps(record))
+    return path
+
+
+def substitution_qualification(tmp_path: Path, harness: str = "codex", *, replayed: bool = False) -> Path:
+    """Write a passed WP11 substitution record whose own Trial archive matches it."""
+    root = tmp_path / "artifacts"
+    archive = root / f"{harness}-substitution"
+    archive.mkdir(parents=True)
+    trial = f"campaign-substitution-{harness}"
+    snapshot = gateway(tmp_path)
+    version = snapshot.config_sha256
+    (archive / "gateway-requests.json").write_text(json.dumps([{
+        "trial_id": trial, "harness": harness, "model_alias": "gpt-5.5",
+        "gateway_config_sha256": version, "request_id": "request-2", "outcome": "received",
+    }]))
+    steps = [
+        ("telemetry_ro.telemetry_prom_metric_range", "failed", TOOL_DISABLED_RESPONSE),
+        ("harness_channel.harness_consult", "completed", EXPECTED_HINT_BODY),
+        ("coroot_ro.coroot_metrics_range", "completed", {"ok": True, "data": []}),
+        ("code_sandbox.run_python", "completed", {"ok": True, "stdout": "4\n", "exit_code": 0, "truncated": False}),
+        ("harness_channel.harness_poll_notices", "completed", {"ok": True}),
+        ("harness_channel.harness_submit_result", "completed", {"ok": True, "valid": True}),
+    ]
+    events, exchanges = [], []
+    for source in ("native", "mcp_server"):
+        for index, (tool, status, payload) in enumerate(steps):
+            call_id = f"{source}-{index}"
+            mode = replayed if source == "native" else False
+            events.extend([
+                {"event_type": "ToolCall", "source": source, "replayed": mode, "call_id": call_id, "tool": tool},
+                {"event_type": "ToolResult", "source": source, "replayed": mode, "call_id": call_id,
+                 "status": status, "payload": payload},
+            ])
+            if source == "mcp_server":
+                exchanges.append({"call_sequence": 10 * index + 1, "result_sequence": 10 * index + 3,
+                                  "call_id": call_id, "tool": tool, "arguments": {},
+                                  "status": status, "payload": payload})
+    (archive / "canonical-events.jsonl").write_text("".join(json.dumps(row) + "\n" for row in events))
+    sandbox = next(item for item in exchanges if item["tool"] == "code_sandbox.run_python")
+    record = {
+        "schema_version": "stage2-channel-qualification.v1",
+        "qualification_type": CHANNEL_QUALIFICATION_MODE,
+        "qualification_profile": CHANNEL_QUALIFICATION_MODE,
+        "harness": harness, "model": "gpt-5.5", "trial_id": trial,
+        "status": "passed", "passed": True, "failure_reasons": [], "cleanup_errors": [],
+        "harness_report_status": "completed", "scored_as_d7": False,
+        "telemetry_denial_body": TOOL_DISABLED_RESPONSE, "hint_body": EXPECTED_HINT_BODY,
+        "substitution_checks": {key: True for key in SUBSTITUTION_CHECKS},
+        "observed_capability_evidence": {"sandbox_run": {
+            "call_id": sandbox["call_id"], "call_sequence": sandbox["call_sequence"],
+            "result_sequence": sandbox["result_sequence"], "ledger_sequence": sandbox["call_sequence"] + 1,
+            "status": "completed", "exit_code": 0, "truncated": False, "code_sha256": "b" * 64,
+        }},
+        "ordered_exchanges": exchanges,
+        "gateway_route": snapshot.route("gpt-5.5"),
+        "gateway_config_sha256": version,
+        "gateway_sidecar_evidence": {"verified": True, "request_ids": ["request-2"],
+                                     "artifact_ref": "gateway-requests.json"},
+        "artifact_refs": [f"{harness}-substitution/gateway-requests.json",
+                          f"{harness}-substitution/canonical-events.jsonl"],
+    }
+    path = tmp_path / f"substitution-{harness}.json"
     path.write_text(json.dumps(record))
     return path
 
@@ -205,3 +270,125 @@ def test_publisher_is_in_controller_image_and_build_inputs():
     path = "scripts/publish_harness_capabilities.py"
     assert f"COPY --chown=10001:10001 {path} /app/{path}" in (root / "deploy/stage2/Dockerfile.runtime-overlay").read_text()
     assert f'REPO_ROOT / "{path}"' in (root / "scripts/build_stage2_image.py").read_text()
+
+
+def test_substitution_dispatch_type_is_the_evaluator_profile():
+    assert SUBSTITUTION_QUALIFICATION_TYPE == CHANNEL_QUALIFICATION_MODE
+
+
+@pytest.mark.parametrize(("harness", "replayed"), [
+    ("codex", False), ("claude-code", False), ("deepseek-harness", True),
+])
+def test_verified_substitution_grants_platform_sandbox_through_preflight(tmp_path, harness, replayed):
+    base = qualification(tmp_path, harness, replayed=replayed)
+    substitution = substitution_qualification(tmp_path, harness, replayed=replayed)
+    output = tmp_path / "private" / "capabilities.json"
+    publish_capabilities([base, substitution], artifact_root=tmp_path / "artifacts", output=output,
+                         gateway=gateway(tmp_path))
+    entry = json.loads(output.read_text())["harnesses"][harness]
+    assert entry["qualification"]["evidence_ref"] == str(base.resolve())
+    assert entry["qualification"]["substitution_evidence_ref"] == str(substitution.resolve())
+    descriptors, source = harness_capabilities_from_qualification(output)
+    assert source["harnesses"][harness]["status"] == "qualified"
+    assert descriptors[harness]["qualification_passed"] is True
+    assert descriptors[harness]["feedback_channels"] == ["in_band_mcp"]
+    assert descriptors[harness]["code_execution"] == "platform_sandbox"
+    proof = descriptors[harness]["probe"]["substitution_qualification"]
+    assert set(proof["substitution_checks"]) == SUBSTITUTION_CHECKS
+    assert proof["sandbox_run"]["exit_code"] == 0
+    others = {"codex", "claude-code", "deepseek-harness", "bladeai"} - {harness}
+    assert all(descriptors[name]["code_execution"] == "none" for name in others)
+
+
+@pytest.mark.parametrize(("gap", "reason"), [
+    ("no_run_python_exchange", "sandbox run evidence is missing or belongs to another call"),
+    ("legacy_record_without_positive_checks", "did not pass every required check"),
+    ("sandbox_check_false", "did not pass every required check"),
+    ("sandbox_run_evidence_missing", "sandbox run evidence is missing"),
+    ("ledger_event_outside_call", "not inside its run_python call"),
+    ("ledger_event_of_other_call", "belongs to another call"),
+    ("failed_exit_in_archive", "does not show a successful sandbox execution"),
+    ("truncated_output_in_record", "does not show a successful sandbox execution"),
+    ("boolean_exit_code", "did not complete successfully"),
+    ("native_run_python_missing", "Harness stream does not show"),
+    ("failure_reason_recorded", "did not pass every required check"),
+    ("profile_mismatch", "substitution channel qualification record is required"),
+    ("stale_gateway", "different gateway configuration"),
+    ("other_trial", "gateway receipt artifact does not verify"),
+])
+def test_substitution_without_verified_run_python_keeps_code_execution_none(tmp_path, gap, reason):
+    base = qualification(tmp_path)
+    output = tmp_path / "private" / "capabilities.json"
+    publish_capabilities([base], artifact_root=tmp_path / "artifacts", output=output, gateway=gateway(tmp_path))
+    published = output.read_text()
+    substitution = substitution_qualification(tmp_path)
+    value = json.loads(substitution.read_text())
+    canonical = tmp_path / "artifacts/codex-substitution/canonical-events.jsonl"
+    rows = [json.loads(line) for line in canonical.read_text().splitlines()]
+    sandbox_calls = {row["call_id"] for row in rows if row.get("tool") == "code_sandbox.run_python"}
+    run = value["observed_capability_evidence"]["sandbox_run"]
+    recorded = next(item for item in value["ordered_exchanges"] if item["tool"] == "code_sandbox.run_python")
+    if gap == "no_run_python_exchange":
+        rows = [row for row in rows if row["call_id"] not in sandbox_calls]
+        value["ordered_exchanges"].remove(recorded)
+    elif gap == "legacy_record_without_positive_checks":
+        del value["substitution_checks"], value["observed_capability_evidence"]
+    elif gap == "sandbox_check_false":
+        value["substitution_checks"]["sandbox_run_verified"] = False
+    elif gap == "sandbox_run_evidence_missing":
+        value["observed_capability_evidence"]["sandbox_run"] = None
+    elif gap == "ledger_event_outside_call":
+        run["ledger_sequence"] = recorded["result_sequence"] + 1
+    elif gap == "ledger_event_of_other_call":
+        run["call_id"] = next(item["call_id"] for item in value["ordered_exchanges"]
+                              if item["tool"].startswith("coroot_ro."))
+    elif gap == "failed_exit_in_archive":
+        for row in rows:
+            if row["source"] == "mcp_server" and row["event_type"] == "ToolResult" and row["call_id"] in sandbox_calls:
+                row["payload"]["exit_code"] = 1
+    elif gap == "truncated_output_in_record":
+        recorded["payload"]["truncated"] = True
+    elif gap == "boolean_exit_code":
+        run["exit_code"] = False
+    elif gap == "native_run_python_missing":
+        rows = [row for row in rows if not (row["source"] == "native" and row["call_id"] in sandbox_calls)]
+    elif gap == "failure_reason_recorded":
+        value["failure_reasons"] = ["missing_completed_sandbox_run_evidence"]
+    elif gap == "profile_mismatch":
+        value["qualification_profile"] = "BASE_CHANNEL_QUALIFICATION"
+    elif gap == "stale_gateway":
+        value["gateway_config_sha256"] = "0" * 64
+    elif gap == "other_trial":
+        value["trial_id"] = "different-trial"
+    canonical.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    substitution.write_text(json.dumps(value))
+    # Each gap must be refused for its own reason, not by an incidental check.
+    with pytest.raises(ValueError, match=reason):
+        publish_capabilities([base, substitution], artifact_root=tmp_path / "artifacts", output=output,
+                             gateway=gateway(tmp_path))
+    assert output.read_text() == published
+    assert harness_capabilities_from_qualification(output)[0]["codex"]["code_execution"] == "none"
+
+
+def test_substitution_record_never_stands_alone_or_twice(tmp_path):
+    base = qualification(tmp_path)
+    claude_base = qualification(tmp_path, "claude-code")
+    substitution = substitution_qualification(tmp_path)
+    output = tmp_path / "capabilities.json"
+    for records in ([substitution], [claude_base, substitution], [base, substitution, substitution]):
+        with pytest.raises(ValueError):
+            publish_capabilities(records, artifact_root=tmp_path / "artifacts", output=output,
+                                 gateway=gateway(tmp_path))
+    assert not output.exists()
+
+
+def test_bladeai_never_receives_platform_sandbox(tmp_path):
+    base = qualification(tmp_path, "bladeai")
+    substitution = substitution_qualification(tmp_path, "bladeai")
+    output = tmp_path / "private" / "capabilities.json"
+    with pytest.raises(ValueError, match="BladeAI"):
+        publish_capabilities([base, substitution], artifact_root=tmp_path / "artifacts", output=output,
+                             gateway=gateway(tmp_path))
+    assert not output.exists()
+    publish_capabilities([base], artifact_root=tmp_path / "artifacts", output=output, gateway=gateway(tmp_path))
+    assert harness_capabilities_from_qualification(output)[0]["bladeai"]["code_execution"] == "none"

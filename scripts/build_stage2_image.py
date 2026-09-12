@@ -83,6 +83,7 @@ def source_digest() -> str:
             REPO_ROOT / "scripts/qualify_bladeai_task.py",
             REPO_ROOT / "scripts/qualify_execution_identities.py",
             REPO_ROOT / "scripts/serve_stage2_matrix_review.py",
+            REPO_ROOT / "scripts/deploy_application.py",
             REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay",
             REPO_ROOT / "deploy/stage2/Dockerfile.agent",
             REPO_ROOT / "deploy/stage2/codex-eval",

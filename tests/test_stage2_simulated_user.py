@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from controller.safety import default_policy
 from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutcome
-from stage2_service.plan_schema import PlanSafetyEnvelope
+from stage2_service.plan_schema import AGENT_PLAN_SKELETON, PlanSafetyEnvelope
 from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS, parse_create
 from stage2_service.condition_policy import (
     CONDITION_POLICY,
@@ -571,4 +573,270 @@ def test_wp8_qualification_policy_still_fixes_its_own_fault_duration():
 
     assert answer["approved"] is True
     assert answer["approved_plan"]["safety_ttl_seconds"] == WP8_CONDITION_POLICY["safety_ttl_seconds"]
+
+
+def _no_model(*_args):
+    raise AssertionError("model must not be called")
+
+
+# The wording codex + qwen3.8-max kept sending: conditions in its own words.
+CODEX_STYLE_PLAN = {
+    "target": PLAN["target"],
+    "fault_type": "cpu-load",
+    "intensity": {"cpu_percent": 60},
+    "effect_condition": {"metric": "cpu_usage", "operator": ">=", "threshold": 0.5},
+    "recovery_condition": {"metric": "cpu_usage", "operator": "<=", "threshold": 0.2},
+    "stop_conditions": ["目标 Pod 重启"],
+}
+
+
+def test_codex_style_conditions_are_still_rejected_with_every_legal_value_and_a_skeleton():
+    plan = {**CODEX_STYLE_PLAN, "target_uid": PLAN["target"]["uid"]}
+
+    answer = responder(_no_model, user_policy=delegated_policy()).reply(confirmation(plan), {})
+
+    # Still a rule rejection without a platform completion, as before.
+    assert answer["approved"] is False
+    assert answer["answer_mode"] == "reject"
+    assert answer["reason"] == "plan_schema_invalid"
+    message = answer["message"]
+    assert message.startswith("不批准执行：计划未通过类型化校验。")
+    for path, code in (
+        ("effect_condition.metric", "INVALID_CONDITION_METRIC"),
+        ("effect_condition.operator", "INVALID_EFFECT_OPERATOR"),
+        ("recovery_condition.metric", "INVALID_CONDITION_METRIC"),
+        ("recovery_condition.operator", "INVALID_RECOVERY_OPERATOR"),
+        ("target_uid", "PLAN_UNKNOWN_FIELD"),
+    ):
+        assert f"- {path}: {code} — " in message
+    assert "MISSING_TARGET_UID" not in message
+    assert "<root>" not in message
+    assert f"Use one of these metrics: {', '.join(sorted(WORKLOAD_METRICS))}." in message
+    assert (
+        "Use one of these effect_condition operators: "
+        f"{', '.join(sorted(EFFECT_OPERATORS))}." in message
+    )
+    assert (
+        "Use one of these recovery_condition operators: "
+        f"{', '.join(sorted(RECOVERY_OPERATORS))}." in message
+    )
+    assert "effect_condition 和 recovery_condition 可以省略" in message
+    assert AGENT_PLAN_SKELETON in message
+
+
+def test_misplaced_and_unknown_keys_are_named_as_such_not_as_a_missing_uid():
+    plan = {
+        **CPU_PARTIAL_PLAN,
+        "stop_conditions": ["目标 Pod 重启"],
+        "target_uid": PLAN["target"]["uid"],
+        "namespace": "otel-demo",
+        "baseline": {"target_cpu_cores": 0.1},
+        "scope": "single pod",
+        "scope_decision": "target only",
+    }
+
+    answer = responder(_no_model, user_policy=delegated_policy()).reply(confirmation(plan), {})
+
+    message = answer["message"]
+    assert answer["reason"] == "plan_schema_invalid"
+    assert "MISSING_TARGET_UID" not in message
+    assert (
+        "- target_uid: PLAN_UNKNOWN_FIELD — target_uid is not an AgentPlan field. "
+        "Move its value to target.uid." in message
+    )
+    assert (
+        "- namespace: PLAN_UNKNOWN_FIELD — namespace is not an AgentPlan field. "
+        "Move its value to target.namespace." in message
+    )
+    for key in ("baseline", "scope", "scope_decision"):
+        assert (
+            f"- {key}: PLAN_UNKNOWN_FIELD — {key} is not an AgentPlan field. "
+            "Remove it; it is not part of the plan." in message
+        )
+    # Under this policy the omitted conditions are not something to fix.
+    assert (
+        "- effect_condition: MISSING_PLAN_FIELD — Field required. effect_condition "
+        "is optional in this Trial: leave it out and the platform fills it in, or "
+        "send a complete one." in message
+    )
+
+
+def test_a_genuinely_missing_target_uid_is_still_missing_target_uid():
+    plan = {**CPU_PARTIAL_PLAN, "target": {"namespace": "otel-demo", "name": "cart-a"}}
+
+    answer = responder(_no_model, user_policy=delegated_policy()).reply(confirmation(plan), {})
+
+    assert answer["approved"] is False
+    assert "- target.uid: MISSING_TARGET_UID — " in answer["message"]
+    assert "PLAN_UNKNOWN_FIELD" not in answer["message"]
+
+
+def test_plan_without_conditions_is_still_completed_and_approved_as_before():
+    # Expected values recorded at 35c9e2c, before the refusal text changed:
+    # the completion path must give the same decision and plan.
+    contexts = []
+    supplied = {
+        "effect_condition": {
+            "metric": "target_cpu_cores",
+            "operator": "increase_by_at_least",
+            "threshold": 0.5,
+        },
+        "recovery_condition": {
+            "metric": "target_cpu_cores",
+            "operator": "within_baseline_delta",
+            "threshold": 0.3,
+        },
+    }
+    plan = {**CPU_PARTIAL_PLAN, "intensity": {"cpu_percent": 60}, "stop_conditions": ["目标 Pod 重启"]}
+
+    answer = responder(
+        lambda _instructions, context: contexts.append(context)
+        or {"message": "补齐效果条件和恢复条件。", "plan": supplied},
+        user_policy=delegated_policy(),
+    ).reply(confirmation(plan), {})
+
+    expected_plan = {
+        "target": {**PLAN["target"], "kind": "Pod"},
+        "fault_type": "cpu-load",
+        "intensity": {"cpu_percent": 60.0},
+        "effect_condition": {**supplied["effect_condition"], "threshold_tolerance_ratio": 0.6},
+        "recovery_condition": supplied["recovery_condition"],
+        "stop_conditions": ["目标 Pod 重启"],
+        "recovery_mode": "effect_condition",
+        "safety_ttl_seconds": 600,
+        "effect_observation_seconds": 300,
+        "effect_sustain_seconds": 60,
+        "agent_cleanup_seconds": 60,
+        "recovery_observation_seconds": 180,
+        "recovery_sustain_seconds": 60,
+    }
+    assert len(contexts) == 1
+    assert contexts[0]["correction"] is None
+    assert {
+        key: answer[key]
+        for key in ("approved", "answer_mode", "decision_supplied", "reason", "affected_nodes")
+    } == {
+        "approved": True,
+        "answer_mode": "custom",
+        "decision_supplied": True,
+        "reason": "harness_supplied_decision",
+        "affected_nodes": ["PLAN_VALIDATION"],
+    }
+    assert answer["approved_plan"] == expected_plan
+    assert answer["supplied_plan"] == expected_plan
+    assert answer["message"].startswith(
+        "补齐效果条件和恢复条件。 执行时将 chaos_control 的 duration_seconds 设为 600，"
+    )
+
+
+def test_stricter_policy_refusals_do_not_suggest_leaving_conditions_out():
+    strict = policy(prompt_level=AutonomyLevel.L0_COMPLETE_TASK)
+    own_wording = {
+        **PLAN,
+        "effect_condition": {"metric": "latency", "operator": ">=", "threshold": 100},
+    }
+    without_conditions = {
+        key: value
+        for key, value in PLAN.items()
+        if key not in {"effect_condition", "recovery_condition"}
+    }
+
+    invalid = responder(_no_model, user_policy=strict).reply(confirmation(own_wording), {})
+    missing = responder(_no_model, user_policy=strict).reply(confirmation(without_conditions), {})
+
+    assert invalid["reason"] == "plan_schema_invalid"
+    assert "可以省略" not in invalid["message"]
+    # Missing choices under a policy that lets the Harness supply nothing keep
+    # their old refusal: who fills them in stays the level's decision.
+    assert missing["reason"] == "simulated_user_not_allowed_to_supply_decision"
+    assert missing["message"] == "不批准执行：当前提示等级不允许 Harness 代替 Agent 补全关键实验计划。"
+
+
+# An Lx Trial's hidden execution contract. The channel cuts its envelope from
+# it: the only allowed fault type is the contract's, and the fault-duration cap
+# is the contract's duration.
+HIDDEN_CONTRACT = {
+    "target": {
+        "namespace": "otel-demo",
+        "name": "checkout-7f9c4-hidden",
+        "uid": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    },
+    "fault_type": "cpu-load",
+    "intensity": {"cpu_percent": 80},
+    "duration_seconds": 300,
+}
+
+
+def lx_policy() -> SimulatedUserPolicy:
+    return SimulatedUserPolicy.from_limits(
+        namespace="otel-demo",
+        max_fault_seconds=HIDDEN_CONTRACT["duration_seconds"],
+        max_observation_seconds=300,
+        allowed_fault_types=(HIDDEN_CONTRACT["fault_type"],),
+        decision_policy=DecisionPolicy.AGENT_DELEGATED,
+        prompt_level=AutonomyLevel.L3_STRATEGY_SELECTION,
+    )
+
+
+def test_refusal_text_quotes_no_value_from_the_hidden_contract():
+    user = HarnessResponder(
+        model_call=_no_model,
+        namespace="otel-demo",
+        max_fault_seconds=HIDDEN_CONTRACT["duration_seconds"],
+        max_observation_seconds=300,
+        policy=lx_policy(),
+        context={"hidden_execution_contract": HIDDEN_CONTRACT},
+    )
+    # The Agent found the real target and intensity, but wrote the
+    # conditions in its own words and added a baseline.
+    plan = {
+        **CODEX_STYLE_PLAN,
+        "target": HIDDEN_CONTRACT["target"],
+        "intensity": HIDDEN_CONTRACT["intensity"],
+        "baseline": {"target_cpu_cores": 0.1},
+    }
+
+    message = user.reply(confirmation(plan), {})["message"]
+
+    assert "- baseline: PLAN_UNKNOWN_FIELD — " in message
+    for value in (
+        HIDDEN_CONTRACT["target"]["name"],
+        HIDDEN_CONTRACT["target"]["uid"],
+        "otel-demo",
+        "cpu_percent",
+    ):
+        assert value not in message
+    assert set(re.findall(r"\d+", message)).isdisjoint({"80", "300"})
+
+
+def test_refusal_text_does_not_reveal_the_trials_fault_type_or_duration_cap():
+    plan = {
+        "target": PLAN["target"],
+        "fault_type": "memory-stress",
+        "intensity": {"mem_percent": 50},
+        "effect_condition": {
+            "metric": "target_memory_mib",
+            "operator": "increase_by_at_least",
+            "threshold": 64,
+        },
+        "recovery_condition": {
+            "metric": "target_memory_mib",
+            "operator": "within_baseline_delta",
+            "threshold": 64,
+        },
+        "stop_conditions": ["目标 Pod 重启"],
+        "safety_ttl_seconds": 900,
+    }
+
+    answer = responder(_no_model, user_policy=lx_policy()).reply(confirmation(plan), {})
+
+    message = answer["message"]
+    assert answer["reason"] == "plan_schema_invalid"
+    assert "- fault_type: FAULT_TYPE_NOT_ALLOWED — " in message
+    assert "- safety_ttl_seconds: SAFETY_TTL_EXCEEDED — " in message
+    # plan_schema's corrections would say "Choose one of: cpu-load" and
+    # "Use safety_ttl_seconds <= 300"; the Agent sees neither bound.
+    assert "Choose one of" not in message
+    assert "300" not in re.findall(r"\d+", message)
+    assert "cpu-load, memory-stress, network-delay, network-loss" in message
 

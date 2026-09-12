@@ -1079,3 +1079,92 @@ def test_only_a_platform_overtime_abort_sets_the_stop_flag():
     assert flag["requested"] is False
     _note_overtime_abort(flag, "platform_overtime_abort")
     assert flag["requested"] is True
+
+
+class FullReinstallFinalizer(Finalizer):
+    """Finalization whose mutation evidence forces the T3 full-reinstall tier."""
+
+    def finalize(self, trial_id, episode, runtime, report):
+        recovery = super().finalize(trial_id, episode, runtime, report)
+        return recovery.model_copy(
+            update={
+                "fault_effect_evidence": {
+                    "mutation_evidence": {"reset_tier": "T3_FULL_REINSTALL"}
+                }
+            }
+        )
+
+
+def test_emergency_full_reinstall_with_failed_preflight_never_uninstalls(tmp_path: Path):
+    # 2026-09-11 incident: the emergency T3 reset uninstalled OTel Demo and then
+    # could not reinstall it (namespace patch forbidden). A failed reinstall
+    # preflight must now stop the reset before the uninstall.
+    import subprocess
+
+    from stage2_service.reset import OtelDemoResetter
+
+    forbidden = json.dumps(
+        {
+            "phase": "failed",
+            "error": (
+                'Error from server (Forbidden): namespaces "otel-demo" is forbidden: '
+                'User "system:serviceaccount:resiliencebenchmark-system:resbench-stage2-controller" '
+                'cannot patch resource "namespaces" in API group "" in the namespace "otel-demo"'
+            ),
+        }
+    )
+
+    class PreflightForbiddenRunner:
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        def run(self, argv, *, env, timeout):
+            self.calls.append(list(argv))
+            if "--server-dry-run" in argv:
+                return subprocess.CompletedProcess(argv, 1, "", forbidden)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+    engine, request, permissions, _disturbances, _resetter = _engine(tmp_path)
+    engine.harness_runner = RaisingRunner()
+    engine.finalizer = FullReinstallFinalizer()
+    inputs = tmp_path / "reset-inputs"
+    inputs.mkdir()
+    (inputs / "kubeconfig").write_text("apiVersion: v1\n", encoding="utf-8")
+    (inputs / "otel-demo.env").write_text("HARBOR_REGISTRY=registry.example\n", encoding="utf-8")
+    (inputs / "opentelemetry-demo-0.40.5.tgz").write_bytes(b"pinned chart fixture")
+    reset_runner = PreflightForbiddenRunner()
+    engine.resetter = OtelDemoResetter(
+        repo_root=REPO_ROOT,
+        kubeconfig=inputs / "kubeconfig",
+        runtime_env_file=inputs / "otel-demo.env",
+        chart_file=inputs / "opentelemetry-demo-0.40.5.tgz",
+        environment_gate=Gate(),
+        traffic_evidence=SimpleNamespace(),
+        runner=reset_runner,
+        timeout_seconds=120,
+    )
+
+    result = engine.run(request)
+
+    assert result.platform_status is PlatformStatus.RESET_FAILED
+    assert len(permissions.restored) == 1
+    assert len(reset_runner.calls) == 1
+    assert "--server-dry-run" in reset_runner.calls[0]
+    assert not any(argv[:2] == ["helm", "uninstall"] for argv in reset_runner.calls)
+    (cleanup_path,) = tmp_path.glob("*/trials/*/emergency-cleanup.json")
+    cleanup = json.loads(cleanup_path.read_text(encoding="utf-8"))
+    assert cleanup["verified"] is False
+    reset = cleanup["environment_reset"]
+    assert reset["verified"] is False
+    assert reset["error_type"] == "ResetError"
+    assert reset["error"].startswith(
+        "reinstall preflight failed; OTel Demo was left installed"
+    )
+    assert reset["evidence"]["uninstalled"] is False
+    preflight = reset["evidence"]["reinstall_preflight"]
+    assert preflight["exit_code"] == 1
+    assert 'cannot patch resource "namespaces"' in preflight["stderr_excerpt"]
+    assert "--server-dry-run" in preflight["command"]
+    (reset_path,) = tmp_path.glob("*/trials/*/environment-reset.json")
+    written = json.loads(reset_path.read_text(encoding="utf-8"))
+    assert written["evidence"]["reinstall_preflight"]["exit_code"] == 1

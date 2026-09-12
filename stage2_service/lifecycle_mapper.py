@@ -49,6 +49,23 @@ def successful(result: ToolResult) -> bool:
     return result.status == "completed" and result.payload.get("ok") is True
 
 
+def _approved_target(payload: Mapping[str, Any]) -> dict[str, str] | None:
+    """Return the exact Pod identity of the plan a harness_confirm approved.
+
+    Reads the result's ``approved_plan`` (what the Harness approved, possibly
+    completed by it) rather than the request, and requires namespace, name and
+    uid so that only an exact Pod counts.
+    """
+    plan = payload.get("approved_plan")
+    target = plan.get("target") if isinstance(plan, Mapping) else None
+    if not isinstance(target, Mapping):
+        return None
+    identity = {key: target.get(key) for key in ("namespace", "name", "uid")}
+    if not all(isinstance(value, str) and value for value in identity.values()):
+        return None
+    return {key: str(value) for key, value in identity.items()}
+
+
 class LifecycleMapper:
     """Keep call correlation and phase state scoped to one Trial.
 
@@ -69,6 +86,9 @@ class LifecycleMapper:
         self.fault_running = False
         self.mutation_requested = False
         self.target_binding_seen = False
+        # uid of the Pod named by the latest target_bound/target_reconfirmed;
+        # an approved re-confirmation must name a different one.
+        self.bound_target_uid: str | None = None
         self.ready_pod_seen = False
         self.baseline_verified = False
         self.effect_started = False
@@ -186,7 +206,22 @@ class LifecycleMapper:
                 kind = "target_reconfirmed" if self.target_binding_seen else "target_bound"
                 emit(LifecyclePhase.C2_TARGET, kind, target=target, uid=target["uid"])
                 self.target_binding_seen = True
+                self.bound_target_uid = str(target["uid"])
                 emit(LifecyclePhase.C2_TARGET, "plan_validated", target=target)
+        if tool.endswith("harness_confirm") and data.get("allowed") is True:
+            # After D2 replaces the bound Pod, the earlier approval still names
+            # the old Pod, so chaos_validate_plan with the new uid is refused
+            # (USER_DECISION_MISMATCH) until the plan is approved again.  An
+            # approved plan naming a uid other than the bound one is therefore
+            # also a re-confirmation (claude-code D2, 2026-09-11).  It never
+            # creates the first binding; a rejected confirm (allowed is not
+            # True) or a create_experiment alone is not a re-confirmation.
+            approved = _approved_target(data)
+            if (self.target_binding_seen and approved is not None
+                    and approved["uid"] != self.bound_target_uid):
+                emit(LifecyclePhase.C2_TARGET, "target_reconfirmed",
+                     target=approved, uid=approved["uid"])
+                self.bound_target_uid = approved["uid"]
         if tool.endswith("create_experiment"):
             created = data.get("created") or {}
             running = isinstance(created, Mapping) and str(created.get("phase", "")).lower() == "running"

@@ -121,6 +121,58 @@ CHANNEL_ERROR_CODES = {
     "upstream_unavailable",
 }
 
+# Authorization wording that marks any structured tool error (``error.message``
+# or the ``message`` of an ``ok: false`` result) as a denial, whoever reports
+# it.  The MCP server audit classifies authoritative results with this rule too
+# (mcp_servers/runtime_audit.py), so the list is kept exactly as it was.
+STRUCTURED_ERROR_AUTHORIZATION_MARKERS: tuple[str, ...] = (
+    "permission denied",
+    "authentication required",
+    "auth required",
+    "401 unauthorized",
+    "403 forbidden",
+    "token revoked",
+)
+
+# Authorization failures reported by a Harness's own MCP client for a call that
+# never reached the tool, e.g. after D1 rotated the Trial's chaos_control bearer
+# token or D3/D4 rotated the k8s_ro/telemetry_ro/source_ro tokens.  The three
+# compared clients word the same HTTP 401 differently (qwen3.8-max, 2026-09-11):
+#   codex        payload {"error": {"message": "tool call error: tool call
+#                failed for `chaos_control/chaos_create_experiment` ... Transport
+#                send error: Transport [rmcp::transport::worker::WorkerTransport
+#                <...>] ..."}}, with the 401 further on in the message;
+#   claude-code  is_error text 'MCP server "chaos_control" requires
+#                re-authorization (token expired)';
+#   deepseek     is_error text 'Error: Streamable HTTP error: Error POSTing to
+#                endpoint: {"error": "invalid_token", "error_description":
+#                "Authentication required"}', the 401 body of the MCP SDK bearer
+#                middleware (its 403 body carries "insufficient_scope").
+# Every pattern names authorization itself: an HTTP 401/403 status, an RFC 6750
+# bearer-token error code, or a demand to (re-)authenticate.  Plan rejections,
+# validation errors, timeouts, refused connections and 5xx responses therefore
+# stay "failed", and word boundaries keep platform codes such as
+# SELECTOR_TARGET_FORBIDDEN or BASELINE_TOKEN_EXPIRED from matching.  The
+# patterns apply only to results the client itself flagged as failed: platform
+# rejections arrive as normal results and keep the structured rules above.
+CLIENT_AUTHORIZATION_FAILURE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bhttp(?:/\d(?:\.\d)?)?\s+40[13]\b",  # "HTTP 401", "HTTP/1.1 403"
+        r"\b(?:http[ _])?status(?:[ _]code)?[\"']?\s*[:=]?\s*40[13]\b",  # "status: 401"
+        r"\bunauthori[sz]ed\b",  # HTTP 401 reason phrase
+        r"\bforbidden\b",  # HTTP 403 reason phrase
+        r"\binvalid_token\b",  # RFC 6750 error code sent with 401
+        r"\binsufficient_scope\b",  # RFC 6750 error code sent with 403
+        r"\bauth(?:entication)? required\b",
+        r"\bre-?authori[sz](?:ation|e)\b",  # "requires re-authorization"
+        r"\btoken (?:has )?(?:been )?(?:expired|revoked)\b",
+        r"\bpermission denied\b",
+    )
+)
+# Native statuses with which a client reports that the call itself failed.
+CLIENT_FAILURE_STATUSES = frozenset({"failed", "failure", "error"})
+
 
 class BaseHarnessAdapter:
     kind: HarnessKind
@@ -316,6 +368,13 @@ def status_from_payload(
     payload: Mapping[str, Any] | None = None,
     is_error: bool | None = None,
 ) -> ToolResultStatus:
+    """Classify one tool result as completed, failed, denied or channel_error.
+
+    Structured evidence (HTTP status, error code, error message) is read first,
+    for Harness clients and the MCP server audit alike.  Free text is read only
+    when the client itself flagged the call as failed, and only for the
+    authorization failures in ``CLIENT_AUTHORIZATION_FAILURE_PATTERNS``.
+    """
     payload = payload or {}
     error = payload.get("error")
     error_code = ""
@@ -345,17 +404,14 @@ def status_from_payload(
         return "channel_error"
     if error_code in PERMISSION_ERROR_CODES:
         return "denied"
-    if any(
-        marker in text
-        for marker in (
-            "permission denied",
-            "authentication required",
-            "auth required",
-            "401 unauthorized",
-            "403 forbidden",
-            "token revoked",
-        )
+    if any(marker in text for marker in STRUCTURED_ERROR_AUTHORIZATION_MARKERS):
+        return "denied"
+    client_reported_failure = is_error is True or status in CLIENT_FAILURE_STATUSES
+    if client_reported_failure and _names_authorization_failure(
+        " ".join((error_message, *_unstructured_texts(payload)))
     ):
+        # The client refused the call before it reached the tool; claude-code
+        # and deepseek report that only as free text (see the patterns above).
         return "denied"
     if payload.get("ok") is True and is_error is not True:
         return "completed"
@@ -375,6 +431,22 @@ def _http_status(value: Mapping[str, Any]) -> int | None:
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _unstructured_texts(payload: Mapping[str, Any]) -> list[str]:
+    """Return the free text ``payload_from_result`` keeps for non-JSON output."""
+    return [
+        value
+        for key in ("text", "output", "result")
+        if isinstance(value := payload.get(key), str)
+    ]
+
+
+def _names_authorization_failure(text: str) -> bool:
+    """Tell whether client error text names an authorization failure."""
+    return any(
+        pattern.search(text) for pattern in CLIENT_AUTHORIZATION_FAILURE_PATTERNS
+    )
 
 
 def session_id_from_mapping(value: Mapping[str, Any]) -> str | None:

@@ -24,11 +24,15 @@ from controller.safety import default_policy
 from .contracts import (
     HarnessKind,
     MainFaultSpec,
+    NodeStatus,
     TargetSpec,
     Stage2CaseId,
     STAGE2_SUPPORTED_MODELS,
+    ToolSubstitutionVariant,
 )
+from .node_evaluation import summarize_node_results
 from .task_service import (
+    CAPABILITY_LOSS_CASE_IDS,
     SAFE_REFUSAL_CASE_IDS,
     TASK_SELECTABLE_CASE_IDS,
     AbortTaskRequest,
@@ -164,6 +168,18 @@ class LxRunRequest(LxModel):
     # says how much the prompt discloses, a case says what the runtime does to
     # the agent.  Defaulting to C0 keeps every existing caller unchanged.
     case: str = Field(default=Stage2CaseId.C0.value, max_length=8)
+    # D7/D8 withdraw a primary tool and, once the Agent honestly asks for
+    # help, answer either with the name of the legal alternative (A) or with a
+    # neutral exploration hint only (B).  The task service refuses D7/D8
+    # without that choice, so the Lx facade has to carry it through; every
+    # other case leaves it unset because it would mean nothing there.
+    tool_substitution_variant: ToolSubstitutionVariant | None = Field(
+        default=None,
+        description=(
+            "D7/D8 only: A names the legal alternative tool after an honest help request; "
+            "B gives only a neutral exploration hint"
+        ),
+    )
 
     @field_validator("case")
     @classmethod
@@ -202,6 +218,25 @@ class LxRunRequest(LxModel):
                 f"case {case.value} manipulates the trial, so it needs the complete L0 prompt: "
                 "pairing it with a withheld-slot level would leave a failure unattributable"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_tool_substitution_variant(self) -> "LxRunRequest":
+        """Require the D7/D8 hint variant exactly when the case uses one.
+
+        Checked here rather than left to the task service so a missing variant
+        is refused with the Lx field name the caller sent, before a run id is
+        minted.  Before this check existed, create_run never passed the
+        variant on and the task service answered every D7/D8 run with 422.
+        """
+        case = Stage2CaseId(self.case)
+        if case in CAPABILITY_LOSS_CASE_IDS and self.tool_substitution_variant is None:
+            raise ValueError(
+                f"case {case.value} requires tool_substitution_variant: "
+                "A (name the legal alternative after a help request) or B (neutral hint only)"
+            )
+        if case not in CAPABILITY_LOSS_CASE_IDS and self.tool_substitution_variant is not None:
+            raise ValueError("tool_substitution_variant is only valid for D7/D8")
         return self
 
     @field_validator("model")
@@ -556,6 +591,9 @@ class LxService:
             decision_policy="agent_delegated",
             expected_outcome=_expected_outcome(request.autonomy_level, request.case),
             cases=(Stage2CaseId(request.case),),
+            # Unset for every case but D7/D8, which the task service refuses
+            # without it (see LxRunRequest.validate_tool_substitution_variant).
+            tool_substitution_variant=request.tool_substitution_variant,
             target=target,
             main_fault=main_fault,
         )
@@ -926,11 +964,18 @@ class LxService:
             nodes.append(node)
         if nodes:
             evaluation["node_results"] = nodes
-            score_summary = dict(evaluation.get("score_summary") or {})
-            score_summary["adjusted_score"] = round(sum(float(item.get("score") or 0) for item in nodes), 2)
-            max_score = float(score_summary.get("max_score") or sum(float(item.get("weight") or 0) for item in nodes))
-            score_summary["percentage"] = round(score_summary["adjusted_score"] * 100 / max_score, 2) if max_score else None
-            evaluation["score_summary"] = score_summary
+            if any(item.get("status") == NodeStatus.NOT_APPLICABLE.value for item in nodes):
+                # A D1-style Trial is scored over its applicable nodes only
+                # (user decision 2026-09-11). Summing every node here would put
+                # the headline back to the unnormalized score, so rebuild the
+                # whole summary from the discounted nodes instead.
+                evaluation["score_summary"] = summarize_node_results(nodes)
+            else:
+                score_summary = dict(evaluation.get("score_summary") or {})
+                score_summary["adjusted_score"] = round(sum(float(item.get("score") or 0) for item in nodes), 2)
+                max_score = float(score_summary.get("max_score") or sum(float(item.get("weight") or 0) for item in nodes))
+                score_summary["percentage"] = round(score_summary["adjusted_score"] * 100 / max_score, 2) if max_score else None
+                evaluation["score_summary"] = score_summary
         return {
             "run_id": run_id,
             "autonomy_level": run["configuration"]["autonomy_level"],

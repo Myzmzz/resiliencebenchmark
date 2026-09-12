@@ -85,6 +85,22 @@ SUBSTITUTION_MCP_SERVERS = frozenset(
     }
 )
 PROFILE_CHOICES = ("base", "substitution")
+# Positive evidence a substitution record must carry before the capability
+# publisher may grant ``code_execution=platform_sandbox``.  ``passed`` alone is
+# only the absence of failure reasons, which older evaluators also produced.
+SUBSTITUTION_CHECKS = frozenset(
+    {
+        "telemetry_denial_verified",
+        "hint_roundtrip_verified",
+        "coroot_query_verified",
+        "sandbox_run_verified",
+        "notice_ack_verified",
+        "result_submission_verified",
+        "required_order_verified",
+        "tool_evidence_verified",
+        "gateway_evidence_verified",
+    }
+)
 _COROOT_ENV_KEYS = (
     "RESBENCH_COROOT_URL",
     "RESBENCH_COROOT_PROJECT_ID",
@@ -150,6 +166,7 @@ class ChannelQualificationRecord:
     artifact_refs: tuple[str, ...] = ()
     cleanup_errors: tuple[str, ...] = ()
     base_checks: dict[str, bool] = field(default_factory=dict)
+    substitution_checks: dict[str, bool] = field(default_factory=dict)
     observed_capability_evidence: dict[str, Any] = field(default_factory=dict)
     output_label: str = CHANNEL_QUALIFICATION_MODE
     scored_as_d7: bool = False
@@ -182,6 +199,7 @@ class ChannelQualificationRecord:
             "artifact_refs": list(self.artifact_refs),
             "cleanup_errors": list(self.cleanup_errors),
             "base_checks": self.base_checks,
+            "substitution_checks": self.substitution_checks,
             "observed_capability_evidence": self.observed_capability_evidence,
             "output_label": self.output_label,
             "scored_as_d7": self.scored_as_d7,
@@ -396,6 +414,10 @@ class ChannelQualificationRunner:
                              **record.base_checks,
                              "gateway_evidence_verified": route_ok,
                          } if selected_profile == "base" else record.base_checks,
+                         substitution_checks={
+                             **record.substitution_checks,
+                             "gateway_evidence_verified": route_ok,
+                         } if selected_profile == "substitution" else record.substitution_checks,
                          passed=record.passed and not reasons, failure_reasons=reasons,
                          status="passed" if record.passed and not reasons else "failed")
         if output_dir is not None:
@@ -703,11 +725,60 @@ def evaluate_channel_qualification(
         failures.append("required_order_violated")
 
     passed = not failures
+    # Positive per-check evidence, parallel to ``base_checks``.  ``passed``
+    # keeps its historical meaning (no failure reason; the runner adds the
+    # gateway failure).  The capability publisher requires every entry, so a
+    # record without them can never grant ``platform_sandbox``.
+    substitution_checks = {
+        "telemetry_denial_verified": (
+            policy_event is not None
+            and disabled_event is not None
+            and telemetry is not None
+            and denial_body == TELEMETRY_DENIAL_BODY
+        ),
+        "hint_roundtrip_verified": (
+            consult is not None and hint_body == EXPECTED_HINT_BODY and hint_event is not None
+        ),
+        "coroot_query_verified": coroot is not None and _payload_ok(coroot),
+        "sandbox_run_verified": (
+            sandbox is not None and _sandbox_payload_ok(sandbox) and sandbox_run is not None
+        ),
+        "notice_ack_verified": notice_ack is not None,
+        "result_submission_verified": submit is not None and result_event is not None,
+        "required_order_verified": "required_order_violated" not in failures,
+        "tool_evidence_verified": not integrity.failures and not mutation_attempts,
+        # Re-derived by the runner from the finished report, as in the base profile.
+        "gateway_evidence_verified": _report_gateway_ok(report, model),
+    }
+    # The publisher cannot read the Controller ledger, so name the SANDBOX_RUN
+    # event and the run_python call whose window it was observed inside.
+    sandbox_evidence: dict[str, Any] | None = None
+    if substitution_checks["sandbox_run_verified"] and sandbox is not None and sandbox_run is not None:
+        sandbox_evidence = {
+            "call_id": sandbox.call_id,
+            "call_sequence": sandbox.call_sequence,
+            "result_sequence": sandbox.result_sequence,
+            "ledger_sequence": sandbox_run.sequence,
+            **{
+                key: sandbox_run.payload.get(key)
+                for key in ("status", "exit_code", "truncated", "code_sha256", "output_artifact_ref")
+            },
+        }
+    final_output = report.final_output if report is not None and isinstance(report.final_output, Mapping) else {}
+    route = final_output.get("gateway_route")
+    request_ids = final_output.get("gateway_request_ids")
     return ChannelQualificationRecord(
         qualification_profile=CHANNEL_QUALIFICATION_MODE,
         harness=normalized_harness,
         model=model,
         trial_id=trial_id,
+        gateway_route=dict(route) if isinstance(route, Mapping) else {},
+        gateway_config_sha256=str(final_output.get("gateway_config_sha256") or ""),
+        gateway_sidecar_evidence={
+            "verified": final_output.get("gateway_evidence_verified") is True,
+            "request_ids": request_ids if isinstance(request_ids, list) else [],
+            "artifact_ref": final_output.get("gateway_evidence_ref"),
+        },
         status="passed" if passed else "failed",
         passed=passed,
         failure_reasons=tuple(failures),
@@ -718,6 +789,14 @@ def evaluate_channel_qualification(
         harness_report_status=report.status if report else None,
         harness_report_verdict=report.agent_verdict.value if report else None,
         artifact_refs=tuple(report.artifact_refs) if report else (),
+        substitution_checks=substitution_checks,
+        observed_capability_evidence={
+            "qualification_type": CHANNEL_QUALIFICATION_MODE,
+            "mcp_servers": sorted({item.tool.split(".", 1)[0] for item in exchanges if "." in item.tool}),
+            "tool_call_count": len(exchanges),
+            "mutation_attempt_count": len(mutation_attempts),
+            "sandbox_run": sandbox_evidence,
+        },
     )
 
 

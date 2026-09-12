@@ -7,6 +7,7 @@ from pathlib import Path
 from stage2_service.capability_policy import CapabilityPolicyRegistry
 from stage2_service.contracts import (
     DisturbancePlan,
+    DisturbanceRecord,
     DisturbanceType,
     LifecyclePhase,
     PermissionProfile,
@@ -267,3 +268,27 @@ def test_d5_concurrent_trials_restore_only_their_own_policy(tmp_path: Path):
     assert all(record.rolled_back for record in completed)
     assert first_policy.snapshot().server_policy("k8s_ro").channel_unavailable_until is None
     assert second_policy.snapshot().server_policy("k8s_ro").channel_unavailable_until is None
+
+
+def test_d5_rollback_after_executor_restart_restores_the_persisted_snapshot(tmp_path: Path):
+    """A restarted executor has no timer state; rollback must use apply's snapshot.
+
+    The record is round-tripped through JSON the way the campaign persists it,
+    so D5's apply-side evidence (``policy_snapshot``, ``servers``,
+    ``duration_seconds``) is checked against what the recovered path reads.
+    """
+    plan = _plan()
+    policy = _policy(tmp_path, plan.trial_id)
+    provisioned = policy.snapshot()
+    applied = _executor(tmp_path, policy, timer_factory=ManualTimer).apply(plan)
+    assert policy.snapshot().server_policy("k8s_ro").channel_unavailable_until is not None
+    persisted = DisturbanceRecord.model_validate_json(applied.model_dump_json())
+    restarted = _executor(tmp_path, policy, timer_factory=ManualTimer)
+
+    restored = restarted.rollback(persisted)
+
+    assert restored.rolled_back is True
+    assert restored.rollback_evidence["verified"] is True
+    assert restored.rollback_evidence["source"] == "rollback-recovered"
+    assert restored.application_evidence["restoration"]["status"] == "restored"
+    assert policy.snapshot().servers == provisioned.servers

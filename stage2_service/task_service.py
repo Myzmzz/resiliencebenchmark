@@ -47,6 +47,19 @@ from .matrix import fixed_otel_episode_ref
 
 TASK_CASES = TASK_STAGE2_CASE_IDS
 CAPABILITY_LOSS_CASE_IDS = (Stage2CaseId.D7, Stage2CaseId.D8)
+# The Harnesses whose readiness opens D7/D8.  The gate exists so the
+# capability-loss cases only run when every compared Harness can take part on
+# equal terms (qualified in-band feedback plus platform-sandboxed code).
+# BladeAI is left out by the user's decision of 2026-09-11: its integration is
+# being reworked separately and it is not part of the current comparison, so
+# its missing sandbox capability must not keep D7/D8 closed for the others.
+# BladeAI itself still cannot run D7/D8 until its own descriptor qualifies
+# (see Stage2TaskService._supported_cases_for_capability).
+CAPABILITY_LOSS_GATED_HARNESSES = (
+    HarnessKind.CODEX,
+    HarnessKind.CLAUDE_CODE,
+    HarnessKind.DEEPSEEK,
+)
 # Prompt-shaped cases were reachable only through a campaign, which left the
 # task API unable to combine an autonomy level with anything but C0 and the
 # disturbances.  They run on the same `default_case_specs` machinery as every
@@ -844,24 +857,49 @@ class Stage2TaskService:
         ]
         if capability.get("feedback_channels"):
             supported.extend((Stage2CaseId.D2, Stage2CaseId.D5, Stage2CaseId.D6))
-        if capability_loss_supported:
+        # D7/D8 need both halves: the compared Harnesses as a group must be
+        # ready (capability_loss_supported), and so must this Harness itself.
+        # While BladeAI was part of the group the first half implied the
+        # second; now a Harness outside the group needs its own check.
+        if capability_loss_supported and cls._capability_loss_gap(
+            capability, require_qualified=False
+        ) is None:
             supported.extend(CAPABILITY_LOSS_CASE_IDS)
         return supported
+
+    @staticmethod
+    def _capability_loss_gap(
+        capability: Mapping[str, Any] | None, *, require_qualified: bool
+    ) -> str | None:
+        """Why one Harness cannot take part in D7/D8, or None when it can."""
+        if capability is None:
+            return "capability_probe_missing"
+        if not capability.get("feedback_channels"):
+            return "feedback_channels_missing"
+        if capability.get("code_execution") != "platform_sandbox":
+            return "platform_sandbox_missing"
+        if require_qualified and not capability.get("qualification_passed"):
+            return "qualification_not_passed"
+        return None
 
     @classmethod
     def _capability_loss_support(
         cls, preflight: Mapping[str, Any], *, require_qualified: bool
     ) -> tuple[bool, str | None]:
-        for harness in HarnessKind:
-            capability = cls._capability_descriptor(preflight, harness)
-            if capability is None:
-                return False, "capability_probe_missing"
-            if not capability.get("feedback_channels"):
-                return False, f"{harness.value}: feedback_channels_missing"
-            if capability.get("code_execution") != "platform_sandbox":
-                return False, f"{harness.value}: platform_sandbox_missing"
-            if require_qualified and not capability.get("qualification_passed"):
-                return False, f"{harness.value}: qualification_not_passed"
+        """Whether every compared Harness is ready for D7/D8, with the first gap.
+
+        Only CAPABILITY_LOSS_GATED_HARNESSES are checked; a Harness outside
+        that group is judged on its own descriptor instead.
+        """
+        for harness in CAPABILITY_LOSS_GATED_HARNESSES:
+            gap = cls._capability_loss_gap(
+                cls._capability_descriptor(preflight, harness),
+                require_qualified=require_qualified,
+            )
+            if gap == "capability_probe_missing":
+                return False, gap
+            if gap is not None:
+                return False, f"{harness.value}: {gap}"
         return True, None
 
     @classmethod
@@ -898,9 +936,12 @@ class Stage2TaskService:
         if unavailable:
             values = ", ".join(sorted(case.value for case in unavailable))
             if set(unavailable) & set(CAPABILITY_LOSS_CASE_IDS):
+                own_gap = cls._capability_loss_gap(capability, require_qualified=True)
+                reason = global_loss_reason or (f"{harness.value}: {own_gap}" if own_gap else None)
+                compared = ", ".join(item.value for item in CAPABILITY_LOSS_GATED_HARNESSES)
                 return (
-                    "D7/D8 require all four Harnesses to have qualified in-band feedback "
-                    f"and platform_sandbox capability: {global_loss_reason}"
+                    f"D7/D8 require the compared Harnesses ({compared}) and the requested one "
+                    f"to have qualified in-band feedback and platform_sandbox capability: {reason}"
                 )
             return f"Harness capability probe does not support requested cases: {values}"
         return None
@@ -1049,6 +1090,9 @@ class Stage2TaskService:
                     capability_loss_reason if not capability_loss_supported else None
                 ),
                 "cases": ["D7-A", "D7-B", "D8-A", "D8-B"],
+                # Which Harnesses the supported/runnable verdict above covers,
+                # so a caller can see that BladeAI is outside the comparison.
+                "gated_harnesses": [harness.value for harness in CAPABILITY_LOSS_GATED_HARNESSES],
             },
             "models": list(STAGE2_SUPPORTED_MODELS),
             "model_matrix": model_matrix,
@@ -2836,7 +2880,10 @@ class Stage2TaskService:
             contradicted_nodes = [
                 item.get("node")
                 for item in trial.get("evaluation", {}).get("node_results", [])
-                if item.get("status") == "CONTRADICTED"
+                # A NOT_APPLICABLE node (D1) keeps the status it was evaluated
+                # with as original_status; a contradicted claim there is still
+                # an honesty problem worth surfacing, even though it is unscored.
+                if "CONTRADICTED" in {item.get("status"), item.get("original_status")}
             ]
             if contradicted_nodes:
                 issues.append(
