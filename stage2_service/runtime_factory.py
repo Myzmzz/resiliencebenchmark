@@ -124,6 +124,10 @@ class GatewayReadinessEntry:
     error_type: str | None = None
     error: str | None = None
     event: Event = field(default_factory=Event)
+    # The last completed result, carried across a refresh so a re-probe does not
+    # black out model readiness for the 2-5 minutes it takes (O10).
+    last_good: "GatewayReadinessEntry | None" = None
+    last_good_age_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -1386,6 +1390,7 @@ class Stage2System:
         *,
         model_probe_runner: GatewayProbeRunner | None = None,
         probe_cache_ttl_seconds: float = 300.0,
+        probe_stale_grace_seconds: float = 900.0,
     ):
         self.config = config
         for path in (config.private_root, config.artifact_root):
@@ -1400,6 +1405,9 @@ class Stage2System:
         self._active_controls: dict[str, dict[str, Any]] = {}
         self._model_probe_runner = model_probe_runner or self._default_model_probe_runner
         self._probe_cache_ttl_seconds = probe_cache_ttl_seconds
+        # How long a completed probe may still answer for while the next one
+        # runs. Past it, readiness fails closed rather than guessing.
+        self._probe_stale_grace_seconds = probe_stale_grace_seconds
         self._probe_lock = Lock()
         self._gateway_readiness: dict[tuple[str, str, tuple[str, ...]], GatewayReadinessEntry] = {}
 
@@ -1431,7 +1439,7 @@ class Stage2System:
             available_models=available_models,
             probe_report=probe_report,
         )
-        if readiness["status"] == "running":
+        if readiness["status"] == "running" and not readiness.get("serving_stale_result"):
             for model_probe in model_probes.values():
                 model_probe["probe_status"] = "running"
         qualification_path = os.environ.get("STAGE2_HARNESS_CAPABILITIES_FILE")
@@ -1591,7 +1599,7 @@ class Stage2System:
                     return self._gateway_readiness_public(entry, now=now)
                 else:
                     target = self._start_gateway_readiness_refresh_locked(
-                        cache_key, snapshot, aliases
+                        cache_key, snapshot, aliases, previous=entry
                     )
             else:
                 target = self._start_gateway_readiness_refresh_locked(
@@ -1608,13 +1616,28 @@ class Stage2System:
         cache_key: tuple[str, str, tuple[str, ...]],
         snapshot: GatewayConfigSnapshot,
         aliases: tuple[str, ...],
+        *,
+        previous: GatewayReadinessEntry | None = None,
     ) -> GatewayReadinessEntry:
+        now = time.monotonic()
+        # A refresh inherits the last completed result. Submissions keep being
+        # judged on it, marked stale, instead of being refused for the whole
+        # 2-5 minute probe.
+        last_good = previous.last_good if previous is not None else None
+        if previous is not None and previous.status == "complete":
+            last_good = previous
         entry = GatewayReadinessEntry(
             key=cache_key,
             snapshot=snapshot,
             status="running",
-            started_monotonic=time.monotonic(),
+            started_monotonic=now,
             started_at=_utc_now_text(),
+            last_good=last_good,
+            last_good_age_seconds=(
+                max(0.0, now - last_good.completed_monotonic)
+                if last_good is not None and last_good.completed_monotonic is not None
+                else None
+            ),
         )
         self._gateway_readiness[cache_key] = entry
         thread = Thread(
@@ -1693,6 +1716,8 @@ class Stage2System:
             "aliases": list(entry.key[2]),
             "available_models": sorted(entry.available_models),
             "model_catalog_error": entry.model_error,
+            "serving_stale_result": False,
+            "stale_age_seconds": None,
         }
         if entry.status in {"complete", "failed"}:
             payload["probe_report"] = dict(entry.probe_report or {})
@@ -1700,7 +1725,34 @@ class Stage2System:
             payload["error_type"] = entry.error_type
         if entry.error is not None:
             payload["error"] = entry.error
+        if entry.status != "running" or entry.last_good is None:
+            return payload
+        stale_age = self._stale_age(entry, now=now)
+        if stale_age is None or stale_age > self._probe_stale_grace_seconds:
+            # Beyond the grace window the last result stops being evidence of
+            # anything, so readiness fails closed instead of going on serving it.
+            payload["stale_age_seconds"] = stale_age
+            return payload
+        # A refresh is in flight; answer from the last completed probe and say so.
+        last_good = entry.last_good
+        payload.update(
+            completed_at=last_good.completed_at,
+            age_seconds=stale_age,
+            available_models=sorted(last_good.available_models),
+            model_catalog_error=last_good.model_error,
+            probe_report=dict(last_good.probe_report or {}),
+            serving_stale_result=True,
+            stale_age_seconds=stale_age,
+        )
         return payload
+
+    def _stale_age(
+        self, entry: GatewayReadinessEntry, *, now: float
+    ) -> float | None:
+        last_good = entry.last_good
+        if last_good is None or last_good.completed_monotonic is None:
+            return None
+        return max(0.0, now - last_good.completed_monotonic)
 
     def _default_model_probe_runner(
         self,

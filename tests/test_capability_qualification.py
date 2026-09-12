@@ -266,10 +266,20 @@ def test_real_publish_cli_reports_success_or_structured_rejection(tmp_path, vali
 
 
 def test_publisher_is_in_controller_image_and_build_inputs():
+    """The build inputs now follow the Dockerfile, so one COPY line covers both.
+
+    This used to assert the same path twice: once in the Dockerfile and once in
+    a hand-written list inside build_stage2_image.py. Keeping those two in step
+    by hand is what shipped a stale script on 2026-09-11 (O18).
+    """
+    from stage2_service.image_manifest import copied_sources
+
     root = Path(__file__).resolve().parents[1]
     path = "scripts/publish_harness_capabilities.py"
-    assert f"COPY --chown=10001:10001 {path} /app/{path}" in (root / "deploy/stage2/Dockerfile.runtime-overlay").read_text()
-    assert f'REPO_ROOT / "{path}"' in (root / "scripts/build_stage2_image.py").read_text()
+    dockerfile = (root / "deploy/stage2/Dockerfile.runtime-overlay").read_text()
+
+    assert f"COPY --chown=10001:10001 {path} /app/{path}" in dockerfile
+    assert path in copied_sources(dockerfile)
 
 
 def test_substitution_dispatch_type_is_the_evaluator_profile():

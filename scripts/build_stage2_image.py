@@ -16,6 +16,16 @@ import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from stage2_service.image_manifest import (  # noqa: E402
+    GENERATED_SOURCES,
+    build_manifest,
+    copied_sources,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPOSITORY = "1.94.151.57:85/observe/resbench-stage2"
@@ -70,25 +80,34 @@ def source_digest() -> str:
         and "dist" not in path.parts
         and path.suffix not in {".pyc", ".pyo"}
     ]
+    # Everything the overlay Dockerfile copies, read from the Dockerfile itself.
+    # A COPY line added there is covered by this digest without anyone having to
+    # remember to repeat it here (O18).
+    overlay = REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay"
+    copied = [
+        REPO_ROOT / source
+        for source in copied_sources(overlay.read_text(encoding="utf-8"))
+        if source not in GENERATED_SOURCES
+    ]
+    files.extend(path for path in copied if path.is_file())
+    files.extend(
+        child
+        for path in copied
+        if path.is_dir()
+        for child in path.rglob("*")
+        if child.is_file()
+        and "__pycache__" not in child.parts
+        and "node_modules" not in child.parts
+        and "dist" not in child.parts
+        and child.suffix not in {".pyc", ".pyo"}
+    )
     files.extend(
         [
-            REPO_ROOT / "scripts/run_harness_trial.py",
-            REPO_ROOT / "scripts/run_otel_accounting_cpu_matrix.py",
-            REPO_ROOT / "scripts/run_stage2_matrix.py",
-            REPO_ROOT / "scripts/build_stage2_qualification_matrix.py",
-            REPO_ROOT / "scripts/probe_models.py",
-            REPO_ROOT / "scripts/qualify_agent_channel.py",
-            REPO_ROOT / "scripts/publish_harness_capabilities.py",
-            REPO_ROOT / "scripts/build_bladeai_qualification.py",
-            REPO_ROOT / "scripts/qualify_bladeai_task.py",
-            REPO_ROOT / "scripts/qualify_execution_identities.py",
-            REPO_ROOT / "scripts/serve_stage2_matrix_review.py",
-            REPO_ROOT / "scripts/deploy_application.py",
-            REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay",
+            overlay,
             REPO_ROOT / "deploy/stage2/Dockerfile.agent",
-            REPO_ROOT / "deploy/stage2/codex-eval",
         ]
     )
+    files = sorted(set(files))
     for path in sorted(files):
         digest.update(path.relative_to(REPO_ROOT).as_posix().encode())
         digest.update(b"\0")
@@ -307,6 +326,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     head = git_head()
     content_sha = source_digest()
+    # Raises before anything is built if the Dockerfile copies a path that is
+    # not in the tree, rather than producing an image that silently lacks it.
+    runtime_manifest = build_manifest(REPO_ROOT, revision=head)
     image = f"{args.repository}:stage2-d0-{head}"
     agent_image = f"{args.repository}:stage2-agent-{head}"
     with tempfile.TemporaryDirectory(prefix="resbench-stage2-build-") as raw:
@@ -399,6 +421,9 @@ def main(argv: list[str] | None = None) -> int:
         "platform": "linux/amd64",
         "frontend_included": True,
         "bladeai_source": asdict(bladeai_metadata),
+        # What the overlay Dockerfile says this image contains, with a digest per
+        # entry, so a deploy can tell a stale or missing script from a good one.
+        "runtime_manifest": runtime_manifest,
     }
     destination = args.metadata.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)

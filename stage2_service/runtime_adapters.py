@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -146,6 +147,10 @@ class McpTokenStateRegistry:
             self._original[key] = token
             path = self._path(trial_id, server)
             _atomic_token(path, token)
+            # The pre-revocation token is snapshotted at initialization, not at
+            # revocation time, so a Controller that is restarted between the two
+            # can still restore the identity it issued (O08).
+            self._write_restoration_snapshot(trial_id, server, token, stage="initialize")
             paths[server] = str(path)
         return paths
 
@@ -170,17 +175,107 @@ class McpTokenStateRegistry:
         path = self._path(trial_id, server)
         if not path.is_file():
             raise RuntimeAdapterError("MCP token state was not initialized")
+        # Snapshot the live identity before rotating it away. Without this the
+        # only copy of the pre-revocation token lives in Controller memory and a
+        # restart turns an ordinary restore into ``restoration state is missing``.
+        snapshot = self._ensure_restoration_snapshot(trial_id, server, path)
         _atomic_token(path, secrets.token_urlsafe(48))
+        self._append_permission_event(
+            trial_id,
+            "MCP_PERMISSION_REVOKED",
+            server=server,
+            capability=capability,
+            token_sha256=_token_fingerprint(snapshot),
+        )
+        # The evidence shape is pinned by recorded 2026-09-11 D1/D3/D4 records;
+        # the durable snapshot is reported through the ledger event above.
         return {"server": server, "capability": capability, "revoked": True}
 
     def restore(self, trial_id: str, capability: str) -> dict[str, Any]:
         server = self.SERVER_BY_CAPABILITY.get(capability)
-        key = f"{trial_id}:{server}"
-        token = self._original.get(key)
-        if not server or token is None:
-            raise RuntimeAdapterError("MCP permission restoration state is missing")
-        _atomic_token(self._path(trial_id, server), token)
+        if not server:
+            raise RuntimeAdapterError(
+                f"no MCP server mapping for capability {capability}"
+            )
+        token, source = self._read_restoration_snapshot(trial_id, server)
+        if token is None:
+            raise RuntimeAdapterError(
+                "MCP permission restoration snapshot is missing for "
+                f"{server}; expected {self._restore_path(trial_id, server).as_posix()}"
+            )
+        path = self._path(trial_id, server)
+        # Restoring is idempotent: replaying it after a completed restore must
+        # neither fail nor rewrite a file that already holds the right identity.
+        already_restored = path.is_file() and _read_token(path) == token
+        if not already_restored:
+            _atomic_token(path, token)
+        self._original.setdefault(f"{trial_id}:{server}", token)
+        self._append_permission_event(
+            trial_id,
+            "MCP_PERMISSION_RESTORED",
+            server=server,
+            capability=capability,
+            token_sha256=_token_fingerprint(token),
+            snapshot_source=source,
+            already_restored=already_restored,
+        )
         return {"server": server, "capability": capability, "verified": True}
+
+    def _restore_path(self, trial_id: str, server: str) -> Path:
+        return self._path(trial_id, server).with_suffix(".restore")
+
+    def _write_restoration_snapshot(
+        self, trial_id: str, server: str, token: str, *, stage: str
+    ) -> str:
+        path = self._restore_path(trial_id, server)
+        _atomic_token(path, token)
+        self._append_permission_event(
+            trial_id,
+            "MCP_PERMISSION_SNAPSHOT",
+            server=server,
+            capability=None,
+            token_sha256=_token_fingerprint(token),
+            stage=stage,
+            snapshot_path=path.as_posix(),
+        )
+        return token
+
+    def _ensure_restoration_snapshot(
+        self, trial_id: str, server: str, live_path: Path
+    ) -> str:
+        existing, _ = self._read_restoration_snapshot(trial_id, server)
+        if existing is not None:
+            return existing
+        token = _read_token(live_path)
+        if token is None:
+            raise RuntimeAdapterError("MCP token state was not initialized")
+        return self._write_restoration_snapshot(trial_id, server, token, stage="revoke")
+
+    def _read_restoration_snapshot(
+        self, trial_id: str, server: str
+    ) -> tuple[str | None, str]:
+        """Prefer the durable snapshot; process memory is only a fast path."""
+        token = _read_token(self._restore_path(trial_id, server))
+        if token is not None:
+            return token, "ledger_snapshot"
+        token = self._original.get(f"{trial_id}:{server}")
+        if token is not None:
+            return token, "process_memory"
+        return None, "missing"
+
+    def _append_permission_event(
+        self, trial_id: str, event_type: str, **payload: Any
+    ) -> None:
+        """Record restoration metadata only; the token itself never enters the ledger."""
+        try:
+            self.platform_ledger.append(
+                trial_id=trial_id,
+                event_type=event_type,
+                occurred_at=datetime.now(timezone.utc),
+                payload={key: value for key, value in payload.items() if value is not None},
+            )
+        except Exception:  # noqa: BLE001 - evidence must not break a restore.
+            pass
 
     def _path(self, trial_id: str, server: str) -> Path:
         _validate_trial_id(trial_id)
@@ -801,9 +896,23 @@ def _utc_datetime(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _read_token(path: Path) -> str | None:
+    """Read a token file without treating an absent or unusable file as fatal."""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except (OSError, ValueError, UnicodeError):
+        return None
+    return token or None
+
+
+def _token_fingerprint(token: str) -> str:
+    """Identify a token in evidence without recording the token itself."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def _atomic_token(path: Path, token: str) -> None:
     _validate_token(token)
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(f".{path.name}.tmp")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:

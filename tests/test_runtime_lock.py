@@ -14,9 +14,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_review_entrypoint_is_updated_in_runtime_overlay():
+    """The build inputs are derived from the Dockerfile now, not repeated (O18)."""
+    from stage2_service.image_manifest import copied_sources
+
     path = "scripts/serve_stage2_matrix_review.py"
-    assert f"COPY --chown=10001:10001 {path} /app/{path}" in (REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay").read_text()
-    assert f'REPO_ROOT / "{path}"' in (REPO_ROOT / "scripts/build_stage2_image.py").read_text()
+    dockerfile = (REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay").read_text()
+
+    assert f"COPY --chown=10001:10001 {path} /app/{path}" in dockerfile
+    assert path in copied_sources(dockerfile)
 
 
 def test_runtime_lock_uses_agent_exec_socket_parent(tmp_path: Path) -> None:

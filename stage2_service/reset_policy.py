@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from .recovery_state import RecoveryAssessment, RecoveryState, classify_recovery
+
 
 class ResetTier(str, Enum):
     T0_NO_WRITE = "T0_NO_WRITE"
@@ -33,7 +35,12 @@ class ResetPolicyDecision:
     required_actions: tuple[ResetAction, ...]
     reason_codes: tuple[str, ...] = ()
     evidence_summary: Mapping[str, Any] = field(default_factory=dict)
-    schema_version: str = "stage2-reset-policy.v1"
+    schema_version: str = "stage2-reset-policy.v2"
+    # The tier says which remedy would fit; these two say whether the platform
+    # is allowed to apply the destructive one (O04).
+    recovery_state: RecoveryState = RecoveryState.NOT_REQUIRED
+    reinstall_authorized: bool = True
+    reinstall_block_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -44,6 +51,9 @@ class ResetPolicyDecision:
             "required_actions": [item.value for item in self.required_actions],
             "reason_codes": list(self.reason_codes),
             "evidence_summary": dict(self.evidence_summary),
+            "recovery_state": self.recovery_state.value,
+            "reinstall_authorized": self.reinstall_authorized,
+            "reinstall_block_reason": self.reinstall_block_reason,
         }
 
     def model_dump(self, *_, **__) -> dict[str, Any]:
@@ -58,8 +68,14 @@ def classify_reset_policy(evidence: Mapping[str, Any] | None) -> ResetPolicyDeci
     summary = _summarize(data)
     tier = explicit or _infer_tier(summary)
     required_actions = _required_actions(tier)
-    reason_codes = _reason_codes(tier, summary)
+    recovery = classify_recovery(data)
+    reason_codes = _reason_codes(tier, summary) + (
+        () if recovery.state is RecoveryState.NOT_REQUIRED else (recovery.state.value,)
+    )
     verified = _verified(tier, data, summary)
+    # An operator who named the tier has decided; the platform only withholds a
+    # reinstall it would have chosen by itself off unverified recovery evidence.
+    authorized = explicit is not None or recovery.reinstall_authorized
     return ResetPolicyDecision(
         tier=tier,
         verified=verified,
@@ -67,6 +83,9 @@ def classify_reset_policy(evidence: Mapping[str, Any] | None) -> ResetPolicyDeci
         required_actions=required_actions,
         reason_codes=reason_codes,
         evidence_summary=summary,
+        recovery_state=recovery.state,
+        reinstall_authorized=authorized,
+        reinstall_block_reason=None if authorized else recovery.block_reason,
     )
 
 

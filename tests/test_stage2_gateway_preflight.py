@@ -61,6 +61,7 @@ def _system(tmp_path: Path, snapshot: GatewayConfigSnapshot, prober):
     system._active_controls = {}
     system._model_probe_runner = prober
     system._probe_cache_ttl_seconds = 300.0
+    system._probe_stale_grace_seconds = 900.0
     system._probe_lock = Lock()
     system._gateway_readiness = {}
     return system
@@ -313,7 +314,15 @@ def test_concurrent_preflight_starts_only_one_gateway_refresh(tmp_path: Path, mo
     assert system.refresh_gateway_readiness()["status"] == "complete"
 
 
-def test_expired_success_fails_closed_and_ttl_counts_from_completion(tmp_path: Path, monkeypatch):
+def test_an_expired_result_triggers_a_refresh_and_still_answers_while_it_runs(
+    tmp_path: Path, monkeypatch
+):
+    """O10: the TTL starts a re-probe; it no longer blacks out model readiness.
+
+    Before this change the 2-5 minute re-probe made every submission in that
+    window a 503. The TTL now only decides when to refresh; the last completed
+    result keeps answering, marked stale, until the separate grace window ends.
+    """
     snapshot = GatewayConfigSnapshot.from_file(
         _gateway_config(tmp_path),
         required_aliases=STAGE2_SUPPORTED_MODELS,
@@ -328,6 +337,7 @@ def test_expired_success_fails_closed_and_ttl_counts_from_completion(tmp_path: P
     system = _system(tmp_path, snapshot, prober)
     system._gateway_models = lambda: (set(STAGE2_SUPPORTED_MODELS), None)
     system._probe_cache_ttl_seconds = 300.0
+    system._probe_stale_grace_seconds = 900.0
     monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(_qualification_file(tmp_path)))
 
     assert system.refresh_gateway_readiness()["status"] == "complete"
@@ -344,10 +354,47 @@ def test_expired_success_fails_closed_and_ttl_counts_from_completion(tmp_path: P
         system._gateway_readiness[key].completed_monotonic = time.monotonic() - 301.0
     result = system.preflight()
 
-    assert result["gateway_probe"]["status"] == "running"
-    assert result["status"] == "ERROR"
-    assert not _all_runnable(result)
     assert calls == 2
+    assert result["gateway_probe"]["serving_stale_result"] is True
+    assert 300.0 <= result["gateway_probe"]["stale_age_seconds"] < 400.0
+    assert _all_runnable(result)
+    assert result["status"] == "READY"
+
+
+def test_a_result_past_the_grace_window_fails_closed(tmp_path: Path, monkeypatch):
+    """O10: "not expired" still has a hard bound; past it nothing is admitted."""
+    snapshot = GatewayConfigSnapshot.from_file(
+        _gateway_config(tmp_path),
+        required_aliases=STAGE2_SUPPORTED_MODELS,
+    )
+    blocked = Event()
+
+    def prober(_snapshot, _aliases):
+        blocked.wait(timeout=5)
+        return _probe_report()
+
+    system = _system(tmp_path, snapshot, prober)
+    system._gateway_models = lambda: (set(STAGE2_SUPPORTED_MODELS), None)
+    system._probe_cache_ttl_seconds = 300.0
+    system._probe_stale_grace_seconds = 900.0
+    monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(_qualification_file(tmp_path)))
+
+    blocked.set()
+    assert system.refresh_gateway_readiness()["status"] == "complete"
+    key = (snapshot.config_sha256, system.config.llm_base_url, tuple(STAGE2_SUPPORTED_MODELS))
+
+    blocked.clear()
+    with system._probe_lock:
+        system._gateway_readiness[key].completed_monotonic = time.monotonic() - 901.0
+    try:
+        result = system.preflight()
+
+        assert result["gateway_probe"]["status"] == "running"
+        assert result["gateway_probe"]["serving_stale_result"] is False
+        assert not _all_runnable(result)
+        assert result["status"] == "ERROR"
+    finally:
+        blocked.set()
 
 
 def test_failed_gateway_probe_is_cached_then_recovers_after_ttl(tmp_path: Path, monkeypatch):
@@ -589,3 +636,77 @@ def test_runtime_config_from_env_requires_real_gateway_config_file(tmp_path: Pat
         assert "LiteLLM gateway config is not readable" in str(exc)
     else:  # pragma: no cover - assertion branch.
         raise AssertionError("missing runtime LiteLLM config must fail closed")
+
+
+def test_concurrent_queries_during_a_probe_share_one_probe_and_one_answer(
+    tmp_path: Path, monkeypatch
+):
+    """O10: many callers during a refresh start one probe, not one each."""
+    snapshot = GatewayConfigSnapshot.from_file(
+        _gateway_config(tmp_path),
+        required_aliases=STAGE2_SUPPORTED_MODELS,
+    )
+    calls = 0
+    blocked = Event()
+
+    def prober(_snapshot, _aliases):
+        nonlocal calls
+        calls += 1
+        blocked.wait(timeout=5)
+        return _probe_report()
+
+    system = _system(tmp_path, snapshot, prober)
+    system._gateway_models = lambda: (set(STAGE2_SUPPORTED_MODELS), None)
+    monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(_qualification_file(tmp_path)))
+
+    blocked.set()
+    assert system.refresh_gateway_readiness()["status"] == "complete"
+    key = (snapshot.config_sha256, system.config.llm_base_url, tuple(STAGE2_SUPPORTED_MODELS))
+
+    blocked.clear()
+    with system._probe_lock:
+        system._gateway_readiness[key].completed_monotonic = time.monotonic() - 400.0
+
+    results: list[dict] = []
+    threads = [
+        Thread(target=lambda: results.append(system.preflight())) for _ in range(6)
+    ]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        assert calls == 2
+        assert len(results) == 6
+        assert all(item["gateway_probe"]["serving_stale_result"] for item in results)
+        assert all(_all_runnable(item) for item in results)
+    finally:
+        blocked.set()
+        for thread in threads:
+            thread.join(timeout=5)
+
+
+def test_a_recovered_provider_replaces_the_stale_answer_with_a_fresh_one(
+    tmp_path: Path, monkeypatch
+):
+    """O10: once the refresh lands, readiness stops being marked stale."""
+    snapshot = GatewayConfigSnapshot.from_file(
+        _gateway_config(tmp_path),
+        required_aliases=STAGE2_SUPPORTED_MODELS,
+    )
+    system = _system(tmp_path, snapshot, lambda _s, _a: _probe_report())
+    system._gateway_models = lambda: (set(STAGE2_SUPPORTED_MODELS), None)
+    monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(_qualification_file(tmp_path)))
+
+    assert system.refresh_gateway_readiness()["status"] == "complete"
+    key = (snapshot.config_sha256, system.config.llm_base_url, tuple(STAGE2_SUPPORTED_MODELS))
+    with system._probe_lock:
+        system._gateway_readiness[key].completed_monotonic = time.monotonic() - 400.0
+
+    system.preflight()  # starts the refresh and serves the stale answer
+    refreshed = system.refresh_gateway_readiness()
+
+    assert refreshed["status"] == "complete"
+    assert refreshed["serving_stale_result"] is False
+    assert _all_runnable(system.preflight())

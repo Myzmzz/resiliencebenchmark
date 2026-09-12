@@ -21,6 +21,7 @@ from .base import (
     extract_arguments,
     extract_call_id,
     normalize_tool_name,
+    tool_identity_fields,
     parse_occurred_at,
     payload_from_result,
     session_id_from_mapping,
@@ -130,12 +131,12 @@ class DeepSeekHarnessAdapter(BaseHarnessAdapter):
             return None
         if event_type == "tool/call":
             call_id = str(data.get("callId") or data.get("call_id") or "").strip()
-            tool = normalize_tool_name(data.get("name"))
-            if not call_id or not tool:
+            identity = tool_identity_fields(data.get("name"))
+            if not call_id or identity is None:
                 raise DeepSeekTraceError(f"{raw_ref} tool/call missing callId or name")
             return ToolCall(
                 call_id=call_id,
-                tool=tool,
+                **identity,
                 arguments=extract_arguments(data),
                 occurred_at=occurred_at,
             )

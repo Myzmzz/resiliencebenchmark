@@ -118,6 +118,11 @@ class OtelDemoResetter:
             else classify_reset_policy(source_evidence)
         )
         if decision.tier is ResetTier.T3_FULL_REINSTALL:
+            if not decision.reinstall_authorized:
+                # Recovery is unverified, so the platform does not know what it
+                # would be reinstalling over. It stops here with the system
+                # under test untouched, rather than uninstalling it (O04).
+                return self._recovery_unverified(trial_id, decision)
             result = dict(self._full_reinstall(trial_id, episode))
             return self._attach_policy(
                 result, decision, verified=result.get("verified") is True
@@ -128,6 +133,22 @@ class OtelDemoResetter:
         )
         verified = result.get("verified") is True
         return self._attach_policy(result, decision, verified=verified)
+
+    def _recovery_unverified(
+        self, trial_id: str, decision: ResetPolicyDecision
+    ) -> Mapping[str, Any]:
+        """Report an unknown environment without touching it."""
+        result = {
+            "trial_id": trial_id,
+            "uninstalled": False,
+            "reinstalled": False,
+            "verify_only": False,
+            "verified": False,
+            "recovery_state": decision.recovery_state.value,
+            "reinstall_withheld": True,
+            "reason": decision.reinstall_block_reason,
+        }
+        return self._attach_policy(result, decision, verified=False)
 
     def _verify_environment(
         self,

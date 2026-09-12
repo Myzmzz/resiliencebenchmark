@@ -89,6 +89,65 @@
           },
           "summary": {
             "type": "string"
+          },
+          "call_id": {
+            "type": "string"
+          },
+          "tool_identity": {
+            "type": "object",
+            "description": "Both spellings of a tool name: what the agent wrote and what the platform resolved it to.",
+            "additionalProperties": false,
+            "properties": {
+              "raw": {
+                "type": "string"
+              },
+              "canonical": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "server": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tool": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "resolution": {
+                "type": "string",
+                "enum": [
+                  "qualified",
+                  "client_prefixed",
+                  "server_hint",
+                  "inferred_unique",
+                  "ambiguous",
+                  "unknown"
+                ]
+              },
+              "known": {
+                "type": "boolean"
+              },
+              "recorded_tool": {
+                "type": "string"
+              },
+              "adapter_resolution": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "raw",
+              "resolution",
+              "known"
+            ]
           }
         }
       }

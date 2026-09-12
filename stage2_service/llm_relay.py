@@ -20,6 +20,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from .provider_failures import (
+    ProviderFailure,
+    ProviderFailureClass,
+    classify_provider_failure,
+    failure_detail,
+    route_key,
+)
+
 
 RELAY_HOST = "127.0.0.1"
 RELAY_PORT = 18090
@@ -54,6 +62,41 @@ class TrialRelayConfig:
     host: str = RELAY_HOST
     port: int = RELAY_PORT
     allow_ephemeral_port_for_tests: bool = False
+    provider: str = ""
+    # The Controller supplies this so provider outcomes seen at the relay reach
+    # the breaker and the Trial summary; the Agent process never sees it (O03).
+    failure_observer: Callable[[ProviderFailure], None] | None = field(
+        default=None, compare=False
+    )
+
+    @property
+    def route_key(self) -> str:
+        return route_key(self.provider, self.model_alias)
+
+    def observe(
+        self,
+        failure_class: ProviderFailureClass,
+        *,
+        status_code: int | None = None,
+        detail: str = "",
+    ) -> None:
+        observer = self.failure_observer
+        if observer is None:
+            return
+        try:
+            observer(
+                ProviderFailure(
+                    route_key=self.route_key,
+                    failure_class=failure_class,
+                    status_code=status_code,
+                    detail=detail,
+                    model_alias=self.model_alias,
+                    provider=self.provider,
+                    trial_id=self.trial_id,
+                )
+            )
+        except Exception:  # noqa: BLE001 - observation must not break inference.
+            pass
 
     @classmethod
     def issue(
@@ -69,6 +112,8 @@ class TrialRelayConfig:
         relay_token: str | None = None,
         request_timeout_seconds: float = 180.0,
         max_request_bytes: int = MAX_REQUEST_BYTES,
+        provider: str = "",
+        failure_observer: Callable[[ProviderFailure], None] | None = None,
     ) -> "TrialRelayConfig":
         if not trial_id or not model_alias:
             raise ValueError("trial_id and model_alias are required")
@@ -87,6 +132,8 @@ class TrialRelayConfig:
             gateway_config_sha256=gateway_config_sha256,
             request_timeout_seconds=request_timeout_seconds,
             max_request_bytes=max_request_bytes,
+            provider=provider,
+            failure_observer=failure_observer,
         )
 
     def agent_environment(self) -> dict[str, str]:
@@ -182,16 +229,55 @@ def create_trial_relay_app(
                 client.build_request("POST", upstream_url, content=body, headers=headers),
                 stream=True,
             )
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as exc:
             await client.aclose()
+            config.observe(
+                classify_provider_failure(error_type=type(exc).__name__),
+                detail="upstream_timeout",
+            )
             return _error(504, "upstream_timeout")
-        except httpx.RequestError:
+        except httpx.RequestError as exc:
             await client.aclose()
+            config.observe(
+                classify_provider_failure(error_type=type(exc).__name__),
+                detail="upstream_unavailable",
+            )
             return _error(502, "upstream_unavailable")
         if 300 <= upstream.status_code < 400:
             await upstream.aclose()
             await client.aclose()
+            config.observe(
+                ProviderFailureClass.UPSTREAM_ERROR,
+                status_code=upstream.status_code,
+                detail="upstream_redirect_rejected",
+            )
             return _error(502, "upstream_redirect_rejected")
+        if upstream.status_code >= 400:
+            # A provider error body is small and carries the only evidence that
+            # separates arrears from a bad request, so it is read whole and
+            # forwarded unchanged rather than streamed past unclassified.
+            try:
+                error_body = await upstream.aread()
+            except httpx.HTTPError:
+                error_body = b""
+            finally:
+                await upstream.aclose()
+                await client.aclose()
+            config.observe(
+                classify_provider_failure(
+                    status_code=upstream.status_code, body=error_body
+                ),
+                status_code=upstream.status_code,
+                detail=failure_detail(error_body),
+            )
+            return Response(
+                content=error_body,
+                status_code=upstream.status_code,
+                headers=_forwarded_headers(upstream),
+            )
+        # 2xx headers are enough to say the route is answering; a success closes
+        # a breaker that an earlier outage had opened.
+        config.observe(ProviderFailureClass.NONE, status_code=upstream.status_code)
 
         async def stream_body() -> AsyncIterator[bytes]:
             try:
@@ -203,13 +289,10 @@ def create_trial_relay_app(
                 await upstream.aclose()
                 await client.aclose()
 
-        response_headers = {
-            key: value
-            for key, value in upstream.headers.items()
-            if key.lower() in {"content-type", "cache-control", "x-request-id"}
-        }
         return StreamingResponse(
-            stream_body(), status_code=upstream.status_code, headers=response_headers
+            stream_body(),
+            status_code=upstream.status_code,
+            headers=_forwarded_headers(upstream),
         )
 
     return Starlette(
@@ -351,6 +434,15 @@ def _authorized(request: Request, token: str) -> bool:
     value = request.headers.get("authorization")
     expected = f"Bearer {token}"
     return value is not None and secrets.compare_digest(value, expected)
+
+
+def _forwarded_headers(upstream: httpx.Response) -> dict[str, str]:
+    """Forward only the bounded header set the Agent client needs."""
+    return {
+        key: value
+        for key, value in upstream.headers.items()
+        if key.lower() in {"content-type", "cache-control", "x-request-id"}
+    }
 
 
 def _error(status_code: int, code: str) -> JSONResponse:
