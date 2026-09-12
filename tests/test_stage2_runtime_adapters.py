@@ -565,3 +565,112 @@ def test_a_failing_target_still_blocks_warmup_and_the_trace_says_why(monkeypatch
     assert trace and {entry["phase"] for entry in trace} == {"warmup"}
     assert not any(entry["ok"] for entry in trace)
     assert trace[-1]["target_current_fail_per_sec"] == 0.5
+
+
+class ChaosRunner(Runner):
+    """Environment-gate runner whose ChaosBlade inventory is cluster-wide."""
+
+    def __init__(self, chaos_items, **kwargs):
+        super().__init__(**kwargs)
+        self.chaos_items = chaos_items
+
+    def run(self, argv, *, timeout=60):
+        if "chaosblades.chaosblade.io" in argv:
+            return subprocess.CompletedProcess(
+                argv, 0, json.dumps({"items": self.chaos_items}), ""
+            )
+        return super().run(argv, timeout=timeout)
+
+
+def _labelled_blade(namespace: str) -> dict:
+    return {
+        "metadata": {"name": f"cc-{namespace}", "labels": {"benchmark.namespace": namespace}},
+    }
+
+
+def _matcher_blade(namespace: str) -> dict:
+    return {
+        "metadata": {"name": f"unlabelled-{namespace}"},
+        "spec": {"experiments": [{"matchers": [{"name": "namespace", "value": [namespace]}]}]},
+    }
+
+
+def _replica_episode(namespace: str):
+    return SimpleNamespace(public=SimpleNamespace(environment_snapshot={"namespace": namespace}))
+
+
+def test_environment_gate_ignores_another_replicas_chaosblade(tmp_path: Path, monkeypatch):
+    """A sibling replica's injection must not block this replica's trial."""
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runner = ChaosRunner([_labelled_blade("otel-demo-02"), _matcher_blade("otel-demo-03")])
+
+    verdict = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
+        _replica_episode("otel-demo-01")
+    )
+
+    assert verdict["qualified"] is True
+    assert verdict["active_chaosblade_count"] == 0
+    assert verdict["foreign_chaosblade_count"] == 2
+    assert verdict["cluster_chaosblade_count"] == 2
+
+
+def test_environment_gate_still_blocks_on_this_replicas_chaosblade(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runner = ChaosRunner([_labelled_blade("otel-demo-01"), _labelled_blade("otel-demo-02")])
+
+    verdict = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
+        _replica_episode("otel-demo-01")
+    )
+
+    assert verdict["qualified"] is False
+    assert verdict["active_chaosblade_count"] == 1
+
+
+def test_environment_gate_never_prefix_matches_the_full_system(tmp_path: Path, monkeypatch):
+    """``otel-demo`` and ``otel-demo-01`` share a prefix and must stay separate."""
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runner = ChaosRunner([_labelled_blade("otel-demo-01")])
+
+    # Bound to the full system: a replica's fault is someone else's.
+    monkeypatch.delenv("RESBENCH_APPLICATION_NAMESPACE", raising=False)
+    full = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(Episode())
+    assert full["qualified"] is True
+    assert full["foreign_chaosblade_count"] == 1
+
+    # Bound to the replica: the same fault is its own.
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
+    replica = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
+        _replica_episode("otel-demo-01")
+    )
+    assert replica["qualified"] is False
+
+
+def test_environment_gate_blocks_on_an_unattributable_chaosblade(tmp_path: Path, monkeypatch):
+    """A leftover with no target namespace still fails the gate, as before."""
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runner = ChaosRunner([{"metadata": {"name": "orphan"}}])
+
+    verdict = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
+        _replica_episode("otel-demo-01")
+    )
+
+    assert verdict["qualified"] is False
+    assert verdict["unattributed_chaosblade_names"] == ["orphan"]
+
+
+def test_environment_gate_rejects_a_namespace_that_is_not_the_binding(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+
+    verdict = KubernetesEnvironmentGate(kubeconfig, runner=ChaosRunner([])).qualify(Episode())
+
+    assert verdict["qualified"] is False
+    assert verdict["reason"] == "fixed Episode namespace is not otel-demo-01"

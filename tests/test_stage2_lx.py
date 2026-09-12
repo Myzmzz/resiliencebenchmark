@@ -9,6 +9,7 @@ from stage2_service.contracts import STAGE2_SUPPORTED_MODELS
 
 from stage2_service.api import CampaignSupervisor, create_app
 from stage2_service.lx import LxRunRequest, LxService, LxSlots, PromptVariantRequest
+from stage2_service.task_service import TaskValidationError
 
 
 class FakeTaskService:
@@ -803,3 +804,91 @@ def test_duration_mismatch_says_which_duration_and_how_to_change_it(tmp_path):
     message = str(caught.value)
     assert "300" in message and "600" in message
     assert "prompt-variants" in message
+
+
+def test_run_records_namespace_and_prompt_provenance(tmp_path):
+    """A fleet summary must be able to separate canonical from manual prompts."""
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+
+    summary = svc.create_run(_run(svc, harness="codex"))
+
+    provenance = summary["provenance"]
+    assert provenance["application_namespace"] == "otel-demo"
+    assert provenance["prompt_source"] == "canonical"
+    assert len(provenance["prompt_sha256"]) == 64
+
+
+def test_replica_run_binds_the_target_to_its_own_namespace(tmp_path, monkeypatch):
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-02")
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    request = PromptVariantRequest(
+        application="otel-demo-02",
+        slots=LxSlots(
+            target="cart",
+            fault_type="cpu_load",
+            fault_params={"cpu_percent": 80},
+            duration_seconds=300,
+        ),
+    )
+    variants = svc.create_variants(request)
+    prompt = next(item["prompt"] for item in variants["variants"] if item["level"] == "L0")
+    assert "otel-demo-02" in prompt
+
+    summary = svc.create_run(
+        LxRunRequest(
+            autonomy_level="L0",
+            prompt=prompt,
+            application="otel-demo-02",
+            harness="codex",
+            model="gpt-5.5",
+            llm_tag="replica",
+            duration_seconds=300,
+            variant_set_id=variants["variant_set_id"],
+        )
+    )
+
+    (task_request,) = fake.created.values()
+    assert task_request.target.namespace == "otel-demo-02"
+    assert summary["provenance"]["application_namespace"] == "otel-demo-02"
+
+
+def test_replica_run_refuses_a_prompt_naming_another_replica(tmp_path, monkeypatch):
+    """Hand-edited batches mix replicas up; the wrong prompt must never run."""
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-02")
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+
+    with pytest.raises(TaskValidationError, match="otel-demo-05"):
+        svc.create_run(
+            LxRunRequest(
+                autonomy_level="L0",
+                prompt="请针对 otel-demo-05 的 cart 服务注入高 CPU 负载（cpu_percent=80），最长持续 300 秒，并验证故障效果和业务恢复。",
+                application="otel-demo-02",
+                harness="codex",
+                model="gpt-5.5",
+                llm_tag="replica",
+                duration_seconds=300,
+            )
+        )
+    assert fake.created == {}
+
+
+def test_replica_run_refuses_another_applications_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-02")
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+
+    with pytest.raises(TaskValidationError, match="otel-demo-02"):
+        svc.create_run(
+            LxRunRequest(
+                autonomy_level="L0",
+                prompt="请针对 otel-demo-02 的 cart 服务注入高 CPU 负载（cpu_percent=80），最长持续 300 秒，并验证故障效果和业务恢复。",
+                application="otel-demo",
+                harness="codex",
+                model="gpt-5.5",
+                llm_tag="replica",
+                duration_seconds=300,
+            )
+        )

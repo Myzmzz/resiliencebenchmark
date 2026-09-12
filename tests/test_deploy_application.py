@@ -147,10 +147,32 @@ def test_activate_restores_annotated_replicas_and_waits():
 def test_delete_boundary_rejects_shared_or_unsafe_namespaces():
     with pytest.raises(deploy.DeployError, match="protected namespace"):
         deploy.assert_delete_boundary("otel-demo", "observability")
-    with pytest.raises(deploy.DeployError, match="must use"):
+    with pytest.raises(deploy.DeployError, match="numbered replica namespace"):
         deploy.assert_delete_boundary("otel-demo", "customer-production")
     deploy.assert_delete_boundary("otel-demo", "otel-demo")
     deploy.assert_delete_boundary("otel-demo", "rb-otel-demo-test")
+
+
+def test_delete_boundary_accepts_only_this_application_numbered_replicas():
+    """A replica fleet reclaims ``otel-demo-NN``; nothing else gains access."""
+    deploy.assert_delete_boundary("otel-demo", "otel-demo-01")
+    deploy.assert_delete_boundary("otel-demo", "otel-demo-20")
+    # Same prefix, not a replica: a startswith test would have allowed these.
+    for namespace in ("otel-demoX", "otel-demo-prod", "otel-demo-01x"):
+        with pytest.raises(deploy.DeployError, match="numbered replica namespace"):
+            deploy.assert_delete_boundary("otel-demo", namespace)
+    # A replica of another application is not this application's to delete.
+    with pytest.raises(deploy.DeployError, match="numbered replica namespace"):
+        deploy.assert_delete_boundary("sock-shop", "otel-demo-01")
+
+
+def test_replica_namespaces_own_their_active_system_marker():
+    """Parallel replicas must not overwrite one shared marker ConfigMap."""
+    assert deploy.marker_namespace("otel-demo", "otel-demo") == "otel-demo"
+    assert deploy.marker_namespace("otel-demo", "otel-demo-03") == "otel-demo-03"
+    # Unchanged for every non-replica target, including the other applications.
+    assert deploy.marker_namespace("train-ticket", "train-ticket") == deploy.MARKER_NAMESPACE
+    assert deploy.marker_namespace("otel-demo", "rb-otel-demo-test") == deploy.MARKER_NAMESPACE
 
 
 def test_train_ticket_delete_refuses_protected_pvcs():
