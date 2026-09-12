@@ -8,10 +8,13 @@ and every call is written to the audit log whether it was a dry run or not.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -45,7 +48,9 @@ class Provisioner:
         client_factory: Callable[[str], ControllerClient] | None = None,
         deploy_runner: Callable[[list[str]], subprocess.CompletedProcess] | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        private_root: Path | None = None,
     ):
+        self.private_root = Path(private_root) if private_root else Path(store.path).parent
         self.store = store
         self.kube = kube
         self.repo_root = Path(repo_root)
@@ -56,7 +61,10 @@ class Provisioner:
         self.sleep = sleep
 
     # -- deployment of the system under test -------------------------------
-    def _deploy_argv(self, config: FleetConfig, namespace: str, *, server_dry_run: bool) -> list[str]:
+    def _deploy_argv(
+        self, config: FleetConfig, namespace: str, *, server_dry_run: bool,
+        runtime_env_file: str | None = None,
+    ) -> list[str]:
         argv = [
             sys.executable,
             str(self.repo_root / "scripts/deploy_application.py"),
@@ -69,13 +77,32 @@ class Provisioner:
         ]
         if self.kubeconfig:
             argv.extend(["--kubeconfig", self.kubeconfig])
-        if self.runtime_env_file:
-            argv.extend(["--runtime-env-file", self.runtime_env_file])
+        env_file = runtime_env_file or self.runtime_env_file
+        if env_file:
+            argv.extend(["--runtime-env-file", env_file])
         return argv
 
     @staticmethod
     def _run_deploy(argv: list[str]) -> subprocess.CompletedProcess:
         return subprocess.run(argv, check=False, capture_output=True, text=True, timeout=1500)
+
+    @contextmanager
+    def _private_runtime_env(self, config: FleetConfig):
+        """A mode-0600 copy of the runtime env file for one deploy call.
+
+        The Secret is mounted 0440 because fsGroup adds group read, and
+        deploy_application.py refuses a runtime env file any group can read.
+        The Controller's own reset path makes the same private copy.
+        """
+        if not self.runtime_env_file:
+            yield None
+            return
+        self.private_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="fleet-deploy-", dir=self.private_root) as raw:
+            private = Path(raw) / f"{config.sut_application}.env"
+            shutil.copyfile(self.runtime_env_file, private)
+            private.chmod(0o600)
+            yield str(private)
 
     def deploy_sut(self, config: FleetConfig, namespace: str, *, dry_run: bool) -> dict[str, Any]:
         assert_operable_namespace(config.namespace_prefix, namespace)
@@ -90,8 +117,9 @@ class Provisioner:
                 "reason": "namespace does not exist yet; a server dry run cannot create it",
                 "command": " ".join(self._deploy_argv(config, namespace, server_dry_run=True)),
             }
-        argv = self._deploy_argv(config, namespace, server_dry_run=dry_run)
-        completed = self.deploy_runner(argv)
+        with self._private_runtime_env(config) as env_file:
+            argv = self._deploy_argv(config, namespace, server_dry_run=dry_run, runtime_env_file=env_file)
+            completed = self.deploy_runner(argv)
         report = {
             "namespace": namespace,
             "mode": "server-dry-run" if dry_run else "execute",

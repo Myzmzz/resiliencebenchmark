@@ -534,3 +534,33 @@ def test_dry_run_checks_everything_once_the_replica_exists(fleet):
     assert "not_simulated" not in slot
     assert slot["system_under_test"]["mode"] == "server-dry-run"
     assert slot["system_under_test"]["exit_code"] == 0
+
+
+def test_deploy_gets_a_private_copy_of_the_runtime_env_file(tmp_path: Path):
+    """The mounted Secret is 0440; deploy_application.py refuses group-readable files."""
+    mounted = tmp_path / "mounted" / "otel-demo.env"
+    mounted.parent.mkdir()
+    mounted.write_text("HARBOR_REGISTRY=registry.example\n", encoding="utf-8")
+    mounted.chmod(0o440)
+    seen: list[dict[str, Any]] = []
+
+    def deploy_runner(argv):
+        path = Path(argv[argv.index("--runtime-env-file") + 1])
+        seen.append({"path": path, "mode": path.stat().st_mode & 0o777,
+                     "content": path.read_text(encoding="utf-8")})
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"result": "applied-ready"}), "")
+
+    store = FleetStore(tmp_path / "fleet.sqlite3")
+    provisioner = Provisioner(
+        store, kube=KubeClient(runner=FakeKubeRunner()), repo_root=tmp_path,
+        runtime_env_file=str(mounted), deploy_runner=deploy_runner, sleep=lambda _s: None,
+    )
+
+    provisioner.deploy_sut(FleetConfig.model_validate(CONFIG), "otel-demo-01", dry_run=False)
+
+    assert len(seen) == 1
+    assert seen[0]["mode"] == 0o600
+    assert seen[0]["content"] == mounted.read_text(encoding="utf-8")
+    assert seen[0]["path"] != mounted
+    # The private copy does not outlive the call.
+    assert not seen[0]["path"].exists()
