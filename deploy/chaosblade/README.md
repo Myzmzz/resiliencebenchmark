@@ -52,6 +52,26 @@ exec nsenter -t 1 -C -- /opt/chaosblade/blade.real "$@"
 `tail -f /dev/null` 是原样保留的：这个容器本来就不跑主进程，实际注入由
 operator 通过 `kubectl exec` 进来执行 `blade`。
 
+## `reference-install.yaml` 里有什么
+
+七个对象，**顺序有讲究**——前五个是先决条件，operator 一起来就要用：
+
+| # | 对象 | 作用 |
+|---|---|---|
+| 1 | CRD `chaosblades.chaosblade.io` | **平台就是靠这个 CRD 下发和查询故障**（`stage2_service/runtime_adapters.py:75`、`mcp_servers/chaos_core/backends/chaosblade.py`） |
+| 2 | ServiceAccount `chaosblade` | operator 的身份 |
+| 3 | ClusterRole `chaosblade` | |
+| 4 | ClusterRoleBinding `chaosblade` | |
+| 5 | Service `chaosblade-webhook-server` | operator 的准入 webhook |
+| 6 | Deployment `chaosblade-operator` | |
+| 7 | DaemonSet `chaosblade-tool` | 要配 `cgroupns-wrapper.yaml` 一起用 |
+
+> 首次导出时只收了 6 和 7，漏了前五个先决对象——是拿真集群做
+> `kubectl apply --dry-run=server` 时发现的。补齐后七个对象在 k8s 1.29 上全部通过。
+
+平台侧另有 `resbench-stage2-executor-chaosblade` / `-finalizer-chaosblade` 两个
+ClusterRole，那是 `deploy/stage2/execution-identities.yaml` 的内容，不在本文件里。
+
 ## 第二套环境的其余前提（一并记录）
 
 `chaosblade-tool` DaemonSet 是 `privileged: true`、`hostPID: true`、`hostNetwork: true`，

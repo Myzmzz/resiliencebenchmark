@@ -231,8 +231,8 @@ Dockerfile COPY 了不存在的源会**直接失败**，不会再产出一个悄
 | **P1.5** | **确认共享边界**：`otel-demo` / `coroot` / `chaos-mesh` 归谁，我们能不能改；`aiops` 确认不碰 | 你答复 | — |
 | **P2** | AppArmor profile 装到**要跑 agent-runtime 的那台**（建议 `otcaix-62`，理由见下） | `aa-status` 里 `resbench-agent-runtime` 以 `(enforce)` 结尾 | `apparmor_parser -R`，不影响其它 155 个 profile |
 | **P3** | ~~装 OTel Demo~~ → **只验**：23 个 Deployment 全就绪、`load-generator` 有流量、chart 是 0.40.5 | 已实测通过 | **不动它**（可能是别人的） |
-| **P4a** | 装**可观测栈**（唯一真正缺的观测件），namespace `observability` | Prometheus/Loki/Jaeger 能查；promtail 抓到 `otel-demo` 日志 | `kubectl delete -f reference-stack.yaml`，只删我们建的 namespace |
-| **P4b** | 装 **ChaosBlade** operator + tool + cgroup 包装，namespace `default` | `blade` 能在 tool 容器里跑；**CPU 注入实测压得动 `cart`**（不只看账本） | `kubectl delete -f reference-install.yaml` + 删 ConfigMap |
+| **P4a** | 装**可观测栈**（唯一真正缺的观测件），namespace `observability`。**schema 已校验通过**；jaeger 的 limit 见下方说明 | Prometheus/Loki/Jaeger 能查；promtail 抓到 `otel-demo` 日志 | `kubectl delete -f reference-stack.yaml`，只删我们建的 namespace |
+| **P4b** | 装 **ChaosBlade**（7 个对象：CRD/SA/RBAC/webhook Service/operator/tool + cgroup 包装），namespace `default`。**已在真集群做过服务端 dry-run，7 个全过** | `blade` 能在 tool 容器里跑；**CPU 注入实测压得动 `cart`**（不只看账本） | `kubectl delete -f reference-install.yaml` + 删 ConfigMap；CRD 要单独删 |
 | **P4c** | ~~装 Chaos Mesh~~ → **先验现有的**：`NetworkChaos` / `PodChaos` / `StressChaos` 三类能不能用 | 三类 CRD 存在且能创建能删 | 不动；不行再按 P1.5 的答复决定并排装还是换 |
 | ~~**P4d**~~ | ~~Coroot 只验~~ | ✅ **已完成**：匿名可访问（`authAnonymousRole=Admin`），项目 id = **`po24tcoz`**，`/prom/api/v1/series` 200，能读到 `/k8s/otel-demo/cart` | — |
 | **P5** | 构建平台两个镜像。**范围缩小了**：旧 Harbor 可达，十几个第三方镜像不必搬 | `build-<sha>-image.json` 产出 | 不覆盖同名 tag |

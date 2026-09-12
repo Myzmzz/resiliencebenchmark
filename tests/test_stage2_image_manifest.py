@@ -297,3 +297,54 @@ def test_drift_between_the_built_manifest_and_the_tree_is_reported(tmp_path: Pat
     problems = diff_manifests(built, build_manifest(root, revision="def5678", generated=()))
 
     assert problems == ("changed since the image was built: scripts/deploy_application.py",)
+
+
+# --- 参照安装清单的完整性 ---------------------------------------------------
+
+
+def test_the_chaosblade_reference_install_carries_its_prerequisites():
+    """First export had only the workloads; a server-side dry run found the gap.
+
+    Without the CRD the platform cannot dispatch a fault at all: both
+    stage2_service/runtime_adapters.py and mcp_servers/chaos_core/backends
+    address chaosblades.chaosblade.io directly.
+    """
+    import yaml
+
+    documents = [
+        doc
+        for doc in yaml.safe_load_all(
+            (REPO_ROOT / "deploy/chaosblade/reference-install.yaml").read_text(encoding="utf-8")
+        )
+        if doc
+    ]
+    by_kind = {(doc["kind"], doc["metadata"]["name"]) for doc in documents}
+
+    assert ("CustomResourceDefinition", "chaosblades.chaosblade.io") in by_kind
+    assert ("ServiceAccount", "chaosblade") in by_kind
+    assert ("ClusterRole", "chaosblade") in by_kind
+    assert ("ClusterRoleBinding", "chaosblade") in by_kind
+    assert ("Deployment", "chaosblade-operator") in by_kind
+    assert ("DaemonSet", "chaosblade-tool") in by_kind
+
+    # The CRD has to be created before anything that uses it.
+    kinds = [doc["kind"] for doc in documents]
+    assert kinds.index("CustomResourceDefinition") < kinds.index("Deployment")
+
+
+def test_the_chaosblade_tool_still_requires_the_cgroup_wrapper():
+    """The DaemonSet's command renames blade to blade.real and needs the ConfigMap."""
+    import yaml
+
+    documents = [
+        doc
+        for doc in yaml.safe_load_all(
+            (REPO_ROOT / "deploy/chaosblade/reference-install.yaml").read_text(encoding="utf-8")
+        )
+        if doc
+    ]
+    daemonset = next(doc for doc in documents if doc["kind"] == "DaemonSet")
+    volumes = {v["name"] for v in daemonset["spec"]["template"]["spec"]["volumes"]}
+
+    assert "cgroupns-wrapper" in volumes
+    assert daemonset["spec"]["template"]["spec"]["hostPID"] is True
