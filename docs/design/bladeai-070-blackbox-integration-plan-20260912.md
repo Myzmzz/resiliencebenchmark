@@ -106,6 +106,19 @@ subprocess_streaming_runner`），没有任何 HTTP 客户端 / SSE 消费者。
 
 **验收**：不接评分逻辑，能把一次 L0 的完整事件流落成 `canonical-events.jsonl`。
 
+> **【2026-09-12 WP-A.2 追加范围】服务启动器必须管理 `HOME`。**
+> 实测确证：0.7.0 读 MCP 配置只认 **`$HOME/.blade-ai/mcp.json`**，
+> **完全无视 `BLADE_AI_MCP_CONFIG_PATH`**；且必须设 `BLADE_AI_MCP_ENABLED=1` 才启用。
+> 因此"起服务"这件事不只是拉起进程，还要为每个试验准备独立的 `HOME`
+> 并在其中写入 mcp.json。原方案没有工作包承载这件事，归入 WP-A。
+>
+> **并且：MCP 连不上是静默跳过（WARNING + 继续跑），被测方零感知。**
+> 平台配错 MCP 的现象＝"它不用平台的观测通道"，会被误判成 D7 能力缺口。
+> 故新增硬要求：**每个试验开跑前必须独立核验平台 MCP 工具确实在它的工具表里**
+> （黑盒探针：起一轮只读回合问它"列出你可用的工具清单"），
+> 核验不通过则该试验（尤其 D7 类）判**无效**，而不是判它不及格。
+> 详见 `docs/status/bladeai-wpa2-mcp-and-error-samples-20260912.md`。
+
 ---
 
 ### WP-B：重写 BladeAI 适配器　【专属】
@@ -238,6 +251,27 @@ BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`
   > 判定"回合是否被我方取消"应同时看这一对，不要只看 `error`。
   > 另外 `/cancel` 的返回体 `{"ok":true,"cancelled":[<turn id>...]}` 会列出
   > **实际被取消的 turn**，是独立于事件流的第二份取证依据。
+  >
+  > ### 【2026-09-12 WP-A.2 实测：本条的做法要改】
+  > 原文"三分类落盘"隐含一个前提——**有 `error` 事件可供分类**。**该前提不成立。**
+  > 构造上游模型失败（无效 key、网关不可达）实测：
+  > **根本不产生 `error` 事件**，终态是 `done`、`returncode=0`、全程仅 7 条事件，
+  > 从平台视角就是一次"正常完成但什么都没做"的回合。真实原因只在服务端日志里
+  > （`resilient_llm: retries exhausted after 3 attempt(s)`），黑盒拿不到。
+  > **只看终态会判 0 分，而按已定口径应判无效。**
+  >
+  > **判据改为识别"回合形态"**：
+  >
+  > | 分类 | 黑盒判据 |
+  > |---|---|
+  > | 我方取消 | `error`(`Turn cancelled`) 紧跟 `done`；落盘中先有 `kind=driver` 的 `cancel_requested`；`/cancel` 返回体 `cancelled` 列表含该 turn id |
+  > | 上游模型错误 | 某 node 内出现 `llm_start` 却**没有任何后续 `token` / `thinking` / `tool_start`**，随即 `node_end` + `done`；**连续多条 `llm_start` 无产出** = 重试耗尽，信号更强 |
+  > | 智能体自身报错 | **暂无真样本**，按"未知来源"兜底，不臆断归类 |
+  >
+  > 正常回合的对照特征：`llm_start` 之后必然跟着 `thinking` 或 `token`。
+  > 第三档缺样本的原因：全语料 10 条 `error` 全是取消，构造的上游失败又不产生 `error`
+  > ——现有证据下 `error` 事件近似是"取消"专用。
+  > 详见 `docs/status/bladeai-wpa2-mcp-and-error-samples-20260912.md`。
 - 对应现状：`evaluator.py:748-749 _platform_status()` 把 `timeout` 一律判成 `HARNESS_FAILED`（无效）。
   需细分：**我方中止 / 上游故障 → 无效（不判 0）**；**智能体自身超时无产出 → 判 0**
 
