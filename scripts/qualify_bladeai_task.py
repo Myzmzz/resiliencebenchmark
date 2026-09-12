@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 from stage2_service.bladeai_qualification_runner import BladeAIQualificationRunner
 from stage2_service.contracts import STAGE2_BLADEAI_DEFAULT_MODEL
 from stage2_service.runtime_factory import Stage2RuntimeConfig, Stage2System
+from stage2_service.target_binding import current as current_target_binding
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -55,9 +56,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--namespace",
-        default="otel-demo",
-        choices=["otel-demo"],
-        help="Application namespace. WP8 qualification is currently scoped to otel-demo.",
+        default=current_target_binding().application_namespace,
+        choices=[current_target_binding().application_namespace],
+        help="Application namespace. WP8 qualification runs in this Controller's bound namespace.",
     )
     return parser.parse_args(argv)
 

@@ -16,13 +16,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from stage2_service.target_binding import current as current_target_binding
 from stage2_service.kubernetes_identities import (
     CONTROLLER_SERVICE_ACCOUNT, EXECUTOR_SERVICE_ACCOUNT, FINALIZER_SERVICE_ACCOUNT,
 )
 
 
-def qualify_identities(configs: dict[str, Path], *, control_namespace: str, runner=subprocess.run) -> dict[str, Any]:
+def qualify_identities(
+    configs: dict[str, Path], *, control_namespace: str,
+    application_namespace: str | None = None, runner=subprocess.run,
+) -> dict[str, Any]:
     """Only SelfSubjectReview and SelfSubjectAccessReview requests are used."""
+    application_namespace = application_namespace or current_target_binding().application_namespace
     accounts = {"controller": CONTROLLER_SERVICE_ACCOUNT, "executor": EXECUTOR_SERVICE_ACCOUNT, "finalizer": FINALIZER_SERVICE_ACCOUNT}
     checks = []
     for role, account in accounts.items():
@@ -45,7 +50,7 @@ def qualify_identities(configs: dict[str, Path], *, control_namespace: str, runn
                 expected = (verb in {"get", "list"}
                             or (role == "executor" and verb == "create")
                             or (role == "finalizer" and verb in {"delete", "patch"}))
-                scope = ["--namespace", "otel-demo"] if resource.endswith("chaos-mesh.org") else []
+                scope = ["--namespace", application_namespace] if resource.endswith("chaos-mesh.org") else []
                 checks.append(_permission_check(role, prefix, verb, resource, scope, expected, runner))
         if role == "controller":
             for target, expected in ((EXECUTOR_SERVICE_ACCOUNT, True), (FINALIZER_SERVICE_ACCOUNT, True), ("unrelated-service-account", False)):
@@ -53,7 +58,7 @@ def qualify_identities(configs: dict[str, Path], *, control_namespace: str, runn
                                                 ["--namespace", control_namespace], expected, runner))
         else:
             for verb in ("get", "list", "patch"):
-                checks.append(_permission_check(role, prefix, verb, "pods", ["--namespace", "otel-demo"], True, runner))
+                checks.append(_permission_check(role, prefix, verb, "pods", ["--namespace", application_namespace], True, runner))
             checks.append(_permission_check(role, prefix, "get", "pods", ["--namespace", control_namespace], True, runner))
             checks.append(_permission_check(role, prefix, "patch", "pods", ["--namespace", "kube-system"], False, runner))
             for verb in ("create", "delete"):
