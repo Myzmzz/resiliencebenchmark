@@ -132,6 +132,12 @@ spec:
               value: /app
             - name: STAGE2_RUNTIME_ENV_FILE
               value: /etc/resbench-stage2/otel-demo.env
+            # deploy_application.py installs the replica from the chart baked
+            # into this image rather than reaching a chart repository.
+            - name: OTEL_DEMO_CHART_FILE
+              value: /opt/resiliencebenchmark/charts/opentelemetry-demo-0.40.5.tgz
+            - name: HOME
+              value: /var/lib/resbench-fleet
           volumeMounts:
             - name: state
               mountPath: /var/lib/resbench-fleet

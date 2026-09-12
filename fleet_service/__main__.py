@@ -10,6 +10,8 @@ from pathlib import Path
 
 import uvicorn
 
+from stage2_service.runtime_factory import write_incluster_kubeconfig
+
 from .api import create_app
 from .controller_client import ControllerClient
 from .kube import KubeClient
@@ -21,7 +23,12 @@ from .store import FleetStore
 def main() -> None:
     state_path = Path(os.environ.get("FLEET_STATE_FILE", "/var/lib/resbench-fleet/fleet.sqlite3"))
     repo_root = Path(os.environ.get("STAGE2_REPO_ROOT", "/app"))
-    kubeconfig = os.environ.get("FLEET_KUBECONFIG") or None
+    # deploy_application.py refuses to mutate a cluster without an explicit
+    # kubeconfig, so write one from this Pod's own projected credential.
+    kubeconfig = os.environ.get("FLEET_KUBECONFIG") or str(state_path.parent / "fleet.kubeconfig")
+    if not os.environ.get("FLEET_KUBECONFIG"):
+        state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        write_incluster_kubeconfig(Path(kubeconfig))
     runtime_env_file = os.environ.get("STAGE2_RUNTIME_ENV_FILE") or None
     timeout = float(os.environ.get("FLEET_CONTROLLER_TIMEOUT_SECONDS", "30"))
 
