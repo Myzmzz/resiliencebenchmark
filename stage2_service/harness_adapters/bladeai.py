@@ -41,6 +41,12 @@ from typing import Any
 
 from stage2_service.contracts import HarnessKind
 
+from .bladeai_intensity import (
+    BladeShimError,
+    canonical_fault_type,
+    canonical_native_intensity,
+    native_intensity_source,
+)
 from .bladeai_legacy import LegacyBladeAIHarnessAdapter
 
 from .base import (
@@ -107,6 +113,9 @@ class BladeAIHarnessAdapter(LegacyBladeAIHarnessAdapter):
         self._token_task: str | None = None
         self._gate_versions: dict[str, int] = {}
         self._injection_calls: dict[str, ToolCall] = {}
+        # What the run was observed to actually do.  Populated only from
+        # post-hoc evidence -- never from a plan or an approval card.
+        self._executed_spec: dict[str, Any] = {}
 
     def capability(self) -> HarnessCapability:
         return HarnessCapability(
@@ -374,6 +383,10 @@ class BladeAIHarnessAdapter(LegacyBladeAIHarnessAdapter):
         if parsed is not None:
             self.terminal_result = parsed
             values["result"] = parsed
+            executed = self._extract_executed_spec(parsed)
+            if executed:
+                self._executed_spec = executed
+                values["executed_fault_spec"] = executed
         elif isinstance(content, str):
             values["text"] = content
         if isinstance(value.get("task_id"), str):
@@ -403,6 +416,97 @@ class BladeAIHarnessAdapter(LegacyBladeAIHarnessAdapter):
             values={"kind": "unknown_event", "event": dict(value)},
             occurred_at=parse_occurred_at(value),
         )
+
+    def executed_fault_spec(self) -> dict[str, Any]:
+        """What the run actually did, recovered from post-hoc evidence.
+
+        BladeAI's ``tool_start`` publishes no arguments at all, so the platform
+        cannot learn the injected parameters when the call is made.  They are
+        recovered afterwards from the ``result`` envelope, which reports the
+        spec the run executed.  The approval card is deliberately not used as a
+        source: finding F11 showed the structured plan and the command actually
+        issued can disagree, so only observed execution counts.
+        """
+        return dict(self._executed_spec)
+
+    def _extract_executed_spec(self, parsed: Mapping[str, Any]) -> dict[str, Any]:
+        data = parsed.get("data")
+        if not isinstance(data, Mapping):
+            return {}
+        spec = data.get("fault_spec")
+        spec = spec if isinstance(spec, Mapping) else {}
+        fault_type = data.get("fault_type") or spec.get("fault_type")
+        executed: dict[str, Any] = {"parameters_source": "observed_execution"}
+        if isinstance(fault_type, str):
+            executed["native_fault_type"] = fault_type
+        try:
+            executed["fault_type"] = canonical_fault_type(
+                str(spec.get("scope") or ""),
+                str(spec.get("fault_target") or ""),
+                str(spec.get("fault_action") or ""),
+            )[0]
+        except BladeShimError:
+            if isinstance(fault_type, str):
+                executed["fault_type"] = fault_type
+        for key in ("experiment_uid", "task_id", "injection_method", "task_state"):
+            if isinstance(data.get(key), str):
+                executed[key] = data[key]
+        if isinstance(data.get("experiment_uid"), str):
+            executed["operation_id"] = data["experiment_uid"]
+        names = spec.get("names")
+        if isinstance(names, list) and names:
+            executed["target_names"] = [str(n) for n in names]
+            executed["target_uid"] = str(names[0])
+        for key in ("namespace", "scope", "fault_target", "fault_action"):
+            if isinstance(spec.get(key), str):
+                executed[key] = spec[key]
+        duration = spec.get("duration_seconds")
+        if isinstance(duration, int):
+            executed["duration_seconds"] = duration
+        intensity = self._normalised_intensity(fault_type, spec)
+        if intensity:
+            executed.update(intensity)
+        return executed
+
+    def _normalised_intensity(
+        self, fault_type: Any, spec: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Normalise executed native params into the Controller's contract.
+
+        Uses the mapping lifted out of the shim so the black-box path reports
+        intensity exactly as the in-process path did, including whether the
+        value was the Agent's own or a ChaosBlade default.
+        """
+        params = spec.get("params")
+        if not isinstance(params, Mapping):
+            return {}
+        # BladeAI names the fault by its own scope/target/action triple
+        # ("pod"/"cpu"/"load"); the intensity table is keyed by the Stage-2
+        # name ("cpu-load"), so normalise through the shim's own mapping.
+        try:
+            fault_type, action = canonical_fault_type(
+                str(spec.get("scope") or ""),
+                str(spec.get("fault_target") or ""),
+                str(spec.get("fault_action") or ""),
+            )
+        except BladeShimError:
+            return {"intensity": {}, "intensity_source": "unmappable",
+                    "native_params": dict(params)}
+        flags = {f"--{str(key).replace('_', '-')}": value for key, value in params.items()
+                 if str(key) not in {"timeout", "duration"}}
+        try:
+            intensity = canonical_native_intensity(fault_type, dict(flags), action=action)
+            source = native_intensity_source(fault_type, dict(flags), action=action)
+        except BladeShimError:
+            # Not representable by Controller policy.  This is a real finding,
+            # not a gap: ``--cpu-percent 80 --cpu-count 1`` means "80% of one
+            # core", while the Controller's ``cpu_percent`` alone would read as
+            # "80% of the Pod".  Collapsing the two would misstate the blast
+            # radius -- the very ambiguity D1 flagged about "80%".  Report the
+            # native parameters verbatim and let a human read them.
+            return {"intensity": {}, "intensity_source": "unmappable",
+                    "native_params": dict(params)}
+        return {"intensity": intensity, "intensity_source": source}
 
     def _canonical_tool_name(self, name: str) -> str:
         """Normalise into ``server.tool`` so MCP allow-listing can read it."""

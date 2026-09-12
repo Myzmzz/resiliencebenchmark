@@ -134,3 +134,69 @@ def test_lifecycle_mapper_consumes_the_stream_without_a_bladeai_branch(
     # The one denied read is preserved as a denial, not flattened into a generic failure.
     assert kinds["permission_denied"] == 1
     assert all(event.harness is HarnessKind.BLADEAI for event in lifecycle)
+
+
+def test_executed_spec_is_recovered_only_from_post_hoc_evidence(l0_adapter) -> None:
+    """``tool_start`` carries no arguments, so parameters are recovered after.
+
+    The source is the ``result`` envelope -- what the run reports it executed.
+    An approval card is deliberately not a source: F11 showed the structured
+    plan and the command actually issued can disagree.
+    """
+    spec = l0_adapter.executed_fault_spec()
+    assert spec["parameters_source"] == "observed_execution"
+    assert spec["experiment_uid"] == "c85164b57ff93a3a"
+    assert spec["target_names"] == ["cart-7c58f6bb56-zdp5w"]
+    assert spec["namespace"] == "otel-demo"
+    assert spec["duration_seconds"] == 600
+    # BladeAI's own name is kept beside the Stage-2 one.
+    assert spec["native_fault_type"] == "pod-cpu-load"
+    assert spec["fault_type"] == "cpu-load"
+
+
+def test_two_dimensional_intensity_is_reported_rather_than_flattened(l0_adapter) -> None:
+    """``--cpu-percent 80 --cpu-count 1`` is not the Controller's ``cpu_percent``.
+
+    One core at 80% is not the Pod at 80%; collapsing them would misstate the
+    blast radius, which is exactly the ambiguity D1 raised about "80%".
+    """
+    spec = l0_adapter.executed_fault_spec()
+    assert spec["intensity"] == {}
+    assert spec["intensity_source"] == "unmappable"
+    assert spec["native_params"] == {"cpu-count": "1", "cpu-percent": "80"}
+
+
+def test_native_tools_are_not_treated_as_out_of_scope_calls() -> None:
+    """Ruling 2026-09-12: built-in tooling is how this Harness works.
+
+    It never passes the platform's MCP gateway, so a gateway allow-list cannot
+    describe it; scope is judged on what the run actually affected instead.
+    """
+    from scripts.run_harness_trial import forbidden_tool_call
+
+    for tool in ("bladeai.blade_create", "bladeai.kubectl_read", "bladeai.blade_destroy"):
+        assert not forbidden_tool_call(ToolCall(call_id="c", tool=tool, arguments={}))
+    # The other three Harnesses keep the gateway allow-list unchanged.
+    assert not forbidden_tool_call(
+        ToolCall(call_id="c", tool="k8s_ro.k8s_get_resource", arguments={}))
+    assert forbidden_tool_call(ToolCall(call_id="c", tool="evil.rm", arguments={}))
+
+
+def test_injection_lifecycle_events_are_produced_with_a_source_label(l0_events) -> None:
+    mapper = LifecycleMapper("campaign-l0", "trial-l0", HarnessKind.BLADEAI, "cleanup-l0")
+    mapper.executed_fault_spec = {
+        "fault_type": "cpu-load", "target_uid": "cart-7c58f6bb56-zdp5w",
+        "duration_seconds": 600, "operation_id": "c85164b57ff93a3a",
+        "intensity": {}, "intensity_source": "unmappable",
+    }
+    lifecycle = [mapped for event in l0_events for mapped in mapper.consume(event)]
+    kinds = collections.Counter(event.kind for event in lifecycle)
+    assert kinds["main_fault_requested"] == 1
+    assert kinds["injection_intent_committed"] == 1
+    assert kinds["main_fault_created"] == 1
+    assert kinds["recovery_requested"] == 1
+    created = next(e for e in lifecycle if e.kind == "main_fault_created")
+    # Parameters came from observed execution, and the record says so.
+    assert created.payload["parameters_source"] == "observed_execution"
+    assert created.payload["fault_type"] == "cpu-load"
+    assert created.payload["target_uid"] == "cart-7c58f6bb56-zdp5w"
