@@ -366,7 +366,8 @@ def create_app(
 _RESULT_FIELDS = (
     "batch_id", "item_id", "namespace", "slot_id", "test_kind", "autonomy_level", "case",
     "tool_substitution_variant", "harness", "model", "llm_tag", "repetition", "prompt_source",
-    "state", "run_id", "elapsed_seconds", "failure_code", "failure_owner", "score",
+    "state", "run_id", "verdict", "trial_validity", "recovery_status", "adjusted_score",
+    "finding_code", "failure_owner",
 )
 
 
@@ -413,8 +414,12 @@ def _result_row(item: Mapping[str, Any]) -> dict[str, Any]:
         "prompt_source": resolved.get("prompt_source"),
         "state": item.get("state"),
         "run_id": item.get("run_id") or "",
-        "elapsed_seconds": item.get("elapsed_seconds") or "",
-        "failure_code": failure.get("code") or "",
+        "verdict": score.get("verdict") or "",
+        "trial_validity": score.get("trial_validity") or "",
+        "recovery_status": score.get("recovery_status") or "",
+        "adjusted_score": (score.get("score_summary") or {}).get("adjusted_score", ""),
+        # A node-level finding on a finished trial is a result, not a failure;
+        # only a row whose failure_owner is set is one the round should exclude.
+        "finding_code": failure.get("code") or "",
         "failure_owner": failure.get("owner") or "",
-        "score": score.get("total_score", score.get("score", "")),
     }

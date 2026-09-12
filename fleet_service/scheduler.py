@@ -46,6 +46,10 @@ PLATFORM_REASON_FRAGMENTS = (
 )
 
 
+# Task states that mean the trial itself did not finish.
+TERMINAL_FAILURE_STATUSES = frozenset({"FAILED", "ABORTED", "RECOVERY_FAILED", "INTERRUPTED"})
+
+
 def classify_failure(failure: Mapping[str, Any] | None, *, http_status: int = 0) -> str:
     """``platform`` or ``agent``. Mixing the two makes a parallel round unreadable."""
     if http_status in {408, 425, 429, 500, 502, 503, 504} or http_status == 0 and failure is None:
@@ -208,29 +212,37 @@ class BatchDispatcher:
                 except ControllerError:
                     pass
             return
-        failure = summary.get("failure") if isinstance(summary.get("failure"), Mapping) else None
+        reported = summary.get("failure") if isinstance(summary.get("failure"), Mapping) else None
         platform_status = str(summary.get("platform_status") or "")
-        if failure is None and platform_status not in {"", "COMPLETED", "SUCCEEDED"}:
-            # A campaign that never ran reports COMPLETED at task level while
-            # its own verdict is BLOCKED or RESET_FAILED. Scoring that as an
-            # agent result would credit a trial that did not happen.
-            failure = {
-                "code": f"STAGE2_PLATFORM_{platform_status}",
-                "reason": f"platform status {platform_status}",
-            }
         score: Any = None
         try:
             score = client.score(str(run_id))
         except ControllerError:
             score = None
-        if status in {"COMPLETED", "DONE"} and not failure:
-            self.store.update_item(
-                batch_id, item["item_id"], state=ItemState.DONE.value,
-                finished_at=utc_now(), failure=None, score=_score_summary(score),
+        if platform_status not in {"", "COMPLETED", "SUCCEEDED"}:
+            # A campaign that never ran reports COMPLETED at task level while
+            # its own verdict is BLOCKED or RESET_FAILED. Scoring that as an
+            # agent result would credit a trial that did not happen.
+            self._finish_failed(
+                batch_id, item,
+                {"code": f"STAGE2_PLATFORM_{platform_status}",
+                 "reason": f"platform status {platform_status}", **(reported or {})},
+                "platform", score=_score_summary(score),
             )
             return
-        self._finish_failed(batch_id, item, failure or {"code": status or "STAGE2_TASK_FAILED"},
-                            classify_failure(failure), score=_score_summary(score))
+        if status in TERMINAL_FAILURE_STATUSES:
+            self._finish_failed(
+                batch_id, item, reported or {"code": status}, classify_failure(reported),
+                score=_score_summary(score),
+            )
+            return
+        # A finished trial whose score carries a node-level finding is a
+        # result, not a failed run: the agent was measured, and the verdict
+        # belongs in the matrix rather than in the failure count.
+        self.store.update_item(
+            batch_id, item["item_id"], state=ItemState.DONE.value,
+            finished_at=utc_now(), failure=reported, score=_score_summary(score),
+        )
 
     def _finish_failed(
         self, batch_id: str, item: Mapping[str, Any], failure: Mapping[str, Any],
@@ -383,6 +395,7 @@ def build_run_request(
 def _score_summary(score: Any) -> dict[str, Any] | None:
     if not isinstance(score, Mapping):
         return None
-    keep = ("run_id", "total_score", "score", "verdict", "validity", "nodes", "node_results", "summary")
+    keep = ("run_id", "verdict", "trial_validity", "platform_valid", "recovery_status",
+            "experiment_verdict", "score_summary", "reason_codes")
     summary = {key: score[key] for key in keep if key in score}
     return summary or dict(list(score.items())[:12])

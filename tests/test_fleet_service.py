@@ -620,3 +620,35 @@ def test_provisioning_reads_the_api_server_endpoints_when_unset(fleet):
     assert endpoints, "the provisioner must ask the cluster when the config is empty"
     kinds = {row["kind"] for row in record["slots"][0]["objects"]}
     assert "NetworkPolicy" in kinds
+
+
+def test_a_finished_trial_with_a_node_finding_is_a_result_not_a_failure(fleet):
+    """A PASS can still carry a node-level finding; the round must keep the row."""
+    client, store, dispatcher = fleet["client"], fleet["store"], fleet["dispatcher"]
+    client.post("/api/v1/fleet/provision?dry_run=false&wait=true")
+    client.post("/api/v1/fleet/batches?dry_run=false", json=_batch([_item(1, "codex")]))
+    item = store.item("dx-parallel-20260912-01", "i-001")
+    controller = fleet["controllers"][item["namespace"]]
+    controller.terminal[item["run_id"]] = {
+        "run_id": item["run_id"], "status": "COMPLETED", "terminal": True,
+        "platform_status": "COMPLETED",
+        "failure": {"code": "NODE_EVIDENCE_CONTRADICTED", "reason": "one node's claim"},
+    }
+    controller.score = lambda run_id: {  # type: ignore[assignment]
+        "run_id": run_id, "verdict": "PASS", "trial_validity": "VALID",
+        "recovery_status": "VERIFIED", "score_summary": {"adjusted_score": 77.0},
+    }
+
+    dispatcher.poll_running()
+
+    after = store.item("dx-parallel-20260912-01", "i-001")
+    assert after["state"] == "Done"
+    assert after["score"]["verdict"] == "PASS"
+    assert after["failure"]["code"] == "NODE_EVIDENCE_CONTRADICTED"
+    assert "owner" not in after["failure"]
+    rows = client.get("/api/v1/fleet/batches/dx-parallel-20260912-01/results").json()["rows"]
+    assert rows[0]["verdict"] == "PASS"
+    assert rows[0]["trial_validity"] == "VALID"
+    assert rows[0]["adjusted_score"] == 77.0
+    assert rows[0]["finding_code"] == "NODE_EVIDENCE_CONTRADICTED"
+    assert rows[0]["failure_owner"] == ""
