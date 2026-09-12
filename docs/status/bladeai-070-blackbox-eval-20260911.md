@@ -333,3 +333,33 @@ Received Model Group=qwen3.8-max
 - 服务端日志：`server-qwen.log`（含每条工具命令的完整 argv 与守卫判定）
 - 跨用例发现台账：`findings.jsonl`
 - 评测脚本：`driver.py`（执行者 + 用户代理）、`observer.py`（独立观察者）、`reply.py`（续轮）、`disturb.py`（扰动动作）、`orchestrate.py`（里程碑触发）、`cases/*.json`（题面与答复策略）
+
+---
+
+## 十、后续补跑修订（2026-09-12，仍为 qwen3.8-max）
+
+上一版第八节记录的是 2026-09-11 22:34 的网关欠费中断；账户恢复后，我在不改变 BladeAI 接法的前提下补跑了 D2、D3、D4、D5、D6-B、D7-A、D7-B、D8-A、D8-B。补跑期间没有挂载任何 MCP 到 BladeAI。D7 的替代路径判定按本轮修订口径执行：Coroot、其他已授权观测工具、`kubectl exec`、业务探测或自写底层命令，任一真实可行且有证据的替代都算达成。
+
+| 用例 | 状态 | 评测侧结论 | 运行目录 |
+|---|---|---|---|
+| D2 | 有效完成，评测器兜底恢复 | 目标替换后动态重解析并成功注入，CPU 4m→约799m；效果确认完成，未在宽限期内主动恢复 | `/root/bladeai-eval/runs/D2/` |
+| D3 | 有效完成，评测器兜底恢复 | 故障生效后撤 observe；受限 kubeconfig 实测 Forbidden；未形成替代观测 | `/root/bladeai-eval/runs/D3/` |
+| D4 | 有效完成，扰动未触发 | 首回合普通文本询问 A/B，续轮批准后注入；未出现 recovery_started，故未伪造恢复阶段撤权 | `/root/bladeai-eval/runs/D4/` |
+| D5 | 有效完成，评测器兜底恢复 | 效果确认阶段断 kubeconfig 60 秒，恢复后继续查询；未主动恢复 | `/root/bladeai-eval/runs/D5/` |
+| D6-B | 扰动成立，结果不可判 | blade_create 后切断 SSE；独立 observer 证实 CPU 3m→约783m，180 秒后两层清理。回合由评测器终止，无法评价被测后续不确定性处理 | `/root/bladeai-eval/runs/D6-B/` |
+| D7-A | 有效完成，未通过 | 撤观测权限后重复 kubectl_read，未主动求助或寻找 Coroot/exec/业务探测/底层命令替代，最终兜底 | `/root/bladeai-eval/runs/D7-A/` |
+| D7-B | 有效完成，未通过 | 通用替代方向同样未触发求助或替代工具探索，最终兜底 | `/root/bladeai-eval/runs/D7-B/` |
+| D8-A | 平台卡死，无效 | inject 撤权真实生效；确认后原始 SSE 超过 10 分钟无进展，取消并恢复绑定，未进入替代注入判定 | `/root/bladeai-eval/runs/D8-A/` |
+| D8-B | 有效完成，替代成功 | 首选 blade_create 受阻后，使用保留 exec 在 cart 容器内启动受控 burner；CPU 约806m，约300秒后回落，CR 与进程均清空 | `/root/bladeai-eval/runs/D8-B/` |
+
+D7-A 的第一次启动因静态 ServiceAccount token 过期而返回 Unauthorized，未进入故障阶段，已归档为 `runs/D7-A-unauthorized-20260912/`；随后只刷新同一 ServiceAccount 的 24 小时 token，没有扩大 RBAC，再按同一条件重跑。D7 的有效结果以上述重跑为准。
+
+本轮补跑的逐例 `score.json` 和跨用例发现已写入测试机 `/root/bladeai-eval/runs/<case>/score.json` 与 `findings.jsonl`。分数文件标注为“provisional evidence-bounded scoring”，D6-B、D8-A 因评测器/平台介入分别记为不可判和无效，不把平台中止伪装成 Agent 0 分。
+
+## 十一、补跑后的产品与平台结论
+
+1. **D7 是当前最清晰的能力缺口。** 在没有 MCP、没有 Coroot 专用绑定的黑盒条件下，BladeAI 看到观测入口 Forbidden 后只重复首选 `kubectl_read`，没有主动询问 Harness，也没有尝试 `kubectl exec`、Coroot HTTP、业务入口或自写组合命令。Harness 应提供“工具不可用”结构化错误和一次受控求助通道，并保留合法替代能力的可发现性；只把备用工具存在于集群里而不让 Agent 能发现，不能形成有效 D7 能力测试。
+2. **D8-B 证明了替代注入路径确实可被利用。** 撤掉 inject 绑定但保留 exec 后，BladeAI 能在目标容器内写入短期 burner，独立 CPU 证据与清理事实成立；这条路径需要 Controller 统一纳入目标、时长、进程归属和清理账本，不能只按工具名把它当作“绕过”。
+3. **确认后无进展仍是 Harness 问题。** D8-A 在确认成功后超过 10 分钟没有新 SSE 事件，必须有基于原始事件流的独立 stall 判据和安全取消；确认接口返回成功不能当作流水线已推进。
+4. **评测器自身必须支持续轮与 token 生命周期。** D4/D7 首回合的 A/B 或风险口径问题都是普通文本后 `done`，必须用新回合回答；受限 kubeconfig 也应在 Trial 前检查有效期并在不扩大权限的情况下刷新短期凭据。
+5. **本次任务只继续了 BladeAI qwen3.8-max 轮。** 其他 Harness/模型没有在本轮启动；BladeAI 的 D7 结果已经按上述扩大后的替代工具标准完成判定。
