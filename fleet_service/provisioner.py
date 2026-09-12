@@ -79,6 +79,17 @@ class Provisioner:
 
     def deploy_sut(self, config: FleetConfig, namespace: str, *, dry_run: bool) -> dict[str, Any]:
         assert_operable_namespace(config.namespace_prefix, namespace)
+        if dry_run and not self.kube.namespace_exists(namespace):
+            # A server-side dry run creates nothing, so every write into a
+            # namespace that does not exist yet is refused as NotFound. Say so
+            # instead of reporting a failure the real install would not have.
+            return {
+                "namespace": namespace,
+                "mode": "server-dry-run",
+                "skipped": True,
+                "reason": "namespace does not exist yet; a server dry run cannot create it",
+                "command": " ".join(self._deploy_argv(config, namespace, server_dry_run=True)),
+            }
         argv = self._deploy_argv(config, namespace, server_dry_run=dry_run)
         completed = self.deploy_runner(argv)
         report = {
@@ -91,6 +102,21 @@ class Provisioner:
             raise ProvisionError(f"deploy_application.py failed for {namespace}: {report['stderr_excerpt']}")
         return report
 
+    def _partition_for_dry_run(self, objects: list[dict[str, Any]]) -> tuple[list, list]:
+        """Split objects into those a server dry run can check and those it cannot."""
+        known: dict[str, bool] = {}
+        simulated: list[dict[str, Any]] = []
+        deferred: list[dict[str, Any]] = []
+        for item in objects:
+            namespace = str((item.get("metadata") or {}).get("namespace") or "")
+            if not namespace:
+                simulated.append(item)
+                continue
+            if namespace not in known:
+                known[namespace] = self.kube.namespace_exists(namespace)
+            (simulated if known[namespace] else deferred).append(item)
+        return simulated, deferred
+
     # -- slots -------------------------------------------------------------
     def provision_slot(self, config: FleetConfig, index: int, *, dry_run: bool,
                        actor: str = "api") -> dict[str, Any]:
@@ -101,7 +127,8 @@ class Provisioner:
             action="provision_slot", namespace=namespace, dry_run=dry_run, actor=actor,
             detail={"slot_id": slot_id(index), "objects": len(objects)},
         )
-        applied = self.kube.apply(objects, dry_run=dry_run)
+        simulated, deferred = self._partition_for_dry_run(objects) if dry_run else (objects, [])
+        applied = self.kube.apply(simulated, dry_run=dry_run)
         sut = self.deploy_sut(config, namespace, dry_run=dry_run)
         record = {
             "slot_id": slot_id(index),
@@ -113,6 +140,12 @@ class Provisioner:
             "applied": applied,
             "system_under_test": sut,
         }
+        if deferred:
+            record["not_simulated"] = {
+                "reason": "a server dry run creates no namespace, so objects inside a "
+                          "namespace that does not exist yet cannot be validated",
+                "objects": owned_object_summary(deferred),
+            }
         if not dry_run:
             self.store.upsert_slot(
                 slot_id=slot_id(index), index=index, namespace=namespace,

@@ -507,3 +507,30 @@ def test_failure_classification_separates_the_two_causes():
     assert classify_failure({"code": "HARNESS_TIMEOUT"}) == "agent"
     assert classify_failure({"code": "OUTPUT_UNSTRUCTURED"}) == "agent"
     assert classify_failure(None, http_status=503) == "platform"
+
+
+def test_dry_run_reports_what_it_could_not_simulate_on_a_fresh_replica(fleet, monkeypatch):
+    """A server dry run creates no namespace, so it cannot check what goes inside one."""
+    monkeypatch.setattr(fleet["provisioner"].kube, "namespace_exists",
+                        lambda namespace: namespace == "resiliencebenchmark-system")
+
+    body = fleet["client"].post("/api/v1/fleet/provision?dry_run=true").json()
+
+    slot = body["slots"][0]
+    assert slot["system_under_test"]["skipped"] is True
+    assert "cannot create it" in slot["system_under_test"]["reason"]
+    deferred = {row["kind"] for row in slot["not_simulated"]["objects"]}
+    assert {"LimitRange", "ResourceQuota", "NetworkPolicy", "Role", "RoleBinding"} <= deferred
+    # The Namespace itself and the control-namespace objects are still checked.
+    applied_kinds = {row["kind"] for row in slot["objects"]} - deferred
+    assert {"Namespace", "Deployment", "Service", "PersistentVolumeClaim"} <= applied_kinds
+
+
+def test_dry_run_checks_everything_once_the_replica_exists(fleet):
+    """Re-provisioning an existing replica validates every object and the install."""
+    body = fleet["client"].post("/api/v1/fleet/provision?dry_run=true").json()
+
+    slot = body["slots"][0]
+    assert "not_simulated" not in slot
+    assert slot["system_under_test"]["mode"] == "server-dry-run"
+    assert slot["system_under_test"]["exit_code"] == 0
