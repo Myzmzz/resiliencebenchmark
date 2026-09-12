@@ -652,3 +652,34 @@ def test_a_finished_trial_with_a_node_finding_is_a_result_not_a_failure(fleet):
     assert rows[0]["adjusted_score"] == 77.0
     assert rows[0]["finding_code"] == "NODE_EVIDENCE_CONTRADICTED"
     assert rows[0]["failure_owner"] == ""
+
+
+def test_a_warming_up_slot_defers_an_item_without_spending_a_retry(fleet):
+    """Every slot answers 503 for minutes after a rollout; that is not a failure."""
+    client, store, dispatcher = fleet["client"], fleet["store"], fleet["dispatcher"]
+    client.post("/api/v1/fleet/provision?dry_run=false&wait=true")
+    for namespace in ("otel-demo-01", "otel-demo-02", "otel-demo-03"):
+        controller = fleet["controllers"].setdefault(namespace, FakeController(namespace))
+        controller.submit_error = ControllerError(
+            "POST /lx/runs returned 503", status=503,
+            payload={"detail": "gateway_probe_in_progress: model readiness is being checked"},
+        )
+
+    client.post("/api/v1/fleet/batches?dry_run=false",
+                json=_batch([_item(1, "codex")], platform_retry_limit=2))
+
+    deferred = store.item("dx-parallel-20260912-01", "i-001")
+    assert deferred["state"] == "Queued"
+    assert deferred["platform_retries"] == 0
+    assert deferred["failure"]["code"] == "FLEET_SLOT_NOT_READY"
+    assert deferred["slot_id"] is None
+
+    # Once the probe completes, the same item dispatches on the next tick.
+    for controller in fleet["controllers"].values():
+        controller.submit_error = None
+    dispatcher.dispatch_queued()
+
+    running = store.item("dx-parallel-20260912-01", "i-001")
+    assert running["state"] == "Running"
+    assert running["platform_retries"] == 0
+    assert running["run_id"]

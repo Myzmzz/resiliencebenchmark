@@ -65,6 +65,22 @@ def classify_failure(failure: Mapping[str, Any] | None, *, http_status: int = 0)
     return "agent"
 
 
+# What a Controller says while its own gateway probe is still running.
+SLOT_NOT_READY_FRAGMENTS = (
+    "gateway_probe_in_progress",
+    "model readiness is being checked",
+    "retry after the probe completes",
+)
+
+
+def _slot_not_ready_yet(error: ControllerError) -> bool:
+    """True when a submission was refused because the slot is still warming up."""
+    if error.status == 503:
+        return True
+    payload = str(error.payload or "")
+    return any(fragment in payload for fragment in SLOT_NOT_READY_FRAGMENTS)
+
+
 @dataclass(frozen=True)
 class Assignment:
     item_id: str
@@ -309,6 +325,17 @@ class BatchDispatcher:
             body = build_run_request(client, slot["namespace"], resolved)
             created = client.create_run(body, idempotency_key=f"{batch_id}-{item['item_id']}")
         except ControllerError as exc:
+            if _slot_not_ready_yet(exc):
+                # The Controller has not finished its own readiness probe. That
+                # is a "come back shortly", not an attempt: counting it would
+                # burn the retry budget in the first minute after a rollout,
+                # which is exactly when every slot answers this way.
+                self.store.update_item(
+                    batch_id, item["item_id"], state=ItemState.QUEUED.value, slot_id=None,
+                    failure={"code": "FLEET_SLOT_NOT_READY", "reason": str(exc),
+                             "controller_response": exc.payload, "deferred": True},
+                )
+                return False
             owner = "platform" if exc.retryable else "agent"
             detail = {"code": "FLEET_SUBMIT_REJECTED", "reason": str(exc), "controller_response": exc.payload}
             if owner == "agent":
