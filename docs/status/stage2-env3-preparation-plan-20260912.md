@@ -223,7 +223,7 @@ Dockerfile COPY 了不存在的源会**直接失败**，不会再产出一个悄
 | **P4a** | 装**可观测栈**（唯一真正缺的观测件），namespace `observability` | Prometheus/Loki/Jaeger 能查；promtail 抓到 `otel-demo` 日志 | `kubectl delete -f reference-stack.yaml`，只删我们建的 namespace |
 | **P4b** | 装 **ChaosBlade** operator + tool + cgroup 包装，namespace `default` | `blade` 能在 tool 容器里跑；**CPU 注入实测压得动 `cart`**（不只看账本） | `kubectl delete -f reference-install.yaml` + 删 ConfigMap |
 | **P4c** | ~~装 Chaos Mesh~~ → **先验现有的**：`NetworkChaos` / `PodChaos` / `StressChaos` 三类能不能用 | 三类 CRD 存在且能创建能删 | 不动；不行再按 P1.5 的答复决定并排装还是换 |
-| **P4d** | Coroot：**只验**匿名只读（`authAnonymousRole: Viewer`），拿到项目 id | 未登录能读到 `otel-demo` 的数据 | 只读，无回滚 |
+| ~~**P4d**~~ | ~~Coroot 只验~~ | ✅ **已完成**：匿名可访问（`authAnonymousRole=Admin`），项目 id = **`po24tcoz`**，`/prom/api/v1/series` 200，能读到 `/k8s/otel-demo/cart` | — |
 | **P5** | 构建平台两个镜像。**范围缩小了**：旧 Harbor 可达，十几个第三方镜像不必搬 | `build-<sha>-image.json` 产出 | 不覆盖同名 tag |
 | **P6** | 平台：RBAC → Secret/ConfigMap → PVC → Deployment（**env3 专属 overlay**） | 三容器 Ready；`scripts/verify_stage2_deployment.py` 全绿 | `kubectl delete ns resiliencebenchmark-system`（全是我们新建的，干净） |
 | **P7** | `/api/v1/stage2/options` 三家可跑 | 三家 `runnable=true` | 看 `provider_circuits` / `serving_stale_result` 分辨是网关还是资格问题 |

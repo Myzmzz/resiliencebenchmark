@@ -155,6 +155,36 @@ state=running   用户=5   总 RPS=0.8
   三个的限额是环境所有者批准过的、不要擅自改，这里要不要调**得你定**。
 - **基线失败率 2.76%**。做效果判定时这个底噪要算进去，不能把它当成故障引起的。
 
+### 4.5.4 Coroot：可用，`RESBENCH_COROOT_PROJECT_ID` 取到了
+
+P6 需要的那个具体值查到了：**`po24tcoz`**。
+
+| 项 | 实测 |
+|---|---|
+| 匿名访问 | **可以**，`authAnonymousRole=**Admin**`（第二套环境是 `Viewer`） |
+| 服务 | `coroot-coroot`，NodePort **30800**（8080）/ 30987（4317 OTLP） |
+| 项目 | 两个：**`po24tcoz`**（3 节点 / 132 应用 = 本集群）、`ra3gd47x`（audited 0 apps，在向一个 "remote Coroot" 取数并持续 404，**不是我们的**） |
+| 平台要的接口 | `/api/project/po24tcoz/prom/api/v1/series` **HTTP 200**；`/api/user` 200（`coroot_ro` 的健康检查走这条） |
+| 能否看到被测系统 | **能**：`app_id=/k8s/otel-demo/cart`、`container_id=/k8s/otel-demo/cart-5bc5bddd7c-x2crz/cart` |
+
+**两个坑记下来：**
+
+1. **`available_projects` 返回的是显示名（`default` / `cluster-b`），不是项目 ID。**
+   用显示名拼 API 路径会得到 HTTP 500 —— 我一开始就是这么踩的，一度以为 Coroot 的
+   Prometheus 代理坏了。**不是坏了，是我调用错了。** 真实 ID 要从 Coroot 服务端日志里认
+   （`constructor.go` / `auditor.go` 会打项目 ID）。
+2. **Coroot 用自己的指标名和标签体系**：是 `container_resources_memory_rss_bytes`
+   而不是 `container_memory_rss`；**没有 `namespace` 标签**，命名空间编码在
+   `app_id=/k8s/<namespace>/<app>` 里。D3/D4/D7 用 Coroot 取证时要按这套写查询。
+
+**安全提醒**：`authAnonymousRole=Admin` + NodePort 30800 意味着**任何能连到节点的人
+都对 Coroot 有管理员权限**。这是既有配置、不是我们改的，但你应该知道。
+
+### 4.5.5 `otcaix-62` 装得下
+
+当前占用：CPU requests **950m（1%）**、limits 3500m（5%）；内存 requests **5700Mi（2%）**、
+limits 7248Mi（2%）。平台要 1.5 核 / 3 GiB（requests）、6 核 / 11 GiB（limits）——**绰绰有余**。
+
 ---
 
 ## 5. 差距与风险
