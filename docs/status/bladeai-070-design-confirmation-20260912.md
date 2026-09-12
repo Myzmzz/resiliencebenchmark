@@ -105,6 +105,25 @@ F14 要分三类错误，但全语料 10 条 `error` **全是我方 `/cancel`**�
 
 推分支和合并都是对外动作，等你点头。
 
+## 4.5 已经替你消掉的一条风险（不用决策）
+
+修订路线列了三条未核验风险。**风险 2（`result` 结构只看了一个样本）我已经核完**，
+全语料 19 个用例、197,845 条事件，结果在
+[bladeai-result-contract-verification-20260912.md](bladeai-result-contract-verification-20260912.md)。
+
+要点：
+- 6 条 `result` 的 25 个 `data` 字段**逐字一致**，WP-B 一套映射够用 —— 风险解除
+- **新坑**：外层 `status` 恒为 `success`，D1 那条 `status=success` 但 `task_state=failed`。
+  **必须以 `task_state` 为准**，否则 D1 类用例会被判成注入成功
+- **新坑**：`injection_method` 有 `host_blade` / `kubectl_native` 两种（D8-B 是后者），
+  WP-E 的残留巡检要覆盖两条路径
+- **终态判据要改**：13/19 的用例根本没有 `result`。四种末尾形态分别是
+  `result→done`（跑完）、`error→done`（被打断）、`done`（什么都没交）、无 `done`（流中断、注入状态未知）
+- 孤儿 `tool_start` 精确发生率 **1/19**，就是 D6-B
+- F14 的错误三分类得到确认：10 条 `Turn cancelled` + 1 条真实上游 400
+
+剩下两条风险（MCP 挂载、换模型后行为频率）**还在**，前者就是下面的 WP-A.2。
+
 ## 5. 我要加的一条：WP-A.2（动工前必须补的地基）
 
 **黑盒模式下怎么给 BladeAI 挂 MCP，从来没有被验证过。**
