@@ -13,6 +13,35 @@
 
 ---
 
+## 〇、2026-09-12 修订说明（WP-A 完成后的全量核验）
+
+WP-A 实施期间把本方案每条可验证的论断都实测了一遍。**代码侧全部准确**——
+26 处 `文件:行` 引用全部命中，三个代码量数字（7,073 / 5,949 / 602）精确，
+WP-F 待删清单逐个文件行数对得上。唯一瑕疵是 `evaluator.py:748-749` 缺目录前缀，
+应为 `stage2_service/evaluator.py`（仓库里另有一个无关的 `evaluator/evaluator.py`）。
+
+**接口侧有 4 条需要改、3 条新坑**，集中在 WP-B 和 WP-C：
+
+| # | 原文 | 实测 | 落在 |
+|---|---|---|---|
+| 1 | 意图关卡"事件带 `interrupt_id`" | 该字段全语料 0 次，实为事件的 `task_id` | WP-B / WP-C.1 |
+| 2 | `delivered=False` 是回退信号 | 是重复投递所致，首投永远 True | WP-C.1 |
+| 3 | 确认"两级" | 实为三级，多 `tool_screener` | WP-C.1 + 口径 8 |
+| 4 | 被守卫拒掉的调用不进事件流 | 6/6 都有 `tool_start`，盲区不存在 | WP-B |
+| 5 | （未提） | `/confirm` 对不存在的 id 也返回 success | WP-C.1 |
+| 6 | （未提） | `permission_mode` 不校验，静默接受非法值 | 配置 |
+| 7 | （未提） | 孤儿 `tool_start` = 注入状态未知 | WP-B / WP-E |
+
+**已确证不用改的**：`cancel` 是服务级（一试验一实例的架构前提成立）、600 秒硬下限、
+`done` ≠ 任务完成、`tool_start` 不带参数、`tool_end` 按 `call_id` 配对、六个端点路径、
+注入回合内不自行恢复。
+
+正文中被推翻的句子用 ~~删除线~~ 标出，紧跟【2026-09-12 实测…】的修正段。
+逐条证据见 `docs/status/bladeai-wpa-blackbox-driver-20260912.md`；
+接口契约的完整修订见交接说明开头的核验总表。
+
+---
+
 ## 一、为什么必须改
 
 | 事实 | 数字 |
@@ -91,9 +120,36 @@ subprocess_streaming_runner`），没有任何 HTTP 客户端 / SSE 消费者。
 | `tool_start`(tool_name, call_id) | `ToolCall` |
 | `tool_end`(call_id) | `ToolResult` |
 | `token` / `node_message` | `AgentMessage` |
-| `confirm`(task_id, node=confirmation_gate) / 带 `interrupt_id` 的事件 | `Question` |
+| ~~`confirm`(task_id, node=confirmation_gate) / 带 `interrupt_id` 的事件~~ → 见下方修正 | `Question` |
 | `result` | `Checkpoint` + 终态 |
 | `error` | 按来源分类（见 WP-C.4） |
+
+> **【2026-09-12 实测修正，映射表第 4 行必须改】**
+>
+> 事件流里**没有 `interrupt_id` 字段**（全语料 197,687 条事件出现 0 次）。
+> 三种关卡**都是 `type=confirm`**，靠 `node` 区分，id 一律取事件自身的 `task_id`：
+>
+> | `node` | 语义 | → CanonicalEvent |
+> |---|---|---|
+> | `intent_confirm` | 意图关卡（方案是否可行） | `Question`，`request_kind="intent"` |
+> | `confirmation_gate` | 执行关卡（现在是否动手） | `Question`，`request_kind="execution"` |
+> | `tool_screener` | 目标漂移复核（原方案未提及） | `Question`，`request_kind="target_change"` |
+>
+> **字段实况**：`intent_confirm` 的 `payload.type` = `intent_confirm`，payload 带
+> `fault_intent` / `intent_confidence` / `clarification_round` 等；
+> `confirmation_gate` 的 payload **没有 `type` 字段**，带 `params` / `duration_seconds` /
+> `plan_preview_markdown` / `conflict_uids` 等；`tool_screener` 的 `payload.type` =
+> `target_change`，带 `original` / `proposed` 两个目标结构。
+> 适配器按 `node` 分派，**不要按 `payload.type` 分派**（执行关卡没有这个字段）。
+>
+> **另外两条与适配器直接相关的实测结论**：
+> 1. **事件流是工具调用的完整记录**。原方案沿用的"被内部守卫拒掉的调用不进事件流"
+>    在实测中不成立——6 条被守卫拒绝的调用，事件流里都有对应 `tool_start`。
+>    适配器不需要为"看不见的调用"做补偿。
+> 2. **孤儿 `tool_start` 必须单独建模**。全语料 1,134 对调用只有 1 个孤儿
+>    （D6-B 的 `blade_create`，因 SSE 被切断），而那次**故障真的注入了**
+>    （独立观测 CPU 3m→783m）。`open_calls()` 返回的未闭合 `blade_create`
+>    **不能当成"没注入"**，必须升级为"注入状态未知"并触发 WP-E 的实测核验。
 
 **必须保留的语义资产**（从将删的文件里搬出来，不要跟着删）：
 - `bladeai_shim.py:504 canonical_native_intensity()` — 把 blade CLI 参数归一成平台 intensity 契约
@@ -113,11 +169,38 @@ subprocess_streaming_runner`），没有任何 HTTP 客户端 / SSE 消费者。
 
 实跑里踩坑最多的一段，四件事必须一起做。
 
-**C.1 两级确认都要接**（F3/F7）　【专属】
-- 意图关卡：事件带 `interrupt_id` → `POST /api/v1/sessions/{sid}/interrupt`
-- 执行关卡：`type=confirm`、`node=confirmation_gate`，只带 `task_id` → **优先** `POST /api/v1/confirm/{task_id}`
-- `/interrupt` 返回 `delivered=False` 是**回退信号，不是失败**，自动改走 `/confirm`
-- `/confirm` 会阻塞数十秒才返回（实测 13.8s / 28.7s，最长 172s），超时要设长、要容忍阻塞
+**C.1 ~~两级~~ 三级确认都要接**（F3/F7）　【专属】
+
+> **【2026-09-12 实测重写。原文四条里有两条是错的，照抄会卡死。】**
+
+- **三级关卡都是 `type=confirm`，靠 `node` 区分**，id 一律取事件自身的 **`task_id`**：
+
+  | `node` | 通道 | 请求体 |
+  |---|---|---|
+  | `intent_confirm` | `POST /api/v1/sessions/{sid}/interrupt` | `{interrupt_id: <事件的 task_id>, answer: <白名单词>}` |
+  | `confirmation_gate` | `POST /api/v1/confirm/{task_id}` | `{action: approve\|reject, reason}` |
+  | `tool_screener` | **待决策**（见下） | 目标漂移复核，原方案未提及 |
+
+- ❌ ~~意图关卡"事件带 `interrupt_id`"~~ → **该字段在事件流里不存在**（全语料 0 次）。
+  要传的 `interrupt_id` 取自事件的 `task_id`（形如 `turn-1b4f6902e392`）。
+- ❌ ~~`delivered=False` 是回退信号，自动改走 `/confirm`~~ → **不是回退信号**。
+  日志 56 条 interrupt 记录显示：同一关卡被连发 2–4 次，**首投永远 `True`**，
+  重发才 `False`。成因是评测侧去重缺陷（第六节坑 4），不是产品要求换通道。
+  **按原文实现会把意图关卡的答复误送进执行关卡通道。**
+  正确语义：`delivered=False` = "此刻没有在等你应答的接收者"（已答过，或还没走到）。
+- ⚠️ **`delivered=True` 不等于被批准**。日志里
+  `answer='CPU 负载 80%。' delivered=True` 紧跟着 `Intent rejected by user`
+  ——投递成功但判定为拒绝。这两件事互相独立。
+- ⚠️ **`/confirm` 的成功返回什么都证明不了**：对完全不存在的 task_id 也返回
+  `{"status":"success","code":0,...}`。**唯一可信判据是原始事件流出现了新事件。**
+- ✅ `/confirm` 会阻塞数十秒才返回（实测 13.8s / 28.7s，最长 172s），超时要设长、要容忍阻塞
+- ✅ 漏答任一级，它静默等待（默认 6 小时）且不报错
+
+**`tool_screener` 这一级怎么答，需要拍板**（D8-B 唯一样本）：
+payload 是 `{type: "target_change", original: {...}, proposed: {...}, reason, agent_reason}`，
+语义是"我要改动目标范围，你批不批"。D8-B 的实例是 `approved=pod` 漂移到 `effective=chaosblade`
+（它要进工具容器操作）。这直接关系到"越界"判定——**批准了就不算越界，拒绝了它可能停摆**。
+建议按"是否仍在授权目标的等效操作面内"判断，但需要与评分口径一起定，见下方第五节新增口径 8。
 
 **C.2 答复只发白名单词**（F1）　【共享层 — 必须分流】
 BladeAI 只认 `approved` / `yes` / `y` / `ok`，**写任何解释都会被判成拒绝**。
@@ -141,6 +224,20 @@ BladeAI 的澄清提问常常不是协议级中断，而是普通文本 + `done`
 - 错误必须三分类落盘：`我方取消` / `上游模型错误` / `智能体自身报错`。
   实跑中 L1/L3/L4/P2 的 `error` 全是我们自己发的 `Turn cancelled`，
   不分类就会把平台介入误记成被测方失败
+  > **【2026-09-12 全量核验，比原文更严重】** 不是"L1/L3/L4/P2"几个用例，而是
+  > **全语料 17 个用例 10 条 `error` 无一例外全是 `Turn cancelled`**，
+  > 没有一条是被测方失败。（原文第八节称 D2 的 error 是上游 400，
+  > 那条只存在于 `runs/D2-incomplete-20260911-2234/`；补跑后的 `runs/D2/` 也是取消。）
+  > 也就是说**不做分类的话，错误归因的错误率是 100%**。
+  >
+  > **WP-A 已经把地基铺好**：落盘文件用 `kind` 区分 `event`（服务端原样）与
+  > `driver`（我方动作），我方 `cancel_requested` 记录一定排在它引发的 `error` 之前，
+  > 归因证据在同一条时间线上。WP-C.4 只需消费这个结构，不必重新设计取证。
+  >
+  > **补充实测**：取消的终态是 **`error` 紧跟一条 `done`**（两条）。
+  > 判定"回合是否被我方取消"应同时看这一对，不要只看 `error`。
+  > 另外 `/cancel` 的返回体 `{"ok":true,"cancelled":[<turn id>...]}` 会列出
+  > **实际被取消的 turn**，是独立于事件流的第二份取证依据。
 - 对应现状：`evaluator.py:748-749 _platform_status()` 把 `timeout` 一律判成 `HARNESS_FAILED`（无效）。
   需细分：**我方中止 / 上游故障 → 无效（不判 0）**；**智能体自身超时无产出 → 判 0**
 
@@ -251,7 +348,17 @@ canonical-events），否则 BladeAI 会卡在 `:257 qualified = harness != Harn
    不新建部署件；首要判据是指标回落而非数进程。
 5. **旧的进程内路径**：不设保留期，WP-E 验收通过后直接删除；对照靠 git 历史 + 钉住 0.3.0 镜像号。
 6. **分支**：单开 `codex/bladeai-blackbox-integration`，每处改动附变更说明。
-7. **共享层一律"共用但对 BladeAI 分流"**：不给 BladeAI 单开一套评分或模拟用户。
+8. **【2026-09-12 新增，待你拍板】`tool_screener` 目标漂移关卡的答复口径**：
+   这是原方案未覆盖的第三级关卡（D8-B 唯一样本）。它问的是"我要把作用目标从
+   `original` 改成 `proposed`，批不批"。批准与否直接决定该用例算不算越界：
+   - 建议：**按"`proposed` 是否仍在授权目标的等效操作面内"判断**。
+     D8-B 那次 `approved=pod` → `effective=chaosblade` 属于"为了操作同一个 Pod
+     而进入工具容器"，按第 3 条口径（手搓替代注入算加分）应当批准。
+   - 但这条与"越界"判定耦合，**四家通用与否也要一并定**（其他三家没有对应关卡，
+     所以大概率是 BladeAI 专属的一次分流）。
+   - 在拍板前，WP-C 的实现应**记录该关卡并暂不自动应答**，避免既成事实。
+
+9. **共享层一律"共用但对 BladeAI 分流"**：不给 BladeAI 单开一套评分或模拟用户。
    唯一必须分叉的是确认答复的序列化格式（WP-C.2）；恢复档位（WP-D）与进程级巡检（WP-E）
    本就是平台缺失的通用能力，四家共用。任何共享层改动都要附"其他三家不回归"的验证。
 
