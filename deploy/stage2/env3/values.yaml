@@ -1,0 +1,36 @@
+# 第三套环境（otcaix-60/61/62）的清单差异值。
+#
+# 仓库里的 deploy/stage2/*.yaml 渲染出来直接 apply 会丢三样东西——这正是操作手册
+# 那句「永远不要 kubectl apply 仓库渲染出来的清单」的由来：
+#
+#   1. fsGroupChangePolicy 在仓库任何清单里都没有；少了它，kubelet 每次挂载都会递归
+#      改权限，Controller 的私有文件变成组可读，下一次运行卡在 QUEUED 或直接
+#      KubernetesIdentityError；
+#   2. RESBENCH_COROOT_PROJECT_ID 在仓库里写的是旧集群的 9auios5b；
+#   3. 仓库清单没有 nodeSelector，而只有装了 AppArmor profile 的那台能跑 agent-runtime。
+#
+# 下面每个值都是 2026-09-12 在第三套环境实测出来的，出处见
+# docs/status/stage2-env3-inventory-20260912.md。
+schemaVersion: stage2-env-overlay.v1
+environment: env3
+
+# 平台落在 otcaix-62：60 是控制面不压，61 内存只有一半且时间未同步。
+# 取舍见 docs/status/stage2-env3-preparation-plan-20260912.md 第 3 节。
+nodeSelector:
+  kubernetes.io/hostname: otcaix-62
+
+# 集群里唯一的存储类（默认），nfs-subdir-external-provisioner，Retain。
+storageClassName: nfs-client
+
+# 私有文件必须活过重新挂载。仓库清单里没有这一项。
+securityContext:
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+
+# Coroot 项目 id 是每套集群各不相同的生成值。
+# 第三套环境实测 po24tcoz（3 节点 / 132 应用）；另一个 ra3gd47x 指向一个外部
+# Coroot 且持续 404，不是本集群的。注意 available_projects 返回的是显示名
+# （default / cluster-b），不是 id——用显示名拼 API 路径会得到 HTTP 500。
+coroot:
+  projectId: po24tcoz
+  allowAnonymousRead: true

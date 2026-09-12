@@ -79,8 +79,19 @@ code_sandbox / harness_channel` 列成了待装组件。实际上在 Stage-2 流
 | [stage2-integration.yaml](../../deploy/stage2/stage2-integration.yaml) | **没有** `nodeSelector` | 新集群靠 nodeSelector 把负载钉在装了 AppArmor 的那台 |
 
 这正是操作手册那句"**永远不要 `kubectl apply` 仓库渲染出来的清单**"的由来。
-第三套环境需要一份**属于它自己的** overlay，我建议新建 `deploy/stage2/env3/`
-存这几个差异值，而不是改共用清单——后者会污染另外两套环境。
+
+**已建好**：[deploy/stage2/env3/](../../deploy/stage2/env3/)——`values.yaml` 存这套环境的
+差异值（全部是 2026-09-12 实测出来的），`render.py` 把它套到基线清单上。
+不改共用清单，不碰镜像占位符（镜像仍走 `deploy_boundary.sh`）。
+
+```bash
+python deploy/stage2/env3/render.py --out /tmp/env3-stage2.yaml
+python scripts/verify_stage2_deployment.py --manifest /tmp/env3-stage2.yaml \
+    --coroot-project po24tcoz --require-node-selector
+```
+
+**已离线自检通过**：基线清单单独跑会爆三条（`fsGroupChangePolicy` / 项目 id / `nodeSelector`），
+渲染之后全绿。10 条测试守着这个闭环，其中一条就是"基线必须爆这三条"。
 
 ---
 
@@ -225,7 +236,7 @@ Dockerfile COPY 了不存在的源会**直接失败**，不会再产出一个悄
 | **P4c** | ~~装 Chaos Mesh~~ → **先验现有的**：`NetworkChaos` / `PodChaos` / `StressChaos` 三类能不能用 | 三类 CRD 存在且能创建能删 | 不动；不行再按 P1.5 的答复决定并排装还是换 |
 | ~~**P4d**~~ | ~~Coroot 只验~~ | ✅ **已完成**：匿名可访问（`authAnonymousRole=Admin`），项目 id = **`po24tcoz`**，`/prom/api/v1/series` 200，能读到 `/k8s/otel-demo/cart` | — |
 | **P5** | 构建平台两个镜像。**范围缩小了**：旧 Harbor 可达，十几个第三方镜像不必搬 | `build-<sha>-image.json` 产出 | 不覆盖同名 tag |
-| **P6** | 平台：RBAC → Secret/ConfigMap → PVC → Deployment（**env3 专属 overlay**） | 三容器 Ready；`scripts/verify_stage2_deployment.py` 全绿 | `kubectl delete ns resiliencebenchmark-system`（全是我们新建的，干净） |
+| **P6** | 平台：RBAC → Secret/ConfigMap → PVC → Deployment。**overlay 已就绪**：`python deploy/stage2/env3/render.py` | 三容器 Ready；`scripts/verify_stage2_deployment.py` 全绿（渲染产物已离线自检通过） | `kubectl delete ns resiliencebenchmark-system`（全是我们新建的，干净） |
 | **P7** | `/api/v1/stage2/options` 三家可跑 | 三家 `runnable=true` | 看 `provider_circuits` / `serving_stale_result` 分辨是网关还是资格问题 |
 | **P8** | 跑通一次 C0 | 完整结束、结构化结果、残留检查 `none` | 注意 O04 改动后恢复未验证时平台会停下而不是重装 |
 
