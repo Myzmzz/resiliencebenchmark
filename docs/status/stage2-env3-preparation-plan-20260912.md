@@ -122,10 +122,10 @@ code_sandbox / harness_channel` 列成了待装组件。实际上在 Stage-2 流
 
 | # | 组件 | 目标 | 仓库资产 | 装哪台 | 回滚 |
 |---|---|---|---|---|---|
-| 7 | prometheus / loki / jaeger / otel-collector / kube-state-metrics / node-exporter / promtail（namespace `observability`） | 与新环境同档 | **只有补丁，没有安装清单**：[environment/observability/](../../environment/observability/) 7 个文件全是 patch/PVC/ConfigMap | 工作节点 | 逐个 `helm uninstall` |
-| 8 | Coroot（operator 0.8.2，服务 `coroot-coroot.coroot.svc:8080`，开匿名只读） | 同新环境 | **无安装资产**，仓库里只有引用 | 工作节点 | `helm uninstall` |
-| 9 | ChaosBlade 1.8.0（operator + tool DaemonSet，namespace `default`） | 同新环境 | **无安装资产** | 全部节点（DaemonSet） | `helm uninstall` |
-| 10 | ChaosBlade `chaosblade-cgroupns-wrapper` ConfigMap | CPU/内存注入必须靠它 | **无**——操作手册只说"不要动它" | — | — |
+| 7 | prometheus / loki / jaeger / otel-collector / kube-state-metrics / node-exporter / promtail（namespace `observability`） | 与新环境同档 | **[deploy/observability/reference-stack.yaml](../../deploy/observability/reference-stack.yaml)**（21 个对象，非 Helm）；`environment/observability/` 那 7 个是装完之后往上打的补丁 | 工作节点 | `kubectl delete -f` |
+| 8 | Coroot（operator 0.8.2，服务 `coroot-coroot.coroot.svc:8080`，开匿名只读） | 同新环境 | 官方 chart `coroot-operator` **0.8.2**；匿名只读靠 CR 的 `authAnonymousRole: Viewer` | 工作节点 | `helm uninstall` |
+| 9 | ChaosBlade 1.8.0（operator + tool DaemonSet，namespace `default`） | 同新环境 | **[deploy/chaosblade/reference-install.yaml](../../deploy/chaosblade/reference-install.yaml)**（非 Helm） | 全部节点（DaemonSet） | `kubectl delete -f` |
+| 10 | ChaosBlade `chaosblade-cgroupns-wrapper` ConfigMap | CPU/内存注入必须靠它 | **[deploy/chaosblade/cgroupns-wrapper.yaml](../../deploy/chaosblade/cgroupns-wrapper.yaml)** | `default` | 删 ConfigMap 会让 tool DaemonSet 起不来 |
 | 11 | Chaos Mesh | 官方 Chart（旧集群 2.7.3 / 新集群 2.8.0，**按 k8s 版本选**） | [deploy/chaos-mesh/](../../deploy/chaos-mesh/)：`values-old-cluster.yaml`、`controller-bootstrap-rbac.yaml`、`namespace.yaml` | 控制面 + 各节点 daemon | `helm uninstall chaos-mesh -n chaos-mesh` |
 
 **#7–#10 原本是这次最大的风险**（仓库没有可复现的安装资产）。
@@ -136,8 +136,8 @@ code_sandbox / harness_channel` 列成了待装组件。实际上在 Stage-2 流
 |---|---|
 | `chaosblade-cgroupns-wrapper` 是什么 | **✅ 完全解决并已入库**：[deploy/chaosblade/](../../deploy/chaosblade/)。两行 `nsenter -t 1 -C` 包装，依赖 `hostPID: true` |
 | Coroot 版本与匿名只读怎么开 | **✅ 解决**：operator chart 0.8.2；匿名只读靠 CR 的 `authAnonymousRole: Viewer` |
-| 可观测栈 | **部分**：查实它**不是 Helm 管的**，是 5 个 Deployment + 2 个 DaemonSet，镜像与版本已记录；**还缺对象清单导出** |
-| ChaosBlade | **部分**：operator 1.8.0 + tool 1.8.0，也**不是 Helm**；**还缺对象清单导出** |
+| 可观测栈 | **✅ 解决并已入库**：[deploy/observability/](../../deploy/observability/)，21 个对象的参照清单 |
+| ChaosBlade | **✅ 解决并已入库**：[deploy/chaosblade/](../../deploy/chaosblade/)，operator + tool + cgroup 包装 |
 
 **并且查出一条原方案低估的**：这些组件的镜像**几乎全部来自旧集群的 HTTP 明文 Harbor
 `1.94.151.57:85`**（可观测栈走 `train-ticket/*`、Coroot 走 `observe/*`、
