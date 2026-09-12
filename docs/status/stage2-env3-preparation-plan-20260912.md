@@ -287,7 +287,7 @@ FAIL  nodeSelector: absent, but this cluster pins the workload to an AppArmor-en
 |---|---|---|---|
 | 1 | ~~SSH 放行~~ | — | **✅ 解决**：本机 Clash TUN 劫持，绑 en0 源地址即可绕过 |
 | 2 | **共享边界确认**：`otel-demo` / `coroot` / `chaos-mesh` 归谁，我们能不能改 | **P1.5，现在最关键** | **新增**。原以为是空环境，实际有别人的 `aiops` 在跑 |
-| 3 | **k8s v1.29.15 要不要升** | P6 之前 | **新增**。低于第二套环境的 1.31.14，唯一的阻塞级差距 |
+| 3 | ~~k8s v1.29.15 要不要升~~ | — | **✅ 不用升**。门槛是我设错了：平台清单用 AppArmor beta 注解（1.30 前的写法，也是 1.29 唯一接受的形式），无任何 1.30+ 特性，README 本就有「1.28 compatibility」一节。**阻塞级差距归零** |
 | 4 | **Chaos Mesh 现有安装怎么处理** | P4c | **新增**。chart `0.0.0` 自定义构建，与仓库官方 values 对不上 |
 | 5 | 公开镜像仓库地址 | P5 | **范围缩小**：旧 Harbor 可达，只需构建平台两个镜像 |
 | 6 | `BLADEAI_REPO` 与 `BASES` 两份外部材料 | P5 | 不变；或由你那边构建把元数据给我 |
@@ -311,8 +311,8 @@ FAIL  nodeSelector: absent, but this cluster pins the workload to an AppArmor-en
 
 1. **共享集群**。`aiops` 是别人的项目（181 天）。`otel-demo` / `coroot` / `chaos-mesh`
    归属未知——**如果 OTel Demo 是别人在用，我们注故障会影响他们**。这是 P1.5 必须先问清的。
-2. **k8s v1.29.15**。平台在 1.28（旧集群）和 1.31（新集群）都验过，1.29 居中大概率可用，
-   但 `deploy/stage2/README.md` 里针对 1.28 的兼容处理要复核。
+2. ~~k8s v1.29.15~~ **已核实不是问题**：清单用 1.30 之前的 AppArmor beta 注解，
+   没有任何 1.30+ 特性，`deploy/stage2/README.md` 本就有「Kubernetes 1.28 compatibility」一节。
 3. **Chaos Mesh 是自定义构建**（chart `0.0.0`，镜像带 `nomongo` / `fix` 补丁）。
    D8 要的 `NetworkChaos` / `PodChaos` / `StressChaos` 三类能不能用必须实测，不能假定。
 4. **swap 三台全开**。集群跑了 183 天说明 kubelet 配了 `failSwapOn: false` 或另有安排，

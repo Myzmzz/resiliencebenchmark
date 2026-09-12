@@ -92,7 +92,7 @@ def test_an_empty_machine_reports_every_component_as_todo():
         ({"mem_total_mb": "16384"}, "内存"),
         ({"has_docker": "no"}, "Docker"),
         ({"k8s_runtime": "containerd://1.7.0"}, "集群运行时"),
-        ({"k8s_server": "v1.28.2"}, "Kubernetes 版本"),
+        ({"k8s_server": "v1.27.9"}, "Kubernetes 版本"),
         ({"apparmor_profile": "0"}, "AppArmor profile resbench-agent-runtime"),
     ],
 )
@@ -102,6 +102,17 @@ def test_each_blocking_prerequisite_is_caught(override: dict, label: str):
     assert code == 1, f"{label} 应该是阻塞级差距"
     row = next(line for line in text.splitlines() if label in line)
     assert "差距" in row
+
+
+@pytest.mark.parametrize("version", ["v1.28.2", "v1.29.15", "v1.31.14"])
+def test_the_kubernetes_floor_is_the_platforms_own_not_the_second_environments(version: str):
+    """deploy/stage2/README.md documents 1.28 compatibility, and the manifests use
+    the pre-1.30 AppArmor beta annotation, so 1.28/1.29 are supported."""
+    text, code = _run({"k8s_server": version})
+
+    assert code == 0
+    row = next(line for line in text.splitlines() if "Kubernetes 版本" in line)
+    assert "ok" in row
 
 
 def test_a_containerd_cluster_is_a_blocker_not_a_warning():

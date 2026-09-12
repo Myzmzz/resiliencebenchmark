@@ -159,12 +159,26 @@ state=running   用户=5   总 RPS=0.8
 
 ## 5. 差距与风险
 
-### 阻塞级 1 项
+### 阻塞级：**0 项**（k8s 版本那条是我门槛设错了）
 
-**Kubernetes v1.29.15**，低于第二套环境的 v1.31.14。
-平台资产在旧集群 v1.28 和新集群 v1.31 上都验过，1.29 居中，**大概率可用**，
-但 `deploy/stage2/README.md` 里那些针对 1.28 的兼容处理需要复核一遍。
-**要不要为此升级集群，是你的决定**——它是共享集群，`aiops` 也在上面。
+一开始把 Kubernetes 门槛设成"≥ v1.30"（照抄第二套环境的 1.31.14），
+于是 v1.29.15 被判成唯一的阻塞级差距。**核了平台清单，这个门槛是错的：**
+
+- `deploy/stage2/stage2-integration.yaml:19` 和 `stage2.yaml:177` 用的是
+  **AppArmor beta 注解** `container.apparmor.security.beta.kubernetes.io/agent-runtime`。
+  那是 1.30 之前的写法，**也是 1.28/1.29 唯一接受的形式**；
+  `securityContext.appArmorProfile` 字段要 1.30 才有。
+- 清单里**没有任何 1.30+ 才有的特性**（无 sidecar `restartPolicy: Always`、
+  无 `schedulingGates`、无 `matchLabelKeys`）。
+- `apiVersion` 只有 `apps/v1`、`rbac.authorization.k8s.io/v1`、`v1`，全是老稳定版。
+- `deploy/stage2/README.md` 本来就有一节 **"Kubernetes 1.28 compatibility"**。
+
+门槛已改成**平台自己的下限 ≥ v1.28**（`tools/env3/gap_report.py`，附测试）。
+**v1.29.15 合格，不需要升级集群。**
+
+> 两条"未采集到"（CNI 配置、AppArmor profile）也不是真缺，只是那两个查询要 root：
+> 已另行确认 **Cilium 1.16.6 在跑**、**AppArmor 模块已加载**（155 profiles / 60 enforce），
+> 缺的只是 `resbench-agent-runtime` 这一条 profile（本来就在待装清单里）。
 
 ### 需要你拍板的 3 项
 

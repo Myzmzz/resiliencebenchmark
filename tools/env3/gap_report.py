@@ -113,8 +113,12 @@ EXPECTATIONS: tuple[Expectation, ...] = (
         lambda v: v.startswith("docker://"), "docker://…",
     ),
     Expectation(
-        "k8s_server", "Kubernetes 版本", "第二套环境实测 v1.31.14",
-        lambda v: re.match(r"v1\.(3[0-9]|[4-9][0-9])\.", v) is not None, "≥ v1.30",
+        # The platform's own floor, not the second environment's version:
+        # deploy/stage2/README.md has a "Kubernetes 1.28 compatibility" section,
+        # and the manifests use the pre-1.30 AppArmor beta annotation, which is
+        # the only form 1.28/1.29 accept.
+        "k8s_server", "Kubernetes 版本", "deploy/stage2/README.md 明确兼容 1.28；清单用 AppArmor beta 注解",
+        lambda v: re.match(r"v1\.(2[89]|[3-9][0-9])\.", v) is not None, "≥ v1.28",
     ),
     Expectation(
         "k8s_nodes", "节点数", "1 控制面 + 工作节点", _int_at_least(1), "≥ 1",
