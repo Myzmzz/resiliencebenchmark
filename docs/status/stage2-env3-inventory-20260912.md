@@ -185,6 +185,24 @@ P6 需要的那个具体值查到了：**`po24tcoz`**。
 当前占用：CPU requests **950m（1%）**、limits 3500m（5%）；内存 requests **5700Mi（2%）**、
 limits 7248Mi（2%）。平台要 1.5 核 / 3 GiB（requests）、6 核 / 11 GiB（limits）——**绰绰有余**。
 
+### 4.5.6 `otcaix-62` 的 AppArmor 与 cgroup 前提：全部满足
+
+用 `sudo` 在 62 上做的只读核查（启动语授权了 `sudo -su`）：
+
+| 前提 | 实测 | 平台要求 |
+|---|---|---|
+| AppArmor 模块 | **已加载**，170 profiles / 75 enforce | 必须加载 |
+| `resbench-agent-runtime` | **未装**（=0） | 待装，在清单里 |
+| cgroup 版本 | **`cgroup2fs`**（v2） | v2 |
+| `/sys/fs/cgroup` 权限 | **`555`** | 正是 `deploy/stage2/README.md` 描述的情形——因为根是 0555，agent-exec 才要用独立的 hostPath 子树，**不能**为了建前缀去改全局权限 |
+| `/sys/fs/cgroup/resbench-agent-exec` | 不存在 | 由 hostPath `DirectoryOrCreate` 建，设计如此 |
+| cgroup 控制器 | `cpuset cpu io memory hugetlb pids rdma misc` | agent-exec 要 `cpu` / `memory` / `pids`（`--cpu-max` / `--memory-max` / `--pids-max`）——**都在** |
+| Docker | **28.3.2**，Cgroup Driver **systemd**，Cgroup Version **2** | Docker + cgroup v2 |
+
+**结论：P2 和 P6 在 62 上的技术前提没有障碍。** 唯一要实测的仍是
+Docker 28.3.2 的私有 cgroup 命名空间行为（第二套环境实测的是 29.6.x），
+那要起容器，属于写操作，放在 P2 之后做。
+
 ---
 
 ## 5. 差距与风险

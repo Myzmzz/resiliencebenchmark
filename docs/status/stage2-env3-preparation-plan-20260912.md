@@ -244,8 +244,13 @@ Dockerfile COPY 了不存在的源会**直接失败**，不会再产出一个悄
 - 不放 61：内存只有一半，而且**时间没同步**（证据窗口对齐依赖它）
 - 放 62：资源足、时间同步正常
 
-**代价**：62 的 Docker 是 28.3.2，三台里最旧。agent-exec 依赖 Docker 的 cgroup 命名空间行为，
-**P2 装完 AppArmor 后要单独验一次**（第二套环境实测的是 29.6.x）。
+**已核实 62 的前提全部满足**（见盘点 4.5.6）：AppArmor 模块已加载（170 profiles / 75 enforce）、
+cgroup 是 v2、`/sys/fs/cgroup` 权限 555（正是 README 描述的情形）、
+控制器有 `cpu` / `memory` / `pids`、Docker cgroup driver 是 systemd。
+
+**唯一的代价**：62 的 Docker 是 28.3.2，三台里最旧。agent-exec 依赖 Docker 的私有
+cgroup 命名空间行为，**P2 装完 AppArmor 后要单独验一次**（第二套环境实测的是 29.6.x）。
+那要起容器，是写操作，所以放在 P2 之后。
 
 ### 新增的两条禁忌（共享集群特有）
 
