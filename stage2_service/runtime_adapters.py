@@ -111,15 +111,22 @@ class KubernetesEnvironmentGate:
         self.runner = runner or SubprocessRunner()
 
     def qualify(self, episode) -> Mapping[str, Any]:
-        namespace = episode.public.environment_snapshot.get("namespace", "")
-        bound_namespace = current_target_binding().application_namespace
+        # The Episode is frozen and hash-checked, so its snapshot names the
+        # system it was written against -- the deployment bundle. A replica is
+        # a copy of that system in its own namespace, so the Episode is
+        # checked against the bundle and the cluster is read in the namespace
+        # this instance is actually bound to. With the default binding the two
+        # are the same name and this is the original check.
+        snapshot = episode.public.environment_snapshot.get("namespace", "")
+        binding = current_target_binding()
         # Exact equality only: ``otel-demo`` and ``otel-demo-01`` share a
         # prefix, and a prefix match would mix a replica with the full system.
-        if namespace != bound_namespace:
+        if snapshot != binding.bundle:
             return {
                 "qualified": False,
-                "reason": f"fixed Episode namespace is not {bound_namespace}",
+                "reason": f"fixed Episode namespace is not {binding.bundle}",
             }
+        namespace = binding.application_namespace
         deployments = self._json(
             ["get", "deployments", "-n", namespace, "-o", "json"]
         )

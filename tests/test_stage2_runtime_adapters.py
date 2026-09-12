@@ -573,8 +573,10 @@ class ChaosRunner(Runner):
     def __init__(self, chaos_items, **kwargs):
         super().__init__(**kwargs)
         self.chaos_items = chaos_items
+        self.seen: list[list[str]] = []
 
     def run(self, argv, *, timeout=60):
+        self.seen.append(list(argv))
         if "chaosblades.chaosblade.io" in argv:
             return subprocess.CompletedProcess(
                 argv, 0, json.dumps({"items": self.chaos_items}), ""
@@ -607,7 +609,7 @@ def test_environment_gate_ignores_another_replicas_chaosblade(tmp_path: Path, mo
     runner = ChaosRunner([_labelled_blade("otel-demo-02"), _matcher_blade("otel-demo-03")])
 
     verdict = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
-        _replica_episode("otel-demo-01")
+        Episode()
     )
 
     assert verdict["qualified"] is True
@@ -623,7 +625,7 @@ def test_environment_gate_still_blocks_on_this_replicas_chaosblade(tmp_path: Pat
     runner = ChaosRunner([_labelled_blade("otel-demo-01"), _labelled_blade("otel-demo-02")])
 
     verdict = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
-        _replica_episode("otel-demo-01")
+        Episode()
     )
 
     assert verdict["qualified"] is False
@@ -644,9 +646,7 @@ def test_environment_gate_never_prefix_matches_the_full_system(tmp_path: Path, m
 
     # Bound to the replica: the same fault is its own.
     monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
-    replica = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
-        _replica_episode("otel-demo-01")
-    )
+    replica = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(Episode())
     assert replica["qualified"] is False
 
 
@@ -658,19 +658,41 @@ def test_environment_gate_blocks_on_an_unattributable_chaosblade(tmp_path: Path,
     runner = ChaosRunner([{"metadata": {"name": "orphan"}}])
 
     verdict = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(
-        _replica_episode("otel-demo-01")
+        Episode()
     )
 
     assert verdict["qualified"] is False
     assert verdict["unattributed_chaosblade_names"] == ["orphan"]
 
 
-def test_environment_gate_rejects_a_namespace_that_is_not_the_binding(tmp_path: Path, monkeypatch):
+def test_environment_gate_reads_the_replica_the_frozen_episode_was_copied_to(tmp_path: Path, monkeypatch):
+    """The Episode is hash-frozen on otel-demo; a replica is a copy of it.
+
+    Comparing the snapshot with the replica namespace would block every
+    replica trial, which is exactly what the first live run did.
+    """
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runner = ChaosRunner([])
+
+    verdict = KubernetesEnvironmentGate(kubeconfig, runner=runner).qualify(Episode())
+
+    assert verdict["qualified"] is True
+    assert verdict["application_namespace"] == "otel-demo-01"
+    # The cluster was read in the replica, not in the copied system.
+    namespaces = [argv[argv.index("-n") + 1] for argv, in [(call,) for call in runner.seen] if "-n" in argv]
+    assert namespaces == ["otel-demo-01"]
+
+
+def test_environment_gate_rejects_an_episode_for_another_system(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-01")
     kubeconfig = tmp_path / "kubeconfig"
     kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
 
-    verdict = KubernetesEnvironmentGate(kubeconfig, runner=ChaosRunner([])).qualify(Episode())
+    verdict = KubernetesEnvironmentGate(kubeconfig, runner=ChaosRunner([])).qualify(
+        _replica_episode("sock-shop")
+    )
 
     assert verdict["qualified"] is False
-    assert verdict["reason"] == "fixed Episode namespace is not otel-demo-01"
+    assert verdict["reason"] == "fixed Episode namespace is not otel-demo"

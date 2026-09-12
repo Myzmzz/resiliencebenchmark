@@ -25,6 +25,8 @@ from .store import FleetStore, utc_now
 PLATFORM_REASON_CODES = frozenset(
     {
         "STAGE2_PLATFORM_FAILED",
+        "STAGE2_PLATFORM_BLOCKED",
+        "STAGE2_PLATFORM_RESET_FAILED",
         "PREPARATION_FAILED",
         "POST_TRIAL_ENVIRONMENT_NOT_READY",
         "GATEWAY_SNAPSHOT_MISSING",
@@ -207,6 +209,15 @@ class BatchDispatcher:
                     pass
             return
         failure = summary.get("failure") if isinstance(summary.get("failure"), Mapping) else None
+        platform_status = str(summary.get("platform_status") or "")
+        if failure is None and platform_status not in {"", "COMPLETED", "SUCCEEDED"}:
+            # A campaign that never ran reports COMPLETED at task level while
+            # its own verdict is BLOCKED or RESET_FAILED. Scoring that as an
+            # agent result would credit a trial that did not happen.
+            failure = {
+                "code": f"STAGE2_PLATFORM_{platform_status}",
+                "reason": f"platform status {platform_status}",
+            }
         score: Any = None
         try:
             score = client.score(str(run_id))

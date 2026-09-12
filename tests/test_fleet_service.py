@@ -564,3 +564,25 @@ def test_deploy_gets_a_private_copy_of_the_runtime_env_file(tmp_path: Path):
     assert seen[0]["path"] != mounted
     # The private copy does not outlive the call.
     assert not seen[0]["path"].exists()
+
+
+def test_a_blocked_campaign_is_not_recorded_as_a_finished_trial(fleet):
+    """The environment gate blocks before the agent starts; that is platform-owned."""
+    client, store, dispatcher = fleet["client"], fleet["store"], fleet["dispatcher"]
+    client.post("/api/v1/fleet/provision?dry_run=false&wait=true")
+    client.post("/api/v1/fleet/batches?dry_run=false", json=_batch([_item(1, "codex")]))
+    item = store.item("dx-parallel-20260912-01", "i-001")
+    controller = fleet["controllers"][item["namespace"]]
+    # What a blocked campaign actually returns: terminal, COMPLETED, no failure.
+    controller.terminal[item["run_id"]] = {
+        "run_id": item["run_id"], "status": "COMPLETED", "terminal": True,
+        "platform_status": "BLOCKED", "failure": None,
+    }
+
+    dispatcher.poll_running()
+
+    after = store.item("dx-parallel-20260912-01", "i-001")
+    assert after["state"] == "Queued"
+    assert after["platform_retries"] == 1
+    assert after["failure"]["code"] == "STAGE2_PLATFORM_BLOCKED"
+    assert after["failure"]["owner"] == "platform"
