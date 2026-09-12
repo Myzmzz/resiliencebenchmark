@@ -203,6 +203,28 @@ limits 7248Mi（2%）。平台要 1.5 核 / 3 GiB（requests）、6 核 / 11 GiB
 Docker 28.3.2 的私有 cgroup 命名空间行为（第二套环境实测的是 29.6.x），
 那要起容器，属于写操作，放在 P2 之后做。
 
+### 4.5.7 三份待装资产的等价 dry-run：全部通过
+
+动手前能验的都验了，**用的都是不落盘的方式**（仓库自己的复位预检也是这个模式）。
+
+| 资产 | 验法 | 结果 |
+|---|---|---|
+| `deploy/chaosblade/reference-install.yaml`（7 对象） | `kubectl apply --dry-run=server` 打真集群 | **全过**（k8s 1.29） |
+| `deploy/chaosblade/cgroupns-wrapper.yaml` | 同上 | **过** |
+| `deploy/observability/reference-stack.yaml`（21 对象） | `--dry-run=client`（namespace 尚不存在，服务端验不了） | schema **全过** |
+| `deploy/stage2/apparmor/resbench-agent-runtime` | 在 `otcaix-62` 上 `apparmor_parser -Q`（只解析不加载） | **退出码 0**；parser 4.0.1；事后确认 `aa-status` 仍是 0 条，**没有加载** |
+| `deploy/stage2/env3/` 渲染产物 | `scripts/verify_stage2_deployment.py` 离线自检 | **全绿**（基线单独跑会爆三条） |
+
+**服务端 dry-run 抓到一个实打实的错误**：我首次导出的 ChaosBlade 清单只有 Deployment
+和 DaemonSet，**漏了 CRD `chaosblades.chaosblade.io` 和 SA/RBAC/webhook Service**。
+没有那个 CRD 平台根本下发不了故障。已补齐并加了守完整性的测试。
+
+**仍然只能等真装之后才能验的**：
+
+- ChaosBlade CPU 注入是否真的压得动 `cart`（要起实验）；
+- Docker 28.3.2 的私有 cgroup 命名空间行为（要起容器）；
+- 可观测栈三件套（Prometheus/Loki/Jaeger）能否真的被 `telemetry_ro` 查到。
+
 ---
 
 ## 5. 差距与风险
