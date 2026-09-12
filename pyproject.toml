@@ -27,7 +27,7 @@ runtime = ["dulwich>=0.22,<0.23", "kubernetes>=32,<35"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["backend*", "controller*", "disturbances*", "evaluator*", "harness*", "mcp_servers*", "progression*", "resilience_agent*", "scoring*", "scripts*", "stage2_service*", "tasks*"]
+include = ["backend*", "controller*", "disturbances*", "evaluator*", "fleet_service*", "harness*", "mcp_servers*", "progression*", "resilience_agent*", "scoring*", "scripts*", "stage2_service*", "tasks*"]
 exclude = ["artifacts*", "environment*", "runs*", "tests*", "tmp*"]
 
 [tool.setuptools.package-data]

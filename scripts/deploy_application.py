@@ -240,11 +240,47 @@ def render_manifest(
     return rewrite_tree(document, source_namespace, target_namespace)
 
 
-def render_values(path: Path, values: Mapping[str, str], source_namespace: str, target_namespace: str) -> dict[str, Any]:
+def merge_values(base: Any, overlay: Any) -> Any:
+    """Deep-merge ``overlay`` onto ``base`` with Helm's ``-f a -f b`` semantics.
+
+    Maps merge key by key; anything else, lists included, is replaced whole.
+    """
+    if isinstance(base, dict) and isinstance(overlay, dict):
+        merged = dict(base)
+        for key, value in overlay.items():
+            merged[key] = merge_values(merged[key], value) if key in merged else value
+        return merged
+    return overlay
+
+
+def values_profile_path(application: str, profile: str | None) -> Path | None:
+    """``values-<profile>.yaml`` of an application bundle, or None for the base."""
+    if not profile:
+        return None
+    if not SAFE_NAME_RE.fullmatch(profile):
+        raise DeployError("--values-profile must be a lowercase dns-style name")
+    path = REPO_ROOT / "environment" / "kubernetes" / application / f"values-{profile}.yaml"
+    if not path.is_file():
+        raise DeployError(f"unknown values profile for {application}: {profile}")
+    return path
+
+
+def render_values(
+    path: Path,
+    values: Mapping[str, str],
+    source_namespace: str,
+    target_namespace: str,
+    overlay_path: Path | None = None,
+) -> dict[str, Any]:
     rendered = render_text(path.read_text(encoding="utf-8"), values)
     document = yaml.safe_load(rendered)
     if not isinstance(document, dict):
         raise DeployError("rendered Helm values must be a mapping")
+    if overlay_path is not None:
+        overlay = yaml.safe_load(render_text(overlay_path.read_text(encoding="utf-8"), values))
+        if not isinstance(overlay, dict):
+            raise DeployError("rendered Helm values overlay must be a mapping")
+        document = merge_values(document, overlay)
     document = rewrite_tree(document, source_namespace, target_namespace)
     if source_namespace != target_namespace:
         service = document.get("components", {}).get("frontend-proxy", {}).get("service")
@@ -674,6 +710,7 @@ def apply_otel_demo(
     timeout_seconds: int,
     *,
     server_dry_run: bool = False,
+    values_profile: str | None = None,
 ) -> list[str]:
     """Install or upgrade OTel Demo and apply its supplemental manifest.
 
@@ -698,7 +735,13 @@ def apply_otel_demo(
     else:
         run_checked(runner, ["helm", "repo", "add", chart["repositoryName"], chart["repositoryUrl"], "--force-update"], timeout=120)
         chart_reference = f"{chart['repositoryName']}/{chart['name']}"
-    values = render_values(base / item["values"], runtime, "otel-demo", namespace)
+    values = render_values(
+        base / item["values"],
+        runtime,
+        "otel-demo",
+        namespace,
+        values_profile_path("otel-demo", values_profile),
+    )
     release_output = helm_upgrade(
         runner,
         release=item["release"],
@@ -928,6 +971,10 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
     namespace = validate_name(args.namespace or LIVE_NAMESPACES[application], "namespace")
     server_dry_run = bool(getattr(args, "server_dry_run", False))
     report = plan_report(application, args.mode, namespace, args.fresh)
+    if getattr(args, "values_profile", None):
+        if application != "otel-demo" or args.mode != "apply":
+            raise DeployError("--values-profile supports only --application otel-demo --mode apply")
+        report["valuesProfile"] = args.values_profile
     if server_dry_run:
         # Checked before any cluster contact: combining the preflight with
         # --execute or --fresh must never turn it into real mutations.
@@ -965,7 +1012,11 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
         if application == "train-ticket":
             apply_train_ticket(runner, kubeconfig, namespace, runtime, args.secret_source_namespace, args.timeout)
         elif application == "otel-demo":
-            dry_run_checks = apply_otel_demo(runner, kubeconfig, namespace, runtime, args.timeout, server_dry_run=server_dry_run)
+            dry_run_checks = apply_otel_demo(
+                runner, kubeconfig, namespace, runtime, args.timeout,
+                server_dry_run=server_dry_run,
+                values_profile=getattr(args, "values_profile", None),
+            )
         else:
             apply_sock_shop(runner, kubeconfig, namespace, runtime)
         if server_dry_run:
@@ -1004,6 +1055,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--kubeconfig", type=Path)
     parser.add_argument("--runtime-env-file", type=Path)
     parser.add_argument("--secret-source-namespace", help="Explicit source namespace for transient Secret copying")
+    parser.add_argument(
+        "--values-profile",
+        help=(
+            "otel-demo apply only: deep-merge environment/kubernetes/<app>/values-<profile>.yaml "
+            "over the bundle values, for example 'replica' for one trimmed fleet replica"
+        ),
+    )
     parser.add_argument("--fresh", action="store_true", help="For apply only: delete and recreate the target namespace")
     parser.add_argument("--execute", action="store_true", help="Perform cluster mutations; default is dry-run")
     parser.add_argument(

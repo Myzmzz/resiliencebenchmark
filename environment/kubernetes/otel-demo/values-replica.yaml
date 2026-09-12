@@ -1,0 +1,176 @@
+# Values overlay for one trimmed replica of OTel Demo.
+#
+# ``scripts/deploy_application.py --values-profile replica`` deep-merges this
+# document over ``values.yaml`` (maps merge, lists replace), so every retained
+# component keeps the settings of the full system and only the differences
+# live here.
+#
+# What is kept and why:
+#   cart            the only fault target
+#   valkey-cart     cart blocks in an init container until it answers
+#   frontend        serves /api/cart, the one route every verdict reads
+#   product-catalog frontend calls it while rendering a non-empty cart
+#   load-generator  Locust is the only source of business evidence
+#   flagd           cart and frontend resolve flags through it
+#   otel-collector  the agent's Jaeger/Prometheus/Coroot data comes from it
+#
+# Everything else is off: no verdict reads it, and its traffic would land in
+# the Locust aggregate row as failures.
+#
+# Every retained Pod gets a CPU limit. One CPU fault in the full system was
+# measured eating 19-25 cores; with many replicas on two nodes that would drag
+# down the health gate of every neighbour.
+components:
+  accounting:
+    enabled: false
+  ad:
+    enabled: false
+  cart:
+    resources:
+      limits:
+        cpu: '1'
+        memory: 160Mi
+      requests:
+        cpu: 100m
+        memory: 160Mi
+  checkout:
+    enabled: false
+  currency:
+    enabled: false
+  email:
+    enabled: false
+  flagd:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 75Mi
+      requests:
+        cpu: 25m
+        memory: 75Mi
+  fraud-detection:
+    enabled: false
+  frontend:
+    resources:
+      limits:
+        cpu: '1'
+        memory: 320Mi
+      requests:
+        cpu: 100m
+        memory: 320Mi
+  frontend-proxy:
+    enabled: false
+  image-provider:
+    enabled: false
+  kafka:
+    enabled: false
+  llm:
+    enabled: false
+  load-generator:
+    env:
+    - name: LOCUST_WEB_HOST
+      value: 0.0.0.0
+    - name: LOCUST_WEB_PORT
+      value: '8089'
+    - name: LOCUST_USERS
+      value: '5'
+    - name: LOCUST_SPAWN_RATE
+      value: '1'
+    - name: LOCUST_HOST
+      value: http://frontend:8080
+    - name: LOCUST_HEADLESS
+      value: 'false'
+    - name: LOCUST_AUTOSTART
+      value: 'true'
+    - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+      value: 'false'
+    - name: LOCUST_LOCUSTFILE
+      value: /etc/resbench-locust/locustfile.py
+    - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
+      value: python
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://$(OTEL_COLLECTOR_NAME):4317
+    mountedConfigMaps:
+    - data:
+        locustfile.py: "\"\"\"Cart-only Locust profile for a Stage-2 replica of OTel Demo.\n\nTwo things\
+          \ the platform needs from this file:\n\n* the statistics row must be named exactly ``/api/cart``.\
+          \  Business health,\n  fault effect and recovery are all read from that row\n  (``runtime_factory.KubernetesTrafficEvidence``);\
+          \ anything else falls back to\n  the global aggregate, which a trimmed system would pollute.\n\
+          * nothing may call a service the trimmed profile switched off, or its failures\n  would land\
+          \ in the same aggregate.\n\nEach iteration creates a fresh session, adds one item and reads\
+          \ that cart\nback, so the cart stays a single item and the read path keeps its product\nlookup\
+          \ without growing over time.\n\"\"\"\n\nimport os\nimport uuid\n\nfrom locust import HttpUser,\
+          \ constant_pacing, task\n\nCART_ROUTE = \"/api/cart\"\nPRODUCT_ID = os.environ.get(\"RESBENCH_CART_PRODUCT_ID\"\
+          , \"OLJCESPC7Z\")\nPACING_SECONDS = float(os.environ.get(\"RESBENCH_CART_PACING_SECONDS\", \"\
+          1\"))\n\n\nclass CartUser(HttpUser):\n    wait_time = constant_pacing(PACING_SECONDS)\n\n  \
+          \  @task\n    def add_then_view_cart(self):\n        session_id = str(uuid.uuid4())\n      \
+          \  self.client.post(\n            CART_ROUTE,\n            json={\"item\": {\"productId\": PRODUCT_ID,\
+          \ \"quantity\": 1}, \"userId\": session_id},\n            name=CART_ROUTE,\n        )\n    \
+          \    self.client.get(CART_ROUTE, params={\"sessionId\": session_id}, name=CART_ROUTE)\n"
+      mountPath: /etc/resbench-locust
+      name: resbench-cart-workload
+    resources:
+      limits:
+        cpu: '1'
+        memory: 500Mi
+      requests:
+        cpu: 100m
+        memory: 500Mi
+  payment:
+    enabled: false
+  postgresql:
+    enabled: false
+  product-catalog:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 80Mi
+      requests:
+        cpu: 50m
+        memory: 80Mi
+  product-reviews:
+    enabled: false
+  quote:
+    enabled: false
+  recommendation:
+    enabled: false
+  shipping:
+    enabled: false
+  valkey-cart:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 40Mi
+      requests:
+        cpu: 25m
+        memory: 40Mi
+opentelemetry-collector:
+  presets:
+    annotationDiscovery:
+      logs:
+        enabled: false
+      metrics:
+        enabled: false
+    clusterMetrics:
+      enabled: false
+    hostMetrics:
+      enabled: false
+    kubeletMetrics:
+      enabled: false
+    kubernetesAttributes:
+      enabled: true
+      extractAllPodAnnotations: false
+      extractAllPodLabels: false
+    kubernetesEvents:
+      enabled: false
+    logsCollection:
+      enabled: false
+      includeCollectorLogs: false
+      maxRecombineLogSize: 102400
+      storeCheckpoints: false
+  resources:
+    limits:
+      cpu: '1'
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi

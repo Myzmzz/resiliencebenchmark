@@ -901,3 +901,17 @@ def test_require_trace_namespace_defaults_to_false(monkeypatch):
 
     monkeypatch.setenv(REQUIRE_TRACE_NAMESPACE_ENV, "true")
     assert RuntimeConfig.from_env().require_trace_namespace is True
+
+
+def test_replica_trace_scope_ignores_the_shared_logical_service_namespace():
+    """Every replica carries service.namespace=otel-demo; only the k8s one counts."""
+    trace = _cart_trace("own", "otel-demo-01")
+    for holder in (trace["processes"]["p1"], trace["spans"][0]["process"]):
+        holder["tags"].append(
+            {"key": "service.namespace", "type": "string", "value": "otel-demo"}
+        )
+    svc = _replica_service("otel-demo-01", [trace], require_trace_namespace=True)
+
+    result = run(svc.jaeger_find_traces(service="cart", start=1700000000, end=1700000300, limit=10))
+
+    assert [item["traceID"] for item in result["traces"]] == ["own"]

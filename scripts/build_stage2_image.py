@@ -23,7 +23,8 @@ DEFAULT_RUNTIME_BASE = (
     "1.94.151.57:85/observe/resbench-stage2@"
     "sha256:416b7a66756e69438c8a50e5aba407c0951eb98339fd765f654e1f7d8cb2b7cf"
 )
-TEMPLATES = ("stage2.yaml", "execution-identities.yaml", "stage2-integration.yaml", "stage2-matrix-job.yaml")
+TEMPLATES = ("stage2.yaml", "execution-identities.yaml", "stage2-integration.yaml",
+             "stage2-matrix-job.yaml", "fleet.yaml")
 BLADEAI_RELEASE_TAG = "blade-ai-v0.6.2"
 BLADEAI_RELEASE_COMMIT = "d8c5473ccda329a3841f114f83a43881a2205ab5"
 BLADEAI_SUBTREE = "blade-ai"
@@ -55,6 +56,9 @@ def source_digest() -> str:
     roots = [
         REPO_ROOT / "controller",
         REPO_ROOT / "stage2_service",
+        REPO_ROOT / "fleet_service",
+        REPO_ROOT / "environment/kubernetes/otel-demo",
+        REPO_ROOT / "environment/workloads/otel-demo",
         REPO_ROOT / "harness",
         REPO_ROOT / "mcp_servers",
         REPO_ROOT / "frontend",
@@ -84,6 +88,8 @@ def source_digest() -> str:
             REPO_ROOT / "scripts/qualify_execution_identities.py",
             REPO_ROOT / "scripts/serve_stage2_matrix_review.py",
             REPO_ROOT / "scripts/deploy_application.py",
+            REPO_ROOT / "scripts/fleet_ctl.py",
+            REPO_ROOT / "deploy/stage2/fleet.yaml",
             REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay",
             REPO_ROOT / "deploy/stage2/Dockerfile.agent",
             REPO_ROOT / "deploy/stage2/codex-eval",

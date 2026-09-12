@@ -46,12 +46,13 @@ MAX_FILTERS = 12
 MAX_FILTER_VALUE_LENGTH = 256
 MAX_LITERAL_CONTAINS_LENGTH = 200
 NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace")
-# Resource attributes the OTel k8sattributes processor puts on every span.
+# The Kubernetes namespace the OTel k8sattributes processor puts on every span.
+# ``service.namespace`` is deliberately not here: it is the demo's own logical
+# name, identical in every replica, and reading it as a Kubernetes namespace
+# would drop every trace.
 TRACE_NAMESPACE_TAG_KEYS = (
     "k8s.namespace.name",
     "k8s_namespace_name",
-    "namespace",
-    "service.namespace",
 )
 PROMETHEUS_GROUP_BY_ALLOWLIST = frozenset(
     {

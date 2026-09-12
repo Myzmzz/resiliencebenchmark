@@ -1,0 +1,188 @@
+# Fleet orchestration service: one per cluster, reusing the Controller image
+# with a different start command. It provisions replica namespaces and one
+# Controller instance per replica, then dispatches batches to them.
+#
+# Replace __STAGE2_IMAGE__ with the immutable controller image reference, the
+# same one the slots run, so the Fleet renders manifests from the code that is
+# actually deployed.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: resbench-fleet
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-fleet
+    app.kubernetes.io/managed-by: resbench-fleet
+automountServiceAccountToken: false
+---
+# Namespace creation and deletion cannot be restricted to a name prefix in
+# RBAC, so the prefix gate lives in fleet_service.guard and is covered by unit
+# tests. This grant is what makes that gate the only fence, and why every
+# destructive call additionally requires confirm=<namespace>.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resbench-fleet-provisioner
+  labels:
+    app.kubernetes.io/name: resbench-fleet
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "configmaps", "secrets", "serviceaccounts",
+                "persistentvolumeclaims", "limitranges", "resourcequotas", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale", "statefulsets", "replicasets", "daemonsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resbench-fleet-provisioner
+  labels:
+    app.kubernetes.io/name: resbench-fleet
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: resbench-fleet-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: resbench-fleet
+    namespace: resiliencebenchmark-system
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: resbench-fleet-state
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-fleet
+spec:
+  storageClassName: openebs-hostpath
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resbench-fleet
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-fleet
+    app.kubernetes.io/managed-by: resbench-fleet
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: resbench-fleet
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: resbench-fleet
+    spec:
+      serviceAccountName: resbench-fleet
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: fleet
+          image: __STAGE2_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["/app/.venv/bin/python", "-m", "fleet_service"]
+          ports:
+            - name: http
+              containerPort: 8090
+          env:
+            - name: FLEET_STATE_FILE
+              value: /var/lib/resbench-fleet/fleet.sqlite3
+            - name: FLEET_PORT
+              value: "8090"
+            - name: FLEET_POLL_SECONDS
+              value: "20"
+            - name: STAGE2_REPO_ROOT
+              value: /app
+            - name: STAGE2_RUNTIME_ENV_FILE
+              value: /etc/resbench-stage2/otel-demo.env
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/resbench-fleet
+            - name: runtime
+              mountPath: /etc/resbench-stage2
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: resbench-fleet-state
+        - name: runtime
+          secret:
+            secretName: resbench-stage2-runtime
+            defaultMode: 0400
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resbench-fleet
+  namespace: resiliencebenchmark-system
+  labels:
+    app.kubernetes.io/name: resbench-fleet
+spec:
+  selector:
+    app.kubernetes.io/name: resbench-fleet
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http
