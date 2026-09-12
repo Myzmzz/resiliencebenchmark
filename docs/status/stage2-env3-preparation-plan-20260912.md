@@ -2,47 +2,39 @@
 
 目标机器：`124.16.138.60` / `.61` / `.62`
 分支：`codex/stage2-env3-bladeai-20260912`
-状态：**盘点未执行（机器连不上），本方案是"目标状态 + 装法 + 回滚"，现状一栏待盘点后填**
+状态：**盘点已完成（2026-09-12）**，本方案已按实测结果重写
 
 ---
 
-## 0. 先说卡点
+## 0. 状态
 
-盘点做不了，不是账号问题——**TCP 到 22 端口连得上，但对端在 SSH banner 交换之前就断开**：
+**盘点已完成**（2026-09-12），结果见
+[stage2-env3-inventory-20260912.md](stage2-env3-inventory-20260912.md)。
 
+原先连不上是**本机 Clash Verge 的 TUN 模式**把所有 TCP 劫持到美国出口所致，
+不是对端防火墙。绕过办法是把源地址绑到物理网卡，不必改任何系统设置：
+
+```bash
+ssh -b 133.133.134.28 zhengmingzhuo@124.16.138.60     # 133.133.134.28 = en0 真实地址
 ```
-kex_exchange_identification: Connection closed by remote host
-```
 
-三台一样。对照组：同一台机器连旧集群 `1.94.151.57:22`、新集群 `62.234.93.223:22` 都能走到
-`Permission denied (publickey,password)`，说明本机 SSH 出网正常。再从旧集群主机上探这三台，
-22 端口同样不通。应用层（80/443/6443）也无任何响应。
+**后续所有对这三台的操作都要带 `-b <en0 地址>`。**
 
-结论是**入站被网络边界挡住**，大概率源 IP 白名单或内网限制。
-
-**需要你做一件事，二选一：**
-
-1. 把出口 IP **`12.104.14.23`** 加进这三台的 SSH 放行名单；
-2. 或给一台能连到它们的跳板机（地址 + 账号）。
-
-另外**镜像仓库地址还空着**（启动语里是 `<仓库地址待填>`），构建推镜像那步要用。
-
-盘点与差距分析都已备好，一开通就能出结果：
+盘点与差距分析：
 
 ```bash
 bash tools/env3/inventory.sh > inventory-node60.txt      # 三台各跑一次
 python tools/env3/gap_report.py inventory-node*.txt      # 自动出差距表
 ```
 
-- [tools/env3/inventory.sh](../../tools/env3/inventory.sh)：12 个章节的人类可读报告，
-  末尾附一段 `FACT key=value` 的机器可读事实。纯只读、不装不改不启服务，
-  没 root 也能跑完（拿不到的标 `unknown`，**不猜**）。
-- [tools/env3/gap_report.py](../../tools/env3/gap_report.py)：把事实与目标状态逐条比对，
-  直接产出差距表和待装清单。目标状态的每个数值都注明出处，
-  并且**"未采集到"永远不算通过**。21 条测试守着它，其中一条拿第二套环境的实测值
-  当输入，要求"零阻塞级差距"——目标状态自己必须先过得了自己定的检查。
+- [tools/env3/inventory.sh](../../tools/env3/inventory.sh)：12 章人类可读报告 + 一段
+  `FACT key=value` 机器可读事实。纯只读，拿不到的标 `unknown`，**不猜**。
+- [tools/env3/gap_report.py](../../tools/env3/gap_report.py)：逐条比对目标状态，
+  产出差距表与待装清单。每个数值注明出处，**"未采集到"永远不算通过**。
 
----
+仍然缺的一项：**公开镜像仓库地址**（启动语里还是 `<仓库地址待填>`）。
+不过范围比原计划小得多——旧 Harbor `1.94.151.57:85` 从第三套环境**可达**，
+那十几个第三方镜像不必搬，只需构建平台自己的两个镜像。
 
 ## 1. 三处需要先纠正的认知
 
@@ -215,19 +207,51 @@ Dockerfile COPY 了不存在的源会**直接失败**，不会再产出一个悄
 
 每一步过了才做下一步。任何一步失败就按该步的回滚列停下报告，不连着重试。
 
+> **2026-09-12 盘点后重写。** 原计划是按"空环境从零装"写的；实测集群已用 183 天，
+> OTel Demo / Coroot / Chaos Mesh 都在跑，还有别人的 `aiops` 项目。
+> 现在是"**往一套在用的共享集群里补四样东西**"，做法完全不同：
+> 每一步的默认动作从"装"变成"**先验，确实缺才装**"，回滚也从"卸载"变成"**只回滚我们加的**"。
+> 盘点结果见 [stage2-env3-inventory-20260912.md](stage2-env3-inventory-20260912.md)。
+
 | 阶段 | 做什么 | 验收 | 失败回滚 |
 |---|---|---|---|
-| **P0** | 跑 `tools/env3/inventory.sh`，三台各一份 | 拿到 12 章输出 + 末尾的 `FACTS` 段 | 无副作用 |
-| **P1** | `python tools/env3/gap_report.py inventory-*.txt` 自动出差距表，**发你确认** | 你点头 | — |
-| **P2** | 底座：k8s（若无）、存储类、cgroup v2 确认、AppArmor profile 装载 | `kubectl get nodes` 全 Ready；`aa-status` 里 profile 是 `(enforce)`；`stat -fc %T /sys/fs/cgroup` = `cgroup2fs` | 卸载 profile；`kubeadm reset`（仅限我们新装的） |
-| **P3** | OTel Demo：`deploy_application.py --server-dry-run` → `--execute` | 23 个 Deployment 全就绪；`load-generator` 有流量 | `helm uninstall otel-demo` |
-| **P4** | 可观测栈 + Coroot + ChaosBlade + Chaos Mesh | Prometheus/Loki/Jaeger 能查；Coroot 匿名只读通；ChaosBlade CPU 注入能起能清；Chaos Mesh Controller 1/1、daemon 全就绪 | 逐个 `helm uninstall`，互不影响 |
-| **P5** | 构建并推镜像到公开仓库 | `build-<sha>-image.json` 产出；两个 tag 在仓库里 | 不覆盖同名 tag，重建换新 sha |
-| **P6** | 平台：RBAC → Secret/ConfigMap → PVC → Deployment（**用 env3 专属 overlay**） | 三容器 Ready；**跑 `scripts/verify_stage2_deployment.py` 全绿**（见下） | `kubectl delete deploy`；PVC 保留 |
-| **P7** | 验收：`/api/v1/stage2/options` 三家可跑 | 三家 `runnable=true`，模型探测 complete | 看熔断与探测状态（O03/O10 新增的 `provider_circuits` / `serving_stale_result` 字段能直接看出是网关问题还是资格问题） |
-| **P8** | 跑通一次 C0 | 完整结束、有结构化结果、残留检查 `none` | 按平台复位流程；**注意 O04 改动后，恢复未验证时平台会停下而不是重装** |
+| ~~**P0**~~ | ~~盘点~~ | ✅ **已完成**（三台各 35 条 FACT） | — |
+| ~~**P1**~~ | ~~出差距表~~ | ✅ **已完成**（阻塞级 1 项） | — |
+| **P1.5** | **确认共享边界**：`otel-demo` / `coroot` / `chaos-mesh` 归谁，我们能不能改；`aiops` 确认不碰 | 你答复 | — |
+| **P2** | AppArmor profile 装到**要跑 agent-runtime 的那台**（建议 `otcaix-62`，理由见下） | `aa-status` 里 `resbench-agent-runtime` 以 `(enforce)` 结尾 | `apparmor_parser -R`，不影响其它 155 个 profile |
+| **P3** | ~~装 OTel Demo~~ → **只验**：23 个 Deployment 全就绪、`load-generator` 有流量、chart 是 0.40.5 | 已实测通过 | **不动它**（可能是别人的） |
+| **P4a** | 装**可观测栈**（唯一真正缺的观测件），namespace `observability` | Prometheus/Loki/Jaeger 能查；promtail 抓到 `otel-demo` 日志 | `kubectl delete -f reference-stack.yaml`，只删我们建的 namespace |
+| **P4b** | 装 **ChaosBlade** operator + tool + cgroup 包装，namespace `default` | `blade` 能在 tool 容器里跑；**CPU 注入实测压得动 `cart`**（不只看账本） | `kubectl delete -f reference-install.yaml` + 删 ConfigMap |
+| **P4c** | ~~装 Chaos Mesh~~ → **先验现有的**：`NetworkChaos` / `PodChaos` / `StressChaos` 三类能不能用 | 三类 CRD 存在且能创建能删 | 不动；不行再按 P1.5 的答复决定并排装还是换 |
+| **P4d** | Coroot：**只验**匿名只读（`authAnonymousRole: Viewer`），拿到项目 id | 未登录能读到 `otel-demo` 的数据 | 只读，无回滚 |
+| **P5** | 构建平台两个镜像。**范围缩小了**：旧 Harbor 可达，十几个第三方镜像不必搬 | `build-<sha>-image.json` 产出 | 不覆盖同名 tag |
+| **P6** | 平台：RBAC → Secret/ConfigMap → PVC → Deployment（**env3 专属 overlay**） | 三容器 Ready；`scripts/verify_stage2_deployment.py` 全绿 | `kubectl delete ns resiliencebenchmark-system`（全是我们新建的，干净） |
+| **P7** | `/api/v1/stage2/options` 三家可跑 | 三家 `runnable=true` | 看 `provider_circuits` / `serving_stale_result` 分辨是网关还是资格问题 |
+| **P8** | 跑通一次 C0 | 完整结束、结构化结果、残留检查 `none` | 注意 O04 改动后恢复未验证时平台会停下而不是重装 |
 
-P2–P6 每一步**先说一声再动手**（整改说明第 2 节的协调规则）。
+**P2 之后每一步先说一声再动手。** 这是共享集群，比前两套环境更需要如此。
+
+### 为什么建议把平台放 `otcaix-62`
+
+| | `otcaix-60` | `otcaix-61` | `otcaix-62` |
+|---|---|---|---|
+| 角色 | control-plane | worker | worker |
+| 内存 | 251 GiB | **125 GiB** | 251 GiB |
+| Docker | 29.3.1 | 29.0.0 | **28.3.2** |
+| 时间同步 | ✅ | **❌ 未同步** | ✅ |
+
+- 不放 60：它是控制面，平台 limits 6 核 / 11 GiB 加上 agent-exec 的 cgroup 操作，不该压控制面
+- 不放 61：内存只有一半，而且**时间没同步**（证据窗口对齐依赖它）
+- 放 62：资源足、时间同步正常
+
+**代价**：62 的 Docker 是 28.3.2，三台里最旧。agent-exec 依赖 Docker 的 cgroup 命名空间行为，
+**P2 装完 AppArmor 后要单独验一次**（第二套环境实测的是 29.6.x）。
+
+### 新增的两条禁忌（共享集群特有）
+
+1. **不碰 `aiops`**（`isaiops-be/fe/gateway/problems`，别人的项目）。
+2. **不动 `chaos-mesh` 的现有安装**，直到 P1.5 确认归属——它是 chart `0.0.0` 的自定义构建
+   （镜像带 `nomongo` / `fix` 补丁），很可能就是 `aiops` 在用。
 
 ### P6 的验收已经脚本化
 
@@ -257,50 +281,50 @@ FAIL  nodeSelector: absent, but this cluster pins the workload to an AppArmor-en
 
 ---
 
-## 4. 需要你给的东西（汇总）
+## 4. 需要你给的东西（盘点后更新）
 
-| # | 缺什么 | 卡住哪一步 | 备注 |
+| # | 缺什么 | 卡住哪一步 | 盘点后的变化 |
 |---|---|---|---|
-| 1 | **SSH 放行 `12.104.14.23` 或跳板机** | P0，**现在就卡** | 全部工作的前提 |
-| 2 | **公开镜像仓库地址** | P5 | 启动语里还是 `<仓库地址待填>` |
-| 3 | 可观测栈 / Coroot / ChaosBlade 的 chart 版本与 values | P4 | 或授权我从新环境导出 |
-| 4 | `chaosblade-cgroupns-wrapper` ConfigMap 内容 | P4 | 没有它 CPU/内存注入不可用 |
-| 5 | `BLADEAI_REPO` 与 `BASES` 两份外部材料（各约 200 MB） | P5 | 或者由你那边构建，把元数据给我 |
-| 6 | 模型网关上游密钥（百炼 / DeepSeek） | P6 | 不进仓库 |
-| 7 | OTel Demo 四个运行时占位符的值 | P3 | 不进仓库 |
-| 8 | **确认第三套环境是否也要主机 MCP**（见 1.2） | P4/P7 | 影响验收口径和工作量 |
-| 9 | 三台的角色分配（哪台控制面、哪台跑负载） | P2 | 也可按盘点结果由我提议 |
+| 1 | ~~SSH 放行~~ | — | **✅ 解决**：本机 Clash TUN 劫持，绑 en0 源地址即可绕过 |
+| 2 | **共享边界确认**：`otel-demo` / `coroot` / `chaos-mesh` 归谁，我们能不能改 | **P1.5，现在最关键** | **新增**。原以为是空环境，实际有别人的 `aiops` 在跑 |
+| 3 | **k8s v1.29.15 要不要升** | P6 之前 | **新增**。低于第二套环境的 1.31.14，唯一的阻塞级差距 |
+| 4 | **Chaos Mesh 现有安装怎么处理** | P4c | **新增**。chart `0.0.0` 自定义构建，与仓库官方 values 对不上 |
+| 5 | 公开镜像仓库地址 | P5 | **范围缩小**：旧 Harbor 可达，只需构建平台两个镜像 |
+| 6 | `BLADEAI_REPO` 与 `BASES` 两份外部材料 | P5 | 不变；或由你那边构建把元数据给我 |
+| 7 | 模型网关上游密钥（百炼 / DeepSeek） | P6 | 不变 |
+| 8 | ~~OTel Demo 四个运行时占位符~~ | — | **✅ 不需要**：OTel Demo 已经在跑，不重装 |
+| 9 | ~~确认是否也要主机 MCP~~ | — | 仍待确认，但优先级降低（Stage-2 不走那条路） |
+| 10 | **swap 三台全开、`otcaix-61` 时间未同步**，要不要处理 | P2 前 | **新增** |
+| 11 | ~~三台角色分配~~ | — | **✅ 已知**：60 控制面，61/62 worker。平台建议放 62（理由见第 3 节） |
 
----
+## 5. 已知风险（盘点后更新）
 
-## 5. 已知风险
+| 原风险 | 实测结果 |
+|---|---|
+| ~~容器运行时可能不是 Docker~~ | **✅ 是 Docker**。但三台版本不一致（29.3.1 / 29.0.0 / **28.3.2**），平台落在哪台要单独验 |
+| ~~可用资源可能不够~~ | **✅ 远超需要**：三台各 64 核，251 / 125 / 251 GiB |
+| ~~出不了网~~ | **✅ 全通**：registry.k8s.io / ghcr.io / quay.io 都可达；**旧 Harbor 也可达** |
+| ~~内核 < 5.12~~ | **✅ 6.8.0**，满足 `mount_setattr` 要求 |
+| ~~四项组件没有可复现资产~~ | **✅ 已解决**：全部入库（见 2.3 节） |
 
-1. **容器运行时如果不是 Docker**，agent-exec 的 cgroup 方案和 Chaos Mesh 的 socket 配置都要重做，
-   这不是改配置的量级。盘点第 4 章会看到。
-2. **可用资源可能不够**。新环境每台 32 核 / 123 GiB；光被测系统 + 平台 limits 就约 6 核 / 18 GiB。
-   盘点第 3 章会看到。
-3. **出网**。盘点第 8 章会探 registry-1.docker.io、ghcr.io、registry.k8s.io 等。
-   出不去就必须全部走公开镜像仓库镜像化，工作量明显变大。
-4. **内核版本 < 5.12** 会让 AppArmor 那套 `mount_setattr` 方案不成立。盘点第 1 章会看到。
-5. **四项组件没有可复现的安装资产**（见 2.3）。这是本方案里最不确定的部分。
+**盘点新暴露的风险：**
 
----
+1. **共享集群**。`aiops` 是别人的项目（181 天）。`otel-demo` / `coroot` / `chaos-mesh`
+   归属未知——**如果 OTel Demo 是别人在用，我们注故障会影响他们**。这是 P1.5 必须先问清的。
+2. **k8s v1.29.15**。平台在 1.28（旧集群）和 1.31（新集群）都验过，1.29 居中大概率可用，
+   但 `deploy/stage2/README.md` 里针对 1.28 的兼容处理要复核。
+3. **Chaos Mesh 是自定义构建**（chart `0.0.0`，镜像带 `nomongo` / `fix` 补丁）。
+   D8 要的 `NetworkChaos` / `PodChaos` / `StressChaos` 三类能不能用必须实测，不能假定。
+4. **swap 三台全开**。集群跑了 183 天说明 kubelet 配了 `failSwapOn: false` 或另有安排，
+   动它要重启 kubelet——共享集群上这是有影响的操作。
+5. **`otcaix-61` 时间未同步**。证据窗口与指标对齐依赖它；平台不建议放这台。
+6. **61 / 62 上 `zhengmingzhuo` 没有 kubeconfig**，只有 60 能 `kubectl`。
+   装 AppArmor 和验 Docker 行为要在目标节点上本地做。
 
-## 6. 现状（待填）
+## 6. 现状
 
-盘点跑完后填这一节，然后整份发你确认再动手。
+已完成，见 [stage2-env3-inventory-20260912.md](stage2-env3-inventory-20260912.md)。
 
-| 检查项 | .60 | .61 | .62 |
-|---|---|---|---|
-| OS / 内核 | | | |
-| 时间同步 | | | |
-| CPU / 内存 / 磁盘 | | | |
-| 容器运行时 | | | |
-| Kubernetes 有无 / 版本 / 角色 | | | |
-| 存储类 | | | |
-| CNI | | | |
-| DNS / 出网 | | | |
-| cgroup 版本 / AppArmor | | | |
-| 端口占用 | | | |
-| 已有相关制品 | | | |
-| 节点互通 | | | |
+一句话：**集群已用 183 天，OTel Demo（chart 0.40.5，23 个 Deployment 全就绪）、
+Coroot（operator 0.8.2）、Chaos Mesh 都在跑；真正缺的是可观测栈、ChaosBlade
+（含 cgroup 包装）、平台本体、AppArmor profile 四样。**
