@@ -1,0 +1,6 @@
+runs/
+fixtures/
+out/
+*.log
+*.tgz
+__pycache__/

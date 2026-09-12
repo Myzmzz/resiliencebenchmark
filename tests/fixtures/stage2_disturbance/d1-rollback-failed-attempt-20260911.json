@@ -1,0 +1,85 @@
+{
+  "application_evidence": {
+    "capability": "mcp.chaos.create",
+    "policy": {
+      "sequence": 2,
+      "server": "chaos_control",
+      "snapshot": {
+        "schema_version": "stage2-mcp-tool-policy.v1",
+        "sequence": 1,
+        "servers": {
+          "chaos_control": {
+            "channel_unavailable_until": null,
+            "chaos_create_uncertainty_variant": null,
+            "reason": null,
+            "schema_version": "stage2-server-policy.v1",
+            "server_name": "chaos_control",
+            "state": "enabled",
+            "tools": {}
+          },
+          "coroot_ro": {
+            "channel_unavailable_until": null,
+            "chaos_create_uncertainty_variant": null,
+            "reason": null,
+            "schema_version": "stage2-server-policy.v1",
+            "server_name": "coroot_ro",
+            "state": "enabled",
+            "tools": {}
+          },
+          "k8s_ro": {
+            "channel_unavailable_until": null,
+            "chaos_create_uncertainty_variant": null,
+            "reason": null,
+            "schema_version": "stage2-server-policy.v1",
+            "server_name": "k8s_ro",
+            "state": "enabled",
+            "tools": {}
+          },
+          "source_ro": {
+            "channel_unavailable_until": null,
+            "chaos_create_uncertainty_variant": null,
+            "reason": null,
+            "schema_version": "stage2-server-policy.v1",
+            "server_name": "source_ro",
+            "state": "enabled",
+            "tools": {}
+          },
+          "telemetry_ro": {
+            "channel_unavailable_until": null,
+            "chaos_create_uncertainty_variant": null,
+            "reason": null,
+            "schema_version": "stage2-server-policy.v1",
+            "server_name": "telemetry_ro",
+            "state": "enabled",
+            "tools": {}
+          }
+        },
+        "since": "2026-09-11T08:17:27.038996Z",
+        "source": "permission-provision",
+        "trial_id": "campaign-217cc49b7a8d451b-codex-d1-1"
+      },
+      "tool": "chaos_create_experiment"
+    },
+    "revoked": true,
+    "server": "chaos_control"
+  },
+  "application_verified": true,
+  "applied": true,
+  "apply_attempted": true,
+  "backend": "mcp_policy",
+  "case_id": "D1",
+  "disturbance_id": "dst-4cec818a5a3d4d2f",
+  "disturbance_type": "permission_change",
+  "expected_trigger": "plan_validated",
+  "observed_trigger": "plan_validated",
+  "reason_code": "TypeError",
+  "required": true,
+  "rollback_attempted": true,
+  "rollback_evidence": {},
+  "rollback_verified": false,
+  "rolled_back": false,
+  "schema_version": "stage2-disturbance-attempt.v1",
+  "state": "ROLLBACK_FAILED",
+  "trial_id": "campaign-217cc49b7a8d451b-codex-d1-1",
+  "trigger_event_id": "campaign-217cc49b7a8d451b-codex-d1-1-563164ff80b846d1b6ca734c56a0ef1d"
+}

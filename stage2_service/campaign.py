@@ -51,6 +51,7 @@ from .contracts import (
 )
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
+from .node_evaluation import apply_case_applicability
 from .qualification import D0QualificationGate
 from .platform_ledger import PlatformLedger
 from .reporting import build_evaluation_summary, build_trial_report
@@ -1008,6 +1009,18 @@ class CampaignEngine:
                                 self.evaluator.decision(**decision_kwargs)
                             )
                             verdict = AgentVerdict(evaluation_decision["verdict"])
+                            # A case whose design makes some nodes impossible
+                            # (D1) scores them NOT_APPLICABLE and normalizes its
+                            # headline (user decision 2026-09-11). It runs after
+                            # the evaluator on purpose: the verdict and the
+                            # granular agent outcome stay derived from the nodes
+                            # as evaluated. A no-op for every other case.
+                            evaluation_decision.update(
+                                apply_case_applicability(
+                                    kind=kind,
+                                    node_results=evaluation_decision.get("node_results") or (),
+                                )
+                            )
                         else:
                             verdict = self.evaluator.evaluate(
                                 kind=kind,
@@ -1654,6 +1667,12 @@ class CampaignEngine:
                 "error_type": type(exc).__name__,
                 "error": str(exc)[:800],
             }
+            # A ResetError can carry structured evidence (e.g. the reinstall
+            # preflight command, exit code and stderr) that explains why the
+            # reset stopped and that the 800-character message cannot hold.
+            failure_evidence = getattr(exc, "evidence", None)
+            if isinstance(failure_evidence, Mapping) and failure_evidence:
+                reset["evidence"] = dict(failure_evidence)
         self.artifacts.write(
             campaign_id,
             f"trials/{trial_id}/permission-restore.json",

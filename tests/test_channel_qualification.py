@@ -18,6 +18,7 @@ from stage2_service.channel_qualification import (
     EXPECTED_HINT_BODY,
     MUTATION_TOOLS,
     QUALIFICATION_NOTICE_TYPE,
+    SUBSTITUTION_CHECKS,
     ChannelQualificationRecord,
     ChannelQualificationRunner,
     QualificationHarnessChannelSupervisor,
@@ -1143,6 +1144,123 @@ def test_base_record_publishes_into_preflight_from_real_evaluator_output(tmp_pat
     assert descriptors["codex"]["probe"]["qualification_profile"] == BASE_CHANNEL_QUALIFICATION_MODE
 
 
+def _write_trial_archive(
+    archive: Path,
+    *,
+    trial_id: str,
+    gateway: GatewayConfigSnapshot,
+    model: str,
+    native_tools: list[str],
+    exchanges: list[dict[str, object]],
+) -> None:
+    """Write the gateway receipt and canonical events a finished Trial leaves behind."""
+    archive.mkdir(parents=True)
+    receipt = {
+        "trial_id": trial_id,
+        "harness": "codex",
+        "model_alias": model,
+        "gateway_config_sha256": gateway.config_sha256,
+        "request_id": "offline-request-1",
+        "outcome": "received",
+    }
+    (archive / "gateway-requests.json").write_text(json.dumps([receipt]), encoding="utf-8")
+    rows: list[dict[str, object]] = []
+    for index, tool in enumerate(native_tools):
+        call_id = f"native-{index}"
+        rows.append({"event_type": "ToolCall", "source": "native", "replayed": False,
+                     "call_id": call_id, "tool": tool})
+        rows.append({"event_type": "ToolResult", "source": "native", "replayed": False,
+                     "call_id": call_id, "status": "completed", "payload": {"ok": True}})
+    for exchange in exchanges:
+        rows.append({"event_type": "ToolCall", "source": "mcp_server", "replayed": False,
+                     "call_id": exchange["call_id"], "tool": exchange["tool"]})
+        rows.append({"event_type": "ToolResult", "source": "mcp_server", "replayed": False,
+                     "call_id": exchange["call_id"], "status": exchange["status"],
+                     "payload": exchange["payload"]})
+    (archive / "canonical-events.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def test_substitution_record_publishes_platform_sandbox_from_real_evaluator_output(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    gateway = _gateway_snapshot(tmp_path)
+    model = "gpt-5.5"
+    final_output = {
+        **_fake_gateway_output(model),
+        "gateway_route": gateway.route(model),
+        "gateway_config_sha256": gateway.config_sha256,
+    }
+    native_tools = {
+        "base": [
+            "k8s_ro.k8s_list_resources",
+            "telemetry_ro.telemetry_prom_metric_range",
+            "harness_channel.harness_confirm",
+            "harness_channel.harness_consult",
+            "harness_channel.harness_poll_notices",
+            "harness_channel.harness_submit_result",
+        ],
+        "substitution": [
+            "harness_channel.harness_consult",
+            "coroot_ro.coroot_metrics_range",
+            "code_sandbox.run_python",
+            "harness_channel.harness_poll_notices",
+            "harness_channel.harness_submit_result",
+        ],
+    }
+    record_paths: list[Path] = []
+    for profile in ("base", "substitution"):
+        trial_id = f"trial-{profile}"
+        ledger = PlatformLedger(tmp_path / f"ledger-{profile}")
+        report = HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            artifact_refs=(
+                f"codex-{profile}/gateway-requests.json",
+                f"codex-{profile}/canonical-events.jsonl",
+            ),
+            final_output=final_output,
+        )
+        if profile == "base":
+            _append_base_success_events(ledger, trial_id=trial_id)
+            evaluate = evaluate_base_channel_qualification
+        else:
+            _append_success_events(ledger, trial_id=trial_id)
+            evaluate = evaluate_channel_qualification
+        record = evaluate(
+            ledger.query(trial_id=trial_id, limit=10_000),
+            harness=HarnessKind.CODEX,
+            model=model,
+            trial_id=trial_id,
+            report=report,
+        )
+        assert record.passed is True
+        record_path = write_record(tmp_path / "records", record)
+        _write_trial_archive(
+            artifact_root / f"codex-{profile}",
+            trial_id=trial_id,
+            gateway=gateway,
+            model=model,
+            native_tools=native_tools[profile],
+            exchanges=json.loads(record_path.read_text(encoding="utf-8"))["ordered_exchanges"],
+        )
+        record_paths.append(record_path)
+
+    output = tmp_path / "private" / "capabilities.json"
+    publish_capabilities(record_paths, artifact_root=artifact_root, output=output, gateway=gateway)
+    descriptors, source = harness_capabilities_from_qualification(output)
+
+    assert source["harnesses"]["codex"]["status"] == "qualified"
+    assert descriptors["codex"]["qualification_passed"] is True
+    assert descriptors["codex"]["code_execution"] == "platform_sandbox"
+    probe = descriptors["codex"]["probe"]
+    assert probe["qualification_profile"] == BASE_CHANNEL_QUALIFICATION_MODE
+    assert probe["substitution_qualification"]["qualification_profile"] == CHANNEL_QUALIFICATION_MODE
+    assert probe["substitution_qualification"]["channel_trial_id"] == "trial-substitution"
+
+
 def test_base_evaluator_accepts_invalid_result_then_last_valid_submission(tmp_path: Path) -> None:
     ledger = PlatformLedger(tmp_path / "ledger")
     _append_base_success_events(ledger, invalid_submit_before_valid=True)
@@ -1398,6 +1516,56 @@ def test_evaluator_requires_sandbox_run_ledger_evidence(tmp_path: Path) -> None:
 
     assert record.passed is False
     assert "missing_completed_sandbox_run_evidence" in record.failure_reasons
+
+
+def test_evaluator_records_positive_substitution_checks_and_sandbox_run(tmp_path: Path) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_success_events(ledger)
+
+    record = evaluate_channel_qualification(
+        ledger.query(trial_id=TRIAL_ID, limit=10_000),
+        harness=HarnessKind.CODEX,
+        model="gpt-5.5",
+        trial_id=TRIAL_ID,
+        report=HarnessReport(
+            status="completed",
+            agent_verdict=AgentVerdict.INCONCLUSIVE,
+            lifecycle_events=(),
+            artifact_refs=("channel-qualification/trial/stdout.txt",),
+            final_output=_fake_gateway_output(),
+        ),
+    )
+
+    assert record.passed is True
+    assert record.substitution_checks == {key: True for key in SUBSTITUTION_CHECKS}
+    assert record.gateway_sidecar_evidence["verified"] is True
+    sandbox = next(item for item in record.ordered_exchanges if item["tool"] == "code_sandbox.run_python")
+    run = record.observed_capability_evidence["sandbox_run"]
+    assert run["call_id"] == sandbox["call_id"]
+    assert sandbox["call_sequence"] < run["ledger_sequence"] < sandbox["result_sequence"]
+    assert (run["status"], run["exit_code"], run["truncated"]) == ("completed", 0, False)
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        {"include_sandbox_run": False},
+        {"sandbox_ok": False},
+        {"sandbox_exit_code": 1},
+        {"sandbox_truncated": True},
+    ],
+)
+def test_evaluator_withholds_sandbox_evidence_without_a_successful_run(
+    tmp_path: Path, damage: dict[str, object]
+) -> None:
+    ledger = PlatformLedger(tmp_path / "ledger")
+    _append_success_events(ledger, **damage)
+
+    record = _evaluate(ledger)
+
+    assert record.passed is False
+    assert record.substitution_checks["sandbox_run_verified"] is False
+    assert record.observed_capability_evidence["sandbox_run"] is None
 
 
 def test_evaluator_rejects_mutation_attempt(tmp_path: Path) -> None:
@@ -1706,6 +1874,9 @@ def test_runner_builds_runtime_disables_fault_creation_and_writes_record(tmp_pat
     )
 
     assert record.passed is (gateway_state == "verified")
+    assert record.substitution_checks["sandbox_run_verified"] is True
+    # The runner re-derives the gateway check from the finished report, as for base.
+    assert record.substitution_checks["gateway_evidence_verified"] is (gateway_state == "verified")
     if gateway_state == "verified":
         assert record.gateway_route["model_alias"] == "gpt-5.5"
         assert record.gateway_sidecar_evidence["verified"] is True

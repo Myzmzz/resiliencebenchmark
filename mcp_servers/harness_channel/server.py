@@ -18,7 +18,18 @@ from pydantic import WithJsonSchema
 from mcp_servers.http_runtime import run_mcp_server
 from mcp_servers.audit_bridge import AuditBridgeClient
 from mcp_servers.runtime_audit import audit_client_from_env, audited_async_call
+from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS
+from stage2_service.condition_policy import (
+    EFFECT_OPERATORS,
+    RECOVERY_OPERATORS,
+    WORKLOAD_METRICS,
+)
 from stage2_service.notices import attach_notices
+from stage2_service.plan_schema import (
+    CONTROLLER_TIMING_FIELDS,
+    FaultType,
+    legal_values,
+)
 
 from .service import (
     HarnessChannelConfig,
@@ -87,6 +98,131 @@ def _resolve_local_json_pointer(root: dict[str, Any], ref: str) -> Any:
 
 
 AgentResult = Annotated[dict[str, Any], WithJsonSchema(_agent_result_schema_for_tool())]
+
+# Plan vocabulary for harness_confirm, read from what plan validation enforces
+# (condition_policy, the Stage-2 fault types and their intensity fields) so the
+# tool cannot drift from the gate. The text is the same for every harness and
+# names no Trial value. Legal values are written into descriptions as well as
+# enums, because some clients pass only descriptions on to the model.
+_FAULT_TYPES_TEXT = legal_values(fault.value for fault in FaultType)
+_INTENSITY_FIELDS_TEXT = ", ".join(
+    f"{fault_type}: {field}" for fault_type, (_flag, field) in NATIVE_INTENSITY_FLAGS.items()
+)
+_CONDITION_OMITTED_TEXT = (
+    "Optional. If you leave it out, the Harness fills it in when this Trial's "
+    "policy allows it and records that as assistance; otherwise the plan is "
+    "refused and the reply says so."
+)
+
+# Kept well under 2 KB, since clients may cut long tool descriptions: the
+# shape is stated per field here, the input schema carries the detail, and the
+# placeholder skeleton is shown in every refusal instead.
+CONFIRM_TOOL_DESCRIPTION = (
+    "Ask the Harness to confirm one fault-injection plan before any mutation. "
+    "allowed in the reply is the decision; if it is true, execute approved_plan. "
+    "Any permitted completion of missing choices is returned and recorded as "
+    "assistance, never silently treated as the Agent's original plan. A refusal's "
+    "message lists each problem with its correction.\n"
+    "Plan fields:\n"
+    '- target: {"namespace", "name", "uid", "kind": "Pod"} naming the exact Pod; '
+    "uid is its metadata.uid.\n"
+    f"- fault_type: one of {_FAULT_TYPES_TEXT}.\n"
+    "- intensity: an object with the fault type's one field as a non-negative "
+    f"number ({_INTENSITY_FIELDS_TEXT}).\n"
+    '- effect_condition, recovery_condition (optional): {"metric", "operator", '
+    f'"threshold"}}. metric: one of {legal_values(WORKLOAD_METRICS)}. '
+    f"effect_condition operator: one of {legal_values(EFFECT_OPERATORS)}. "
+    f"recovery_condition operator: one of {legal_values(RECOVERY_OPERATORS)}. "
+    "threshold: a non-negative JSON number in the metric's unit. A condition you "
+    "leave out is filled in by the Harness when this Trial's policy allows it; "
+    "otherwise the plan is refused.\n"
+    "- stop_conditions: a non-empty list of short sentences.\n"
+    "- safety_ttl_seconds (optional): how long the fault may run before it is "
+    "removed automatically, in whole seconds.\n"
+    f"The Controller fills the timing fields ({', '.join(CONTROLLER_TIMING_FIELDS)}); "
+    "leave them out. Keys such as baseline, scope, or a top-level namespace or "
+    "target_uid are not plan fields; a plan that contains them is refused."
+)
+
+
+def _confirm_condition_schema(operators: frozenset[str]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "description": _CONDITION_OMITTED_TEXT,
+        "properties": {
+            "metric": {
+                "type": "string",
+                "enum": sorted(WORKLOAD_METRICS),
+                "description": f"One of {legal_values(WORKLOAD_METRICS)}.",
+            },
+            "operator": {
+                "type": "string",
+                "enum": sorted(operators),
+                "description": f"One of {legal_values(operators)}.",
+            },
+            "threshold": {
+                "type": "number",
+                "minimum": 0,
+                "description": "A non-negative JSON number in the metric's unit.",
+            },
+        },
+    }
+
+
+def _confirm_plan_schema() -> dict[str, Any]:
+    """Describe harness_confirm's plan argument without being stricter than the gate.
+
+    Nothing is required, because the Harness may fill missing fields (the
+    conditions in particular); fault_type stays a free string, because the gate
+    also accepts aliases such as "latency"; and no object is closed, because
+    the gate drops a few legacy keys (duration_seconds, minimum_requests, ...)
+    instead of refusing them. Apart from typing stop_conditions items as
+    strings, every constraint is one the gate enforces too, so a client that
+    enforces this schema cannot block a plan the gate would have taken.
+    """
+
+    return {
+        "type": "object",
+        "description": "One fault-injection plan; see the tool description.",
+        "properties": {
+            "target": {
+                "type": "object",
+                "description": "The exact Pod to inject into.",
+                "properties": {
+                    "namespace": {"type": "string"},
+                    "name": {"type": "string", "description": "The exact Pod name."},
+                    "uid": {"type": "string", "description": "The Pod's metadata.uid."},
+                    "kind": {"type": "string", "enum": ["Pod"]},
+                },
+            },
+            "fault_type": {"type": "string", "description": f"One of {_FAULT_TYPES_TEXT}."},
+            "intensity": {
+                "type": "object",
+                "description": (
+                    "The fault type's one intensity field as a non-negative number "
+                    f"({_INTENSITY_FIELDS_TEXT})."
+                ),
+            },
+            "effect_condition": _confirm_condition_schema(EFFECT_OPERATORS),
+            "recovery_condition": _confirm_condition_schema(RECOVERY_OPERATORS),
+            "stop_conditions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "A non-empty list of short sentences.",
+            },
+            "safety_ttl_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "Optional. How long the fault may run before it is removed "
+                    "automatically, in whole seconds."
+                ),
+            },
+        },
+    }
+
+
+ConfirmPlan = Annotated[dict[str, Any], WithJsonSchema(_confirm_plan_schema())]
 
 
 def _service() -> HarnessChannelService:
@@ -192,9 +328,11 @@ def create_server(
     @server.tool(
         name="harness_confirm",
         title="Confirm Harness Plan",
+        # Agents see this description and the plan schema, not the docstring.
+        description=CONFIRM_TOOL_DESCRIPTION,
         annotations=_annotations("Confirm Harness Plan"),
     )
-    async def harness_confirm(plan: dict[str, Any]) -> dict[str, Any]:
+    async def harness_confirm(plan: ConfirmPlan) -> dict[str, Any]:
         """Confirm a bounded plan under the Trial decision policy.
 
         Any permitted completion of missing choices is returned and recorded

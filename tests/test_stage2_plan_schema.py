@@ -4,6 +4,11 @@ import math
 from types import SimpleNamespace
 
 from controller.safety import ControllerPolicy, FaultTypeContract, default_policy
+from stage2_service.condition_policy import (
+    EFFECT_OPERATORS,
+    RECOVERY_OPERATORS,
+    WORKLOAD_METRICS,
+)
 from stage2_service.plan_schema import (
     AgentPlan,
     FaultType,
@@ -229,3 +234,117 @@ def test_agent_plan_model_validate_is_strict_when_caller_wants_exception_flow():
 
     assert plan.fault_type is FaultType.NETWORK_DELAY
     assert plan.intensity == {"delay_ms": 250}
+
+
+def issues_at(result, path):
+    return [issue for issue in result.issues if issue.path == path]
+
+
+def test_top_level_target_uid_is_an_unknown_field_not_a_missing_uid():
+    plan = valid_plan(
+        target_uid="11111111-2222-4333-8444-555555555555",
+        namespace="otel-demo",
+        baseline={"target_cpu_cores": 0.1},
+        scope="single pod",
+        scope_decision="target only",
+    )
+
+    result = validate_agent_plan(plan, envelope())
+
+    assert not result.ok
+    assert "MISSING_TARGET_UID" not in issue_codes(result)
+    assert {(issue.path, issue.code) for issue in result.issues} == {
+        (key, "PLAN_UNKNOWN_FIELD")
+        for key in ("target_uid", "namespace", "baseline", "scope", "scope_decision")
+    }
+    assert issues_at(result, "target_uid")[0].correction == "Move its value to target.uid."
+    assert issues_at(result, "namespace")[0].correction == "Move its value to target.namespace."
+    assert issues_at(result, "baseline")[0].correction == "Remove it; it is not part of the plan."
+
+
+def test_unknown_nested_keys_are_unknown_fields_whatever_their_suffix():
+    # These suffixes used to be read as MISSING_TARGET_UID and
+    # INVALID_CONDITION_THRESHOLD.
+    target = {**valid_plan()["target"], "pod_uid": "x"}
+    effect = {**valid_plan()["effect_condition"], "window_threshold": 3}
+
+    result = validate_agent_plan(valid_plan(target=target, effect_condition=effect), envelope())
+
+    assert {(issue.path, issue.code) for issue in result.issues} == {
+        ("target.pod_uid", "PLAN_UNKNOWN_FIELD"),
+        ("effect_condition.window_threshold", "PLAN_UNKNOWN_FIELD"),
+    }
+    assert issues_at(result, "target.pod_uid")[0].correction == (
+        "Remove it; target holds only: namespace, name, uid, kind."
+    )
+    assert issues_at(result, "effect_condition.window_threshold")[0].correction == (
+        "Remove it; effect_condition holds only: metric, operator, threshold."
+    )
+
+
+def test_missing_target_uid_is_still_reported_as_missing_target_uid():
+    target = {"namespace": "otel-demo", "name": "cart-abc123"}
+
+    result = validate_agent_plan(valid_plan(target=target), envelope())
+
+    assert not result.ok
+    assert "MISSING_TARGET_UID" in {issue.code for issue in issues_at(result, "target.uid")}
+    assert "PLAN_UNKNOWN_FIELD" not in issue_codes(result)
+
+
+def test_condition_corrections_list_every_legal_value_once_per_field():
+    result = validate_agent_plan(
+        valid_plan(
+            effect_condition={"metric": "cpu_usage", "operator": ">=", "threshold": 0.5},
+            recovery_condition={"metric": "cpu_usage", "operator": "<=", "threshold": 0.2},
+        ),
+        envelope(),
+    )
+
+    # One issue per field: the model validator's location-less restatement
+    # no longer adds a "<root>: PLAN_SCHEMA_INVALID" line.
+    assert [(issue.path, issue.code) for issue in result.issues] == [
+        ("effect_condition.metric", "INVALID_CONDITION_METRIC"),
+        ("effect_condition.operator", "INVALID_EFFECT_OPERATOR"),
+        ("recovery_condition.metric", "INVALID_CONDITION_METRIC"),
+        ("recovery_condition.operator", "INVALID_RECOVERY_OPERATOR"),
+    ]
+    metric = issues_at(result, "effect_condition.metric")[0].correction
+    effect_operator = issues_at(result, "effect_condition.operator")[0].correction
+    recovery_operator = issues_at(result, "recovery_condition.operator")[0].correction
+    assert all(value in metric for value in WORKLOAD_METRICS)
+    assert all(value in effect_operator for value in EFFECT_OPERATORS)
+    assert all(value in recovery_operator for value in RECOVERY_OPERATORS)
+    assert "within_baseline_delta" not in effect_operator
+    assert "increase_by_at_least" not in recovery_operator
+
+
+def test_operator_only_error_is_reported_once_at_its_field():
+    result = validate_agent_plan(
+        valid_plan(
+            effect_condition={
+                "metric": "target_latency_ms",
+                "operator": "within_baseline_delta",
+                "threshold": 100,
+            }
+        ),
+        envelope(),
+    )
+
+    assert [(issue.path, issue.code) for issue in result.issues] == [
+        ("effect_condition.operator", "INVALID_EFFECT_OPERATOR"),
+    ]
+
+
+def test_missing_and_malformed_fields_get_concrete_corrections():
+    plan = valid_plan(stop_conditions="stop when done")
+    del plan["target"]
+
+    result = validate_agent_plan(plan, envelope())
+
+    missing_target = issues_at(result, "target")[0]
+    assert missing_target.code == "MISSING_PLAN_FIELD"
+    assert "metadata.uid" in missing_target.correction
+    assert issues_at(result, "stop_conditions")[0].correction == (
+        "Fix stop_conditions; stop_conditions must be a non-empty list of short sentences."
+    )

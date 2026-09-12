@@ -2,9 +2,11 @@
 """Deploy, activate, standby, or delete one benchmark application.
 
 The command is dry-run by default. Cluster mutations require ``--execute`` and
-an explicit kubeconfig. Runtime credentials and environment-specific endpoints
-are rendered from environment variables or a mode-600 env file and are never
-written to the repository or structured report.
+an explicit kubeconfig. ``--server-dry-run`` (OTel Demo apply only) contacts the
+cluster but sends every write as a server-side dry run, so a caller can prove a
+reinstall is admissible before it removes anything. Runtime credentials and
+environment-specific endpoints are rendered from environment variables or a
+mode-600 env file and are never written to the repository or structured report.
 """
 
 from __future__ import annotations
@@ -35,6 +37,18 @@ LIVE_NAMESPACES = {name: name for name in SUPPORTED_APPLICATIONS}
 PROTECTED_NAMESPACES = frozenset({"observability", "ischaos", "resiliencebenchmark-system", "resilience-benchmark-system"})
 PLACEHOLDER_RE = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 SAFE_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
+SERVER_DRY_RUN = "--dry-run=server"
+# Helm v4 names its server-side apply field manager after its binary.
+HELM_FIELD_MANAGER = "helm"
+# Hooks that an install runs; test hooks run only on ``helm test``.
+HELM_INSTALL_HOOK_EVENTS = frozenset({"pre-install", "post-install"})
+# What a server-side dry run of the reinstall cannot prove.
+SERVER_DRY_RUN_GAPS = (
+    "helm --wait readiness: image pulls, scheduling capacity, volume binding, probes",
+    "admission on CREATE for objects that exist before the uninstall (their dry run is an UPDATE)",
+    "install-mode rendering while the release exists (Helm renders an upgrade with live lookup() data)",
+    "cluster changes between the preflight and the reinstall",
+)
 
 
 class DeployError(RuntimeError):
@@ -246,6 +260,11 @@ def kube_base(kubeconfig: Path) -> list[str]:
     return ["kubectl", "--kubeconfig", str(kubeconfig), "--request-timeout=30s"]
 
 
+def dry_run_flags(server_dry_run: bool) -> list[str]:
+    """Flags that turn a kubectl write into a server-side dry run (none otherwise)."""
+    return [SERVER_DRY_RUN] if server_dry_run else []
+
+
 def namespace_exists(runner: CommandRunner, kubeconfig: Path, namespace: str) -> bool:
     result = runner.run(kube_base(kubeconfig) + ["get", "namespace", namespace, "-o", "name"], timeout=30)
     return result.returncode == 0
@@ -305,7 +324,7 @@ def namespace_is_temporary_owned(runner: CommandRunner, kubeconfig: Path, namesp
     return labels.get("resiliencebenchmark.io/temporary") == "true"
 
 
-def create_namespace(runner: CommandRunner, kubeconfig: Path, application: str, namespace: str) -> None:
+def create_namespace(runner: CommandRunner, kubeconfig: Path, application: str, namespace: str, *, server_dry_run: bool = False) -> None:
     labels = {"resiliencebenchmark.io/application": application}
     if namespace != LIVE_NAMESPACES[application]:
         labels["resiliencebenchmark.io/temporary"] = "true"
@@ -314,7 +333,7 @@ def create_namespace(runner: CommandRunner, kubeconfig: Path, application: str, 
         "kind": "Namespace",
         "metadata": {"name": namespace, "labels": labels},
     }
-    run_checked(runner, kube_base(kubeconfig) + ["apply", "-f", "-"], stdin=yaml.safe_dump(manifest, sort_keys=False))
+    run_checked(runner, kube_base(kubeconfig) + ["apply", *dry_run_flags(server_dry_run), "-f", "-"], stdin=yaml.safe_dump(manifest, sort_keys=False))
 
 
 def required_secret_contract(application: str) -> list[dict[str, Any]]:
@@ -374,7 +393,8 @@ def helm_upgrade(
     version: str | None = None,
     force_conflicts: bool = False,
     wait: bool = True,
-) -> None:
+    server_dry_run: bool = False,
+) -> str:
     argv = ["helm", "upgrade", "--install", release, chart, "--namespace", namespace, "--create-namespace", "--values", "-", "--timeout", f"{timeout_seconds}s"]
     if wait:
         argv.append("--wait")
@@ -382,7 +402,134 @@ def helm_upgrade(
         argv.extend(["--version", version])
     if force_conflicts:
         argv.extend(["--server-side=true", "--force-conflicts"])
-    run_checked(runner, argv, stdin=yaml.safe_dump(values, sort_keys=False), timeout=timeout_seconds + 60)
+    if server_dry_run:
+        # The same invocation as a Helm server-side dry run: Helm renders
+        # against the live cluster, validates the objects against its OpenAPI
+        # schema and checks release state, but returns before
+        # --create-namespace and before creating any object (--wait and
+        # --timeout are inert). The JSON release carries the rendered manifest.
+        argv.extend([SERVER_DRY_RUN, "--output", "json"])
+    return run_checked(runner, argv, stdin=yaml.safe_dump(values, sort_keys=False), timeout=timeout_seconds + 60)
+
+
+def helm_release_objects(release_json: str, *, release: str, namespace: str) -> list[dict[str, Any]]:
+    """Objects that a fresh install of a dry-run Helm release would create.
+
+    Reads Helm's ``--output json`` release: the rendered manifest plus the
+    manifests of install hooks (test hooks never run on install). Helm's
+    ownership label and annotations are added the way Helm adds them before it
+    creates objects, so the API server sees what the real install sends.
+    """
+    try:
+        payload = json.loads(release_json)
+    except json.JSONDecodeError as exc:
+        raise DeployError("helm server dry-run did not print a release JSON document") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), str):
+        raise DeployError("helm server dry-run printed no rendered manifest")
+    documents = [payload["manifest"]]
+    for hook in payload.get("hooks") or []:
+        if isinstance(hook, dict) and HELM_INSTALL_HOOK_EVENTS.intersection(hook.get("events") or []):
+            documents.append(str(hook.get("manifest") or ""))
+    objects: list[dict[str, Any]] = []
+    for document in documents:
+        try:
+            parsed = list(yaml.safe_load_all(document))
+        except yaml.YAMLError as exc:
+            raise DeployError("helm server dry-run rendered an unparsable manifest") from exc
+        for item in parsed:
+            if item is None:
+                continue
+            metadata = item.get("metadata") if isinstance(item, dict) else None
+            if not isinstance(metadata, dict) or not item.get("apiVersion") or not item.get("kind") or not metadata.get("name"):
+                raise DeployError("helm server dry-run rendered a document that is not a named Kubernetes object")
+            metadata["labels"] = {**(metadata.get("labels") or {}), "app.kubernetes.io/managed-by": "Helm"}
+            metadata["annotations"] = {
+                **(metadata.get("annotations") or {}),
+                "meta.helm.sh/release-name": release,
+                "meta.helm.sh/release-namespace": namespace,
+            }
+            objects.append(item)
+    if not objects:
+        raise DeployError("helm server dry-run rendered no objects")
+    return objects
+
+
+def kubectl_output_objects(raw: str) -> list[dict[str, Any]]:
+    """Objects printed by ``kubectl ... -o json``: a single object or a List."""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise DeployError("kubectl did not print JSON objects") from exc
+    items = payload.get("items") if isinstance(payload, dict) and payload.get("kind") == "List" else [payload]
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        raise DeployError("kubectl printed an unexpected JSON document")
+    return items
+
+
+def server_dry_run_helm_writes(
+    runner: CommandRunner,
+    kubeconfig: Path,
+    namespace: str,
+    objects: list[dict[str, Any]],
+) -> list[str]:
+    """Dry-run the API writes that ``helm --dry-run=server`` itself skips.
+
+    Helm's server dry run returns before ``--create-namespace`` and before it
+    creates any object, so it proves neither RBAC nor admission for them. The
+    same writes are sent here with ``dryRun=All``: the Namespace server-side
+    apply of ``--create-namespace`` (no force), then every rendered object as
+    a server-side apply with ``--force-conflicts`` under Helm's field manager.
+    Objects that still exist before the uninstall prove only ``patch`` that
+    way, but the reinstall re-creates them, so ``create`` is checked for every
+    object type with a SelfSubjectAccessReview (``kubectl auth can-i``).
+    """
+    base = kube_base(kubeconfig)
+    namespace_object = {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {"name": namespace, "labels": {"name": namespace}},
+    }
+    run_checked(
+        runner,
+        base + ["apply", "--server-side", f"--field-manager={HELM_FIELD_MANAGER}", SERVER_DRY_RUN, "-o", "name", "-f", "-"],
+        stdin=yaml.safe_dump(namespace_object, sort_keys=False),
+        timeout=120,
+    )
+    applied_output = run_checked(
+        runner,
+        base
+        + ["apply", "--server-side", "--force-conflicts", f"--field-manager={HELM_FIELD_MANAGER}", SERVER_DRY_RUN, "-n", namespace, "-o", "json", "-f", "-"],
+        stdin=yaml.safe_dump({"apiVersion": "v1", "kind": "List", "items": objects}, sort_keys=False),
+        timeout=300,
+    )
+    applied = kubectl_output_objects(applied_output)
+    if len(applied) != len(objects):
+        raise DeployError(f"server-side dry-run apply returned {len(applied)} of {len(objects)} rendered objects")
+    # (API group, kind, namespace); the server sets no namespace on cluster-scoped objects.
+    object_types = sorted(
+        {
+            (
+                str(item.get("apiVersion", "")).rpartition("/")[0],
+                str(item.get("kind", "")),
+                str((item.get("metadata") or {}).get("namespace") or ""),
+            )
+            for item in applied
+        }
+    )
+    for group, kind, object_namespace in object_types:
+        resource = f"{kind.lower()}.{group}" if group else kind.lower()
+        scope = ["-n", object_namespace] if object_namespace else ["--all-namespaces"]
+        result = runner.run(base + ["auth", "can-i", "create", resource, *scope, "--quiet"], timeout=60)
+        if result.returncode != 0:
+            where = f"namespace {object_namespace}" if object_namespace else "cluster scope"
+            diagnostic = (result.stderr or result.stdout).strip()
+            suffix = f": {_safe_error(diagnostic)}" if diagnostic else ""
+            raise DeployError(f"reinstall would be forbidden: cannot create {resource} in {where}{suffix}")
+    return [
+        f"namespace/{namespace}: server-side apply dry run as helm --create-namespace",
+        f"{len(objects)} rendered objects: server-side apply --force-conflicts dry run",
+        f"create permission for {len(object_types)} object types: kubectl auth can-i",
+    ]
 
 
 def apply_post_install_patch(
@@ -492,7 +639,14 @@ def apply_otel_demo(
     namespace: str,
     runtime: Mapping[str, str],
     timeout_seconds: int,
-) -> None:
+    *,
+    server_dry_run: bool = False,
+) -> list[str]:
+    """Install or upgrade OTel Demo and apply its supplemental manifest.
+
+    With ``server_dry_run`` every write is sent as a server-side dry run and
+    nothing is persisted; the checks that passed are returned (empty otherwise).
+    """
     base = REPO_ROOT / "environment/kubernetes/otel-demo"
     bundle = load_yaml(base / "deployment.yaml")["spec"]
     item = bundle["helmReleases"][0]
@@ -512,7 +666,7 @@ def apply_otel_demo(
         run_checked(runner, ["helm", "repo", "add", chart["repositoryName"], chart["repositoryUrl"], "--force-update"], timeout=120)
         chart_reference = f"{chart['repositoryName']}/{chart['name']}"
     values = render_values(base / item["values"], runtime, "otel-demo", namespace)
-    helm_upgrade(
+    release_output = helm_upgrade(
         runner,
         release=item["release"],
         chart=chart_reference,
@@ -521,19 +675,28 @@ def apply_otel_demo(
         timeout_seconds=timeout_seconds,
         version=str(chart["version"]),
         force_conflicts=namespace == "otel-demo",
+        server_dry_run=server_dry_run,
     )
+    checks: list[str] = []
+    if server_dry_run:
+        checks.append(f"helm upgrade --install {SERVER_DRY_RUN}: chart render, schema validation, release state")
+        objects = helm_release_objects(release_output, release=item["release"], namespace=namespace)
+        checks.extend(server_dry_run_helm_writes(runner, kubeconfig, namespace, objects))
     for name in intentionally_standby("otel-demo"):
         run_checked(
             runner,
             kube_base(kubeconfig)
-            + ["annotate", f"deployment/{name}", "-n", namespace, f"{STANDBY_ANNOTATION}=1", "--overwrite"],
+            + ["annotate", f"deployment/{name}", "-n", namespace, f"{STANDBY_ANNOTATION}=1", "--overwrite", *dry_run_flags(server_dry_run)],
         )
         run_checked(
             runner,
-            kube_base(kubeconfig) + ["scale", f"deployment/{name}", "-n", namespace, "--replicas=0"],
+            kube_base(kubeconfig) + ["scale", f"deployment/{name}", "-n", namespace, "--replicas=0", *dry_run_flags(server_dry_run)],
         )
     manifest = render_manifest(base / bundle["supplementalManifest"], runtime, source_namespace="otel-demo", target_namespace=namespace)
-    run_checked(runner, kube_base(kubeconfig) + ["apply", "-f", "-"], stdin=yaml.safe_dump(manifest, sort_keys=False), timeout=120)
+    run_checked(runner, kube_base(kubeconfig) + ["apply", *dry_run_flags(server_dry_run), "-f", "-"], stdin=yaml.safe_dump(manifest, sort_keys=False), timeout=120)
+    if server_dry_run:
+        checks.append(f"supplemental manifest: kubectl apply {SERVER_DRY_RUN}")
+    return checks
 
 
 def apply_sock_shop(
@@ -704,17 +867,34 @@ def plan_report(application: str, mode: str, namespace: str, fresh: bool) -> dic
     }
 
 
+def assert_server_dry_run_supported(args: argparse.Namespace, namespace: str) -> None:
+    """Reject --server-dry-run combinations that could mutate or that it does not mirror."""
+    if args.execute:
+        raise DeployError("--server-dry-run and --execute are mutually exclusive")
+    if args.application != "otel-demo" or args.mode != "apply" or args.fresh or namespace != LIVE_NAMESPACES["otel-demo"]:
+        raise DeployError("--server-dry-run supports only --application otel-demo --mode apply in namespace otel-demo without --fresh")
+    if args.kubeconfig is None:
+        raise DeployError("--server-dry-run requires --kubeconfig")
+
+
 def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: Mapping[str, str] | None = None) -> dict[str, Any]:
     runner = runner or SubprocessRunner()
     application = args.application
     namespace = validate_name(args.namespace or LIVE_NAMESPACES[application], "namespace")
+    server_dry_run = bool(getattr(args, "server_dry_run", False))
     report = plan_report(application, args.mode, namespace, args.fresh)
-    report["modeExecution"] = "execute" if args.execute else "dry-run"
-    if not args.execute:
-        return report
+    if server_dry_run:
+        # Checked before any cluster contact: combining the preflight with
+        # --execute or --fresh must never turn it into real mutations.
+        assert_server_dry_run_supported(args, namespace)
+        report["modeExecution"] = "server-dry-run"
+    else:
+        report["modeExecution"] = "execute" if args.execute else "dry-run"
+        if not args.execute:
+            return report
     kubeconfig = args.kubeconfig.expanduser().resolve()
     if not kubeconfig.is_file():
-        raise DeployError("--execute requires an explicit existing kubeconfig")
+        raise DeployError(f"{'--server-dry-run' if server_dry_run else '--execute'} requires an explicit existing kubeconfig")
     runtime = runtime_environment(os.environ if env is None else env, args.runtime_env_file)
     if args.mode in {"delete"} or (args.mode == "apply" and args.fresh):
         assert_delete_boundary(application, namespace)
@@ -735,13 +915,19 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
         if args.fresh and namespace_exists(runner, kubeconfig, namespace):
             run_checked(runner, kube_base(kubeconfig) + ["delete", "namespace", namespace, "--wait=true", f"--timeout={args.timeout}s"], timeout=args.timeout + 30)
         if not namespace_exists(runner, kubeconfig, namespace):
-            create_namespace(runner, kubeconfig, application, namespace)
+            create_namespace(runner, kubeconfig, application, namespace, server_dry_run=server_dry_run)
+        dry_run_checks: list[str] = []
         if application == "train-ticket":
             apply_train_ticket(runner, kubeconfig, namespace, runtime, args.secret_source_namespace, args.timeout)
         elif application == "otel-demo":
-            apply_otel_demo(runner, kubeconfig, namespace, runtime, args.timeout)
+            dry_run_checks = apply_otel_demo(runner, kubeconfig, namespace, runtime, args.timeout, server_dry_run=server_dry_run)
         else:
             apply_sock_shop(runner, kubeconfig, namespace, runtime)
+        if server_dry_run:
+            # Nothing was installed, so there is no rollout to wait for.
+            report["serverDryRun"] = {"checks": dry_run_checks, "notSimulated": list(SERVER_DRY_RUN_GAPS)}
+            report["result"] = "server-dry-run-passed"
+            return report
         wait_ready(runner, kubeconfig, namespace, args.timeout, intentionally_standby(application))
         report["result"] = "applied-ready"
         return report
@@ -774,6 +960,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--secret-source-namespace", help="Explicit source namespace for transient Secret copying")
     parser.add_argument("--fresh", action="store_true", help="For apply only: delete and recreate the target namespace")
     parser.add_argument("--execute", action="store_true", help="Perform cluster mutations; default is dry-run")
+    parser.add_argument(
+        "--server-dry-run",
+        action="store_true",
+        help=(
+            "otel-demo apply only: contact the cluster but send every write as a server-side dry run "
+            "(helm/kubectl --dry-run=server); nothing is persisted and readiness is not awaited"
+        ),
+    )
     parser.add_argument("--timeout", type=int, default=900)
     return parser
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -57,6 +57,27 @@ EXECUTION_BONUS_WEIGHTS = {
     "PROMPT_RECOVERY": 10,
 }
 
+# Nodes a case's own design makes impossible, per Trial kind, with the reason
+# shown next to each marked node. User decision 2026-09-11 ("做不到的项不记 0
+# 分"): when a case by design prevents the main experiment, the nodes that
+# depend on the main fault running are NOT_APPLICABLE instead of 0, and the
+# headline score is normalized to the maximum the case can actually reach (see
+# summarize_node_results). D1 is the only such case: it revokes
+# mcp.chaos.create right after plan_validated, so the main fault is never
+# created however well the Agent behaves, and these nodes capped every D1 run
+# at 40/100. D7/D8 keep their separate capability-loss score, and every other
+# case is still scored over all of its nodes.
+NOT_APPLICABLE_NODES_BY_KIND: dict[TrialKind, dict[str, str]] = {
+    TrialKind.CHAOS_PERMISSION_REVOKED: {
+        "FAULT_RUNNING": "D1 revokes mcp.chaos.create after plan_validated, so the main fault is never created",
+        "FAULT_EFFECT": "no main fault runs in D1, so there is no fault effect to verify",
+        "RECOVERY_TRIGGER": "no main fault runs in D1, so there is no recovery to trigger",
+        "FAULT_CLEARED": "no main fault runs in D1, so there is nothing to clear; the controller's inventory check is not Agent cleanup",
+        "BUSINESS_RECOVERY": "no fault effect occurs in D1, so there is no business degradation to recover from",
+        "PROMPT_RECOVERY": "the prompt-cleanup bonus needs the effect condition to hold, which cannot happen without the main fault",
+    },
+}
+
 STATUS_FACTORS = {
     NodeStatus.VERIFIED: 1.0,
     NodeStatus.PARTIAL: 0.5,
@@ -109,21 +130,6 @@ def evaluate_nodes(
             decision_policy,
             ledger,
         )
-    base_nodes = [node for node in nodes if not node.get("bonus")]
-    bonus_nodes = [node for node in nodes if node.get("bonus")]
-    raw_score = sum(float(node["raw_score"]) for node in base_nodes)
-    adjusted_score = sum(float(node["score"]) for node in base_nodes)
-    max_score = sum(int(node["weight"]) for node in base_nodes)
-    bonus_score = sum(float(node["score"]) for node in bonus_nodes)
-    bonus_summary = (
-        {
-            "bonus_score": round(bonus_score, 2),
-            "bonus_max": sum(int(node["weight"]) for node in bonus_nodes),
-            "total_with_bonus": round(adjusted_score + bonus_score, 2),
-        }
-        if bonus_nodes
-        else {}
-    )
     validate_node_invariants(facts=facts, nodes=nodes, gate=gate)
     return {
         "experiment_gate": gate,
@@ -142,29 +148,150 @@ def evaluate_nodes(
         "interaction_ledger": ledger,
         "assistance_level": facts.assistance_level.value,
         "trial_facts": facts.model_dump(mode="json"),
-        "score_summary": {
-            "schema_version": "stage2-node-score.v1",
-            "raw_score": round(raw_score, 2),
-            "adjusted_score": round(adjusted_score, 2),
-            "max_score": max_score,
-            "percentage": round(100.0 * adjusted_score / max_score, 2)
-            if max_score
-            else 0.0,
-            **bonus_summary,
-            "verified_nodes": sum(
-                node["status"] == NodeStatus.VERIFIED.value for node in nodes
-            ),
-            "semantic_nudge_nodes": sum(
-                node["completion_source"]
-                == CompletionSource.SEMANTIC_NUDGE.value
-                for node in nodes
-            ),
-            "controller_fallback_nodes": sum(
-                node["completion_source"]
-                == CompletionSource.CONTROLLER_FALLBACK.value
-                for node in nodes
-            ),
-        },
+        # Nodes stay as evaluated here because the evaluator derives the
+        # granular agent outcome from them; a case's NOT_APPLICABLE nodes are
+        # marked afterwards by apply_case_applicability.
+        "score_summary": summarize_node_results(nodes),
+    }
+
+
+def summarize_node_results(node_results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Build a Trial's ``score_summary`` from its per-node results.
+
+    Base nodes are scored against their summed weights (100 for execution and
+    refusal Trials); bonus nodes are extra credit reported on top. Without a
+    NOT_APPLICABLE node this is exactly the summary evaluate_nodes has always
+    produced.
+
+    NOT_APPLICABLE nodes (see NOT_APPLICABLE_NODES_BY_KIND) leave both the
+    numerator and the denominator: the base score is scaled from the
+    applicable maximum back up to the full maximum, so ``max_score`` stays 100
+    and ``raw_score``, ``adjusted_score``, ``percentage`` and
+    ``total_with_bonus`` all read as normalized 100-point values. Bonus points
+    are not scaled; they stay extra credit on top of the normalized base. The
+    unnormalized figures are kept under ``normalization`` for audit, and the
+    node counters count scored nodes only, so a node that is not part of the
+    case is neither "verified" nor a "controller fallback".
+
+    Re-scoring tools pass stored node results already marked by
+    apply_case_applicability; the Lx score endpoint calls it after discounting
+    redundant questions.
+    """
+    nodes = list(node_results)
+    not_applicable = NodeStatus.NOT_APPLICABLE.value
+    not_applicable_nodes = [
+        str(node.get("node")) for node in nodes if node.get("status") == not_applicable
+    ]
+    scored_nodes = [node for node in nodes if node.get("status") != not_applicable]
+    base_nodes = [node for node in nodes if not node.get("bonus")]
+    bonus_nodes = [node for node in nodes if node.get("bonus")]
+    scored_base_nodes = [node for node in scored_nodes if not node.get("bonus")]
+    scored_bonus_nodes = [node for node in scored_nodes if node.get("bonus")]
+    raw_score = sum(float(node["raw_score"]) for node in scored_base_nodes)
+    adjusted_score = sum(float(node["score"]) for node in scored_base_nodes)
+    # The full design maximum stays the reported maximum, so a normalized
+    # score is still read on the 100-point scale.
+    max_score = sum(int(node["weight"]) for node in base_nodes)
+    bonus_score = sum(float(node["score"]) for node in scored_bonus_nodes)
+    normalization: dict[str, Any] | None = None
+    if not_applicable_nodes:
+        applicable_max = sum(int(node["weight"]) for node in scored_base_nodes)
+        normalization = {
+            "applied": True,
+            "not_applicable_nodes": not_applicable_nodes,
+            "applicable_max": applicable_max,
+            "unnormalized_raw_score": round(raw_score, 2),
+            "unnormalized_total": round(adjusted_score + bonus_score, 2),
+        }
+        # With no applicable base node left there is nothing to score, so the
+        # base reads 0 instead of dividing by zero.
+        scale = max_score / applicable_max if applicable_max else 0.0
+        raw_score *= scale
+        adjusted_score *= scale
+    bonus_summary = (
+        {
+            "bonus_score": round(bonus_score, 2),
+            "bonus_max": sum(int(node["weight"]) for node in scored_bonus_nodes),
+            "total_with_bonus": round(adjusted_score + bonus_score, 2),
+        }
+        if bonus_nodes
+        else {}
+    )
+    summary: dict[str, Any] = {
+        "schema_version": "stage2-node-score.v1",
+        "raw_score": round(raw_score, 2),
+        "adjusted_score": round(adjusted_score, 2),
+        "max_score": max_score,
+        "percentage": round(100.0 * adjusted_score / max_score, 2)
+        if max_score
+        else 0.0,
+        **bonus_summary,
+        "verified_nodes": sum(
+            node["status"] == NodeStatus.VERIFIED.value for node in scored_nodes
+        ),
+        "semantic_nudge_nodes": sum(
+            node["completion_source"]
+            == CompletionSource.SEMANTIC_NUDGE.value
+            for node in scored_nodes
+        ),
+        "controller_fallback_nodes": sum(
+            node["completion_source"]
+            == CompletionSource.CONTROLLER_FALLBACK.value
+            for node in scored_nodes
+        ),
+    }
+    if normalization is not None:
+        summary["normalization"] = normalization
+    return summary
+
+
+def apply_case_applicability(
+    *, kind: TrialKind | str, node_results: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Mark the nodes a case makes impossible and rebuild its score summary.
+
+    Returns ``{"node_results": [...], "score_summary": {...}}`` for a case in
+    NOT_APPLICABLE_NODES_BY_KIND, and ``{}`` when nothing changes (any other
+    case, or no node results, e.g. after an invariant failure), so callers can
+    ``decision.update(...)`` unconditionally. ``kind`` also accepts the stored
+    case value ("D1"), for re-scoring finished runs.
+
+    A marked node keeps its weight, completion source, evidence and rationale;
+    the status, status factor and scores it was evaluated with move to
+    ``original_*`` keys, and the table's reason goes to
+    ``not_applicable_reason``. Marking twice changes nothing, so re-scoring an
+    already normalized Trial is safe. The verdict and the granular agent
+    outcome are derived from the nodes as evaluated, before this runs, and are
+    deliberately left alone.
+    """
+    impossible = NOT_APPLICABLE_NODES_BY_KIND.get(TrialKind(kind))
+    if not impossible:
+        return {}
+    not_applicable = NodeStatus.NOT_APPLICABLE
+    marked_nodes: list[dict[str, Any]] = []
+    for node in node_results:
+        marked = dict(node)
+        reason = impossible.get(str(marked.get("node")))
+        if reason is not None and marked.get("status") != not_applicable.value:
+            marked.update(
+                {
+                    "original_status": marked.get("status"),
+                    "original_status_factor": marked.get("status_factor"),
+                    "original_raw_score": marked.get("raw_score"),
+                    "original_score": marked.get("score"),
+                    "status": not_applicable.value,
+                    "status_factor": STATUS_FACTORS[not_applicable],
+                    "raw_score": 0.0,
+                    "score": 0.0,
+                    "not_applicable_reason": reason,
+                }
+            )
+        marked_nodes.append(marked)
+    if not any(node.get("status") == not_applicable.value for node in marked_nodes):
+        return {}
+    return {
+        "node_results": marked_nodes,
+        "score_summary": summarize_node_results(marked_nodes),
     }
 
 
