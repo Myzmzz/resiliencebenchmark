@@ -7,6 +7,8 @@ under netem its inbound latency measured 79 ms.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from stage2_service.fault_inventory import snapshot_for_trial
@@ -274,3 +276,80 @@ def test_netem_rules_are_recognised() -> None:
     assert residual_tc_rules(
         "qdisc netem 8001: root refcnt 2 limit 1000 delay 75ms")
     assert residual_tc_rules("qdisc noqueue 0: root refcnt 2") == []
+
+
+# ---- end-to-end acceptance, replayed from a real injection --------------
+#
+# Samples captured on 2026-09-13 against otel-demo/cart (experiment
+# 6c8d54c8088cdb65): a real CPU fault injected through the resident
+# chaosblade-tool, held ~40s, then destroyed on purpose.  What makes this the
+# WP-E acceptance case is that this injection path creates **no cluster CR at
+# all** -- the cluster face read clean for the entire fault, exactly as it did
+# for D8-B's hand-rolled burner.
+
+
+def _wpe_samples() -> dict[str, list[float]]:
+    import json
+
+    path = (Path(__file__).parent / "fixtures" / "harness_streams" / "golden"
+            / "target_residue_cpu_injection.samples.jsonl")
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    phases: dict[str, list[float]] = {"faulted": [], "recovered": []}
+    for row in rows:
+        if row.get("cpu_millicores") is not None:
+            phases[row["phase"]].append(float(row["cpu_millicores"]))
+    return phases
+
+
+CART_BASELINE = 4.0
+
+
+def test_the_real_injection_reached_a_fault_level_and_came_back() -> None:
+    """The capture is only useful if it really shows both states."""
+    phases = _wpe_samples()
+    assert max(phases["faulted"]) >= 780       # measured 806m
+    assert phases["recovered"][-1] <= 10       # measured 5m, baseline 3-4m
+
+
+def test_the_live_fault_is_judged_residual_while_the_cluster_reads_clean() -> None:
+    phases = _wpe_samples()
+    verdict = assess_target_residue(TargetProbe(
+        baseline={"cpu_millicores": CART_BASELINE},
+        current=[reading("cpu_millicores", max(phases["faulted"]))],
+        processes=["/opt/chaosblade/bin/chaos_os create cpu fullload --cpu-percent=80"],
+    ))
+    snapshot = snapshot_for_trial(
+        trial_id="wpe", resources=[], qualified_executors=["chaosblade"],
+        target_residue=verdict,
+    )
+    assert verdict.state == "residual"
+    # No CR existed at any point during the real fault.
+    assert snapshot["inventory_clear"] is True
+    assert snapshot["residue_clear"] is False
+
+
+def test_the_real_recovery_is_confirmed() -> None:
+    phases = _wpe_samples()
+    verdict = assess_target_residue(TargetProbe(
+        baseline={"cpu_millicores": CART_BASELINE},
+        current=[reading("cpu_millicores", phases["recovered"][-1])],
+        processes=[], tc_rules=[],
+    ))
+    snapshot = snapshot_for_trial(
+        trial_id="wpe", resources=[], qualified_executors=["chaosblade"],
+        target_residue=verdict,
+    )
+    assert verdict.state == "clear"
+    assert snapshot["residue_clear"] is True
+
+
+def test_the_decay_is_not_called_recovered_too_early() -> None:
+    """Measured decay was 806 -> 410 -> 5; only the last value is recovery."""
+    states = [
+        assess_target_residue(TargetProbe(
+            baseline={"cpu_millicores": CART_BASELINE},
+            current=[reading("cpu_millicores", value)],
+        )).state
+        for value in (806.0, 410.0, 300.0, 5.0)
+    ]
+    assert states == ["residual", "residual", "residual", "clear"]

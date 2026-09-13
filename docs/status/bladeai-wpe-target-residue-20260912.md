@@ -87,13 +87,53 @@ cgroup 的 `usage_usec` 是**累积值**，故障停了也不会回落——直�
 
 ---
 
-## 五、尚未接线
+## 五、端到端验收：一次真实注入（2026-09-13 02:36–02:37）
 
-判据与解析器已就位，**运行时采集尚未接入** `snapshot_for_trial` 的调用点
-（`runtime_factory.py:1272`、`fault_inventory.py:179`）——那需要平台侧的 kubectl
-执行通道，属于正式接线。接线前 `residue_clear` 恒等于 `inventory_clear`，
-行为与现状一致。
+经用户授权，在旧环境 `otel-demo/cart` 上做了一次**真实故障注入**，
+走常驻 `chaosblade-tool`，`cpu fullload 80% × 1 核`，`timeout 120s` 作保险，
+约 40 秒后**主动销毁**（不等超时）。实验 uid `6c8d54c8088cdb65`。
 
-**WP-F 的前置条件**：本包验收通过，但「验收」应包含一次带真实注入的端到端核验
-（注入 → 指标升高被测到 → 恢复 → 指标回落被测到）。本次未做真实注入，
-故 WP-F 的删除动作仍**不应**开始。
+| 阶段 | 实测 CPU |
+|---|---|
+| 注入前基线（6 次采样） | 4, 4, 4, 4, 4, **3** m |
+| 故障态（8 次采样） | 5 → 300 → 300 → 300 → 785 → 785 → 806 → **806** m |
+| 主动销毁后（8 次采样） | 806 → 410 → 410 → 410 → **5, 5, 5, 5** m |
+
+### 这次验收最关键的一点
+
+**这条注入路径全程不产生任何集群 CR**——实测 `chaosblade` CR 数量从头到尾是 **0**，
+而目标 CPU 实打实地烧到 806m。**这正是 D8-B 的场景，被我们自己完整复现了一遍。**
+节点侧确实能看到进程（`chaos_os create cpu fullload --uid=6c8d54c8088cdb65`），
+但集群面一无所知。
+
+把这批真实数字喂进巡检判据：
+
+| 时刻 | `inventory_clear`（集群面） | 巡检判定 | `residue_clear`（权威） |
+|---|---|---|---|
+| 故障态 806m | **True**（CR 确实是 0） | `residual` | **False** ✓ |
+| 恢复后 5m | True | `clear` | **True** ✓ |
+
+回落过程也没有过早放行：806 / 410 / 300 全判 `residual`，只有 5m 判 `clear`。
+
+### 收尾核验（注入后约 3 分钟）
+
+CPU **3m**（回到基线）、chaosblade CR **0**、节点侧注入进程 **0**、
+tc netem 规则 **0**、cart Pod `1/1 Running` 重启次数 **0**、
+账本中该实验状态 `Destroyed`。**零残留。**
+
+采样数据已固化为夹具
+`tests/fixtures/harness_streams/golden/target_residue_cpu_injection.samples.jsonl`，
+并写成 4 项回归测试，其中
+`test_the_live_fault_is_judged_residual_while_the_cluster_reads_clean`
+就是方案要求的那条 D8-B 回归用例。
+
+**WP-E 验收通过，WP-F 的闸门解除。**
+
+---
+
+## 六、尚未接线
+
+判据、解析器与端到端验证都已就位，**运行时采集尚未接入** `snapshot_for_trial`
+的调用点（`runtime_factory.py:1272`、`fault_inventory.py:179`）——那需要平台侧的
+kubectl 执行通道，属于正式接线的一部分。接线前 `residue_clear` 恒等于
+`inventory_clear`，行为与现状一致，其他三家不受影响。
