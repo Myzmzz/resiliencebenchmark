@@ -38,11 +38,16 @@ COPY --chown=10001:10001 scripts/serve_stage2_matrix_review.py /app/scripts/serv
 COPY --chown=10001:10001 scripts/deploy_application.py /app/scripts/deploy_application.py
 COPY --chown=10001:10001 --chmod=0755 deploy/stage2/codex-eval /app/runtime/bin/codex-eval
 COPY --chown=10001:10001 frontend/dist /app/frontend-dist
+# The image carries the recipe it was built from, so it can check itself without
+# the repository: every COPY destination below must exist at start-up (O18).
+COPY --chown=10001:10001 deploy/stage2/Dockerfile.runtime-overlay /app/deploy/stage2/Dockerfile.runtime-overlay
 RUN /app/.venv/bin/python -c "import httpx, zstandard, starlette; import stage2_service.harness_runtime, mcp_servers.code_sandbox.server, mcp_servers.audit_bridge" \
     && /app/.venv/bin/python /app/scripts/qualify_agent_channel.py --help \
     && /app/.venv/bin/python /app/scripts/publish_harness_capabilities.py --help \
-    && /app/.venv/bin/python /app/scripts/qualify_execution_identities.py --help
+    && /app/.venv/bin/python /app/scripts/qualify_execution_identities.py --help \
+    && /app/.venv/bin/python -m stage2_service.image_manifest --verify-in-image --repo-root /app
 
 ARG SOURCE_HEAD=unknown
+ENV RESBENCH_SOURCE_HEAD=${SOURCE_HEAD}
 LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}
 USER 10001:10001

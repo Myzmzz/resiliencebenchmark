@@ -21,6 +21,7 @@ from .base import (
     extract_arguments,
     extract_call_id,
     normalize_tool_name,
+    resolve_tool_identity,
     parse_occurred_at,
     payload_from_result,
     stable_call_id,
@@ -125,6 +126,8 @@ class BladeAIHarnessAdapter(BaseHarnessAdapter):
         return ToolCall(
             call_id=call_id,
             tool=tool,
+            raw_tool=name,
+            tool_resolution=resolve_tool_identity(name).resolution,
             arguments=self._arguments_from_payload(payload),
             occurred_at=occurred_at,
         )

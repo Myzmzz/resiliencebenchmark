@@ -37,6 +37,12 @@ from .platform_ledger import PlatformLedger
 from .bladeai_result import TRANSCRIPTION_SOURCE, transcribe_bladeai_report
 from .tool_event_pump import RealtimeToolEventPump
 from .llm_relay import TrialRelay, TrialRelayConfig
+from .provider_failures import (
+    ProviderCircuitBreaker,
+    ProviderFailure,
+    default_breaker,
+    failure_attribution,
+)
 from .gateway_evidence import read_gateway_requests
 from .notices import acknowledge_received_notices, all_trial_events
 
@@ -455,6 +461,7 @@ class NativeHarnessRunner:
         capability_loss_factory=None,
         gateway_snapshot=None,
         gateway_audit_dir: Path | None = None,
+        provider_breaker: ProviderCircuitBreaker | None = None,
     ):
         self.repo_root = repo_root.resolve()
         self.private_root = private_root.resolve()
@@ -474,6 +481,9 @@ class NativeHarnessRunner:
         self.capability_loss_factory = capability_loss_factory
         self.gateway_snapshot = gateway_snapshot
         self.gateway_audit_dir = gateway_audit_dir.resolve() if gateway_audit_dir else None
+        # Shared with the submission gate, so a route that broke during one
+        # Trial is not handed the next one.
+        self.provider_breaker = provider_breaker or default_breaker()
         self._capability_runs: dict[str, tuple[Any, str, CaseSpec]] = {}
         self.private_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -703,6 +713,15 @@ class NativeHarnessRunner:
             gateway_hash = str(self.gateway_snapshot.config_sha256)
         elif not self.local_test_execution:
             raise HarnessRuntimeError("gateway configuration snapshot is required", error_code="GATEWAY_SNAPSHOT_MISSING")
+        # Provider outcomes observed at the relay are the only place the platform
+        # can tell "the provider refused" from "the agent failed" (O03).
+        provider_failures: list[ProviderFailure] = []
+
+        def _observe_provider(failure: ProviderFailure) -> None:
+            self.provider_breaker.record(failure)
+            if failure.failure_class.is_provider_fault:
+                provider_failures.append(failure)
+
         if not self.local_test_execution:
             phase_ref = {"phase": LifecyclePhase.C1_PLAN.value}
             relay_config = TrialRelayConfig.issue(
@@ -711,6 +730,8 @@ class NativeHarnessRunner:
                 upstream_api_key=self.base_environment["RESBENCH_LLM_API_KEY"],
                 harness_name=harness.value, gateway_config_sha256=gateway_hash,
                 llm_tag=llm_tag or model_alias,
+                provider=str((gateway_route or {}).get("provider") or ""),
+                failure_observer=_observe_provider,
             )
             relay_config.phase_ref.update(phase_ref)
             relay = resources.enter_context(TrialRelay(relay_config))
@@ -1537,6 +1558,18 @@ class NativeHarnessRunner:
         )
         if terminal_failure and not harness_failure:
             harness_failure = terminal_failure
+        attribution = failure_attribution(provider_failures)
+        if attribution["provider_fault"]:
+            # The Trial still failed, but it failed on the provider. Saying so
+            # here is what stops a billing outage from reading as an agent that
+            # could not produce a structured result.
+            harness_failure = {
+                **harness_failure,
+                "error_code": f"MODEL_PROVIDER_{attribution['primary_failure_class']}",
+                "platform_fault": True,
+                "provider_attribution": attribution,
+                "agent_attributable": False,
+            }
         (artifact_dir / "stdout.txt").write_text(
             redact_text(result.stdout, env), encoding="utf-8"
         )

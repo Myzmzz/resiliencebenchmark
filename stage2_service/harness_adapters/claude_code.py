@@ -18,6 +18,7 @@ from .base import (
     extract_agent_message,
     extract_arguments,
     normalize_tool_name,
+    tool_identity_fields,
     parse_occurred_at,
     payload_from_result,
     session_id_from_mapping,
@@ -89,12 +90,12 @@ class ClaudeCodeHarnessAdapter(BaseHarnessAdapter):
         self, block: Mapping[str, Any], occurred_at
     ) -> ToolCall | None:
         call_id = block.get("id")
-        tool = normalize_tool_name(block.get("name"))
-        if not isinstance(call_id, str) or not tool:
+        identity = tool_identity_fields(block.get("name"))
+        if not isinstance(call_id, str) or identity is None:
             return None
         return ToolCall(
             call_id=call_id,
-            tool=tool,
+            **identity,
             arguments=extract_arguments(block),
             occurred_at=occurred_at,
         )

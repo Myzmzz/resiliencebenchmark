@@ -20,6 +20,7 @@ from .base import (
     extract_arguments,
     extract_call_id,
     normalize_tool_name,
+    tool_identity_fields,
     parse_occurred_at,
     payload_from_result,
     session_id_from_mapping,
@@ -123,13 +124,16 @@ class CodexHarnessAdapter(BaseHarnessAdapter):
         return []
 
     def _tool_call_from_item(self, item: Mapping[str, Any]) -> ToolCall | None:
-        tool = normalize_tool_name(item.get("tool") or item.get("name"), item.get("server") or item.get("server_name"))
+        identity = tool_identity_fields(
+            item.get("tool") or item.get("name"),
+            item.get("server") or item.get("server_name"),
+        )
         call_id = self._canonical_call_id(extract_call_id(item))
-        if not tool or not call_id:
+        if identity is None or not call_id:
             return None
         return ToolCall(
             call_id=call_id,
-            tool=tool,
+            **identity,
             arguments=extract_arguments(item),
             occurred_at=parse_occurred_at(item),
         )
@@ -140,10 +144,14 @@ class CodexHarnessAdapter(BaseHarnessAdapter):
         call_id = self._canonical_call_id(extract_call_id(item)) or stable_call_id(
             "codex", marker, self._line_index
         )
-        tool = normalize_tool_name(item.get("tool") or item.get("name")) or marker
+        identity = tool_identity_fields(item.get("tool") or item.get("name")) or {
+            "tool": marker,
+            "raw_tool": marker,
+            "tool_resolution": "unknown",
+        }
         return ToolCall(
             call_id=call_id,
-            tool=tool,
+            **identity,
             arguments=dict(item),
             occurred_at=parse_occurred_at(item),
         )

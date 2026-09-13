@@ -12,6 +12,7 @@ from typing import Any, Literal, Protocol, TypeAlias
 from pydantic import Field
 
 from stage2_service.contracts import ContractModel, HarnessKind
+from stage2_service.mcp_tool_catalog import ToolIdentity, resolve_tool_identity
 
 
 ToolResultStatus: TypeAlias = Literal[
@@ -26,6 +27,11 @@ class ToolCall(ContractModel):
     call_id: str
     tool: str
     arguments: dict[str, Any]
+    # What the agent actually wrote, and how the platform arrived at ``tool``.
+    # Keeping both means a client-side "tool does not exist" is still evidence
+    # the platform holds rather than something only the agent ever saw (O19).
+    raw_tool: str | None = None
+    tool_resolution: str | None = None
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -261,19 +267,28 @@ def parse_occurred_at(value: Mapping[str, Any]) -> datetime:
     return datetime.now(UTC)
 
 
-def normalize_tool_name(tool: Any, server: Any = None) -> str | None:
-    if not isinstance(tool, str) or not tool.strip():
+def tool_identity_fields(tool: Any, server: Any = None) -> dict[str, Any] | None:
+    """Return the ``ToolCall`` identity fields, or ``None`` for an empty name."""
+    identity = resolve_tool_identity(tool, server)
+    if not identity.canonical:
         return None
-    value = tool.strip()
-    if value.startswith("mcp__"):
-        parts = value.split("__")
-        if len(parts) >= 3 and parts[1] and parts[2]:
-            value = f"{parts[1]}.{parts[2]}"
-    if isinstance(server, str) and server.strip():
-        prefix = f"{server.strip()}."
-        if "." not in value and not value.startswith(prefix):
-            value = f"{server.strip()}.{value}"
-    return value
+    return {
+        "tool": identity.canonical,
+        "raw_tool": identity.raw,
+        "tool_resolution": identity.resolution,
+    }
+
+
+def normalize_tool_name(tool: Any, server: Any = None) -> str | None:
+    """Canonicalize any spelling an agent used, including an unprefixed one.
+
+    A bare name that exactly one MCP server owns is completed rather than left
+    unqualified; see ``stage2_service.mcp_tool_catalog`` for why (O19).
+    """
+    identity = resolve_tool_identity(tool, server)
+    if not identity.raw:
+        return None
+    return identity.canonical
 
 
 def extract_call_id(value: Mapping[str, Any]) -> str | None:

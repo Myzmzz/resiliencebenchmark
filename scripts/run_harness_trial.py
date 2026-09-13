@@ -38,6 +38,7 @@ from stage2_service.harness_adapters import (
     create_adapter,
 )
 from stage2_service.harness_adapters.deepseek import iter_zstd_jsonl_lines
+from stage2_service.mcp_tool_catalog import MCP_TOOL_CATALOG, resolve_tool_identity
 from stage2_service.session import (
     HarnessSession,
     ResumeArgvBuilder,
@@ -148,47 +149,11 @@ AGENT_SHARED_RUNTIME_ENV = {
     "RESBENCH_CODE_SANDBOX_MCP_URL",
     "RESBENCH_BLADEAI_CHANNEL_ONLY",
 }
+# The tool catalogue lives in stage2_service.mcp_tool_catalog so the Agent
+# runtime, the adapters and the Controller all judge tool identity the same
+# way; a name known here is never rejected as unknown there (O19).
 ALLOWED_MCP_TOOLS = {
-    "harness_channel": {"harness_consult", "harness_confirm", "harness_submit_result", "harness_poll_notices"},
-    "k8s_ro": {
-        "k8s_get_resource",
-        "k8s_list_resources",
-        "k8s_list_events",
-        "k8s_pod_logs",
-        "k8s_cluster_inventory",
-    },
-    "telemetry_ro": {
-        "telemetry_workload_current",
-        "telemetry_prom_metric_instant",
-        "telemetry_prom_metric_range",
-        "telemetry_prom_metric_series",
-        "telemetry_prom_list_labels",
-        "telemetry_jaeger_list_services",
-        "telemetry_jaeger_list_operations",
-        "telemetry_jaeger_find_traces",
-        "telemetry_loki_list_labels",
-        "telemetry_loki_logs",
-        "telemetry_loki_logs_range",
-    },
-    "source_ro": {
-        "source_list_repositories",
-        "source_list_files",
-        "source_search_text",
-        "source_read_file",
-        "source_show_commit",
-    },
-    "chaos_control": {
-        "chaos_validate_plan",
-        "chaos_inventory_run",
-        "chaos_create_experiment",
-        "chaos_get_experiment",
-        "chaos_operation_status",
-        "chaos_destroy_experiment",
-        "chaos_recovery_status",
-    },
-    "coroot_ro": {"coroot_metrics_range", "coroot_traces_find", "coroot_logs_range"},
-    "chaos_mesh_control": {"chaos_mesh_validate_plan", "chaos_mesh_inventory_run", "chaos_mesh_create_experiment", "chaos_mesh_get_experiment", "chaos_mesh_operation_status", "chaos_mesh_destroy_experiment", "chaos_mesh_recovery_status"},
-    "code_sandbox": {"run_python"},
+    server: set(tools) for server, tools in MCP_TOOL_CATALOG.items()
 }
 MCP_URL_ENV = {
     "__RESBENCH_HARNESS_CHANNEL_MCP_URL__": "RESBENCH_HARNESS_CHANNEL_MCP_URL",
@@ -991,21 +956,41 @@ def canonical_event_payload(event: CanonicalEvent) -> dict[str, Any]:
 
 
 def allowed_mcp_tool_call(call: ToolCall) -> bool:
-    name = call.tool
-    if name.startswith("mcp__"):
-        parts = name.split("__", 2)
-        if len(parts) != 3:
-            return False
-        _, server, tool = parts
-        return tool in ALLOWED_MCP_TOOLS.get(server, set())
-    if "." not in name:
-        return False
-    server, tool = name.split(".", 1)
-    return tool in ALLOWED_MCP_TOOLS.get(server, set())
+    return resolve_tool_identity(call.tool).known
 
 
 def forbidden_tool_call(event: CanonicalEvent) -> bool:
     return isinstance(event, ToolCall) and not allowed_mcp_tool_call(event)
+
+
+def unknown_tool_events(events: Sequence[CanonicalEvent]) -> list[dict[str, Any]]:
+    """Record every unresolvable tool name, with both spellings kept.
+
+    A client that answers "tool does not exist" on its own never reaches an MCP
+    server, so without this the call leaves no trace on the platform at all and
+    the agent is left to infer what happened (O19).
+    """
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        if not isinstance(event, ToolCall):
+            continue
+        identity = resolve_tool_identity(event.raw_tool or event.tool)
+        if identity.known:
+            continue
+        rows.append(
+            {
+                "ts": utc_now(),
+                "kind": "error",
+                "summary": "UNKNOWN_TOOL_NAME",
+                "call_id": event.call_id,
+                "tool_identity": {
+                    **identity.as_dict(),
+                    "recorded_tool": event.tool,
+                    "adapter_resolution": event.tool_resolution,
+                },
+            }
+        )
+    return rows
 
 
 def build_argv(
@@ -1514,6 +1499,7 @@ def run_trial(
             if event_observer is None:
                 for line in result.stdout.splitlines():
                     canonical_events.extend(stream_adapter.on_stream_line(line))
+            events.extend(unknown_tool_events(canonical_events))
             forbidden_tool_seen = any(
                 forbidden_tool_call(event) for event in canonical_events
             )
@@ -1569,6 +1555,7 @@ def run_trial(
     posthoc_events = stream_adapter.on_turn_end(artifact_dir)
     if posthoc_events:
         canonical_events.extend(posthoc_events)
+    events.extend(unknown_tool_events(posthoc_events))
     if any(forbidden_tool_call(event) for event in posthoc_events):
         events.append(
             {

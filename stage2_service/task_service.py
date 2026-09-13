@@ -42,6 +42,11 @@ from .contracts import (
     default_case_specs,
 )
 from .condition_policy import condition_policy_summary
+from .provider_failures import (
+    ProviderCircuitBreaker,
+    default_breaker,
+    route_key as provider_route_key,
+)
 from .matrix import fixed_otel_episode_ref
 
 
@@ -622,12 +627,16 @@ class Stage2TaskService:
         repo_root: Path,
         preflight_provider,
         control_backend: TaskControlBackend,
+        provider_breaker: ProviderCircuitBreaker | None = None,
     ):
         self.supervisor = supervisor
         self.artifact_root = artifact_root.resolve()
         self.repo_root = repo_root.resolve()
         self.preflight_provider = preflight_provider
         self.control_backend = control_backend
+        # The same breaker the Trial relay writes to, so an outage observed
+        # while running blocks the next submission.
+        self.provider_breaker = provider_breaker or default_breaker()
         self.store = TaskStore(self.artifact_root)
         self.control_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stage2-control")
 
@@ -652,6 +661,12 @@ class Stage2TaskService:
                 active_task_id=str(active.get("request_id") or ""),
             )
         preflight = dict(self.preflight_provider())
+        breaker_reason = self._provider_circuit_reason(preflight, request.model)
+        if breaker_reason is not None:
+            # A route that just refused a Trial for billing or credential
+            # reasons will refuse the next one too; admitting it would produce
+            # another agent-shaped verdict for a provider problem (O03).
+            raise TaskTemporarilyUnavailable(breaker_reason)
         available = (
             preflight.get("model_matrix", {})
             .get(request.harness.value, {})
@@ -902,6 +917,17 @@ class Stage2TaskService:
                 return False, f"{harness.value}: {gap}"
         return True, None
 
+    def _provider_circuit_reason(
+        self, preflight: Mapping[str, Any], model_alias: str
+    ) -> str | None:
+        """Refuse a submission while this model's upstream route is broken open."""
+        routes = (preflight.get("gateway_config") or {}).get("routes")
+        route = routes.get(model_alias) if isinstance(routes, Mapping) else None
+        provider = str(route.get("provider") or "") if isinstance(route, Mapping) else ""
+        return self.provider_breaker.rejection_reason(
+            provider_route_key(provider, model_alias)
+        )
+
     @classmethod
     def _runnable_request_reason(
         cls,
@@ -1097,6 +1123,8 @@ class Stage2TaskService:
             "models": list(STAGE2_SUPPORTED_MODELS),
             "model_matrix": model_matrix,
             "gateway_probe": preflight.get("gateway_probe"),
+            # Which upstream routes are currently refusing Trials, and why.
+            "provider_circuits": self.provider_breaker.snapshot_all(),
             "model_probes": preflight.get("model_probes", {}),
             "prompt_modes": [item.value for item in PromptMode],
             "interaction_modes": [item.value for item in InteractionMode],
