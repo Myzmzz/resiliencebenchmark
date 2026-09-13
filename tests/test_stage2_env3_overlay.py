@@ -53,19 +53,22 @@ def _failures(document) -> list[str]:
             expected_project=VALUES["coroot"]["projectId"],
             require_node_selector=True,
             private_listing=None,
+            dns_fallback=VALUES["dnsFallback"]["nameservers"],
         )
         if not check.passed
     ]
 
 
-def test_the_base_manifest_alone_fails_all_three_checks():
+def test_the_base_manifest_alone_fails_every_environment_check():
     """This is why the manual says never to apply the rendered manifests."""
     failures = _failures(_deployment(_base_documents()))
 
     assert set(failures) == {
         "fsGroupChangePolicy",
         "RESBENCH_COROOT_PROJECT_ID",
+        "STAGE2_HARNESS_CAPABILITIES_FILE",
         "nodeSelector",
+        "dns-fallback",
     }
 
 
@@ -82,6 +85,8 @@ def test_the_overlay_carries_the_values_measured_on_that_cluster():
     assert VALUES["securityContext"]["fsGroupChangePolicy"] == "OnRootMismatch"
     assert VALUES["coroot"]["projectId"] == "po24tcoz"
     assert VALUES["coroot"]["allowAnonymousRead"] is True
+    assert VALUES["dnsFallback"]["nameservers"] == ["159.226.8.6"]
+    assert VALUES["harnessCapabilitiesFile"].startswith("/var/lib/resbench-stage2/")
 
 
 def test_the_storage_class_reaches_the_pvc():
@@ -120,7 +125,36 @@ def test_everything_else_is_left_alone():
         if base_spec.get(key) != rendered_spec.get(key)
     }
 
-    assert changed <= {"securityContext", "nodeSelector", "containers"}
+    assert changed <= {"securityContext", "nodeSelector", "containers", "dnsConfig"}
+
+
+def test_the_capabilities_path_reaches_the_stage2_container():
+    """Without it /options reports qualification_not_passed for every harness."""
+    rendered = render.apply_overlay(_base_documents(), VALUES)
+    spec = _deployment(rendered)["spec"]["template"]["spec"]
+    stage2 = next(c for c in spec["containers"] if c["name"] == "stage2")
+    env = {item["name"]: item.get("value") for item in stage2["env"]}
+
+    assert env["STAGE2_HARNESS_CAPABILITIES_FILE"] == VALUES["harnessCapabilitiesFile"]
+
+
+def test_the_dns_fallback_is_appended_not_substituted():
+    """ClusterFirst keeps CoreDNS first; these only catch a SERVFAIL."""
+    rendered = render.apply_overlay(_base_documents(), VALUES)
+    spec = _deployment(rendered)["spec"]["template"]["spec"]
+
+    assert spec["dnsConfig"]["nameservers"] == ["159.226.8.6"]
+    assert spec.get("dnsPolicy") in (None, "ClusterFirst")
+
+
+def test_a_non_clusterfirst_policy_is_refused_rather_than_quietly_useless():
+    """Appending only happens under ClusterFirst, so anything else is a lie."""
+    from scripts.verify_stage2_deployment import check_dns_fallback
+
+    spec = {"dnsPolicy": "None", "dnsConfig": {"nameservers": ["159.226.8.6"]}}
+    (check,) = check_dns_fallback(spec, expected=["159.226.8.6"])
+
+    assert not check.passed
 
 
 def test_a_rewritten_variable_keeps_its_position_and_drops_valuefrom():

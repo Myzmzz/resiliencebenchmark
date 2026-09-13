@@ -1,4 +1,4 @@
-"""The three post-deploy checks the operations manual asks for by hand.
+"""The post-deploy checks the operations manual asks for by hand.
 
 Each of them is silent when it fails: the Pod comes up, the rollout succeeds,
 and the next run is the thing that breaks.
@@ -44,6 +44,10 @@ def _deployment(**overrides) -> dict:
                             "env": [
                                 {"name": "RESBENCH_COROOT_PROJECT_ID", "value": "p1nar0hw"},
                                 {"name": "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ", "value": "true"},
+                                {
+                                    "name": "STAGE2_HARNESS_CAPABILITIES_FILE",
+                                    "value": "/var/lib/resbench-stage2/integration/private/harness-capabilities.json",
+                                },
                             ],
                         },
                         {"name": "agent-runtime"},
@@ -65,6 +69,39 @@ def _failures(document, **kwargs) -> list[str]:
 
 def test_a_correct_deployment_passes_every_check():
     assert _failures(_deployment()) == []
+
+
+def test_a_missing_capabilities_path_is_caught():
+    """It is in no rendered manifest, and losing it empties /options."""
+    document = _deployment()
+    stage2 = document["spec"]["template"]["spec"]["containers"][1]
+    stage2["env"] = [
+        item for item in stage2["env"] if item["name"] != "STAGE2_HARNESS_CAPABILITIES_FILE"
+    ]
+
+    assert _failures(document) == ["STAGE2_HARNESS_CAPABILITIES_FILE"]
+
+
+def test_an_empty_capabilities_path_is_not_mistaken_for_a_set_one():
+    document = _deployment()
+    stage2 = document["spec"]["template"]["spec"]["containers"][1]
+    for item in stage2["env"]:
+        if item["name"] == "STAGE2_HARNESS_CAPABILITIES_FILE":
+            item["value"] = ""
+
+    assert _failures(document) == ["STAGE2_HARNESS_CAPABILITIES_FILE"]
+
+
+def test_the_dns_fallback_is_only_checked_when_asked_for():
+    """Most clusters have a working resolver; only opt-in clusters need this."""
+    assert _failures(_deployment()) == []
+    assert _failures(_deployment(), dns_fallback=["159.226.8.6"]) == ["dns-fallback"]
+
+
+def test_a_present_dns_fallback_satisfies_the_check():
+    document = _deployment(dnsConfig={"nameservers": ["159.226.8.6"]})
+
+    assert _failures(document, dns_fallback=["159.226.8.6"]) == []
 
 
 def test_a_missing_fs_group_change_policy_is_caught():

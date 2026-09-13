@@ -34,3 +34,27 @@ securityContext:
 coroot:
   projectId: po24tcoz
   allowAnonymousRead: true
+
+# 仓库的两份清单里 STAGE2_HARNESS_CAPABILITIES_FILE 出现 0 次
+# （grep -c 于 stage2.yaml 与 stage2-integration.yaml 均为 0），而第二套环境的
+# 线上 Deployment 是设了的。少了它，harness_capabilities_from_qualification()
+# 拿不到资格文件，四个智能体一律 qualification_not_passed，/options 里没有一个
+# 可跑——这是第四样「渲染即丢」的设置，和上面三样同一类。
+# 路径本身不随环境变，但必须显式写出来。
+harnessCapabilitiesFile: /var/lib/resbench-stage2/integration/private/harness-capabilities.json
+
+# 这套集群两个 CoreDNS 副本只有一个能用：otcaix-60 上那个（pod 10.244.2.53）到
+# 8.8.8.8 / 1.1.1.1 / 159.226.8.6 的 UDP 53 全部超时，对外域名一律 SERVFAIL；
+# otcaix-62 上那个 10/10 正常。Service 10.96.0.10 在两者之间轮询，于是对外解析
+# 大约一半失败，在 litellm 里表现为 "OpenAIException - Connection error."，
+# 七个模型里五个探测不过。
+#
+# 这是这套共享集群的既有故障（该副本已 95 天没重启过，otel-demo 和别人的 aiops
+# 也在同样报错），不由本项目修改共享组件。这里只给平台 Pod 兜一层：
+# dnsPolicy 为 ClusterFirst 时，dnsConfig.nameservers 会「追加」到 10.96.0.10
+# 之后，集群内名字仍然先问 CoreDNS；只有 CoreDNS 回 SERVFAIL 时才落到下一台。
+# 实测依据：平台 Pod 直连 159.226.8.6 五次全中、均 0.00s；经 10.96.0.10 则是
+# SERVFAIL/2.0s 与 NOERROR/0.0s 严格交替。
+dnsFallback:
+  nameservers:
+    - 159.226.8.6

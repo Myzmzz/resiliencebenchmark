@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the three settings a Stage-2 redeploy is known to silently lose.
+"""Check the settings a Stage-2 redeploy is known to silently lose.
 
 The new-environment operations manual and the Dx remediation notes both say the
 same thing after every image change: go and check three things by hand. They are
@@ -38,6 +38,7 @@ EXPECTED_FS_GROUP = 10001
 EXPECTED_FS_GROUP_CHANGE_POLICY = "OnRootMismatch"
 COROOT_PROJECT_ENV = "RESBENCH_COROOT_PROJECT_ID"
 COROOT_ANONYMOUS_ENV = "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ"
+HARNESS_CAPABILITIES_ENV = "STAGE2_HARNESS_CAPABILITIES_FILE"
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,65 @@ def check_coroot_environment(
     return checks
 
 
+def check_harness_capabilities(spec: Mapping[str, Any]) -> list[Check]:
+    """Without this path every harness reports ``qualification_not_passed``.
+
+    It appears in neither rendered manifest, yet the running deployment on the
+    second environment sets it -- the same silent loss as ``fsGroupChangePolicy``,
+    and with a louder symptom: ``/api/v1/stage2/options`` offers nothing runnable
+    because ``harness_capabilities_from_qualification`` has no file to read.
+    """
+    container = _container(spec, "stage2")
+    if container is None:
+        return [
+            Check(HARNESS_CAPABILITIES_ENV, False, "the stage2 container is not in this Pod")
+        ]
+    for item in container.get("env", []):
+        if isinstance(item, Mapping) and item.get("name") == HARNESS_CAPABILITIES_ENV:
+            value = item.get("value")
+            return [
+                Check(
+                    HARNESS_CAPABILITIES_ENV,
+                    bool(value),
+                    str(value) if value else "present but empty",
+                )
+            ]
+    return [
+        Check(
+            HARNESS_CAPABILITIES_ENV,
+            False,
+            "not set; every harness will report qualification_not_passed",
+        )
+    ]
+
+
+def check_dns_fallback(spec: Mapping[str, Any], *, expected: Sequence[str]) -> list[Check]:
+    """Only for clusters whose own resolver is unreliable; opt in explicitly."""
+    config = spec.get("dnsConfig")
+    configured = (
+        [str(item) for item in config.get("nameservers") or []]
+        if isinstance(config, Mapping)
+        else []
+    )
+    missing = [item for item in expected if item not in configured]
+    policy = spec.get("dnsPolicy") or "ClusterFirst"
+    if policy != "ClusterFirst":
+        return [
+            Check(
+                "dns-fallback",
+                False,
+                f"dnsPolicy is {policy!r}; these nameservers are only appended under ClusterFirst",
+            )
+        ]
+    return [
+        Check(
+            "dns-fallback",
+            not missing,
+            "missing " + ", ".join(missing) if missing else ", ".join(configured),
+        )
+    ]
+
+
 def check_containers(spec: Mapping[str, Any]) -> list[Check]:
     present = {str(item.get("name")) for item in spec.get("containers", []) if isinstance(item, Mapping)}
     missing = [name for name in REQUIRED_CONTAINERS if name not in present]
@@ -214,14 +274,18 @@ def run_checks(
     expected_project: str | None,
     require_node_selector: bool,
     private_listing: str | None,
+    dns_fallback: Sequence[str] = (),
 ) -> list[Check]:
     spec = pod_spec_from_deployment(document)
     checks = [
         *check_containers(spec),
         *check_fs_group(spec),
         *check_coroot_environment(spec, expected_project=expected_project),
+        *check_harness_capabilities(spec),
         *check_node_placement(spec, required=require_node_selector),
     ]
+    if dns_fallback:
+        checks.extend(check_dns_fallback(spec, expected=dns_fallback))
     if private_listing is not None:
         checks.extend(check_private_file_modes(private_listing))
     return checks
@@ -258,6 +322,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="a 'mode path' listing of the Controller private root, captured inside the container",
     )
+    parser.add_argument(
+        "--dns-fallback",
+        action="append",
+        default=[],
+        metavar="IP",
+        help="require this nameserver in the Pod dnsConfig; for clusters whose own resolver is unreliable",
+    )
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     return parser
 
@@ -292,6 +363,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         expected_project=args.coroot_project,
         require_node_selector=args.require_node_selector,
         private_listing=listing,
+        dns_fallback=args.dns_fallback,
     )
     failed = [check for check in checks if not check.passed]
 

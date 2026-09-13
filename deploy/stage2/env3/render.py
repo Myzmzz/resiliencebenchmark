@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Apply one environment's overlay to the Stage-2 base manifest.
 
-The repository's rendered manifests are deliberately not applied as-is: three
+The repository's rendered manifests are deliberately not applied as-is: four
 settings they cannot carry are per-cluster, and losing any of them is silent at
-deploy time (see README.md). This renderer puts exactly those three back, plus
-the storage class, and leaves everything else untouched.
+deploy time (see README.md). This renderer puts exactly those four back, plus
+the storage class and this cluster's DNS fallback, and leaves everything else
+untouched.
 
 It does not touch image references. Those still go through
 ``tools/dx-round/deploy_boundary.sh``, which replaces exactly four of them and
@@ -33,6 +34,7 @@ DEPLOYMENT_NAME = "resbench-stage2-integration"
 PVC_NAME = "resbench-stage2-data"
 COROOT_PROJECT_ENV = "RESBENCH_COROOT_PROJECT_ID"
 COROOT_ANONYMOUS_ENV = "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ"
+HARNESS_CAPABILITIES_ENV = "STAGE2_HARNESS_CAPABILITIES_FILE"
 
 
 class OverlayError(RuntimeError):
@@ -80,8 +82,17 @@ def _apply_to_deployment(doc: dict[str, Any], values: Mapping[str, Any]) -> None
     if selector:
         spec["nodeSelector"] = dict(selector)
 
+    dns = values.get("dnsFallback") or {}
+    nameservers = [str(item) for item in (dns.get("nameservers") or []) if item]
+    if nameservers:
+        # ClusterFirst appends these after the cluster resolver, so in-cluster
+        # names still go to CoreDNS first and only a SERVFAIL falls through.
+        config = spec.setdefault("dnsConfig", {})
+        config["nameservers"] = nameservers
+
     coroot = values.get("coroot") or {}
-    if coroot:
+    capabilities_file = values.get("harnessCapabilitiesFile")
+    if coroot or capabilities_file:
         container = _container(spec, "stage2")
         if container is None:
             raise OverlayError("base manifest has no stage2 container")
@@ -94,6 +105,8 @@ def _apply_to_deployment(doc: dict[str, Any], values: Mapping[str, Any]) -> None
                 COROOT_ANONYMOUS_ENV,
                 "true" if coroot["allowAnonymousRead"] else "false",
             )
+        if capabilities_file:
+            _set_env(env, HARNESS_CAPABILITIES_ENV, str(capabilities_file))
 
 
 def _container(spec: Mapping[str, Any], name: str) -> dict[str, Any] | None:
