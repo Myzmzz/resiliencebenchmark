@@ -1,0 +1,86 @@
+# 第三套环境专用：给可观测栈加资源上界。
+#
+# 参照清单（reference-stack.yaml）是第二套环境的忠实拷贝，那边是独占集群，
+# 六个组件全都没有 requests/limits，jaeger 实测涨到 18.4 GiB 也没人管。
+# 第三套环境是共享的（还跑着 isaiops），无上限不可接受。
+#
+# jaeger 的根因是 SPAN_STORAGE_TYPE=memory 且不限条数，所以除了内存 limit
+# 还要给 MEMORY_MAX_TRACES——只加 limit 会变成周期性 OOMKill，不解决问题。
+#
+# 用法：装完 reference-stack.yaml 之后
+#   kubectl -n observability patch deploy jaeger     --patch-file <(yq '.jaeger' 本文件)
+# 或直接按下面每段的 kubectl patch 命令执行（见 README）。
+---
+# jaeger：限 trace 条数 + 内存上界
+target: deployment/jaeger
+patch:
+  spec:
+    template:
+      spec:
+        containers:
+          - name: jaeger
+            env:
+              - name: COLLECTOR_OTLP_ENABLED
+                value: "true"
+              - name: SPAN_STORAGE_TYPE
+                value: memory
+              - name: MEMORY_MAX_TRACES
+                value: "100000"
+            resources:
+              requests: {cpu: 100m, memory: 512Mi}
+              limits: {cpu: "2", memory: 4Gi}
+---
+target: deployment/prometheus
+patch:
+  spec:
+    template:
+      spec:
+        containers:
+          - name: prometheus
+            resources:
+              requests: {cpu: 200m, memory: 1Gi}
+              limits: {cpu: "2", memory: 4Gi}
+---
+target: deployment/loki
+patch:
+  spec:
+    template:
+      spec:
+        containers:
+          - name: loki
+            resources:
+              requests: {cpu: 100m, memory: 256Mi}
+              limits: {cpu: "1", memory: 2Gi}
+---
+target: deployment/otel-collector
+patch:
+  spec:
+    template:
+      spec:
+        containers:
+          - name: otel-collector
+            resources:
+              requests: {cpu: 100m, memory: 128Mi}
+              limits: {cpu: "1", memory: 1Gi}
+---
+target: daemonset/promtail
+patch:
+  spec:
+    template:
+      spec:
+        containers:
+          - name: promtail
+            resources:
+              requests: {cpu: 50m, memory: 128Mi}
+              limits: {cpu: 500m, memory: 512Mi}
+---
+target: deployment/kube-state-metrics
+patch:
+  spec:
+    template:
+      spec:
+        containers:
+          - name: kube-state-metrics
+            resources:
+              requests: {cpu: 50m, memory: 64Mi}
+              limits: {cpu: 500m, memory: 256Mi}
