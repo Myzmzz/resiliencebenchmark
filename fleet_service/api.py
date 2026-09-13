@@ -328,6 +328,14 @@ def create_app(
                     continue
                 try:
                     make_client(str(slot["controller_url"])).stop_run(str(item["run_id"]))
+                    # Marked so the poller files the terminal run as stopped
+                    # rather than as a platform or agent failure.
+                    store.update_item(
+                        batch_id, item["item_id"],
+                        failure={"code": "FLEET_BATCH_STOPPED", "owner": "operator",
+                                 "reason": request.reason if request else "stopped by request",
+                                 "stop_requested": True},
+                    )
                     stopped.append({"item_id": item["item_id"], "action": "stop_requested"})
                 except ControllerError as exc:
                     stopped.append({"item_id": item["item_id"], "action": "stop_failed", "error": str(exc)})

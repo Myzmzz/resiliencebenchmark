@@ -719,3 +719,28 @@ def test_classification_reads_the_scored_reason_codes():
     # A never-started trial stays platform-owned whatever the score says.
     assert classify_failure({"code": "X"}, reason_codes=["HARNESS_TIMEOUT"],
                             platform_status="RESET_FAILED") == "platform"
+
+
+def test_a_stopped_run_is_filed_as_stopped_not_as_a_failure(fleet):
+    """An operator stop must not land in the platform or agent failure counts."""
+    client, store, dispatcher = fleet["client"], fleet["store"], fleet["dispatcher"]
+    client.post("/api/v1/fleet/provision?dry_run=false&wait=true")
+    client.post("/api/v1/fleet/batches?dry_run=false", json=_batch([_item(1, "codex")]))
+    item = store.item("dx-parallel-20260912-01", "i-001")
+
+    client.post("/api/v1/fleet/batches/dx-parallel-20260912-01/stop", json={"reason": "operator"})
+    controller = fleet["controllers"][item["namespace"]]
+    # A stopped campaign reports BLOCKED, which otherwise means "never ran".
+    controller.terminal[item["run_id"]] = {
+        "run_id": item["run_id"], "status": "ABORTED", "terminal": True,
+        "platform_status": "BLOCKED", "failure": {"code": "OUTPUT_UNSTRUCTURED"},
+    }
+    dispatcher.poll_running()
+
+    after = store.item("dx-parallel-20260912-01", "i-001")
+    assert after["state"] == "Invalid"
+    assert after["platform_retries"] == 0
+    assert after["failure"]["code"] == "FLEET_BATCH_STOPPED"
+    assert after["failure"]["owner"] == "operator"
+    batch = client.get("/api/v1/fleet/batches/dx-parallel-20260912-01").json()
+    assert batch["failure_owners"] == {"platform": 0, "agent": 0}

@@ -212,6 +212,9 @@ class BatchDispatcher:
     def request_stop(self, batch_id: str) -> None:
         self._stopped_batches.add(batch_id)
 
+    def was_stopped(self, batch_id: str) -> bool:
+        return batch_id in self._stopped_batches
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -253,6 +256,17 @@ class BatchDispatcher:
                 self._finish_failed(batch_id, item, {"code": "FLEET_RUN_UNREADABLE", "reason": str(exc)}, "platform")
             return
         status = str(summary.get("status") or "")
+        if summary.get("terminal") and _stop_was_requested(item):
+            # An operator stop is neither a platform fault nor a measurement:
+            # recording it as either would put a trial nobody finished into
+            # the round's failure counts.
+            self.store.update_item(
+                batch_id, item["item_id"], state=ItemState.INVALID.value,
+                finished_at=utc_now(),
+                failure={"code": "FLEET_BATCH_STOPPED", "owner": "operator",
+                         "reason": "stopped by request", "task_status": status},
+            )
+            return
         if not summary.get("terminal"):
             if item["state"] != ItemState.RUNNING.value:
                 self.store.update_item(batch_id, item["item_id"], state=ItemState.RUNNING.value)
@@ -457,6 +471,11 @@ def build_run_request(
     body["prompt"] = prompt
     body["variant_set_id"] = variants.get("variant_set_id")
     return body
+
+
+def _stop_was_requested(item: Mapping[str, Any]) -> bool:
+    failure = item.get("failure")
+    return isinstance(failure, Mapping) and bool(failure.get("stop_requested"))
 
 
 def _score_summary(score: Any) -> dict[str, Any] | None:
