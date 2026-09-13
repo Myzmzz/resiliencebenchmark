@@ -222,35 +222,93 @@ def check_node_placement(spec: Mapping[str, Any], *, required: bool) -> list[Che
     ]
 
 
-def check_private_file_modes(listing: str) -> list[Check]:
-    """Reject any private file that group or other can read or write.
+# (read|write) for group, then for other, paired with the directory bit that
+# lets that same class traverse into a directory at all.
+_EXPOSURE_CLASSES = (("group", 0o060, 0o010), ("other", 0o006, 0o001))
 
-    ``listing`` is the output of ``find <private root> -type f -printf '%m %p\\n'``
-    or the ``ls -l`` equivalent produced inside the Controller container.
+
+def check_private_file_modes(listing: str) -> list[Check]:
+    """Reject private files that group or other can actually reach.
+
+    ``listing`` is the output of ``find <private root> -printf '%y %m %p\\n'``.
+    A loose file mode only exposes anything if every directory above it is
+    traversable by the same class, and the Controller's own tree relies on that:
+    the per-trial MCP logs land at 0644 under a 0700 ``mcp-logs`` inside a 0700
+    ``private``, so nothing outside uid 10001 can open them. Judging the file
+    bits alone reports a breach that does not exist, and a check that cries wolf
+    after every single run is one nobody reads.
+
+    Two older capture forms still work. ``'%m %p\\n'`` omits the type, so
+    directories are inferred from being a prefix of another listed path -- which
+    misses empty ones; ``-type f`` omits directories altogether, leaving no
+    containment evidence, so every loose mode is reported. Both readings are
+    conservative: they can only over-report.
     """
-    offenders: list[str] = []
-    checked = 0
+    entries: list[tuple[int, str]] = []
+    declared_directories: set[str] = set()
+    typed = False
     for line in listing.splitlines():
         line = line.strip()
         if not line:
             continue
-        mode, _, path = line.partition(" ")
+        head, _, rest = line.partition(" ")
+        if len(head) == 1 and head.isalpha() and rest:
+            # 'find -printf "%y %m %p"': the type is authoritative.
+            typed = True
+            mode, _, path = rest.partition(" ")
+            if not mode.isdigit() or not path:
+                continue
+            if head == "d":
+                declared_directories.add(path)
+            entries.append((int(mode, 8), path))
+            continue
+        mode, path = head, rest
         if not mode.isdigit() or not path:
             continue
-        checked += 1
-        if int(mode, 8) & 0o077:
-            offenders.append(f"{path} ({mode})")
-    if not checked:
+        entries.append((int(mode, 8), path))
+    if not entries:
         return [Check("private-file-modes", False, "no files were listed; the check did not run")]
-    return [
-        Check(
-            "private-file-modes",
-            not offenders,
-            "group/other-accessible: " + ", ".join(offenders[:5])
-            if offenders
-            else f"{checked} files, none group- or other-accessible",
+
+    modes = dict((path, mode) for mode, path in entries)
+    directories = (
+        declared_directories
+        if typed
+        else {
+            path
+            for path in modes
+            if any(other != path and other.startswith(path + "/") for other in modes)
+        }
+    )
+
+    reachable: list[str] = []
+    contained: list[str] = []
+    for mode, path in entries:
+        if path in directories:
+            continue
+        loose = [name for name, bits, _ in _EXPOSURE_CLASSES if mode & bits]
+        if not loose:
+            continue
+        exposed = False
+        for name, bits, traverse in _EXPOSURE_CLASSES:
+            if not mode & bits:
+                continue
+            ancestors = [d for d in directories if path.startswith(d + "/")]
+            if all(modes[d] & traverse for d in ancestors):
+                exposed = True
+                break
+        (reachable if exposed else contained).append(f"{path} ({mode:03o})")
+
+    checked = len(entries) - len(directories)
+    if reachable:
+        detail = "reachable by group/other: " + ", ".join(reachable[:5])
+    elif contained:
+        detail = (
+            f"{checked} files, none reachable; {len(contained)} have loose modes but "
+            f"sit under a private directory that blocks them (e.g. {contained[0]})"
         )
-    ]
+    else:
+        detail = f"{checked} files, none group- or other-accessible"
+    return [Check("private-file-modes", not reachable, detail)]
 
 
 def _container(spec: Mapping[str, Any], name: str) -> Mapping[str, Any] | None:
@@ -320,7 +378,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--private-listing",
         type=Path,
-        help="a 'mode path' listing of the Controller private root, captured inside the container",
+        help="a \"type mode path\" listing of the Controller private root "
+        "(find <root> -printf '%y %m %p\\n'), captured inside the container",
     )
     parser.add_argument(
         "--dns-fallback",

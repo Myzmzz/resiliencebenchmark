@@ -275,3 +275,93 @@ def test_the_repository_manifest_itself_would_fail_this_check(capsys):
     assert "fsGroupChangePolicy" in failures
     assert "nodeSelector" in failures
     assert "RESBENCH_COROOT_PROJECT_ID" in failures
+
+
+def test_a_loose_file_under_a_private_directory_is_not_a_breach():
+    """The real tree: per-trial MCP logs are 0644 inside two 0700 directories."""
+    listing = "\n".join(
+        [
+            "700 /p",
+            "700 /p/mcp-runtime",
+            "755 /p/mcp-runtime/campaign-1",
+            "700 /p/mcp-runtime/campaign-1/mcp-logs",
+            "644 /p/mcp-runtime/campaign-1/mcp-logs/k8s_ro.log",
+            "600 /p/service.kubeconfig",
+        ]
+    )
+
+    (check,) = check_private_file_modes(listing)
+
+    assert check.passed
+    assert "loose modes" in check.detail
+
+
+def test_a_loose_file_that_group_can_actually_reach_still_fails():
+    listing = "\n".join(
+        [
+            "755 /p",
+            "755 /p/sub",
+            "644 /p/sub/leaked.json",
+        ]
+    )
+
+    (check,) = check_private_file_modes(listing)
+
+    assert not check.passed
+    assert "leaked.json" in check.detail
+
+
+def test_one_closed_directory_anywhere_on_the_path_is_enough():
+    """Traversal needs every ancestor, so a single 0700 link breaks the chain."""
+    listing = "\n".join(["755 /p", "700 /p/sub", "755 /p/sub/deep", "666 /p/sub/deep/x"])
+
+    (check,) = check_private_file_modes(listing)
+
+    assert check.passed
+
+
+def test_a_listing_without_directories_keeps_the_conservative_reading():
+    """An old `find -type f` capture proves nothing about containment."""
+    (check,) = check_private_file_modes("644 /p/mcp-logs/k8s_ro.log")
+
+    assert not check.passed
+
+
+def test_group_and_other_are_judged_separately():
+    """Other cannot traverse a 0750 directory even though group can."""
+    listing = "\n".join(["750 /p", "750 /p/sub", "604 /p/sub/x"])
+
+    (check,) = check_private_file_modes(listing)
+
+    assert check.passed
+
+
+def test_an_empty_directory_is_not_counted_as_a_file():
+    """The prefix heuristic cannot see empty directories; the type field can."""
+    listing = "\n".join(
+        ["d 700 /p", "d 755 /p/telemetry/events", "f 600 /p/service.kubeconfig"]
+    )
+
+    (check,) = check_private_file_modes(listing)
+
+    assert check.passed
+    assert "1 files" in check.detail
+    assert "events" not in check.detail
+
+
+def test_the_type_field_and_the_prefix_heuristic_agree_on_a_real_tree():
+    rows = [
+        ("d", "700", "/p"),
+        ("d", "700", "/p/mcp-runtime"),
+        ("d", "755", "/p/mcp-runtime/c1"),
+        ("d", "700", "/p/mcp-runtime/c1/mcp-logs"),
+        ("f", "644", "/p/mcp-runtime/c1/mcp-logs/k8s_ro.log"),
+        ("f", "600", "/p/service.kubeconfig"),
+    ]
+    typed = "\n".join(f"{t} {m} {p}" for t, m, p in rows)
+    untyped = "\n".join(f"{m} {p}" for _, m, p in rows)
+
+    (a,) = check_private_file_modes(typed)
+    (b,) = check_private_file_modes(untyped)
+
+    assert a.passed and b.passed
