@@ -744,3 +744,17 @@ def test_a_stopped_run_is_filed_as_stopped_not_as_a_failure(fleet):
     assert after["failure"]["owner"] == "operator"
     batch = client.get("/api/v1/fleet/batches/dx-parallel-20260912-01").json()
     assert batch["failure_owners"] == {"platform": 0, "agent": 0}
+
+
+def test_slots_can_mount_their_own_paced_gateway_table():
+    """Pacing the fleet must not change the single-system Controller's gateway."""
+    default = FleetConfig.model_validate(CONFIG)
+    paced = FleetConfig.model_validate({**CONFIG, "litellm_config_map": "litellm-config-fleet"})
+
+    def volume(config):
+        deployment = next(item for item in slot_manifests(config, 1) if item["kind"] == "Deployment")
+        volumes = deployment["spec"]["template"]["spec"]["volumes"]
+        return next(item for item in volumes if item["name"] == "litellm-config")
+
+    assert volume(default)["configMap"]["name"] == "litellm-config"
+    assert volume(paced)["configMap"]["name"] == "litellm-config-fleet"

@@ -113,6 +113,26 @@ litellm_settings:
   # silently re-issuing a request the trial transcript will not show.
   num_retries: 0
   set_verbose: false
+  # Pacing is deliberately absent here and injected at render time, because
+  # the right numbers depend on how many Pods share one upstream account:
+  # every Controller runs its own sidecar and they cannot see each other's
+  # traffic, so an account budget has to be divided by the replica count.
+  #
+  #   scripts/render_litellm_gateway.py --max-parallel-requests 3 \
+  #       --replicas 5 --account-rpm <from the console> --account-tpm <...> \
+  #       --configmap-name litellm-config-fleet
+  #
+  # max_parallel_requests is the lever that makes a request *wait*; the
+  # per-alias rpm/tpm it writes into model_list are a guard rail that stops one
+  # replica running away with the account, not a queue.
+  #
+  # Measured on the 2026-09-13 replica fleet, 23 trials, qwen3.8-max:
+  #   concurrent in-flight requests per agent   peak 2   (identical on all 5 replicas)
+  #   requests per minute per agent             mean 0.8-4.7, peak 10
+  #   tokens per minute per agent               mean 37k-123k, peak 552k
+  #   largest single request                    422k tokens, 86-91% of it cache reads
+  # Multiply the peaks by the concurrency you intend to run and compare with
+  # the account's published limits before raising the fleet's max_concurrency.
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

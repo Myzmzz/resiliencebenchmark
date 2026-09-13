@@ -84,6 +84,9 @@ class FleetConfig(FleetModel):
     controller_image: str = Field(min_length=1)
     agent_image: str = Field(min_length=1)
     litellm_image: str = Field(min_length=1)
+    # Replica slots can mount a paced routing table of their own, leaving the
+    # single-system Controller's gateway settings untouched.
+    litellm_config_map: str = "litellm-config"
     sut_values_profile: str = "replica"
     sut_application: str = "otel-demo"
     gateway_url: str = "http://127.0.0.1:4000/v1"

@@ -438,7 +438,7 @@ def controller_manifests(config: FleetConfig, index: int) -> list[dict[str, Any]
                         },
                         {"name": "delegated-cgroup", "hostPath": {"path": "/sys/fs/cgroup/resbench-agent-exec", "type": "DirectoryOrCreate"}},
                         {"name": "host-cgroup-namespace", "hostPath": {"path": "/proc/1/ns/cgroup", "type": "File"}},
-                        {"name": "litellm-config", "configMap": {"name": "litellm-config"}},
+                        {"name": "litellm-config", "configMap": {"name": config.litellm_config_map}},
                     ],
                 },
             },
