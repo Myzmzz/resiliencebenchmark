@@ -672,3 +672,74 @@ trace 正常检索。磁盘增长 **145 MB/分钟**，按 2 小时 TTL 推算稳
 **还要盯的一件事**：badger 是靠值日志回收来释放过期数据的，所以"稳态 17 GB"要等
 一个完整 TTL 周期之后才能确认。若回收跟不上，磁盘会继续涨，而这块盘是节点根文件系统——
 撑满的后果比原来的内存问题更严重。TTL 调小是这里唯一的旋钮。
+
+## 十一、并行模式下的第一个真缺陷：混沌并发预算被算成全集群（2026-09-13）
+
+### 11.1 现象
+
+17 路那一轮里有 5 条判 `MAIN_FAULT_ACTIVE`（智能体"没有注入"），16 路 gpt-5.5 那一轮有 8 条。
+一开始都按智能体行为记了账。但其中一条平台故障的事件流给出了别的答案：
+
+```
+TOOL_REQUEST_REJECTED  chaos_control.chaos_create_experiment
+  PLAN_REJECTED_BY_SAFETY_POLICY
+  next_step: Fix these validation codes before retrying:
+             SELECTOR_TARGET_FORBIDDEN, CONCURRENCY_BUDGET_EXCEEDED
+... 智能体去掉 selector 后重试 ...
+  PLAN_REJECTED_BY_SAFETY_POLICY
+  next_step: Fix these validation codes before retrying: CONCURRENCY_BUDGET_EXCEEDED
+... 反复几次之后 ...
+SAFE_STOP  {"reason": "policy_denied"}
+```
+
+`SELECTOR_TARGET_FORBIDDEN` 是智能体自己的参数问题，它改对了。
+**`CONCURRENCY_BUDGET_EXCEEDED` 改不掉**，因为它根本不由这条试验决定。
+
+### 11.2 根因
+
+`mcp_servers/chaos_core/service.py` 的 `create_experiment`：
+
+```python
+all_records = await self.backend.list_experiments(kubeconfig)   # 不传 namespace = 全集群
+active_owned_count = len([i for i in all_records if not i.terminal and i.owned])
+...
+result = validate_action(action, policy, active_action_count=active_owned_count)
+```
+
+而 `owned` 的判据是 `owner == OWNER_VALUE`，`OWNER_VALUE = "chaos_control"` 是一个
+**所有控制器共用的常量**，策略里 `max_concurrent_actions = 1`。
+
+所以：**任何一个副本一旦注入，集群里其余每个副本的并发预算就都被占满了**。
+副本数越多，撞上的概率越高——这解释了为什么 2/5/10 路时看不太出来，16/17 路时成片出现。
+
+单系统路径看不到这个问题，因为全集群只有一个命名空间会有混沌资源，
+"全集群计数"和"本命名空间计数"恰好相等。这是一个**只在副本模式下暴露**的缺陷。
+
+### 11.3 修法
+
+预算改成只数**本次请求所指向的命名空间**里的活跃资源。`create()` 只接受本服务
+allowlist 里的命名空间，所以单系统部署下两种算法结果完全一致——测试
+`test_create_counts_the_budget_within_the_bound_namespace` 把这一点钉住了。
+
+"非本服务所有"（`UNSAFE_UNOWNED_CHAOSBLADE_PRESENT`）这条守卫**保持全集群**：
+不属于任何控制器的混沌资源，出现在哪里都该停机。副本之间不会误触它，
+因为各自的资源都带着 owner 标签。
+
+另外两处 `list_experiments` 调用（`fault_inventory.py`、`runtime_factory.py`）
+本来就传了命名空间；只读的 `inventory_run` 保留全集群口径不动，
+因为它是智能体能看到的观测面，改它等于改任务语义。
+
+### 11.4 验证
+
+新镜像滚到 17 个控制器后重跑一轮 16 路：
+
+| 证据 | 结果 |
+|---|---|
+| 修复前各槽位带预算拒绝的任务数 | 1–5 条不等，17 个槽位**全都有** |
+| 修复后的任务里出现预算拒绝 | **0** |
+| 同时持有活跃混沌资源的副本数 | **3**（`otel-demo-02`、`-07`、`-10`，12:06:52Z 同一时刻） |
+
+第三行是关键：修复前这个数的上限就是 1。
+
+单元测试层面，`test_create_ignores_a_fault_active_on_another_replica` 在旧代码上
+确实失败、在新代码上通过，所以这两个测试是真的能抓住这个缺陷的。

@@ -94,10 +94,40 @@ def classify_failure(
         return "agent"
     if code in PLATFORM_REASON_CODES:
         return "platform"
-    reason = str(failure.get("reason") or "").lower()
+    # The Controller's own words live in controller_response, not in the HTTP
+    # line the Fleet wrote into reason, so scan both.
+    reason = f"{failure.get('reason') or ''} {failure.get('controller_response') or ''}".lower()
     if any(fragment in reason for fragment in PLATFORM_REASON_FRAGMENTS):
         return "platform"
     return "agent"
+
+
+# Upstream conditions a Controller's own gateway probe re-runs every few
+# minutes and may clear on its own. A submission refused for one of these is
+# worth waiting out, not filing as a verdict.
+UPSTREAM_TRANSIENT_FRAGMENTS = (
+    "quota exhausted",
+    "quota is not enough",
+    "quota exceeded",
+    "insufficient_quota",
+    "rate limited",
+    "rate limit exceeded",
+    "at capacity",
+    "capacity temporarily unavailable",
+    "too many pending requests",
+    "temporarily unavailable",
+)
+# How many dispatch ticks to keep waiting. At the default twenty-second tick
+# this spans several Controller probe cycles before the item is given up on.
+UPSTREAM_DEFERRAL_LIMIT = 30
+
+
+def _upstream_transient(error: ControllerError) -> bool:
+    """True when a Controller refused a run for an upstream model condition."""
+    if error.status not in {422, 429, 503}:
+        return False
+    haystack = f"{error.payload} {error}".lower()
+    return any(fragment in haystack for fragment in UPSTREAM_TRANSIENT_FRAGMENTS)
 
 
 # What a Controller says while its own gateway probe is still running.
@@ -389,6 +419,26 @@ class BatchDispatcher:
                     failure={"code": "FLEET_SLOT_NOT_READY", "reason": str(exc),
                              "controller_response": exc.payload, "deferred": True},
                 )
+                return False
+            if _upstream_transient(exc):
+                # The model the item asks for is momentarily unavailable
+                # upstream. The Controller re-probes on its own, so wait rather
+                # than spend the item: a transient blip during one probe would
+                # otherwise invalidate every item submitted for the next window.
+                previous = item.get("failure") or {}
+                deferrals = int(previous.get("upstream_deferrals") or 0) + 1
+                record = {
+                    "code": "FLEET_UPSTREAM_UNAVAILABLE", "reason": str(exc),
+                    "controller_response": exc.payload, "owner": "platform",
+                    "upstream_deferrals": deferrals,
+                }
+                if deferrals < UPSTREAM_DEFERRAL_LIMIT:
+                    self.store.update_item(
+                        batch_id, item["item_id"], state=ItemState.QUEUED.value,
+                        slot_id=None, failure={**record, "deferred": True},
+                    )
+                    return False
+                self._finish_failed(batch_id, item, record, "platform")
                 return False
             owner = "platform" if exc.retryable else "agent"
             detail = {"code": "FLEET_SUBMIT_REJECTED", "reason": str(exc), "controller_response": exc.payload}

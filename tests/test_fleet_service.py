@@ -22,7 +22,13 @@ from fleet_service.guard import FleetGuardError, assert_destroyable, assert_oper
 from fleet_service.kube import KubeClient
 from fleet_service.manifests import slot_manifests
 from fleet_service.provisioner import Provisioner
-from fleet_service.scheduler import BatchDispatcher, build_run_request, classify_failure, plan_batch
+from fleet_service.scheduler import (
+    UPSTREAM_DEFERRAL_LIMIT,
+    BatchDispatcher,
+    build_run_request,
+    classify_failure,
+    plan_batch,
+)
 from fleet_service.store import FleetStore
 
 
@@ -684,6 +690,72 @@ def test_a_warming_up_slot_defers_an_item_without_spending_a_retry(fleet):
     assert running["state"] == "Running"
     assert running["platform_retries"] == 0
     assert running["run_id"]
+
+
+def test_a_momentary_upstream_quota_refusal_waits_instead_of_voiding_the_item(fleet):
+    """A blip during one gateway probe must not invalidate a whole batch."""
+    client, store, dispatcher = fleet["client"], fleet["store"], fleet["dispatcher"]
+    client.post("/api/v1/fleet/provision?dry_run=false&wait=true")
+    for namespace in ("otel-demo-01", "otel-demo-02", "otel-demo-03"):
+        controller = fleet["controllers"].setdefault(namespace, FakeController(namespace))
+        controller.submit_error = ControllerError(
+            "POST /lx/runs returned 422", status=422,
+            payload={"detail": "model/Harness combination is unavailable: "
+                               "codex/gpt-5.5 (upstream model quota exhausted)"},
+        )
+
+    client.post("/api/v1/fleet/batches?dry_run=false",
+                json=_batch([_item(1, "codex")], platform_retry_limit=2))
+
+    waiting = store.item("dx-parallel-20260912-01", "i-001")
+    assert waiting["state"] == "Queued"
+    assert waiting["attempts"] == 0
+    assert waiting["failure"]["code"] == "FLEET_UPSTREAM_UNAVAILABLE"
+    assert waiting["failure"]["owner"] == "platform"
+    assert waiting["failure"]["deferred"] is True
+
+    # The Controller re-probes and the model comes back; the item runs.
+    for controller in fleet["controllers"].values():
+        controller.submit_error = None
+    dispatcher.dispatch_queued()
+
+    running = store.item("dx-parallel-20260912-01", "i-001")
+    assert running["state"] == "Running"
+    assert running["platform_retries"] == 0
+
+
+def test_an_upstream_that_never_comes_back_stops_being_waited_for(fleet):
+    """Waiting is bounded, or a genuinely dead model would hang the batch."""
+    client, store, dispatcher = fleet["client"], fleet["store"], fleet["dispatcher"]
+    client.post("/api/v1/fleet/provision?dry_run=false&wait=true")
+    for namespace in ("otel-demo-01", "otel-demo-02", "otel-demo-03"):
+        controller = fleet["controllers"].setdefault(namespace, FakeController(namespace))
+        controller.submit_error = ControllerError(
+            "POST /lx/runs returned 422", status=422,
+            payload={"detail": "upstream model quota exhausted"},
+        )
+
+    client.post("/api/v1/fleet/batches?dry_run=false",
+                json=_batch([_item(1, "codex")], platform_retry_limit=2))
+    for _ in range(UPSTREAM_DEFERRAL_LIMIT + 2):
+        dispatcher.dispatch_queued()
+
+    given_up = store.item("dx-parallel-20260912-01", "i-001")
+    assert given_up["state"] == "Failed"
+    assert given_up["failure"]["owner"] == "platform"
+    assert given_up["failure"]["code"] == "FLEET_UPSTREAM_UNAVAILABLE"
+
+
+def test_a_quota_refusal_is_owned_by_the_platform_not_the_agent():
+    """The Controller's words are in controller_response, not in the HTTP line."""
+    owner = classify_failure(
+        {"code": "FLEET_SUBMIT_REJECTED",
+         "reason": "POST /api/v1/stage2/lx/runs returned 422",
+         "controller_response": {"detail": "model/Harness combination is unavailable: "
+                                           "codex/gpt-5.5 (upstream model quota exhausted)"}},
+        http_status=422,
+    )
+    assert owner == "platform"
 
 
 def test_an_agent_timeout_is_not_rerun_even_when_the_platform_status_failed(fleet):
