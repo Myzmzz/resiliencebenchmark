@@ -30,7 +30,9 @@ from mcp_servers.audit_bridge import AuditBridgeConfig, AuditBridgeListener
 from .condition_policy import WP8_CONDITION_POLICY, condition_policy_summary
 from .canonical_interactions import public_interaction, public_tool_evidence
 from .harness_adapters import create_adapter
-from .harness_adapters.base import AgentMessage, CanonicalEvent, ToolCall, ToolResult
+from .harness_adapters.base import (
+    AgentMessage, CanonicalEvent, Question, ToolCall, ToolResult,
+)
 from .lifecycle_mapper import LifecycleMapper, successful
 from .platform_ledger import PlatformLedger
 from .bladeai_result import TRANSCRIPTION_SOURCE, transcribe_bladeai_report
@@ -1041,11 +1043,55 @@ class NativeHarnessRunner:
 
         realtime_observer = RealtimeToolEventPump(trial_id, platform_ledger, observe_realtime)
 
+        bladeai_bridge = None
+        bladeai_state = None
+
+        def bladeai_gate_decision(question):
+            """Decide one BladeAI confirmation gate through the simulated user.
+
+            The decision itself is the platform's existing one -- the same
+            ``responder.reply`` the other three Harnesses go through.  Only the
+            wire format differs, and that difference is confined to the bridge:
+            BladeAI's server recognises four approval words and reads anything
+            else, an approval with a reason included, as a rejection.
+            """
+            from stage2_service.harness_adapters.bladeai_confirm import GateDecision
+
+            card = question.recommendation.get("card_text") or ""
+            payload = {
+                "topic": f"bladeai_{question.request_kind}",
+                "question_id": question.question_id,
+                "version": question.version,
+                "question": card,
+                "recommendation": question.recommendation,
+                "required_decisions": [],
+                "risk_boundary": "",
+                "request_kind": "confirmation",
+            }
+            answer = bounded_reply_call("automatic_reply", lambda: responder.reply(payload, {
+                "original_prompt": base_prompt, "tool_evidence": tool_evidence,
+                "decision_policy": decision_policy.value,
+                "allowed_fault_types": list(capability.allowed_fault_types),
+            }))
+            self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                       LifecyclePhase.C1_PLAN, "user_decision_received", answer)
+            return GateDecision(
+                approved=bool(answer.get("approved")),
+                reason=str(answer.get("reason") or ""),
+                explanation=str(answer.get("message") or ""),
+            )
+
         def observe_line(line: bytes) -> list[StructuredFeedback]:
             nonlocal captured_session_id
             captured_stdout.append(line)
             events = adapter.on_stream_line(line)
             captured_session_id = adapter.session_id or captured_session_id
+            if bladeai_bridge is not None:
+                for event in events:
+                    if isinstance(event, Question):
+                        # Answer now, not at end of turn: an unanswered gate
+                        # leaves the Agent waiting in silence for six hours.
+                        bladeai_bridge.answer(event)
             return observe_events(events)
 
         def observe_session_record(record: Mapping[str, Any]) -> None:
@@ -1231,6 +1277,43 @@ class NativeHarnessRunner:
                     resumed = [resumed[0], *disabled, *resumed[1:]]
                 return resumed
 
+            bladeai_turn_executor = None
+            if harness is HarnessKind.BLADEAI:
+                # Served, not spawned: the platform drives its published
+                # HTTP/SSE interface.  The prompt still arrives through
+                # ``stdin`` -- the turn executor posts it as the turn's
+                # ``input`` -- so nothing downstream changes shape.
+                #
+                # The session is opened on first use rather than here, so a
+                # caller that substitutes the transport never contacts a
+                # server it does not need.
+                from harness.bladeai_http import (
+                    bladeai_http_resume_argv_builder,
+                    bladeai_http_turn_executor,
+                )
+
+                def bladeai_execute(*args, **kwargs):
+                    nonlocal bladeai_bridge, bladeai_state
+                    if bladeai_state is None:
+                        client, session_id = self._bladeai_http_session(trial_id, artifact_dir)
+                        from stage2_service.harness_adapters.bladeai_confirm import (
+                            BladeAIConfirmBridge,
+                        )
+
+                        bladeai_bridge = BladeAIConfirmBridge(
+                            client, session_id, decide=bladeai_gate_decision
+                        )
+                        bladeai_state = (client, session_id,
+                                         bladeai_http_turn_executor(client, session_id))
+                    return bladeai_state[2](*args, **kwargs)
+
+                bladeai_turn_executor = bladeai_execute
+                # Without resume the session drops every queued answer: a
+                # clarifying question that arrives as plain text plus ``done``
+                # can only be answered by opening another turn (finding F10).
+                resume_builder = bladeai_http_resume_argv_builder()
+                build_resume = resume_builder
+                session_id_provider = lambda: bladeai_state[1] if bladeai_state else None
             result = subprocess_streaming_runner(
                 argv,
                 stdin,
@@ -1247,7 +1330,7 @@ class NativeHarnessRunner:
                 retry_budget=retry_budget,
                 record_observer=observe_session_record,
                 activity_provider=lambda: agent_activity_seen,
-                turn_executor=self._turn_executor(trial_root, trial_id),
+                turn_executor=bladeai_turn_executor or self._turn_executor(trial_root, trial_id),
                 retry_classifier=None,
             )
         except Exception as exc:
@@ -1667,6 +1750,38 @@ class NativeHarnessRunner:
                     "applied": state.activated_at is not None}
         except Exception as exc:
             return {"verified": False, "error": type(exc).__name__}
+
+    def _bladeai_http_session(self, trial_id: str, artifact_dir: Path):
+        """Open one BladeAI session on its own server, or return None.
+
+        Black-box BladeAI is a service, not a command, so the platform talks to
+        it over HTTP/SSE instead of spawning it.  ``/cancel`` cancels every task
+        on the server it reaches, so each Trial must address a server of its own
+        -- ``RESBENCH_BLADEAI_SERVER_URL`` names it.
+        """
+        base_url = self.base_environment.get("RESBENCH_BLADEAI_SERVER_URL") or os.environ.get(
+            "RESBENCH_BLADEAI_SERVER_URL"
+        )
+        if not base_url:
+            raise HarnessRuntimeError(
+                "black-box BladeAI needs RESBENCH_BLADEAI_SERVER_URL naming a server "
+                "dedicated to this Trial",
+                error_code="BLADEAI_SERVER_URL_MISSING",
+            )
+        from harness.bladeai_http import BladeAIHttpClient, EventLog
+
+        client = BladeAIHttpClient(
+            base_url, event_log=EventLog(artifact_dir / "bladeai-raw-events.jsonl")
+        )
+        try:
+            session_id = client.create_session()
+        except Exception as exc:
+            client.close()
+            raise HarnessRuntimeError(
+                f"BladeAI server did not open a session: {exc}",
+                error_code="BLADEAI_SESSION_UNAVAILABLE",
+            ) from exc
+        return client, session_id
 
     def _turn_executor(self, trial_root: Path, trial_id: str):
         if self.agent_exec_client is None:
