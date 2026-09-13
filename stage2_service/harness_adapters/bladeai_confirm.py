@@ -30,6 +30,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .base import Question
+from .bladeai_intensity import (
+    NATIVE_INTENSITY_FLAGS,
+    BladeShimError,
+    canonical_fault_type,
+    canonical_native_intensity,
+)
 
 # The four spellings ``normalise_answer`` accepts as approval.  Anything else,
 # including "approved, use --cpu-count 1", is a rejection.
@@ -268,3 +274,72 @@ class BladeAIConfirmBridge:
         """
         pending, self.pending_explanations = self.pending_explanations, []
         return pending
+
+
+def plan_from_intent(
+    recommendation: Mapping[str, Any],
+    *,
+    target: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Translate an ``intent_confirm`` card into the platform's plan contract.
+
+    The two vocabularies do not overlap.  BladeAI describes a fault the way
+    ChaosBlade does -- ``{"scope": "pod", "target": "cpu", "action": "load",
+    "params": {...}}`` -- while the platform's validator wants
+    ``{"target": {namespace, name, uid}, "fault_type", "intensity", ...}``.
+    Handing the card through untranslated gives the validator nothing it
+    recognises: it reads the plan as ``null`` and reports every field missing,
+    which the simulated user can only answer with a rejection.
+
+    ``target`` supplies the Pod identity, which the event stream cannot: the
+    card names a Pod but never its uid, and the platform requires one.
+    """
+    intent = recommendation.get("fault_intent")
+    intent = dict(intent) if isinstance(intent, Mapping) else {}
+    plan: dict[str, Any] = {}
+
+    try:
+        fault_type, action = canonical_fault_type(
+            str(intent.get("scope") or ""),
+            str(intent.get("target") or ""),
+            str(intent.get("action") or ""),
+        )
+    except BladeShimError:
+        fault_type, action = str(intent.get("fault_type") or ""), ""
+    if fault_type:
+        plan["fault_type"] = fault_type
+
+    params = intent.get("params")
+    if isinstance(params, Mapping) and fault_type:
+        flags = {f"--{str(k).replace('_', '-')}": v for k, v in params.items()
+                 if str(k) not in {"timeout", "duration"}}
+        try:
+            plan["intensity"] = canonical_native_intensity(
+                fault_type, dict(flags), action=action
+            )
+        except BladeShimError:
+            # The Controller's intensity contract is one-dimensional, and the
+            # Agent may have named more than one native knob.  Take the one the
+            # contract asks for and record the rest as what they are:
+            # additional constraints.  A real L0 run on 2026-09-13 proposed
+            # ``--cpu-percent 80 --cpu-count 1`` -- the count narrows the blast
+            # radius to a single core, so dropping the plan over it would
+            # reject a *safer* proposal than the contract can express.
+            native_key, canonical = NATIVE_INTENSITY_FLAGS.get(fault_type, ("", ""))
+            primary = flags.get(native_key)
+            if canonical and isinstance(primary, (str, int)) and str(primary).isdigit():
+                plan["intensity"] = {canonical: int(primary)}
+                extra = {k: v for k, v in flags.items() if k != native_key}
+                if extra:
+                    plan["additional_native_constraints"] = extra
+            else:
+                plan["native_params"] = dict(params)
+
+    identity = {key: (target or {}).get(key) for key in ("namespace", "name", "uid")}
+    if all(isinstance(value, str) and value for value in identity.values()):
+        plan["target"] = {key: str(value) for key, value in identity.items()}
+
+    duration = intent.get("duration_seconds") or recommendation.get("duration_seconds")
+    if isinstance(duration, int) and duration > 0:
+        plan["duration_seconds"] = duration
+    return plan

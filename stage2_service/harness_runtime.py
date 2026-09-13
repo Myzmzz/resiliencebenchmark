@@ -710,7 +710,15 @@ class NativeHarnessRunner:
         )
         if fail_closed:
             raise HarnessRuntimeError(fail_closed)
-        executable = self._resolve_executable(harness, argv[0])
+        if harness is HarnessKind.BLADEAI:
+            # A served Harness has no command to resolve.  ``argv`` is kept
+            # only because the session transcript records it; the turn
+            # executor posts an HTTP turn and never executes it.  Demanding a
+            # ``blade-ai`` binary on the control plane would fail a Trial for
+            # the absence of a file nothing runs.
+            executable = argv[0]
+        else:
+            executable = self._resolve_executable(harness, argv[0])
         argv = [executable, *argv[1:]]
         lifecycle: list[LifecycleEvent] = []
         self._emit(
@@ -1055,15 +1063,29 @@ class NativeHarnessRunner:
             BladeAI's server recognises four approval words and reads anything
             else, an approval with a reason included, as a rejection.
             """
-            from stage2_service.harness_adapters.bladeai_confirm import GateDecision
+            from stage2_service.harness_adapters.bladeai_confirm import (
+                GateDecision,
+                plan_from_intent,
+            )
 
             card = question.recommendation.get("card_text") or ""
+            # The gate card speaks ChaosBlade's vocabulary; the validator reads
+            # the platform's plan contract.  Without this translation the plan
+            # arrives as null and every field reports missing, so the simulated
+            # user can only reject -- which is what a real L0 run did on
+            # 2026-09-13 before this was added.
+            plan = plan_from_intent(question.recommendation, target={
+                "namespace": runtime_context.target.namespace,
+                "name": runtime_context.target.name,
+                "uid": runtime_context.target.uid,
+            })
             payload = {
                 "topic": f"bladeai_{question.request_kind}",
                 "question_id": question.question_id,
                 "version": question.version,
                 "question": card,
-                "recommendation": question.recommendation,
+                "recommendation": plan or question.recommendation,
+                "native_card": question.recommendation,
                 "required_decisions": [],
                 "risk_boundary": "",
                 "request_kind": "confirmation",
