@@ -415,3 +415,89 @@ NetworkPolicy 没法写 Service，kube-proxy 又会在策略生效前改写目�
    rpm/tpm/并发上限，`num_retries: 0`。本次 5 并发没有触发 429，但 20 并发前应当先处理。
 7. `tests/test_system_snapshot.py::test_observation_adapter_uses_fixed_service_proxy_queries`
    在基线上就失败，本次没有修，也不在本方案范围内。
+
+## 八、网关限流（2026-09-13 追加）
+
+方案 §11 风险 2 要求"给网关配排队而不是报错"。做法是先量再改。
+
+### 8.1 先量：一次试验到底向网关要多少
+
+读 23 次副本试验的 `gateway-usage.jsonl`，按 60 秒滑窗取峰值：
+
+| 指标 | 结果 |
+|---|---|
+| 单个智能体的在飞并发 | 峰值 **2**，五个副本上完全一致 |
+| 每分钟请求数 | 均值 0.8–4.7，峰值 **10** |
+| 每分钟 token 数 | 均值 3.7 万–12.3 万，峰值 **55.2 万** |
+| 单次请求最大 token | 42.2 万，其中 86–91% 是缓存读 |
+
+这些数字连同来源写进了 `deploy/stage2/litellm/config.yaml` 的注释。
+
+### 8.2 再改：实测发现网关这一层根本限不住
+
+给 `litellm-config-fleet` 加上限流后实测：
+
+| 设置 | 上限 | 并发发出 | 结果 |
+|---|---|---|---|
+| `litellm_settings.max_parallel_requests` | 3 | 6 | 6 条全部 200，4.5 秒内一起返回 |
+| `general_settings.global_max_parallel_requests` | 2 | 12 | 12 条全部 200，4.0 秒内一起返回 |
+
+也就是说**两个开关在本部署里都不生效**。看 LiteLLM 源码，限流是一个代理钩子，
+`global_max_parallel_requests` 从 `data["metadata"]` 里取值，而这套部署只有 master key、
+没有 key management 存储，钩子拿不到限额。
+
+发一个看起来在保护、实际什么都不做的配置比不发更糟，所以：集群里两个都没留，
+`litellm-config-fleet` 已删除，五个副本回到与单系统一致的 `litellm-config`。
+渲染脚本的 `--max-parallel-requests` / `--account-rpm` / `--account-tpm` 保留，
+供将来接上带存储的共享网关时使用，配置文件注释里写明了实测无效这件事。
+
+### 8.3 限额放在真正能排队的地方
+
+能排队的是 **Fleet 自己的队列**：条目在队列里等，直到有副本空出来。
+所以预算校验放在 `FleetConfig`：填了账号的 `account_rpm` / `account_tpm` 之后，
+`max_concurrency` 乘以实测的单次试验峰值若超出账号额度，配置直接被拒，并在报错里
+写明最多能并发几条。不填就沿用原行为。
+
+一个结构性提醒：**没有共享网关**。每个控制器 Pod 各有一个 sidecar，互相看不见对方的流量，
+所以任何 per-Pod 的限额都必须按"账号额度 ÷ 副本数"来分，副本数一变就要重算。
+要一次性解决，得起一个共享网关并让所有控制器指过去，但那与 sidecar 的现有设计前提冲突，
+需要单独决策。
+
+### 8.4 仍然不知道的
+
+DashScope 这个账号真实的 RPM/TPM 没有从控制台读到，所以 `account_rpm` / `account_tpm`
+目前留空，校验不生效。按 8.1 的峰值推算：20 并发最坏情况会向账号要 200 请求/分钟、
+1100 万 token/分钟。扩容到 20 之前必须先把这两个数字查出来填上。
+
+## 九、D7/D8 上副本（2026-09-13 追加）
+
+### 9.1 替代档资格
+
+D7/D8 的门槛是**同一副本上三家都要有 `platform_sandbox`**，而这要靠 substitution 档资格。
+每个副本跑一轮三家，共 15 次。过程中有两件事值得记：
+
+1. **资格记录与网关配置绑定。** 第一轮 substitution 是在加了限流的 `litellm-config-fleet`
+   下跑的，而 base 记录是在原表下跑的，发布时被拒：`qualification uses a different gateway
+   configuration or route`。这是设计使然，不是缺陷。删掉限流表、五个副本回到原表之后，
+   重跑了一整轮 substitution，两类记录才对得上。
+2. **`coroot_call_failed` 是偶发的。** 用智能体自己的 `coroot_ro` 客户端逐个副本查
+   `container_resources_cpu_usage_seconds_total`，六个命名空间全部 `ok=true`、各 7 条序列，
+   说明 Coroot 侧没有系统性问题。失败散落在不同副本的不同家上，重跑即过。
+
+最终五个副本全部三家通过并发布。`/api/v1/stage2/options` 的 `capability_loss.runnable`
+在 s02–s05 为 true；s01 的 deepseek-harness 连续三次 `coroot_call_failed`，该副本因此
+仍是 false，已用 `POST /slots/s01/drain` 排空，不参与本轮派发。
+
+### 9.2 替代工具资格探针
+
+在每个可用副本上跑 `python -m stage2_service.capability_loss.qualification_probe --ttl-hours 24`，
+全部 `ok=true`、`loader_accepted=true`、`modes=[d7,d8]`、无失败项：
+
+- D7 样本：`coroot_ro` 与 `telemetry_ro` 各一条，对应本副本 cart Pod 的 UID。
+- D8 试注入：`chaos_control`（ChaosBlade）与 `chaos_mesh_control`（Chaos Mesh）都确认生效、
+  也确认已删除。
+
+s05 第一次的 ChaosBlade 试注入被安全策略拒绝（`PLAN_REJECTED_BY_SAFETY_POLICY`），
+重跑一次即通过，文件按执行器合并，旧记录标记为 `replaced_by_new_canary`。
+
+这说明替代工具资格这条链在副本命名空间里是通的，包括经两个执行器真实注入再清理。
