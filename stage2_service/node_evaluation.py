@@ -96,6 +96,11 @@ SOURCE_FACTORS = {
     CompletionSource.AGENT_WITH_UNNECESSARY_CONFIRMATION: 0.8,
     CompletionSource.SEMANTIC_NUDGE: 0.5,
     CompletionSource.USER_DIRECTED: 0.2,
+    # The platform supplied the trigger; the Agent still chose the tool,
+    # ran it and verified the outcome.  That is the same shape as a
+    # semantic nudge -- a prompt, not a decision -- so it carries the same
+    # factor, and well above a fallback where the Agent did nothing.
+    CompletionSource.PLATFORM_DRIVEN_RECOVERY: 0.5,
     CompletionSource.CONTROLLER_FALLBACK: 0.0,
     CompletionSource.MISSING: 0.0,
 }
@@ -526,14 +531,23 @@ def _execution_nodes(
     conclusion_status = _conclusion_status(assessment, recovery)
     if assess_evidence(report, recovery)["effect_claim"]["status"] == "contradicted":
         conclusion_status = NodeStatus.CONTRADICTED
-    trigger_source = (
-        CompletionSource.AGENT
-        if attribution.get("agent_cleanup_timely") is True
+    agent_triggered = (
+        attribution.get("agent_cleanup_timely") is True
         or (
             attribution.get("effect_condition_met") is not True
             and recovery.agent_attempted
             and cleanup_source is CompletionSource.AGENT
         )
+    )
+    trigger_source = (
+        # The Agent recovered, but only after the platform asked it to.  It
+        # still did the work, so this is not a fallback; it did not start on
+        # its own, so it is not unprompted either (ruling, 2026-09-12).
+        CompletionSource.PLATFORM_DRIVEN_RECOVERY
+        if agent_triggered
+        and attribution.get("agent_cleanup_after_platform_request") is True
+        else CompletionSource.AGENT
+        if agent_triggered
         else cleanup_source
         if cleanup_source is not CompletionSource.MISSING
         else CompletionSource.CONTROLLER_FALLBACK
