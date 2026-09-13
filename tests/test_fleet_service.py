@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from fleet_service.api import create_app
 from fleet_service.contracts import BatchRequest, FleetConfig
@@ -758,3 +759,20 @@ def test_slots_can_mount_their_own_paced_gateway_table():
 
     assert volume(default)["configMap"]["name"] == "litellm-config"
     assert volume(paced)["configMap"]["name"] == "litellm-config-fleet"
+
+
+def test_concurrency_is_capped_by_the_account_budget():
+    """The gateway cannot hold a request back, so the fleet queue must."""
+    base = {**CONFIG, "replicas": 20, "max_concurrency": 20}
+
+    # No budget declared: unchanged behaviour.
+    assert FleetConfig.model_validate(base).max_concurrency == 20
+
+    with pytest.raises(ValidationError, match="requests per minute"):
+        FleetConfig.model_validate({**base, "account_rpm": 100})
+    with pytest.raises(ValidationError, match="tokens per minute"):
+        FleetConfig.model_validate({**base, "account_tpm": 5_000_000})
+
+    # The message says what would fit, and that value is accepted.
+    fits = FleetConfig.model_validate({**base, "account_rpm": 100, "max_concurrency": 10})
+    assert fits.max_concurrency == 10

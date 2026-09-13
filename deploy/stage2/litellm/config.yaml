@@ -122,9 +122,15 @@ litellm_settings:
   #       --replicas 5 --account-rpm <from the console> --account-tpm <...> \
   #       --configmap-name litellm-config-fleet
   #
-  # max_parallel_requests is the lever that makes a request *wait*; the
-  # per-alias rpm/tpm it writes into model_list are a guard rail that stops one
-  # replica running away with the account, not a queue.
+  # Measured on this deployment, 2026-09-13: neither
+  # litellm_settings.max_parallel_requests nor
+  # general_settings.global_max_parallel_requests limits anything here. With a
+  # cap of 2 set, twelve simultaneous requests all returned 200 and finished
+  # together in four seconds. This proxy runs with a master key and no key
+  # management store, and the limiter hook needs one. Do not assume these
+  # settings do anything until the same probe shows requests waiting.
+  # The render flags stay for a future gateway that has that store; the lever
+  # that works today is the Fleet's max_concurrency, which really does queue.
   #
   # Measured on the 2026-09-13 replica fleet, 23 trials, qwen3.8-max:
   #   concurrent in-flight requests per agent   peak 2   (identical on all 5 replicas)

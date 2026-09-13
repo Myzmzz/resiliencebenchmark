@@ -22,6 +22,13 @@ AutonomyLevel = Literal["L0", "L1", "L2", "L3", "L4"]
 PromptSource = Literal["canonical", "manual"]
 
 DX_CASES = ("D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8")
+# What one trial asks of the model gateway, measured over 23 trials on the
+# 2026-09-13 replica fleet with qwen3.8-max: the highest request count and
+# token count seen in any 60-second window of a single trial. Concurrency
+# limits on the gateway itself were measured to have no effect on this
+# deployment, so the Fleet's own queue is where a budget has to be enforced.
+MEASURED_PEAK_RPM_PER_TRIAL = 10
+MEASURED_PEAK_TPM_PER_TRIAL = 552_000
 PX_CASES = ("P1", "P2")
 CAPABILITY_LOSS_CASES = ("D7", "D8")
 DEFAULT_DURATION_SECONDS = 300
@@ -93,6 +100,10 @@ class FleetConfig(FleetModel):
     coroot_project_id: str = ""
     coroot_allow_anonymous_read: bool = True
     resources: SlotResources = Field(default_factory=SlotResources)
+    # Limits published by the upstream account, read from its console. When
+    # set, they cap how many trials may run at once.
+    account_rpm: int | None = Field(default=None, ge=1)
+    account_tpm: int | None = Field(default=None, ge=1)
     node_spread: bool = True
     nodes: tuple[str, ...] = ()
     # Addresses of the Kubernetes API server, for the replica NetworkPolicy.
@@ -110,6 +121,25 @@ class FleetConfig(FleetModel):
     def validate_concurrency(self) -> "FleetConfig":
         if self.max_concurrency > self.replicas:
             raise ValueError("max_concurrency cannot exceed replicas")
+        # Every replica talks to the same upstream account. The gateway cannot
+        # hold a request back, so the only place a budget can be honoured is
+        # here, by running fewer trials at once.
+        if self.account_rpm is not None:
+            needed = self.max_concurrency * MEASURED_PEAK_RPM_PER_TRIAL
+            if needed > self.account_rpm:
+                raise ValueError(
+                    f"max_concurrency {self.max_concurrency} can ask the account for "
+                    f"{needed} requests per minute at peak, above its {self.account_rpm}; "
+                    f"run at most {self.account_rpm // MEASURED_PEAK_RPM_PER_TRIAL} trials at once"
+                )
+        if self.account_tpm is not None:
+            needed = self.max_concurrency * MEASURED_PEAK_TPM_PER_TRIAL
+            if needed > self.account_tpm:
+                raise ValueError(
+                    f"max_concurrency {self.max_concurrency} can ask the account for "
+                    f"{needed} tokens per minute at peak, above its {self.account_tpm}; "
+                    f"run at most {self.account_tpm // MEASURED_PEAK_TPM_PER_TRIAL} trials at once"
+                )
         return self
 
 
