@@ -36,6 +36,22 @@ PLATFORM_REASON_CODES = frozenset(
         "RESET_FAILED",
     }
 )
+# Reasons the agent owns. A trial that ends for one of these was measured:
+# the agent ran out of time, answered unusably, or met a withdrawn permission
+# that the case was designed to withdraw. Rerunning it would replace a result
+# with another attempt at the same agent.
+AGENT_REASON_CODES = frozenset(
+    {
+        "HARNESS_TIMEOUT",
+        "OUTPUT_UNSTRUCTURED",
+        "PERMISSION_DENIED_OBSERVED",
+        "NODE_EVIDENCE_CONTRADICTED",
+        "AGENT_ABANDONED",
+        "SEMANTIC_NUDGE",
+    }
+)
+# The platform never gave the agent a fair run at all.
+NEVER_RAN_PLATFORM_STATUSES = frozenset({"BLOCKED", "RESET_FAILED"})
 PLATFORM_REASON_FRAGMENTS = (
     "quota exhausted",
     "rate limited",
@@ -50,13 +66,32 @@ PLATFORM_REASON_FRAGMENTS = (
 TERMINAL_FAILURE_STATUSES = frozenset({"FAILED", "ABORTED", "RECOVERY_FAILED", "INTERRUPTED"})
 
 
-def classify_failure(failure: Mapping[str, Any] | None, *, http_status: int = 0) -> str:
-    """``platform`` or ``agent``. Mixing the two makes a parallel round unreadable."""
+def classify_failure(
+    failure: Mapping[str, Any] | None,
+    *,
+    http_status: int = 0,
+    reason_codes: Sequence[str] = (),
+    platform_status: str = "",
+) -> str:
+    """``platform`` or ``agent``. Mixing the two makes a parallel round unreadable.
+
+    A trial the platform never started is platform-owned whatever else it
+    says. Otherwise the scored reason codes decide: a D1 trial that ends in
+    the permission denial the case itself withdrew, or an agent that runs out
+    of time, is a measurement and must not be rerun -- even though the
+    campaign records it as a platform-status failure.
+    """
+    if platform_status in NEVER_RAN_PLATFORM_STATUSES:
+        return "platform"
+    if any(str(code) in AGENT_REASON_CODES for code in reason_codes):
+        return "agent"
     if http_status in {408, 425, 429, 500, 502, 503, 504} or http_status == 0 and failure is None:
         return "platform"
     if not failure:
         return "agent"
     code = str(failure.get("code") or "")
+    if code in AGENT_REASON_CODES:
+        return "agent"
     if code in PLATFORM_REASON_CODES:
         return "platform"
     reason = str(failure.get("reason") or "").lower()
@@ -235,6 +270,8 @@ class BatchDispatcher:
             score = client.score(str(run_id))
         except ControllerError:
             score = None
+        summarized = _score_summary(score)
+        reason_codes = list((summarized or {}).get("reason_codes") or [])
         if platform_status not in {"", "COMPLETED", "SUCCEEDED"}:
             # A campaign that never ran reports COMPLETED at task level while
             # its own verdict is BLOCKED or RESET_FAILED. Scoring that as an
@@ -243,13 +280,16 @@ class BatchDispatcher:
                 batch_id, item,
                 {"code": f"STAGE2_PLATFORM_{platform_status}",
                  "reason": f"platform status {platform_status}", **(reported or {})},
-                "platform", score=_score_summary(score),
+                classify_failure(reported, reason_codes=reason_codes,
+                                 platform_status=platform_status),
+                score=summarized,
             )
             return
         if status in TERMINAL_FAILURE_STATUSES:
             self._finish_failed(
-                batch_id, item, reported or {"code": status}, classify_failure(reported),
-                score=_score_summary(score),
+                batch_id, item, reported or {"code": status},
+                classify_failure(reported, reason_codes=reason_codes),
+                score=summarized,
             )
             return
         # A finished trial whose score carries a node-level finding is a
@@ -257,7 +297,7 @@ class BatchDispatcher:
         # belongs in the matrix rather than in the failure count.
         self.store.update_item(
             batch_id, item["item_id"], state=ItemState.DONE.value,
-            finished_at=utc_now(), failure=reported, score=_score_summary(score),
+            finished_at=utc_now(), failure=reported, score=summarized,
         )
 
     def _finish_failed(
