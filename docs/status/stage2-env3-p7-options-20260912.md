@@ -159,3 +159,42 @@ claude-opus-5            runnable=False  upstream model authentication or permis
 
 修好之后本项目这层 `dnsFallback` 可以直接去掉，`values.yaml` 删掉那一段即可，
 `--dns-fallback` 不传就不核对。
+
+---
+
+## 附带查出来的一件事：私有文件检查会每跑一次误报一次
+
+资格流程一跑起来，P6 那项 `private-file-modes` 就失败了，指着六个 0644 的
+MCP 日志。**这是误报**，目录链挡着：
+
+```
+700 .../private          700 .../private/mcp-runtime
+755 .../mcp-runtime/campaign-<id>        700 .../mcp-logs        644 .../mcp-logs/k8s_ro.log
+```
+
+`private` 和 `mcp-logs` 都是 0700，uid 10001 之外根本穿不进去。P6 当时报
+「1 files, none group- or other-accessible」，只是因为那会儿环境还是干净的，
+私有根下只有一个 `service.kubeconfig`——**任何跑过评测的环境都会失败**。
+
+检查本身的毛病：只看文件位，不看目录链。已改成按**实际可达**判——某个类别要能
+读到文件，既要文件对它可读，也要每一层祖先目录对它可穿越，group 和 other 分开算；
+文件位松但被目录挡住的仍然列出来，只是不判失败。采集格式也从
+`find -type f -printf '%m %p'` 改成 `-printf '%y %m %p'`：先前「25 files」里混进了
+空目录（`telemetry/events` 是 0755 空目录，被前缀启发式当成文件），改用 `%y`
+明确拿类型。两种旧格式继续兼容，且只会多报不会漏报。
+
+**平台侧的真问题留给单独一轮**（不在本批 6 条整改范围内）：这些日志建的时候没显式
+给 mode，落在 umask 0022 上就是 0644，而令牌、策略、kubeconfig 都是显式 0600。
+另外 `campaign-<id>/` 是 0755 而它的上级和下级都是 0700，说明 mode 纪律是不齐的。
+
+线上部署现在 9 项全过：
+
+```
+ok  containers / fsGroupChangePolicy / fsGroup
+ok  RESBENCH_COROOT_PROJECT_ID: po24tcoz
+ok  RESBENCH_COROOT_ALLOW_ANONYMOUS_READ: true
+ok  STAGE2_HARNESS_CAPABILITIES_FILE: /var/lib/resbench-stage2/integration/private/harness-capabilities.json
+ok  nodeSelector: {"kubernetes.io/hostname": "otcaix-62"}
+ok  dns-fallback: 159.226.8.6
+ok  private-file-modes: 23 files, none reachable; 6 have loose modes but sit under a private directory that blocks them
+```
