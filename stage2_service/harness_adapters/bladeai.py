@@ -47,10 +47,10 @@ from .bladeai_intensity import (
     canonical_native_intensity,
     native_intensity_source,
 )
-from .bladeai_legacy import LegacyBladeAIHarnessAdapter
 
 from .base import (
     AgentMessage,
+    BaseHarnessAdapter,
     CanonicalEvent,
     Checkpoint,
     HarnessCapability,
@@ -69,12 +69,6 @@ from .base import (
 
 # The three confirmation gates, keyed by the event's ``node``.  ``request_kind``
 # is what WP-C dispatches on; the transport channel differs per gate.
-# Envelopes minted by the pre-black-box in-process worker; handled by the
-# legacy base class. Removed together with the hook layer in WP-F.
-LEGACY_ENVELOPE_TYPES: frozenset[str] = frozenset({
-    "stage2_bladeai_event", "stage2_bladeai_result",
-})
-
 GATE_REQUEST_KINDS: dict[str, str] = {
     "intent_confirm": "intent",
     "confirmation_gate": "execution",
@@ -97,7 +91,7 @@ STRUCTURAL_EVENT_TYPES: frozenset[str] = frozenset({
 })
 
 
-class BladeAIHarnessAdapter(LegacyBladeAIHarnessAdapter):
+class BladeAIHarnessAdapter(BaseHarnessAdapter):
     kind = HarnessKind.BLADEAI
 
     def __init__(self) -> None:
@@ -145,13 +139,6 @@ class BladeAIHarnessAdapter(LegacyBladeAIHarnessAdapter):
             return [extract_agent_message(value, parse_occurred_at({}))]
 
         event_type = str(value.get("type") or "")
-        if event_type in LEGACY_ENVELOPE_TYPES:
-            # The in-process hook layer's own envelope.  It is still reachable
-            # until WP-F removes that layer, and WP-E must be accepted first,
-            # so the legacy parser stays available rather than being deleted
-            # out from under a path that can still run.
-            self._line_index -= 1  # the base parser takes its own raw_ref
-            return super().on_stream_line(line)
         if event_type == "token":
             self._accumulate_token(value)
             return []

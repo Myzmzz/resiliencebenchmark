@@ -1,14 +1,13 @@
 """Native ChaosBlade intensity, normalised to the Controller's contract.
 
-Lifted verbatim out of ``stage2_service/bladeai_shim.py`` (which WP-F deletes)
+Lifted verbatim out of the in-process shim that WP-F removed
 because the mapping is a **semantic asset**, not part of the in-process hook
 layer: it is the only place that states how a native ``blade`` flag such as
 ``--cpu-percent 80`` corresponds to the platform's ``{"cpu_percent": 80}``, and
 how to tell an intensity the Agent chose from one ChaosBlade defaulted.
 
-The shim still carries its own copy until WP-E's residue sweep is accepted and
-WP-F removes it; this module is the copy the black-box path uses, so deleting
-the shim later cannot take the mapping down with it.
+The shim is gone as of WP-F; this module is now the only definition, and it is
+what the black-box path, the simulated user and the harness channel all read.
 """
 
 from __future__ import annotations
@@ -47,6 +46,9 @@ NATIVE_INTENSITY_TOOL_DEFAULTS = {
 }
 # Native flags whose value the Controller fixes. A command may omit them or
 # repeat exactly these values; any other value is refused.
+# Fault duration in whole seconds; ``--duration`` is accepted as an alias.
+CHAOSBLADE_DURATION_FLAG = "--timeout"
+
 CONTROLLER_FIXED_NATIVE_FLAGS = {
     "network-delay": {"--interface": "eth0", "--offset": "0"},
     "network-loss": {"--interface": "eth0"},

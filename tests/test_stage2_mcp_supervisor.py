@@ -135,12 +135,12 @@ def test_bladeai_uses_two_minute_startup_window_but_codex_keeps_thirty_seconds(
         token_state_files=token_files,
         runtime_environment={
             "RESBENCH_HARNESS_CHANNEL_TOKEN": "h" * 48,
-            "RESBENCH_BLADEAI_PROXY_TOKEN": "p" * 48,
-            "RESBENCH_BLADEAI_PROXY_NAMESPACE": "otel-demo",
-            "RESBENCH_BLADEAI_PROXY_KUBECONFIG": str(tmp_path / "proxy.kubeconfig"),
         },
     )
-    assert waits == [BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS] * 7
+    # Six, not seven: the loopback K8s proxy was part of the in-process hook
+    # layer and went with it in WP-F.  Black-box BladeAI reaches the cluster
+    # through the same MCP servers the other three Harnesses use.
+    assert waits == [BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS] * 6
 
     waits.clear()
     supervisor.stop()

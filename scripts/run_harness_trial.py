@@ -1052,7 +1052,12 @@ def build_argv(
         else:
             args.extend(output_args)
     argv = [command, *args]
-    if transport == "stdin":
+    if transport in {"stdin", "adapter_owned"}:
+        # ``adapter_owned`` means the adapter decides how the prompt reaches the
+        # Agent; the platform's job is only to hand it over.  Black-box BladeAI
+        # is driven over HTTP, where its turn executor reads this same buffer
+        # and posts it as the turn's ``input`` field -- there is no command line
+        # to put it on.
         return argv, prompt_text.encode("utf-8"), None
     if harness_name == "deepseek-harness":
         return argv, b"", None

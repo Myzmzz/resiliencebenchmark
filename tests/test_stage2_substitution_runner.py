@@ -221,8 +221,10 @@ def test_native_runner_substitution_path_uses_real_permissions_bridge_channel_an
         base_environment={}, responder_factory=lambda *_args, **_kwargs: _responder(),
         capability_loss_factory=factory,
     )
-    if harness is not HarnessKind.BLADEAI:
-        monkeypatch.setattr(runner, "_resolve_executable", lambda *_args: "/fixture/native-agent")
+    # BladeAI used to skip this: the in-process path launched a Python module
+    # rather than a command.  Driven as a black box it is started like any other
+    # Harness, so it needs the same stub executable (WP-F).
+    monkeypatch.setattr(runner, "_resolve_executable", lambda *_args: "/fixture/native-agent")
 
     def fake_process(_argv, _stdin, _child_env, _timeout, stdout_observer, *_args, **_kwargs):
         client = audit_client_from_env(supervisor.environment)

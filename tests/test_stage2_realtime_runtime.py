@@ -55,6 +55,17 @@ def native_tool(harness, call_id, tool, arguments, payload):
             {"message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": call_id,
              "content": [{"type": "text", "text": json.dumps(payload)}]}]}},
         ]
+    if harness is HarnessKind.BLADEAI:
+        # Black-box BladeAI does have a live tool stream: tool_start/tool_end
+        # on its SSE channel, paired by call_id.  Under the hook layer these
+        # arrived as envelopes our own worker minted, which is why this helper
+        # used to return nothing for it.
+        return [
+            {"type": "tool_start", "tool_name": tool, "call_id": call_id,
+             "node": "execute_loop", "task_id": "turn-fixture"},
+            {"type": "tool_end", "call_id": call_id, "tool_name": tool,
+             "content": json.dumps(payload), "task_id": "turn-fixture"},
+        ]
     # DSH has no live tool stream; the realtime bridge must work without it.
     return []
 
@@ -78,7 +89,14 @@ def final_line(harness, full_contract=False):
     if harness is HarnessKind.CLAUDE_CODE:
         return {"message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
     if harness is HarnessKind.BLADEAI:
-        return {"type": "stage2_bladeai_result", "status": "degraded", "summary": text}
+        # Black-box BladeAI states its conclusion the same way the other three
+        # do -- as an ordinary message.  Under the hook layer this arrived as a
+        # ``stage2_bladeai_result`` envelope our own worker minted, and the
+        # platform read the verdict out of its private ``extras``.  The public
+        # stream has no such field, so the conclusion comes from what the Agent
+        # actually said, exactly as it does for codex and claude-code.
+        return {"type": "node_message", "content": text, "node": "final_report",
+                "task_id": "turn-fixture"}
     return json.loads(text)
 
 
@@ -172,18 +190,10 @@ def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tm
         assert "RESBENCH_MCP_AUDIT_AUTHORITY" not in child_env
         assert "RESBENCH_MCP_AUDIT_SOCKET" not in child_env
         if harness is HarnessKind.BLADEAI:
-            request = json.loads(Path(_argv[-1]).read_text())
-            assert request["mode"] == "task"
-            assert request["intent"] == "fixture"
-            assert "managed_fault" not in request and "target" not in request
-            kube = json.loads(Path(request["kubeconfig"]).read_text())
-            assert kube["clusters"][0]["cluster"]["server"] == "http://127.0.0.1:18481"
+            # WP-F: no launch shim, no loopback proxy kubeconfig, no blade-shim
+            # binary.  It is started like the other three Harnesses.
             assert "RESBENCH_BLADEAI_PROXY_KUBECONFIG" not in child_env
-            assert child_env["BLADE_AI_MODEL_NAME"] == "fixture-model"
-            assert child_env["BLADE_AI_BLADE_PATH"].endswith("blade-shim/blade")
-            mcp = json.loads(Path(child_env["BLADE_AI_MCP_CONFIG_PATH"]).read_text())["mcpServers"]
-            assert set(mcp) == {"k8s_ro", "telemetry_ro", "source_ro", "harness_channel"}
-            assert child_env["RESBENCH_BLADEAI_CHAOS_CONTROL_MCP_SSE_URL"] == "http://127.0.0.1:18184/sse"
+            assert "BLADE_AI_BLADE_PATH" not in child_env
         client = audit_client_from_env(supervisor.environment)
         assert client is not None
         output = []
@@ -240,22 +250,34 @@ def test_live_audit_drives_actions_once_without_relying_on_native_tool_stream(tm
         case=default_case_specs((Stage2CaseId.D5,))[0], base_prompt="fixture", prompt_mode=PromptMode.VERBATIM,
         event_observer=observer,
     )
-    assert report.status == "completed", report.final_output
+    if harness is HarnessKind.BLADEAI:
+        # WP-F changed where BladeAI's verdict comes from.  Under the hook
+        # layer the platform read it out of the private ``extras`` of an
+        # envelope our own worker minted, so this fixture got a structured
+        # result for free.  The public event stream has no such field: the
+        # conclusion now comes from what the Agent said, via
+        # ``simulated_user.interpret`` -- and this fixture deliberately
+        # supplies a responder that cannot interpret (SimpleNamespace).
+        # So "unstructured" is the correct outcome here, and the rest of the
+        # assertions below still prove what this test is about: that the
+        # audit drives the actions exactly once.
+        assert report.final_output["validation_error"] == "OUTPUT_UNSTRUCTURED"
+        assert report.final_output.get("harness_failure") is None
+    else:
+        assert report.status == "completed", report.final_output
     kinds = [event.kind for event in report.lifecycle_events]
     assert kinds.count("main_fault_requested") == 1
     assert kinds.count("main_fault_running") == 1
     assert kinds.count("effect_check_started") == 1
     assert report.final_output["adapter_integrity"]["call_count"] == 2
     if harness is HarnessKind.BLADEAI:
-        launch = report.final_output["bladeai_launch"]
-        assert launch["trial_id"] == trial_id
-        assert launch["mode"] == "task"
-        assert launch["target"] is None and launch["managed_fault"] is None
-        assert launch["decision_ownership"] == "agent"
-        assert "chaos_control" not in launch["mcp_servers"]
-        assert "chaos_mesh_control" not in launch["mcp_servers"]
-        assert any(ref.endswith("/bladeai-launch.json") for ref in report.artifact_refs)
-    if full_contract:
+        # The shim receipts are gone with the hook layer; what remains is the
+        # Agent's own terminal report, recorded verbatim.
+        assert "bladeai_launch" not in report.final_output
+        assert not any(ref.endswith("/bladeai-launch.json") for ref in report.artifact_refs)
+    if harness is HarnessKind.BLADEAI:
+        pass  # asserted above: its verdict path changed with WP-F
+    elif full_contract:
         assert report.final_output["validation_error"] is None
         assert report.final_output["agent_result_ref"] == "agent-result.json"
     else:

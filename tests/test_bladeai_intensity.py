@@ -1,17 +1,15 @@
-"""The intensity mapping lifted out of the shim WP-F deletes.
+"""The intensity mapping that outlived the in-process shim.
 
-Pins behaviour to the shim's own, so the copy cannot silently drift before the
-original is removed.
+WP-F removed the shim; this module is now the only definition, read by the
+black-box adapter, the simulated user and the harness channel alike.  The cases
+below are the ones that were pinned against the shim's own implementation while
+both existed, kept as the behavioural contract.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from stage2_service.bladeai_shim import (
-    canonical_native_intensity as shim_intensity,
-    native_intensity_source as shim_source,
-)
 from stage2_service.harness_adapters.bladeai_intensity import (
     BladeShimError,
     canonical_native_intensity,
@@ -28,12 +26,23 @@ CASES = [
 ]
 
 
+# The values the shim produced for each case, recorded while both
+# implementations existed and verified equal at that time.
+EXPECTED = {
+    ("cpu-load", "fullload", True): ({"cpu_percent": 80}, "agent_plan"),
+    ("cpu-load", "fullload", False): ({"cpu_percent": 100}, "tool_default"),
+    ("network-delay", "delay", True): ({"delay_ms": 70}, "agent_plan"),
+    ("network-loss", "loss", True): ({"loss_percent": 30}, "agent_plan"),
+    ("network-loss", "drop", False): ({"loss_percent": 100}, "agent_plan"),
+    ("memory-stress", "load", True): ({"mem_percent": 50}, "agent_plan"),
+}
+
+
 @pytest.mark.parametrize("fault_type,flags,action", CASES)
-def test_matches_the_shim_it_was_lifted_from(fault_type, flags, action) -> None:
-    assert canonical_native_intensity(fault_type, dict(flags), action=action) == \
-        shim_intensity(fault_type, dict(flags), action=action)
-    assert native_intensity_source(fault_type, dict(flags), action=action) == \
-        shim_source(fault_type, dict(flags), action=action)
+def test_reproduces_the_mapping_the_shim_had(fault_type, flags, action) -> None:
+    expected_intensity, expected_source = EXPECTED[(fault_type, action, bool(flags))]
+    assert canonical_native_intensity(fault_type, dict(flags), action=action) == expected_intensity
+    assert native_intensity_source(fault_type, dict(flags), action=action) == expected_source
 
 
 def test_agent_chosen_intensity_is_distinguished_from_a_tool_default() -> None:

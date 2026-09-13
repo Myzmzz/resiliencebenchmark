@@ -18,7 +18,7 @@ from pydantic import WithJsonSchema
 from mcp_servers.http_runtime import run_mcp_server
 from mcp_servers.audit_bridge import AuditBridgeClient
 from mcp_servers.runtime_audit import audit_client_from_env, audited_async_call
-from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS
+from stage2_service.harness_adapters.bladeai_intensity import NATIVE_INTENSITY_FLAGS
 from stage2_service.condition_policy import (
     EFFECT_OPERATORS,
     RECOVERY_OPERATORS,
