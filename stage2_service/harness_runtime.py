@@ -1185,8 +1185,31 @@ class NativeHarnessRunner:
                     "assessment": dict(last_assessment), "source": "harness_interpretation",
                     "raw_messages": list(turn_messages),
                 })
+                proposed_plan = None
+                if harness is HarnessKind.BLADEAI:
+                    # BladeAI states its plan as prose plus a fenced JSON block
+                    # and asks for a confirmation word instead of raising its
+                    # own gate (F10).  The interpreter answers with the word --
+                    # "A", "确认" -- so the plan the Agent actually wrote never
+                    # reaches the validator, which then reports every field
+                    # missing.  Recover it from the Agent's own text; the
+                    # validator still decides whether to accept it.
+                    from stage2_service.harness_adapters.bladeai_confirm import (
+                        plan_from_text,
+                    )
+
+                    proposed_plan = plan_from_text(turn_messages)
                 for question in interpreted["questions"]:
                     if isinstance(question, Mapping) and question.get("question"):
+                        if proposed_plan is not None and not isinstance(
+                            question.get("recommendation"), Mapping
+                        ):
+                            question = {**question, "recommendation": proposed_plan}
+                            self._emit(
+                                lifecycle, event_observer, campaign_id, trial_id, harness,
+                                LifecyclePhase.C1_PLAN, "agent_plan_recovered_from_text",
+                                {"topic": question.get("topic"), "fields": sorted(proposed_plan)},
+                            )
                         update_question(question)
                 if last_assessment:
                     self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
@@ -1317,7 +1340,16 @@ class NativeHarnessRunner:
                 def bladeai_execute(*args, **kwargs):
                     nonlocal bladeai_bridge, bladeai_state
                     if bladeai_state is None:
-                        client, session_id = self._bladeai_http_session(trial_id, artifact_dir)
+                        client, session_id = self._bladeai_http_session(
+                            trial_id,
+                            artifact_dir,
+                            gateway={
+                                key: agent_env[key]
+                                for key in ("RESBENCH_LLM_BASE_URL", "RESBENCH_LLM_API_KEY")
+                                if key in agent_env
+                            },
+                            model_alias=model_alias,
+                        )
                         from stage2_service.harness_adapters.bladeai_confirm import (
                             BladeAIConfirmBridge,
                         )
@@ -1773,13 +1805,30 @@ class NativeHarnessRunner:
         except Exception as exc:
             return {"verified": False, "error": type(exc).__name__}
 
-    def _bladeai_http_session(self, trial_id: str, artifact_dir: Path):
+    def _bladeai_http_session(
+        self,
+        trial_id: str,
+        artifact_dir: Path,
+        *,
+        gateway: Mapping[str, str] | None = None,
+        model_alias: str | None = None,
+    ):
         """Open one BladeAI session on its own server, or return None.
 
         Black-box BladeAI is a service, not a command, so the platform talks to
         it over HTTP/SSE instead of spawning it.  ``/cancel`` cancels every task
         on the server it reaches, so each Trial must address a server of its own
         -- ``RESBENCH_BLADEAI_SERVER_URL`` names it.
+
+        ``gateway`` carries this Trial's inference-relay credentials.  The other
+        three Harnesses receive them as child-process environment, which a
+        served Harness has no way to read: it was started before the Trial and
+        outlives it.  Without them BladeAI calls the model gateway directly, the
+        relay mints no request ids, and the Trial is scored ``CASE_INVALID``
+        with ``GATEWAY_EVIDENCE_MISSING`` -- observed on a real L0 on
+        2026-09-13.  BladeAI publishes ``POST /api/v1/config/{key}`` for exactly
+        this, and reports ``hot_reload`` so no restart is needed, so the
+        credentials go over the same public interface as everything else.
         """
         base_url = self.base_environment.get("RESBENCH_BLADEAI_SERVER_URL") or os.environ.get(
             "RESBENCH_BLADEAI_SERVER_URL"
@@ -1795,6 +1844,21 @@ class NativeHarnessRunner:
         client = BladeAIHttpClient(
             base_url, event_log=EventLog(artifact_dir / "bladeai-raw-events.jsonl")
         )
+        if gateway:
+            settings = {
+                "api_base_url": gateway["RESBENCH_LLM_BASE_URL"],
+                "llm_api_key": gateway["RESBENCH_LLM_API_KEY"],
+            }
+            if model_alias:
+                settings["model_name"] = model_alias
+            try:
+                client.configure(settings)
+            except Exception as exc:
+                client.close()
+                raise HarnessRuntimeError(
+                    f"BladeAI server refused this Trial's gateway credentials: {exc}",
+                    error_code="BLADEAI_GATEWAY_CONFIG_REJECTED",
+                ) from exc
         try:
             session_id = client.create_session()
         except Exception as exc:

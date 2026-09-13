@@ -24,8 +24,10 @@ handed back to the caller to send as ordinary text on a later turn.
 
 from __future__ import annotations
 
+import json
+import re
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -343,3 +345,43 @@ def plan_from_intent(
     if isinstance(duration, int) and duration > 0:
         plan["duration_seconds"] = duration
     return plan
+
+# Fenced JSON blocks in an Agent message, in the order they appear.
+_FENCED_JSON = re.compile(r"```(?:json|JSON)?\s*(\{.*?\})\s*```", re.S)
+# A block is a plan proposal only if it carries the fields a plan is made of;
+# BladeAI also prints kubectl output and tool arguments in fenced blocks.
+_PLAN_MARKERS = ("fault_type", "intensity", "target")
+
+
+def plan_from_text(messages: Sequence[str]) -> dict[str, Any] | None:
+    """Recover a plan BladeAI wrote into its message text, or None.
+
+    BladeAI announces its plan as prose plus a fenced JSON block and asks the
+    user to reply with a confirmation word, rather than raising its own
+    ``confirm`` gate (finding F10).  The platform's conversation interpreter
+    then reduces the question to the choice it was offered -- a real L0 on
+    2026-09-13 came back with ``recommendation`` = ``"A"`` on one turn and
+    ``"确认"`` on the next -- so the plan never reached the validator, which
+    reported every field missing and could only reject.  The Agent then
+    re-stated the same plan in prose and the exchange repeated: 25 turns on one
+    run, with no injection attempted.
+
+    This reads only what the Agent itself wrote.  It invents nothing, fills in
+    nothing, and returns None when no block looks like a plan, so a turn that
+    carries no proposal is unaffected.  The platform's own validator still
+    decides whether the plan is acceptable.
+    """
+    for message in reversed(list(messages)):
+        if not isinstance(message, str):
+            continue
+        for block in reversed(_FENCED_JSON.findall(message)):
+            try:
+                value = json.loads(block)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(value, Mapping):
+                continue
+            if not any(marker in value for marker in _PLAN_MARKERS):
+                continue
+            return dict(value)
+    return None

@@ -45,6 +45,17 @@ def state_path(session_id: str, prefix: str = DEFAULT_API_PREFIX) -> str:
     return f"{prefix}/sessions/{session_id}/state"
 
 
+def config_path(key: str, prefix: str = DEFAULT_API_PREFIX) -> str:
+    """Where one server-wide setting is written.
+
+    The server applies the write immediately and says so in ``hot_reload``; a
+    restart is neither needed nor possible for a Harness the platform does not
+    own.  The setting is server-wide, which is another reason a Trial must
+    never share a server (see :func:`cancel_path`).
+    """
+    return f"{prefix}/config/{key}"
+
+
 def confirm_path(task_id: str, prefix: str = DEFAULT_API_PREFIX) -> str:
     """Execution-gate channel.  Keyed by ``task_id``, not by session id."""
     return f"{prefix}/confirm/{task_id}"

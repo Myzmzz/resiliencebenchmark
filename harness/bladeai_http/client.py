@@ -52,6 +52,7 @@ from .protocol import (
     frame_to_event,
     interrupt_path,
     is_terminal,
+    config_path,
     iter_sse_frames,
     sessions_path,
     state_path,
@@ -230,6 +231,52 @@ class BladeAIHttpClient:
             "session creation response carried no session id; keys="
             f"{sorted(body)}"
         )
+
+    def configure(self, settings: Mapping[str, Any]) -> dict[str, bool]:
+        """Write server-wide settings, and report which ones took effect live.
+
+        Used to hand a served Harness this Trial's inference-relay credentials.
+        A subprocess Harness gets them as child environment; a server that was
+        started before the Trial can only be told over its own interface.
+
+        Each key is written separately because that is the published shape
+        (``POST /api/v1/config/{key}``).  A write the server accepts but cannot
+        apply without a restart reports ``hot_reload`` false, which is a failure
+        here -- the platform cannot restart a Harness it does not own -- so it
+        is raised rather than logged.
+        """
+        applied: dict[str, bool] = {}
+        for key, value in settings.items():
+            response = self._request(
+                "POST", config_path(str(key), self.api_prefix), json={"value": value}
+            )
+            body = _json_body(response, f"config write for {key}")
+            # A refusal arrives as HTTP 200 with ``status: "fail"`` and a null
+            # ``data`` -- 0.7.0 answers a write to a read-only key that way
+            # (``code 1002``), so the status code alone says nothing.
+            if str(body.get("status") or "").lower() not in {"success", "ok", ""}:
+                raise BladeAIHttpError(
+                    f"config write for {key} was refused: "
+                    f"{body.get('message') or body.get('code')}"
+                )
+            data = body.get("data") if isinstance(body.get("data"), Mapping) else {}
+            error = data.get("rebuild_error")
+            if error:
+                raise BladeAIHttpError(f"config write for {key} failed to apply: {error}")
+            # ``hot_reload`` is reported per key; a key that omits it was still
+            # accepted.  Only an explicit false means the value is stored but
+            # inert until a restart, which the platform cannot perform on a
+            # Harness it does not own.
+            if data.get("hot_reload") is False:
+                raise BladeAIHttpError(
+                    f"config write for {key} needs a server restart, which the "
+                    "platform cannot perform on a Harness it does not own"
+                )
+            applied[str(key)] = True
+        if self.event_log is not None:
+            # The values are credentials; only the key names are recorded.
+            self.event_log.record_driver("gateway_configured", {"keys": sorted(applied)})
+        return applied
 
     def state(self, session_id: str) -> dict[str, Any]:
         response = self._request("GET", state_path(session_id, self.api_prefix))
