@@ -71,7 +71,22 @@ def transcribe_bladeai_report(
     come from BladeAI's recorded tool calls.
     """
 
-    if not isinstance(terminal_result, Mapping) or terminal_result.get("type") != "stage2_bladeai_result":
+    if not isinstance(terminal_result, Mapping):
+        return None
+    if terminal_result.get("type") != "stage2_bladeai_result":
+        # Black-box BladeAI ends a turn with its own ``result`` event, whose
+        # body is ``{"status": ..., "data": {...}}``.  That body carries the
+        # injection facts (experiment uid, target, task state) but **no
+        # structured verification verdict** -- under the in-process SDK those
+        # lived in ``extras.verification``, which the public event stream does
+        # not have.
+        #
+        # Returning None here is deliberate.  The platform already derives an
+        # assessment from the Agent's own words via
+        # ``simulated_user.interpret``, exactly as it does for the other three
+        # Harnesses, and that path runs when this one declines.  Synthesising a
+        # verdict out of injection metadata would invent a conclusion the Agent
+        # never stated.
         return None
     extras = _mapping(terminal_result.get("extras"))
     verification = _mapping(extras.get("verification"))

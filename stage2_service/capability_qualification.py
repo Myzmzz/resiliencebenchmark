@@ -5,7 +5,7 @@ record for the same non-BladeAI Harness additionally grants
 ``code_execution=platform_sandbox``: the Harness ran Agent code through the
 platform ``code_sandbox`` MCP, which D7/D8 require.  Nothing here grants D0
 fault qualification.  BladeAI always keeps ``code_execution=none``; its basic
-channel evidence is retained but cannot replace its WP8 full chain.
+channel evidence is retained but never grants it a sandboxed code path.
 """
 from __future__ import annotations
 
@@ -37,6 +37,32 @@ BASE_CHECKS = frozenset({
 # is literal so that publishing base records alone does not import that module.
 SUBSTITUTION_QUALIFICATION_TYPE = "CHANNEL_QUALIFICATION"
 MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
+# Harnesses whose execution path a base channel run cannot establish, and which
+# therefore need a separate full-chain proof before they count as qualified.
+#
+# BladeAI used to be the only member.  The reason was specific and is now gone:
+# the platform drove it by replacing private functions inside its process, so a
+# base channel run exercised our shim rather than the Agent's real execution
+# path, and granting stream mode on that evidence would have overstated what we
+# had verified.
+#
+# Driven as a black box (2026-09-13) there is no shim.  BladeAI answers the same
+# published HTTP/SSE interface codex answers over stdout, and every BASE_CHECK
+# below is platform-side evidence that does not depend on anything the Agent
+# writes about itself:
+#   * mcp_read / confirmation / consult / notice / result checks come from the
+#     MCP gateway's own record of the calls it served;
+#   * gateway_evidence comes from the model gateway's request log;
+#   * tool_evidence is recomputed from canonical-events, which the driver lands
+#     itself (harness/bladeai_http/client.py).
+# So the base record now establishes BladeAI's real execution path, and the
+# exclusion no longer has a basis.
+#
+# The set is kept rather than deleted: "this Harness needs more than base
+# evidence" is a judgement worth being able to state in one place, instead of
+# rediscovering it as a scattered ``if harness is ...`` later.
+HARNESSES_NEEDING_FULL_CHAIN_PROOF: frozenset[HarnessKind] = frozenset()
+
 BASE_SERVERS = frozenset({"k8s_ro", "telemetry_ro", "source_ro", "chaos_control", "harness_channel"})
 REQUIRED_TOOLS = frozenset({"harness_channel.harness_confirm", "harness_channel.harness_consult",
                             "harness_channel.harness_poll_notices", "harness_channel.harness_submit_result"})
@@ -233,9 +259,7 @@ def _verified_gateway_identity(record: dict[str, Any], harness: HarnessKind, art
 
 def _entry(path: Path, record: dict[str, Any], artifact_root: Path,
            gateway: GatewayConfigSnapshot) -> tuple[str, dict[str, Any]]:
-    """Verify one base or BladeAI WP8 record into its published entry."""
-    if record.get("qualification_type") == "BLADEAI_WP8_FULL_CHAIN_QUALIFICATION":
-        return _wp8_entry(path, record, artifact_root, gateway)
+    """Verify one base channel record into its published entry."""
     if (record.get("schema_version") != "stage2-channel-qualification.v1"
             or record.get("qualification_type") != BASE_QUALIFICATION_TYPE
             or record.get("qualification_profile") != BASE_QUALIFICATION_TYPE):
@@ -252,9 +276,7 @@ def _entry(path: Path, record: dict[str, Any], artifact_root: Path,
         raise ValueError("unknown qualified Harness") from error
     identity = _verified_gateway_identity(record, harness, artifact_root, gateway)
     streamed, replayed = _native_tool_modes(identity.canonical_path, record)
-    # A basic channel run cannot establish BladeAI's shim/approval execution path.
-    # Keep that missing gate explicit rather than quietly granting stream mode.
-    qualified = harness != HarnessKind.BLADEAI
+    qualified = harness not in HARNESSES_NEEDING_FULL_CHAIN_PROOF
     descriptor = HarnessCapability(
         kind=harness,
         execution_model=("stream" if streamed else "post_hoc") if qualified else "controller_driven",
@@ -287,7 +309,7 @@ def _substitution_proof(path: Path, record: dict[str, Any], artifact_root: Path,
     tool stream.  Any gap raises; nothing is inferred.
     """
     # Imported here: the evaluator module composes the Stage-2 runtime, which a
-    # publication of base or WP8 records alone does not need.
+    # publication of base records alone does not need.
     from .channel_qualification import (
         CHANNEL_QUALIFICATION_MODE,
         EXPECTED_HINT_BODY,
@@ -315,8 +337,10 @@ def _substitution_proof(path: Path, record: dict[str, Any], artifact_root: Path,
     except ValueError as error:
         raise ValueError("unknown qualified Harness") from error
     if harness is HarnessKind.BLADEAI:
-        # BladeAI is promoted only by its WP8 full chain; a channel run does not
-        # prove its worker's code path, so it never grants BladeAI a sandbox.
+        # ``code_execution="none"`` is BladeAI's settled grade and survives the
+        # black-box migration unchanged.  It runs its own built-in tooling
+        # rather than code the platform sandboxes, so no substitution evidence
+        # can establish a sandboxed code path for it.
         raise ValueError("BladeAI code execution cannot be qualified by channel substitution evidence")
     identity = _verified_gateway_identity(record, harness, artifact_root, gateway)
     evidence = _canonical_tool_evidence(identity.canonical_path, record, SUBSTITUTION_MCP_SERVERS,
@@ -384,230 +408,11 @@ def _with_platform_sandbox(entry: dict[str, Any], proof: dict[str, Any]) -> dict
     }
 
 
-def evaluate_wp8_artifacts(
-    artifact_refs: Sequence[str], *, artifact_root: Path, gateway: GatewayConfigSnapshot
-) -> dict[str, Any]:
-    """Recompute WP8 from protected production artifacts, not a checks table.
-
-    This reads an already-finished canary run. It never launches an Agent,
-    creates a canary, or grants capabilities by itself.
-    """
-    from .bladeai_qualification import evaluate_bladeai_full_chain
-    from .contracts import HarnessReport, RecoveryResult, RuntimeTarget, TrialRuntimeContext
-    from .platform_ledger import PlatformEvent
-
-    root = _no_links(artifact_root)
-    refs = {"artifact_refs": list(artifact_refs)}
-
-    def artifact_path(
-        name: str,
-        *,
-        record: dict[str, Any] = refs,
-        optional: bool = False,
-    ) -> Path | None:
-        matches = [Path(ref) for ref in record.get("artifact_refs", [])
-                   if isinstance(ref, str) and Path(ref).name == name]
-        if optional and name == "bladeai-shim-evidence.json" and not matches:
-            # A model/provider failure can happen before the first write.
-            # Missing shim evidence is then a measured "no mutation" outcome,
-            # not an evaluator exception.  Ambiguous or malformed references
-            # remain hard failures below.
-            return None
-        try:
-            return _artifact(record, root, name)
-        except ValueError:
-            raise
-
-    def document(name: str, *, optional: bool = False) -> Any:
-        path = artifact_path(name, optional=optional)
-        return [] if path is None else json.loads(_read(path))
-
-    report = HarnessReport.model_validate(document("harness-report.json"))
-    recovery = RecoveryResult.model_validate(document("recovery.json"))
-    runtime = TrialRuntimeContext.model_validate(document("runtime-context.json"))
-    canary = document("canary-evidence.json")
-    if not isinstance(canary, dict) or canary.get("trial_id") != runtime.trial_id:
-        raise ValueError("canary evidence does not belong to this Trial")
-    pod = canary.get("pod")
-    metadata = pod.get("metadata") if isinstance(pod, dict) else None
-    if (not isinstance(metadata, dict) or pod.get("kind") != "Pod"
-            or (metadata.get("labels") or {}).get("resiliencebenchmark.io/qualification") != "bladeai-wp8"):
-        raise ValueError("an explicitly labelled BladeAI canary Pod record is required")
-    if any(not isinstance(metadata.get(key), str) or not metadata[key] for key in ("namespace", "name", "uid")):
-        raise ValueError("canary Pod identity is incomplete")
-    expected = RuntimeTarget(namespace=metadata["namespace"], name=metadata["name"],
-                             uid=metadata["uid"], component="bladeai-canary")
-    if report.final_output.get("trial_id") != runtime.trial_id:
-        raise ValueError("Harness report does not belong to the runtime Trial")
-    if recovery.recovery_attribution.get("trial_id") != runtime.trial_id:
-        raise ValueError("recovery evidence does not belong to the runtime Trial")
-    for name in ("harness-report.json", "recovery.json"):
-        if _artifact(refs, root, name).parent != _artifact(refs, root, "runtime-context.json").parent:
-            raise ValueError("runtime and recovery evidence must belong to one Trial directory")
-    if document("bladeai-launch.json") != report.final_output.get("bladeai_launch"):
-        raise ValueError("BladeAI launch facts differ from the Controller artifact")
-    shim_path = artifact_path("bladeai-shim-evidence.json", optional=True)
-    shim_document = [] if shim_path is None else json.loads(_read(shim_path))
-    reported_shim = report.final_output.get("bladeai_shim_evidence")
-    if shim_path is None:
-        if reported_shim not in (None, []):
-            raise ValueError("BladeAI shim receipts are claimed but the artifact is missing")
-    elif shim_document != reported_shim:
-        raise ValueError("BladeAI shim receipts differ from their captured artifact")
-
-    event_rows = report.final_output.get("platform_events")
-    if not isinstance(event_rows, list) or not event_rows:
-        raise ValueError("Controller platform events are missing")
-    if any(not isinstance(row, dict) or not isinstance(row.get("payload"), dict)
-           or not isinstance(row.get("event_type"), str) for row in event_rows):
-        raise ValueError("Controller platform event structure is invalid")
-    try:
-        events = [PlatformEvent(**row) for row in event_rows]
-    except TypeError as error:
-        raise ValueError("Controller platform event fields are invalid") from error
-    canonical_path = _artifact(refs, root, "canonical-events.jsonl")
-    canonical = [json.loads(line) for line in _read(canonical_path).splitlines() if line.strip()]
-    native_stream_verified = _verify_wp8_canonical_events(canonical, event_rows)
-    native_parent = canonical_path.parent
-    for name in ("gateway-requests.json", "bladeai-launch.json", "bladeai-shim-evidence.json",
-                 "harness-report.json", "runtime-context.json", "recovery.json", "canary-evidence.json"):
-        path = artifact_path(name, optional=name == "bladeai-shim-evidence.json")
-        if path is not None and path.parent != native_parent:
-            raise ValueError("all BladeAI WP8 evidence must belong to one Trial archive")
-    reported_refs = {"artifact_refs": list(report.artifact_refs)}
-    for name in ("canonical-events.jsonl", "gateway-requests.json", "bladeai-launch.json", "bladeai-shim-evidence.json"):
-        actual = artifact_path(name, optional=name == "bladeai-shim-evidence.json")
-        reported = artifact_path(
-            name,
-            record=reported_refs,
-            optional=name == "bladeai-shim-evidence.json",
-        )
-        if (actual is None) != (reported is None) or (
-            actual is not None and reported is not None and actual != reported
-        ):
-            raise ValueError("WP8 references differ from the actual Harness archive references")
-    model = report.final_output.get("model_alias")
-    route = report.final_output.get("gateway_route")
-    version = report.final_output.get("gateway_config_sha256")
-    ids = report.final_output.get("gateway_request_ids")
-    if (not isinstance(model, str) or not model or version != gateway.config_sha256
-            or route != gateway.route(model) or report.final_output.get("gateway_evidence_verified") is not True
-            or not isinstance(ids, list) or not ids or not all(isinstance(item, str) and item for item in ids)
-            or len(ids) != len(set(ids))):
-        raise ValueError("WP8 model route evidence is missing or does not match the current gateway")
-    receipt_path = _artifact(refs, root, "gateway-requests.json")
-    if read_gateway_artifact(receipt_path, trial_id=runtime.trial_id, harness="bladeai",
-                             model_alias=model, config_sha256=version, request_ids=set(ids)) is None:
-        raise ValueError("WP8 gateway receipt does not verify this Trial")
-    evaluated = evaluate_bladeai_full_chain(
-        trial_id=runtime.trial_id, model=model, report=report, recovery=recovery,
-        runtime_target=runtime.target, events=events, expected_canary=expected,
-        expected_cleanup_handle=runtime.cleanup_handle,
-    )
-    # A provider/SDK failure can happen before BladeAI emits its first native
-    # tool result.  That is a valid failed qualification outcome, not a
-    # corrupted archive.  Preserve the strict live-stream requirement for any
-    # record that otherwise claims a passing WP8 chain.
-    if evaluated.get("passed") is True and not native_stream_verified:
-        raise ValueError("WP8 terminal success requires a live native BladeAI ToolResult")
-    evaluated["evidence"] = {
-        **dict(evaluated.get("evidence") or {}),
-        "canonical_stream": {
-            "controller_ledger_verified": True,
-            "live_native_tool_result": native_stream_verified,
-        },
-    }
-    if evaluated.get("passed") is True:
-        result = report.final_output.get("agent_result")
-        schema_path = Path(__file__).resolve().parents[1] / "harness/schemas/agent-result.schema.json"
-        try:
-            jsonschema.Draft202012Validator(json.loads(schema_path.read_text())).validate(result)
-        except jsonschema.ValidationError as error:
-            raise ValueError("WP8 terminal Agent result does not satisfy the current contract") from error
-        submit_id = evaluated["evidence"]["result_submit_call_id"]
-        submitted = [event.payload.get("arguments", {}).get("result") for event in events
-                     if event.event_type == "ToolCall" and event.payload.get("source") == "mcp_server"
-                     and event.payload.get("call_id") == submit_id]
-        if submitted != [result]:
-            raise ValueError("WP8 terminal result differs from the actual submitted result")
-    return {
-        **evaluated, "artifact_refs": list(artifact_refs), "gateway_config_sha256": version,
-        "gateway_route": route,
-        "gateway_sidecar_evidence": {"verified": True, "request_ids": ids,
-                                     "artifact_ref": "gateway-requests.json"},
-    }
-
-
-def _verify_wp8_canonical_events(rows: list[Any], platform: list[dict[str, Any]]) -> bool:
-    """Verify canonical events against the Controller ledger.
-
-    Return whether a live native ``ToolResult`` is present.  A missing native
-    result is expected when a model/provider fails before the first tool call;
-    callers decide whether that absence is acceptable for the outcome.  Any
-    mismatch between events that do exist remains a hard evidence error.
-    """
-    fields = {
-        "ToolCall": ("call_id", "tool", "arguments"),
-        "ToolResult": ("call_id", "status", "payload"),
-        "Checkpoint": ("values",),
-    }
-
-    def identity(kind: str, source: str, value: dict[str, Any]) -> str:
-        return json.dumps([kind, source, {key: value.get(key) for key in fields[kind]}], sort_keys=True)
-
-    recorded = Counter()
-    streamed = False
-    for row in rows:
-        if not isinstance(row, dict):
-            raise ValueError("invalid BladeAI canonical event")
-        kind, source = row.get("event_type"), row.get("source")
-        if not isinstance(kind, str) or not isinstance(source, str):
-            raise ValueError("invalid BladeAI canonical event identity")
-        if kind in fields and source in {"native", "mcp_server"}:
-            if row.get("replayed") is not False:
-                raise ValueError("WP8 requires the live BladeAI stream, not replayed events")
-            recorded[identity(kind, source, row)] += 1
-            streamed |= source == "native" and kind == "ToolResult"
-    original = Counter(
-        identity(row["event_type"], row["payload"]["source"], row["payload"])
-        for row in platform if row.get("event_type") in fields
-        and row.get("payload", {}).get("source") in {"native", "mcp_server"}
-    )
-    if recorded != original:
-        raise ValueError("BladeAI canonical stream does not match the Controller ledger")
-    return streamed
-
-
-def _wp8_entry(path: Path, record: dict[str, Any], root: Path,
-               gateway: GatewayConfigSnapshot) -> tuple[str, dict[str, Any]]:
-    refs = record.get("artifact_refs")
-    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
-        raise ValueError("WP8 artifact references are required")
-    derived = evaluate_wp8_artifacts(refs, artifact_root=root, gateway=gateway)
-    if record != derived or derived.get("passed") is not True or derived.get("status") != "passed":
-        raise ValueError("BladeAI full-chain qualification did not verify against its actual artifacts")
-    descriptor = HarnessCapability(
-        kind=HarnessKind.BLADEAI, execution_model="stream", streams_tool_results=True,
-        post_hoc_trace=False, supports_resume=False, supports_mid_turn_feedback=True,
-        feedback_channels=("in_band_mcp",), code_execution="none", qualification_passed=True,
-        probe={"qualification_profile": derived["qualification_type"],
-               "channel_trial_id": derived["trial_id"], "model_alias": derived["model"],
-               "gateway_config_sha256": derived["gateway_config_sha256"],
-               "gateway_request_ids": derived["gateway_sidecar_evidence"]["request_ids"],
-               "full_chain_checks": derived["checks"]},
-    )
-    return "bladeai", {
-        "qualification": {"status": "passed", "evidence_ref": str(path.resolve()),
-                          "qualification_type": derived["qualification_type"], "reason": None},
-        "capability": descriptor.model_dump(mode="json"),
-    }
-
-
 def publish_capabilities(record_files: Sequence[Path], *, artifact_root: Path, output: Path,
                          gateway: GatewayConfigSnapshot) -> Path:
     """Atomically publish exactly the supplied evidence set, never inferred entries.
 
-    Each Harness needs one base (or BladeAI WP8) record.  An optional WP11
+    Each Harness needs one base channel record.  An optional WP11
     substitution record for the same non-BladeAI Harness adds
     ``code_execution=platform_sandbox``; every other Harness is published with
     ``none``.  To retain previously qualified Harnesses, explicitly include

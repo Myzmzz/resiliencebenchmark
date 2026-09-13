@@ -79,8 +79,6 @@ def source_digest() -> str:
             REPO_ROOT / "scripts/probe_models.py",
             REPO_ROOT / "scripts/qualify_agent_channel.py",
             REPO_ROOT / "scripts/publish_harness_capabilities.py",
-            REPO_ROOT / "scripts/build_bladeai_qualification.py",
-            REPO_ROOT / "scripts/qualify_bladeai_task.py",
             REPO_ROOT / "scripts/qualify_execution_identities.py",
             REPO_ROOT / "scripts/serve_stage2_matrix_review.py",
             REPO_ROOT / "scripts/deploy_application.py",
