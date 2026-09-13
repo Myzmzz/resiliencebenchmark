@@ -280,3 +280,47 @@ Docker 28.3.2 的私有 cgroup 命名空间行为（第二套环境实测的是 
 取的是 `head` 的退出码，**永远成功**。已改为直接取 `kubectl` 自身的退出码并重跑。
 
 本文数据来自修正后的第二次盘点。
+
+
+---
+
+## 7. 装机实测：两套注入引擎的行为差异（2026-09-13）
+
+P4b/P4c 的验收各做了一次真注入，**两层取证**（集群对象 + 目标上的实际效果）。
+结论是这两套引擎的恢复语义**完全不同**，评测判定必须分别对待。
+
+### ChaosBlade（`chaosblades.chaosblade.io`）
+
+对 `otel-demo/cart` 注单核 CPU 满载：
+
+| | 注入中 | 删 CR 后 | `blade destroy <uid>` 后 |
+|---|---|---|---|
+| 集群 CR | 存在 | **无** | 无 |
+| 容器内 `chaos_os` | 在 | **仍在** | 没了 |
+| cgroup CPU / 5 秒 | 4956 ms（≈99% 单核） | **4956 ms** | **27 ms** |
+
+- **F5 原样复现**：删掉 CR 不停原生注入。
+- **`--timeout=180` 也没兜住**：早已过期，进程还在。
+- **F9 原样复现**：`blade status` 那条 `Status` 始终是 `Success`，
+  既不代表故障还在，也不代表已清除。
+
+### Chaos Mesh（`NetworkChaos`，现有的那个分支）
+
+对同一个 `cart` 注 300ms 出方向延迟，`duration: 90s`：
+
+| | 注入中 | duration 到期后 |
+|---|---|---|
+| 实验状态 | `Run` / `Injected` | `Stop` |
+| `PodNetworkChaos` 的 tc | `netem latency 300ms` | **空** |
+| 实测 connect | **0.302 s** | **0.0016–0.0025 s** |
+
+**到期自动清理，tc 规则自己撤掉**，不需要额外动作。
+
+### 对评测的影响
+
+- **残留检查不能一视同仁**。ChaosBlade 必须查到进程/cgroup 层；Chaos Mesh 查
+  `PodNetworkChaos` 的 tc 列表即可，但仍建议做一次业务侧实测复核。
+- 这正好印证第一批 O04 的改动方向：**恢复未经实测验证就不该认为环境已复位**，
+  更不该据此升级成全量重装。
+- D8 的替代注入通道（Chaos Mesh 三类）**在本环境可用**：`NetworkChaos` 实测通过，
+  `PodChaos` / `StressChaos` 的 CRD 与 daemon 均在位。
