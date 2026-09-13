@@ -356,3 +356,66 @@ class _Stream(httpx.AsyncByteStream):
 
 async def _one_chunk(value: bytes):
     yield value
+
+
+# --- 被服务化的 Harness 用预置令牌鉴权 ------------------------------------
+#
+# 2026-09-13 真实 L0 的实测：BladeAI 0.7.0 是先于试验启动、活得比试验长的
+# 服务，其公开 API 明确拒绝写 llm_api_key（code 1002，"not writable via the
+# HTTP API"），平台因此没法把每轮现发的令牌交给它。不解决就每场判
+# CASE_INVALID / GATEWAY_EVIDENCE_MISSING，每个节点 BLOCKED_BY_PLATFORM 零分。
+#
+# 口径：本轮 relay 额外接受它已持有的那把凭据。request id 照发、审计行照写、
+# 模型别名照校验——取证链一条不少；代价是它自带凭据，这一点写进评估报告。
+
+
+def _ok_upstream(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200,
+        headers={"content-type": "application/json"},
+        stream=_Stream(_one_chunk(b'{"id":"resp-1","model":"gpt-5.5"}')),
+    )
+
+
+def _post(client, token: str):
+    return client.post(
+        "/v1/responses",
+        headers={"authorization": f"Bearer {token}", "content-type": "application/json"},
+        content=b'{"model": "gpt-5.5", "input": "hi"}',
+    )
+
+
+def test_served_harness_token_is_accepted_alongside_the_trial_token():
+    config, client = relay(_ok_upstream, served_harness_token="preshared-served-key")
+    assert _post(client, "preshared-served-key").status_code == 200
+    assert _post(client, config.relay_token).status_code == 200
+
+
+def test_a_wrong_token_is_still_rejected_when_a_served_token_is_configured():
+    _, client = relay(_ok_upstream, served_harness_token="preshared-served-key")
+    assert _post(client, "some-other-token").status_code == 401
+
+
+def test_the_served_token_still_mints_request_ids_and_enforces_the_model_alias():
+    """取证链不能因为换了把钥匙就断——这正是加这条的理由。"""
+    config, client = relay(_ok_upstream, served_harness_token="preshared-served-key")
+    assert _post(client, "preshared-served-key").status_code == 200
+    assert len(config.request_ids) == 1 and config.request_ids[0]
+
+    wrong_model = client.post(
+        "/v1/responses",
+        headers={"authorization": "Bearer preshared-served-key",
+                 "content-type": "application/json"},
+        content=b'{"model": "some-other-model", "input": "hi"}',
+    )
+    assert wrong_model.status_code == 403
+
+
+def test_the_other_three_harnesses_are_unchanged_because_the_field_stays_empty():
+    """子进程 Harness 不配这个字段，行为与加它之前逐字节相同。"""
+    config, client = relay(_ok_upstream)
+    assert config.served_harness_token == ""
+    assert _post(client, config.relay_token).status_code == 200
+    assert _post(client, "anything-else").status_code == 401
+    # 空的预置令牌不能授权任何东西，空 Bearer 头也不行
+    assert _post(client, "").status_code == 401

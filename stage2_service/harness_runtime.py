@@ -634,12 +634,24 @@ class NativeHarnessRunner:
             raise HarnessRuntimeError("gateway configuration snapshot is required", error_code="GATEWAY_SNAPSHOT_MISSING")
         if not self.local_test_execution:
             phase_ref = {"phase": LifecyclePhase.C1_PLAN.value}
+            # A served Harness cannot be handed a freshly minted token: it was
+            # started before this Trial and its API refuses a key write (see
+            # ``served_harness_token``).  It authenticates with the credential
+            # it already holds, so this Trial's relay is told to accept that one
+            # as well.  Empty for the three subprocess Harnesses, whose relay
+            # behaviour is unchanged.
+            served_harness_token = (
+                self.base_environment["RESBENCH_LLM_API_KEY"]
+                if harness is HarnessKind.BLADEAI
+                else ""
+            )
             relay_config = TrialRelayConfig.issue(
                 trial_id=trial_id, model_alias=model_alias,
                 upstream_base_url=self.base_environment["RESBENCH_LLM_BASE_URL"],
                 upstream_api_key=self.base_environment["RESBENCH_LLM_API_KEY"],
                 harness_name=harness.value, gateway_config_sha256=gateway_hash,
                 llm_tag=llm_tag or model_alias,
+                served_harness_token=served_harness_token,
             )
             relay_config.phase_ref.update(phase_ref)
             relay = resources.enter_context(TrialRelay(relay_config))
@@ -1345,7 +1357,7 @@ class NativeHarnessRunner:
                             artifact_dir,
                             gateway={
                                 key: agent_env[key]
-                                for key in ("RESBENCH_LLM_BASE_URL", "RESBENCH_LLM_API_KEY")
+                                for key in ("RESBENCH_LLM_BASE_URL",)
                                 if key in agent_env
                             },
                             model_alias=model_alias,
@@ -1820,15 +1832,19 @@ class NativeHarnessRunner:
         on the server it reaches, so each Trial must address a server of its own
         -- ``RESBENCH_BLADEAI_SERVER_URL`` names it.
 
-        ``gateway`` carries this Trial's inference-relay credentials.  The other
-        three Harnesses receive them as child-process environment, which a
-        served Harness has no way to read: it was started before the Trial and
-        outlives it.  Without them BladeAI calls the model gateway directly, the
-        relay mints no request ids, and the Trial is scored ``CASE_INVALID``
-        with ``GATEWAY_EVIDENCE_MISSING`` -- observed on a real L0 on
-        2026-09-13.  BladeAI publishes ``POST /api/v1/config/{key}`` for exactly
-        this, and reports ``hot_reload`` so no restart is needed, so the
-        credentials go over the same public interface as everything else.
+        ``gateway`` carries this Trial's inference-relay endpoint.  The other
+        three Harnesses receive it as child-process environment, which a served
+        Harness has no way to read: it was started before the Trial and outlives
+        it.  Without it BladeAI calls the model gateway directly, the relay
+        mints no request ids, and the Trial is scored ``CASE_INVALID`` with
+        ``GATEWAY_EVIDENCE_MISSING`` -- observed on a real L0 on 2026-09-13.
+
+        Only the endpoint travels this way.  ``api_base_url`` is writable over
+        BladeAI's published ``POST /api/v1/config/{key}`` and applies live
+        (``hot_reload``); ``llm_api_key`` is explicitly not writable there
+        (``code 1002``), so the credential side is handled at the other end --
+        the relay accepts the token the server already holds, see
+        ``TrialRelayConfig.served_harness_token``.
         """
         base_url = self.base_environment.get("RESBENCH_BLADEAI_SERVER_URL") or os.environ.get(
             "RESBENCH_BLADEAI_SERVER_URL"
@@ -1845,10 +1861,11 @@ class NativeHarnessRunner:
             base_url, event_log=EventLog(artifact_dir / "bladeai-raw-events.jsonl")
         )
         if gateway:
-            settings = {
-                "api_base_url": gateway["RESBENCH_LLM_BASE_URL"],
-                "llm_api_key": gateway["RESBENCH_LLM_API_KEY"],
-            }
+            # Only the endpoint is pushed.  ``llm_api_key`` is read-only over
+            # this API (``code 1002``), and it does not need writing: the relay
+            # for this Trial accepts the credential the server already holds
+            # (``TrialRelayConfig.served_harness_token``).
+            settings = {"api_base_url": gateway["RESBENCH_LLM_BASE_URL"]}
             if model_alias:
                 settings["model_name"] = model_alias
             try:
