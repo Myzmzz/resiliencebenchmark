@@ -581,3 +581,94 @@ Pod 排不上：
 **这一级需要集群属主决定**：把两个节点的 kubelet `maxPods` 调高（比如 150）
 就能到 20，但那是节点级配置，要改 kubelet 配置并重启 kubelet，影响的是整个共享集群，
 不在本方案的操作范围内。我没有做这个改动。
+
+### 10.4 17 路并发：调度是干净的，模型不是
+
+批次 `ramp17-20260913`，17 条 C0，一次派发到 17 个互不相同的命名空间。
+
+| 指标 | 10 路 | 17 路 |
+|---|---|---|
+| 墙钟 | 32.3 分钟 | **30.6 分钟** |
+| 串行等价 | 195.7 分钟 | **196.8 分钟** |
+| 加速 | 6.1× | **6.4×** |
+| 命名空间 | 10 | **17** |
+| 平台故障 | 0 | **1** |
+| 平台重试 | 0 | 2（集中在那 1 条） |
+
+17 路和 10 路的墙钟几乎一样（30.6 对 32.3 分钟），因为墙钟由最长的那一条决定，
+而不是由条数决定。这正是并行模式要的性质：**再往里加条目，总时长不变**。
+
+#### 调度侧的两件事
+
+**一、探测对齐。** 提交后 17 条**全部**被延后在 `gateway_probe_in_progress`——
+17 个控制器是同批置备的，300 秒的探测周期因此完全对齐。约 3 分钟后自行散开，
+`attempts` 仍然是 1、`platform_retries` 仍然是 0。第七节第 5 条担心的事在 17 路上发生了，
+而"延后不计重试"这个修复吸收掉了它。但要注意：**这只是没有记错账，不是没有代价**，
+它实打实地吃掉了 3 分钟。副本再多，就该把探测做成共享的。
+
+**二、一条平台故障。** deepseek-harness 在 `otel-demo-09` 上，进程调了 26 次网关、
+走完 55 个生命周期事件之后非正常退出，且没有留下结构化错误
+（`process_succeeded: false`，`error: {}`，`reason_codes: [PLATFORM_INVALID, HARNESS_EXECUTION_FAILED]`）。
+系统按设计重试了 2 次仍然失败。17 条里 1 条，是各级爬坡中的第一次平台故障。
+
+#### 模型侧：qwen3.8-max 在这一轮直接垮了
+
+| 执行器 | PASS | FAIL | CASE_INVALID |
+|---|---|---|---|
+| deepseek-harness | 3 | 0 | 2 |
+| claude-code | 1 | 5 | 0 |
+| codex | 0 | 0 | **6** |
+
+- **codex 六条全部 `OUTPUT_UNSTRUCTURED`**，一条有效试验都没有产出。
+- **claude-code 五条 `MAIN_FAULT_ACTIVE`**，即拿到 L0 完整提示词后从未请求注入扰动。
+
+这两类都不是平台问题，归属判定也确实落在 agent 上。但它意味着
+**这一轮的 17 条里只有 9 条是 VALID 的**，用来做对比的样本被模型质量吃掉了一半。
+用户据此决定后续不再使用 qwen3.8-max，改用 `gpt-5.5`。
+
+集群网关里另外七个别名都实测可用（各发一次 5 token 的请求，全部 200）：
+`gpt-5.5`、`gpt-5.5-nexustokenai`、`deepseek-v4-flash-0731`、`deepseek-v4-pro-0813`、
+`qwen3.8-flash`、`claude-opus-5`、`gpt-5.6-sol`。
+
+**换模型要重做资格。** 资格记录里带 `models` 字段且 `mixed_models` 参与判定，
+所以 17 个槽位 × 3 家必须以新模型重跑一轮 base 档资格，记录写进新的输出目录
+（`write_record` 拒绝覆盖已有记录）。
+
+#### 网关没有被打满
+
+17 路并发全程 **0 次 429**（按 `HTTP/1.1" 429`、`RateLimitError`、`rate_limit` 三种模式
+在 17 个 sidecar 的日志里查）。8.4 节推算的"20 并发最坏 200 请求/分钟"没有出现，
+因为各条试验的峰值并不对齐。
+
+### 10.5 Jaeger 改成磁盘存储
+
+10.2 节里对内存型后端的两次调参（300000 → 150000）都没有真正解决问题：
+两次都被 `OOMKilled`，第二次实测 150000 条占用 **11.1 GiB**，把 12 GiB 的 limit 顶满。
+按实测反算上限这条思路本身是对的，但它把一个共享组件长期钉在"稳态紧贴上限"的状态，
+每换一次副本数就要重算一次。用户据此要求：**Jaeger 的数据不要放在内存里**。
+
+改成 all-in-one 自带的 **badger** 磁盘后端：
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| `SPAN_STORAGE_TYPE` | `memory` | `badger` |
+| 数据落点 | 进程堆内 | PVC `jaeger-badger`（30Gi，`openebs-hostpath`） |
+| 保留策略 | `MEMORY_MAX_TRACES` 条数 | `BADGER_SPAN_STORE_TTL=2h` |
+| 内存 limit | 24Gi（为容纳 11.1 GiB 稳态而抬高） | **8Gi** |
+| 实测常驻 | 11.1 GiB | **约 1.7 GiB** |
+
+相关环境变量：`BADGER_EPHEMERAL=false`（否则仍然落 tmpfs，等于没改）、
+`BADGER_DIRECTORY_KEY=/badger/keys`、`BADGER_DIRECTORY_VALUE=/badger/values`、
+`BADGER_MAINTENANCE_INTERVAL=5m`（值日志回收周期，决定过期数据多久真正释放磁盘）。
+
+改前的 Deployment 完整 spec 已存到主机上的 `jaeger/jaeger-deploy-before-badger.yaml`，
+可直接回滚。
+
+**实测**：Pod 就绪、0 次重启，`/badger/keys` 与 `/badger/values` 由容器自己以 uid 10001 建出来
+（`openebs-hostpath` 给的目录是 0777，不需要额外的 `fsGroup`），查询接口返回 15 个服务、
+trace 正常检索。磁盘增长 **145 MB/分钟**，按 2 小时 TTL 推算稳态约 **17 GB**，
+该节点当时空闲 68 GB。
+
+**还要盯的一件事**：badger 是靠值日志回收来释放过期数据的，所以"稳态 17 GB"要等
+一个完整 TTL 周期之后才能确认。若回收跟不上，磁盘会继续涨，而这块盘是节点根文件系统——
+撑满的后果比原来的内存问题更严重。TTL 调小是这里唯一的旋钮。
