@@ -51,6 +51,35 @@
 
 ---
 
+### 【2026-09-13 修正】归类器漏掉了真实的欠费文案
+
+拿 BladeAI 语料里**唯一一条真实上游错误**（`runs/D2-incomplete-20260911-2234`）去试，
+`classify_provider_failure` 返回的是 **`BAD_REQUEST` 而不是 `ARREARAGE`**——
+**正是 O03 要消灭的那个错判**。真实报文是：
+
+```
+Error code: 400 - litellm.BadRequestError: OpenAIException - Access denied,
+please make sure your account is in good standing. For details, see:
+https://help.aliyun.com/zh/model-studio/error-code#overdue-payment.
+Received Model Group=qwen3.8-max
+```
+
+里面**没有** `Arrearage`、没有 `quota`、也没有 `balance`——我原来那几条 marker
+一条都不命中。原因是我照着问题描述里的「HTTP 400 Arrearage」写 marker，
+**没照着真实报文写**。
+
+更该记一笔的是：**原来的测试是过的**。因为夹具 `ARREARAGE_BODY` 是我自己编的，
+里面同时塞了 `Arrearage` 这个词和「in good standing」这句话——
+**夹具和代码共用了同一个错误假设，所以测试只验证了我的假设，没验证现实**。
+
+已补三条 marker（`overdue-payment`、`account is in good standing`，
+外加 Anthropic 同类文案 `credit balance is too low`），并用**逐字抄来的真实报文**
+加了回归用例；同时补了一条「普通 400 仍然是 `BAD_REQUEST`」的用例，
+确保放宽 marker 没有把正常客户端错误一起吞掉。
+
+这条错判的后果不只是标签难看：`ARREARAGE` 走的是**立即熔断**，
+`BAD_REQUEST` 不熔断。归错类等于欠费时整轮评测继续往上撞。
+
 ## 2. O04 恢复一失败就升级成全量重装
 
 **现场**：恢复权限报错 → 证据被归成「回滚失败/结果未知」→ `_infer_tier` 推出 `T3_FULL_REINSTALL` → 平台先卸载了被测系统，重装又失败。

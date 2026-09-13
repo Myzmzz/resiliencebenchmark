@@ -65,6 +65,16 @@ _ARREARAGE_MARKERS: tuple[re.Pattern[str], ...] = tuple(
         r"\bexceeded your current quota\b",
         r"\baccount (?:is )?(?:in arrears|suspended for billing)\b",
         r"\bbilling[_ ](?:hard[_ ])?limit\b",
+        # Bailian/DashScope says neither "arrearage" nor "quota": it returns a
+        # 400 whose body asks you to keep the account "in good standing" and
+        # links to an #overdue-payment help anchor. Built from the issue text
+        # alone, this classifier read the real one as BAD_REQUEST -- the exact
+        # mistake O03 exists to stop. Corpus evidence: the single real upstream
+        # error in the BladeAI run set (D2-incomplete-20260911-2234).
+        r"\boverdue[-_ ]payment\b",
+        r"\baccount is in good standing\b",
+        # Anthropic's wording for the same condition.
+        r"\bcredit balance is too low\b",
         r"欠费",
         r"余额不足",
         r"账户余额",

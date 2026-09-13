@@ -388,3 +388,55 @@ def test_options_report_which_routes_are_broken_open(tmp_path):
 
     assert circuits[openai_route]["state"] == "open"
     assert circuits[openai_route]["failure_class"] == "ARREARAGE"
+
+
+# Verbatim from the one real upstream error in the BladeAI 0.7.0 run corpus
+# (runs/D2-incomplete-20260911-2234/events.jsonl). Note what it does NOT
+# contain: the word "Arrearage", any "quota", any "balance". The fixture above
+# has the token, so it agreed with the classifier's own assumption; this one is
+# what the provider actually sent, and it used to come back BAD_REQUEST.
+REAL_BAILIAN_ARREARAGE = (
+    "OpenAIInvalidRequestError: Error code: 400 - {'error': {'message': "
+    "'litellm.BadRequestError: OpenAIException - Access denied, please make sure "
+    "your account is in good standing. For details, see: "
+    "https://help.aliyun.com/zh/model-studio/error-code#overdue-payment. "
+    "Received Model Group=qwen3.8-max\\nAvailable Model Group Fallbacks=None', "
+    "'type': None, 'param': None, 'code': '400'}}"
+)
+
+
+def test_the_real_provider_arrearage_body_is_not_read_as_a_bad_request():
+    """The failure O03 exists to stop, reproduced from real wire text."""
+    assert classify_provider_failure(status_code=400, body=REAL_BAILIAN_ARREARAGE) is (
+        ProviderFailureClass.ARREARAGE
+    )
+
+
+def test_an_ordinary_client_error_is_still_a_bad_request():
+    """Widening the arrearage markers must not swallow genuine 400s."""
+    assert classify_provider_failure(
+        status_code=400, body=b'{"error":{"message":"missing required field: model"}}'
+    ) is ProviderFailureClass.BAD_REQUEST
+
+
+def test_anthropic_wording_for_the_same_condition():
+    assert classify_provider_failure(
+        status_code=400,
+        body=b'{"error":{"message":"Your credit balance is too low to access the API"}}',
+    ) is ProviderFailureClass.ARREARAGE
+
+
+def test_an_arrearage_still_opens_the_circuit_immediately():
+    """Reaching the right class matters because it changes the breaker path."""
+    breaker = ProviderCircuitBreaker()
+    key = route_key("dashscope", "qwen3.8-max")
+    failure = ProviderFailure(
+        route_key=key,
+        failure_class=classify_provider_failure(
+            status_code=400, body=REAL_BAILIAN_ARREARAGE
+        ),
+        detail=failure_detail(REAL_BAILIAN_ARREARAGE),
+    )
+
+    assert breaker.record(failure) is CircuitState.OPEN
+    assert not breaker.allows(key)
