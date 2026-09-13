@@ -168,6 +168,250 @@
 
 唯一失败项 `tests/test_system_snapshot.py::test_observation_adapter_uses_fixed_service_proxy_queries` 在**未改动的基线提交上以相同方式失败**，与本次改动无关。
 
-## 四、部署与验收
+## 四、部署（新环境）
 
-见第五节（执行中，结果随后补入）。
+镜像沿用现有构建法：在干净 worktree（本分支）上构建 runtime overlay，基底为固定的
+`resbench-stage2@sha256:416b7a66…`，按 digest 部署。Agent 镜像本分支未改动，沿用 Dx 轮部署的
+`stage2-agent-60309d3@sha256:cae928c7…`；LiteLLM 沿用 `resbench-litellm:1.92.0@sha256:237ed94c…`。
+
+实施过程中因逐项修复共构建了 10 个控制器镜像，最终上线的是 `stage2-d0-77a11bd@sha256:f3b1ffc1…`。
+中间版本与它们各自修的问题记在第六节。
+
+| 对象 | 说明 |
+|---|---|
+| `resbench-stage2-integration` | 既有单系统控制器，只换 `stage2` 容器镜像与 `source-head` 标签，其余不动（关 0 的实跑在它上面） |
+| `resbench-fleet` | 新增。Deployment / Service / SA / ClusterRole / ClusterRoleBinding / PVC，复用控制器镜像，命令 `python -m fleet_service` |
+| `resbench-stage2-s01…s05` | 每副本一个控制器实例，控制面命名空间内带后缀命名，各自 PVC |
+| `otel-demo-01…05` | 裁剪版被测副本，各 6 个 Deployment（cart、valkey-cart、frontend、flagd、load-generator、otel-collector） |
+
+另外在 control-plane 节点 `vm-0-13-ubuntu` 安装并加载了 AppArmor 档案
+`resbench-agent-runtime`（此前只有 worker 装了），否则控制器实例无法调度到该节点，
+方案 §6.4 要求的"派发不要总落在同一台节点"就做不到。档案内容与仓库
+`deploy/stage2/apparmor/resbench-agent-runtime` 逐字一致。
+
+每个 slot 的控制器起来后，evidence PVC 是空的，因此每个副本都**单独跑了一次基础通道资格**
+（`qualify_agent_channel.py --profile base --model qwen3.8-max`，codex / claude-code /
+deepseek-harness 三家），再用 `publish_harness_capabilities.py` 发布到该 slot 自己的
+`harness-capabilities.json`。5 个副本 × 3 家全部通过，7 项 base 检查均为真、无失败原因。
+资格不是跨副本复制的。
+
+## 五、验收（五关）
+
+### 关 0 · 默认零回归 —— 通过
+
+- 全量单测：2151 passed / 11 skipped / 1 failed。唯一失败项
+  `tests/test_system_snapshot.py::test_observation_adapter_uses_fixed_service_proxy_queries`
+  在**未改动的基线提交上以相同方式失败**，与本次改动无关。
+- 新增断言测试把五条权威提示词逐字固化，默认绑定下逐字一致。
+- 部署后在 `resbench-stage2-integration`（无任何新环境变量）上实查
+  `GET /api/v1/stage2/autonomy/cases`，五条 `copy_ready_prompt` 的 sha256 与本地固化值**完全相同**：
+
+  | 档位 | sha256 前 16 位 |
+  |---|---|
+  | L0 | `455756825bf83cf5` |
+  | L1 | `b2e77f55c2966954` |
+  | L2 | `a7e84edf73b99320` |
+  | L3 | `0274ac56b3683e62` |
+  | L4 | `245a6ab8d0bd1c03` |
+
+- 同一实例上跑通 L0×C0（`lxr-2bfb8f147d2b4171`，codex × qwen3.8-max，28 分钟）：
+  **verdict PASS，trial_validity VALID，platform_valid true，recovery VERIFIED，
+  reason_codes 空，11/11 节点核实，adjusted_score 105**。
+  `provenance.application_namespace = otel-demo`、`prompt_source = canonical`。
+
+### 关 1 · 单副本打通 —— 通过
+
+- `POST /api/v1/fleet/slots {"index":1}` 建出 `otel-demo-01` 与 `resbench-stage2-s01`，
+  6 个被测 Deployment 全部就绪。
+- `GET /api/v1/fleet/slots/s01/prompt?level=L0` 返回
+  `请针对 otel-demo-01 的 cart 服务注入高 CPU 负载（cpu_percent=80）…`，lint 通过；
+  同一接口回显的权威 L0 原文也是 `otel-demo-01`。
+- 批次 `gate1-20260913`（后因环境门缺陷重跑，见 6.4）最终在 `gate23-20260913` 的
+  `g23-a` 上通过：`lxr-d4df6d96725c400b`，**PASS / VALID / recovery VERIFIED**，
+  `provenance.application_namespace = otel-demo-01`。
+
+### 关 2 · 双副本与整队隔离 —— 通过
+
+两次实测，均在故障真实运行时采样。
+
+**双副本窗口**（s02 注入 CPU 故障，ChaosBlade CR 标签 `benchmark.namespace=otel-demo-02`）：
+
+| 观察者 | qualified | 本副本故障数 | 他副本故障数 |
+|---|---|---|---|
+| s01（otel-demo-01） | **true** | 0 | 1 |
+| s02（otel-demo-02） | false | 1 | 0 |
+
+两个副本的 `/api/cart` 行都是 0 失败、5 rps。
+
+**整队窗口**（2026-09-13T01:44:44Z，s05 注入，五个副本同时采样）：
+
+| slot | qualified | own | foreign | `/api/cart` 失败 | 平均延迟 |
+|---|---|---|---|---|---|
+| s01 | true | 0 | 1 | 0 | 14.0 ms |
+| s02 | true | 0 | 1 | 0 | 9.9 ms |
+| s03 | true | 0 | 1 | 0 | 8.1 ms |
+| s04 | true | 0 | 1 | 0 | 9.8 ms |
+| s05 | **false** | 1 | 0 | 0 | 8.1 ms |
+
+即：邻居注入不挡别人的环境门，自己的故障仍然挡自己；一个副本的 CPU 故障没有把
+同节点其他副本的业务健康拖下去。证据：`/data/mj/replica-fleet/gate2-fleet/snapshot.json`。
+
+### 关 3 · 智能体侧观测隔离 —— 通过（这是方案里标为最高优先级的未核实项）
+
+先证实风险真实存在：五个副本的 cart 服务在共享 Jaeger 里同名。取一段 15 分钟窗口、
+`service=cart` 的 300 条 trace，按命名空间分布为
+`otel-demo-01: 45、otel-demo-02: 20、otel-demo-03: 51、otel-demo-04: 73、otel-demo-05: 80、otel-demo: 4`。
+
+用智能体实际走的 `telemetry_ro` 代码分别过滤同一批 trace：
+
+| 过滤方式 | 保留 | 保留 trace 的命名空间 |
+|---|---|---|
+| 仅服务名白名单（默认绑定的行为） | 296 | 全部五个副本 |
+| 加命名空间限定（副本绑定自动开启） | 45 | 只有 otel-demo-01 |
+| 加命名空间限定，换 otel-demo-02 视角 | 20 | 只有 otel-demo-02 |
+
+即：不加限定时 `otel-demo-01` 的智能体能读到 251 条属于别的副本的 trace；加上限定后
+只剩自己的 45 条，一条外来的都没有。按 id 直取 trace 也绕不过（`jaeger_get_trace` 同样过滤）。
+
+指标一侧本来就是安全的：同一探针在 `otel-demo-01` 作用域下查
+`container_cpu_usage_seconds_total`，7 条序列全部来自本副本的 7 个 Pod。
+
+证据：`/data/mj/replica-fleet/gate3/`。
+
+### 关 4 · 批次接口 —— 通过
+
+- **排期预览**：`gate45b-20260913` 六条（3 家 × C0/D1），`dry_run=true` 返回
+  五条在第 0 轮分到五个不同副本、第六条在第 1 轮，派发按 batch_id 播种随机化
+  （codex 的两条分别落在 s02 与 s03，不是同一个）。
+- **真跑**：六条全部执行完，五条 PASS/VALID（adjusted_score 77.0 / 77.0 / 105.0 / 77.5 / 77.5），
+  一条 D1×codex 为 `CASE_INVALID`。导出的矩阵：
+
+  | item | namespace | slot | kind | case | harness | state | verdict | validity | recovery | score | finding | failure_owner |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | g45b-001 | otel-demo-03 | s03 | Lx | C0 | codex | Done | PASS | VALID | VERIFIED | 77.0 | | |
+  | g45b-002 | otel-demo-04 | s04 | Lx | C0 | claude-code | Done | PASS | VALID | VERIFIED | 77.0 | | |
+  | g45b-003 | otel-demo-02 | s02 | Lx | C0 | deepseek-harness | Done | PASS | VALID | VERIFIED | 105.0 | | |
+  | g45b-004 | otel-demo-05 | s05 | Dx | D1 | codex | Failed | CASE_INVALID | CASE_INVALID | NOT_APPLICABLE | 0.0 | PERMISSION_DENIED_OBSERVED | platform |
+  | g45b-005 | otel-demo-01 | s01 | Dx | D1 | claude-code | Done | PASS | VALID | NOT_APPLICABLE | 77.5 | PERMISSION_DENIED_OBSERVED | |
+  | g45b-006 | otel-demo-01 | s01 | Dx | D1 | deepseek-harness | Done | PASS | VALID | NOT_APPLICABLE | 77.5 | PERMISSION_DENIED_OBSERVED | |
+
+  `g45b-004` 那一行的 `failure_owner=platform` 是**修复 6.8 之前的镜像**产生的：
+  同样的结束原因在 6.8 之后会归到智能体一侧、且不会重跑。这一行保持原样，不追改。
+- **结果矩阵**：`?format=csv` 导出，列为
+  `batch_id,item_id,namespace,slot_id,test_kind,autonomy_level,case,tool_substitution_variant,harness,model,llm_tag,repetition,prompt_source,state,run_id,verdict,trial_validity,recovery_status,adjusted_score,finding_code,failure_owner`。
+- **幂等**：同一 `batch_id` 重复提交返回 `idempotent_replay: true`，不重复派发。
+- **停止**：`gate4-stop-20260913` 三条排队中的被出队并记 `FLEET_BATCH_STOPPED`；
+  `gate2b-20260913` 两条运行中的收到 `stop_requested`，控制器停止后集群里 ChaosBlade 归零。
+- **失败分类**：平台原因与智能体原因分开计数，见 6.6/6.7 两处修复。
+
+### 关 5 · 并发爬坡 —— 2 → 5 通过
+
+- 2 并发：`gate23-20260913`，两副本同时跑，两条都 PASS/VALID。
+- 5 并发：`gate45b-20260913`，五个副本同时各跑一条，无一条因资源或互相干扰失败。
+- 爬到 5 并发时两节点负载：`vm-0-10` 5.2 核 / 37 GiB，`vm-0-13` 3.2 核 / 22 GiB，
+  各自 32 核 / 123 GiB，余量充足。按此推算扩到 20 个副本的瓶颈不是 CPU/内存。
+- **没有做**：10 → 20 的爬坡（需要先把副本数配到 20，本次首批按用户决策为 5 个）。
+
+### 回收与硬闸 —— 通过
+
+| 调用 | 结果 |
+|---|---|
+| `DELETE /slots/s05`（不带 confirm） | 400，`destructive operations require confirm=<namespace>; expected 'otel-demo-05'` |
+| `DELETE /slots/s05?confirm=otel-demo` | 400，同上（**完整被测系统的名字不能用来删副本**） |
+| `DELETE /slots/s05?confirm=otel-demo-05&dry_run=true` | 200，列出将删的 4 个对象，集群不变 |
+| `DELETE /slots/s05?confirm=otel-demo-05&dry_run=false` | 200，副本命名空间与控制器实例删除 |
+| `POST /slots {"index":5}` | 201，40 秒重建完成，6 个 Deployment 就绪 |
+
+审计日志按时间记下了每一次，含 dry_run 与否、命名空间、confirm 值。
+
+## 六、实施中发现并修复的问题
+
+按发现顺序。每一条都是实跑暴露、当场修复、补了测试、重建镜像重新部署。
+
+### 6.1 dry-run 无法校验尚不存在的命名空间里的对象（提交 `1fdcb6b`）
+
+首次 `POST /provision?dry_run=true` 返回 502。server-side dry run 不创建任何东西，
+所以副本命名空间里的对象一律 NotFound。改为：命名空间本身和已存在命名空间里的对象照常
+dry-run，其余归入 `not_simulated` 并写明原因；被测系统的预检同理跳过并说明。
+重新置备已存在的副本时仍然逐个校验并跑 `deploy_application.py --server-dry-run`。
+
+### 6.2 运行时 env 文件是 0440，部署脚本拒绝（提交 `b808894`）
+
+`resbench-stage2-runtime` 挂载为 0440（fsGroup 加了组读），而 `deploy_application.py`
+拒绝任何组可读的 env 文件，第一次真实置备在没碰集群前就失败。控制器自己的复位路径本来
+就会先复制成 0600 私有文件，Fleet 现在也这么做，且用完即删。
+
+### 6.3 裁剪档缺两个依赖（提交 `88cfd25`、`cbb08a6`）
+
+- `product-catalog` 没有 Postgres 起不来，退出码 1。改为一并关掉：工作负载改成读一个
+  从未写入过的会话，购物车恒为空，frontend 就不会去查商品。两个请求仍然全部打到 cart。
+- otel-collector 报 `invalid root_path: stat /hostfs: no such file or directory`。
+  关掉 hostMetrics/kubeletMetrics/clusterMetrics/annotationDiscovery 四个预设会移除对应的
+  挂载与 RBAC，但完整版 values 里显式写着的 receiver 还在。覆盖层现在用 Helm 的 null 语义
+  删掉这四个 receiver，metrics 管道只留 otlp 与 spanmetrics；trace 管道不动。
+- Locust 读文件只在启动时读一次，改 ConfigMap 不会重启它，副本一直在跑旧脚本并且 GET 全失败。
+  工作负载的 sha256 现在是 Pod 注解，改文件就会滚动。
+
+### 6.4 环境门把每个副本都判不合格（提交 `466c13a`）
+
+第一次副本试验 0 秒被 BLOCKED，事件写着 `fixed Episode namespace is not otel-demo-01`。
+Episode 是哈希冻结的、永远写着 `otel-demo`，而我把它与绑定命名空间比较，副本永远对不上。
+改为：Episode 快照与**部署档**（`otel-demo`）比较，集群读取用绑定的副本命名空间。
+默认绑定下两者同名，检查与原来一字不差。
+
+### 6.5 Fleet 把被挡住的 campaign 当成跑完了（提交 `466c13a`）
+
+被环境门挡住的 campaign 在任务层面报 COMPLETED，只有 `platform_status` 是 BLOCKED。
+Fleet 现在读 `platform_status`，非 COMPLETED 一律不当作成绩。
+
+### 6.6 控制器刚重启时的 503 把重试额度一次烧光（提交 `a1bb0a1`）
+
+滚动之后每个控制器都要跑 2–4 分钟的网关探测，期间提交一律 503。原来每次 503 都算一次
+平台失败，一分钟内六条全部作废。503 现在只是"稍后再来"：条目回到队列、原因记下、
+重试额度不动，留给真正的隧道断开、网关额度、复位失败。
+
+### 6.7 带节点级判定的 PASS 被当成失败（提交 `a376209`）
+
+两条副本试验都是 PASS/VALID/recovery VERIFIED，其中一条因为某个节点的声明被证据推翻，
+Lx 摘要里带了 failure 块，Fleet 就把它记成失败。现在只有任务本身没跑完
+（FAILED/ABORTED/RECOVERY_FAILED/INTERRUPTED）或平台判定不是 COMPLETED 才算失败，
+其余一律是结果，判定与分数进矩阵。
+
+### 6.8 D1 的权限拒绝被当成平台故障重跑（提交 `b727642`）
+
+一条 D1 试验以 `PERMISSION_DENIED_OBSERVED` 结束——那正是 D1 故意撤掉的权限——
+平台记为 `platform_status=FAILED`、reason code `HARNESS_TIMEOUT`。Fleet 只看平台状态，
+判成平台原因，把同一个智能体重跑了两次。归因现在先看判分的 reason codes：
+超时、输出不可用、遇到本用例撤掉的权限，都是**已经测到的结果**，不重跑；
+只有 BLOCKED / RESET_FAILED 这种"根本没跑"才算平台原因。
+
+### 6.9 人工停止被算进平台失败（提交 `77a11bd`）
+
+停止一个正在跑的批次后，被停的试验报 `platform_status=BLOCKED`，于是被当成"没跑成"
+作废重排。停止既不是平台故障也不是测量结果：停止接口现在给条目打标记，轮询到终态时
+记为 Invalid、owner 为 operator，不进平台/智能体任何一边的失败计数。
+
+### 6.10 副本的 NetworkPolicy 挡住了 API server（提交 `44296ce`）
+
+副本命名空间的出站只放行了本命名空间、观测栈、DNS 与控制面，结果 collector 的
+k8sattributes 处理器连不上 API server（`dial tcp 10.96.0.1:443: i/o timeout`），
+副本的 trace 全都没有 `k8s.namespace.name`，关 3 的命名空间限定于是一条都返回不了。
+NetworkPolicy 没法写 Service，kube-proxy 又会在策略生效前改写目的地址，所以规则里写的是
+`kubernetes` Service 的真实 endpoint，由 Fleet 在置备时从集群读出来。其余仍然是封闭的。
+
+## 七、未做与已知限制
+
+1. **10 → 20 的并发爬坡没做**。首批按用户决策是 5 个副本；模板里没有任何地方写死 5，
+   `replicas` 改成 20 再 `POST /provision` 即可，但本次没有实跑到 20。
+2. **裁剪档换了环境**。按"每次只动一个变量"的口径，裁剪后的系统上的 C0 基线
+   （本次五次 PASS 的分数 77.0–105.0）**不应与旧的完整 otel-demo 分数放进同一张表**。
+3. **D7/D8 没有在副本上跑过**。它们还需要每个副本各自的 substitution 档资格与
+   `qualification_probe` 证据文件；本次只做了 base 档资格。
+4. **BladeAI 没有纳入**。沿用 Dx 轮的决定，对比组是 codex / claude-code / deepseek-harness。
+5. **网关探测是并行时的实际摩擦**。每个控制器每 300 秒重跑一次探测，期间提交 503；
+   5 个 slot 里通常有 2–3 个正处于探测中。已由"延后不计重试"吸收，但真要跑满 20 个副本，
+   应当把探测结果做成共享的，或把缓存周期拉长。
+6. **模型网关仍然没有限流配置**（方案 §11 风险 2 未处理）：`config.yaml` 里没有
+   rpm/tpm/并发上限，`num_retries: 0`。本次 5 并发没有触发 429，但 20 并发前应当先处理。
+7. `tests/test_system_snapshot.py::test_observation_adapter_uses_fixed_service_proxy_queries`
+   在基线上就失败，本次没有修，也不在本方案范围内。
