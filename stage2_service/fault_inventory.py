@@ -13,6 +13,8 @@ from typing import Any, Iterable, Mapping
 
 from mcp_servers.chaos_core.service import ExperimentRecord, OWNER_VALUE
 
+from .target_residue import TargetResidueVerdict
+
 
 ACTIVE_TERMINAL_PHASES = {
     "absence", "absent", "destroyed", "deleted", "finished", "completed",
@@ -102,12 +104,24 @@ def snapshot_for_trial(
     resources: Iterable[FaultResource],
     qualified_executors: Iterable[str],
     unavailable_executors: Iterable[str] = (),
+    target_residue: TargetResidueVerdict | None = None,
 ) -> dict[str, Any]:
     """Build the one inventory contract consumed by finalization and reset.
 
     An unavailable executor is not an empty executor.  ``qualified`` is false
     until all expected CRD listings have succeeded, so callers cannot convert a
     read failure into a clean environment.
+
+    ``inventory_clear`` keeps its original meaning -- the **cluster face** is
+    clean -- because every existing consumer reads it that way.  What the
+    cluster face cannot see is a fault acting on the target with no record
+    behind it: D8-B ran a shell burner at 811m with no CR anywhere, and F5
+    showed a deleted CR leaves the process running.  ``residue_clear`` is
+    therefore the authoritative answer, and it requires **both** faces.
+
+    With no ``target_residue`` supplied the two agree, so existing callers are
+    unaffected; supply one and a probe that failed makes ``residue_clear``
+    false rather than silently clean.
     """
     rows = tuple(resources)
     unavailable = tuple(sorted(set(unavailable_executors)))
@@ -116,6 +130,7 @@ def snapshot_for_trial(
     owned_active = [item for item in owned_present if item.active]
     foreign_present = [item for item in rows if not item.owned_by_trial(trial_id)]
     foreign_active = [item for item in foreign_present if item.active]
+    inventory_clear = qualified and not owned_present and not foreign_active
     return {
         "schema_version": "stage2-fault-inventory.v1",
         "trial_id": trial_id,
@@ -130,7 +145,12 @@ def snapshot_for_trial(
         "foreign_active_count": len(foreign_active),
         "global_resources_absent": qualified and not rows,
         "owned_resources_absent": qualified and not owned_present,
-        "inventory_clear": qualified and not owned_present and not foreign_active,
+        "inventory_clear": inventory_clear,
+        "target_residue": target_residue.to_dict() if target_residue is not None else None,
+        "target_residue_state": target_residue.state if target_residue is not None else "not_probed",
+        "residue_clear": inventory_clear and (
+            target_residue is None or target_residue.clear
+        ),
     }
 
 
