@@ -90,3 +90,54 @@ ClusterRole，那是 `deploy/stage2/execution-identities.yaml` 的内容，不�
 | chaosblade-tool | `1.8.0`（DaemonSet，覆盖全部节点） |
 
 两者都**不是 Helm 管的**，是直接的 Deployment/DaemonSet 对象。
+
+
+## 第三套环境实装记录（2026-09-12/13）
+
+七个对象 + cgroup 包装装完，**但清单里还差两样**，是装的时候撞出来的：
+
+1. **`nodeSelector` 是第二套环境的节点名** —— `chaosblade-operator` 因此 Pending。
+   operator 是控制器，不挑节点，直接去掉该字段。（tool 是 DaemonSet，不受影响。）
+2. **缺 Secret `chaosblade-webhook-server-cert`**（`kubernetes.io/tls`，含 `ca.crt`/`tls.crt`/`tls.key`）——
+   operator 挂载它，没有就一直 `FailedMount`。导出时我有意跳过所有 Secret（不搬密钥），
+   **这一条是必需的**。做法是在本环境自签一张，不从别的集群搬私钥：
+
+   ```bash
+   openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -keyout ca.key -out ca.crt \
+       -subj "/CN=chaosblade-webhook-ca"
+   openssl req -newkey rsa:2048 -nodes -keyout tls.key -out tls.csr \
+       -subj "/CN=chaosblade-webhook-server.default.svc"
+   # SAN 要覆盖四种写法：<svc> / <svc>.<ns> / <svc>.<ns>.svc / <svc>.<ns>.svc.cluster.local
+   openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+       -out tls.crt -days 3650 -extfile san.cnf
+   kubectl -n default create secret tls chaosblade-webhook-server-cert \
+       --cert=tls.crt --key=tls.key      # 再把 ca.crt 补进 data
+   ```
+
+**没装的一样**：第二套环境还有个 `MutatingWebhookConfiguration/chaosblade-operator`，
+**集群级、拦截所有 Pod 的 CREATE/UPDATE**（`failurePolicy: Ignore`、`sideEffects: None`）。
+第三套环境是共享集群，这种全局钩子先不装——CPU/内存/网络注入不需要它（见下方实测）。
+真需要时再补，配置在 `environment/` 之外单独记。
+
+### 装机验收：两层都验，账本不算数
+
+按 F4/F5/F9 的教训，只看 ChaosBlade CR 的状态是不够的。对 `otel-demo/cart` 注一次
+单核 CPU 满载，三层实测：
+
+| | 注入中 | `blade destroy` 后 |
+|---|---|---|
+| 集群 CR | 存在 | 无 |
+| 容器内 `chaos_os` 进程 | **在** | **没了** |
+| cgroup CPU（5 秒采样） | **4956 ms ≈ 99% 单核** | **27 ms（基线）** |
+
+**两个必须记住的复现：**
+
+- **删掉 ChaosBlade CR 不会停掉原生注入**（F5）。CR 删干净、`kubectl get chaosblade -A`
+  返回 `No resources found` 之后，`chaos_os` 仍在跑、CPU 仍是 99%。必须进 tool 容器
+  `blade destroy <native-uid>` 才真正停。
+- **`timeout` 也没兜住**：`--timeout=180` 早已过期，进程还在。
+- **账本会骗人**（F9）：`blade status --type create` 里那条的 `Status` 一直是 `Success`，
+  既不代表故障还在，也不代表已清除。**残留判定必须实测**（进程 + cgroup 用量）。
+
+节点上 `/etc/docker/daemon.json` 本来就有 `insecure-registries: ["1.94.151.57:85"]`，
+旧 Harbor 的镜像直接能拉。
