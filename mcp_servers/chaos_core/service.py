@@ -260,7 +260,21 @@ class ControlledExecutionService:
         self._assert_no_other_executor_active(run_id=run_id)
 
         all_records = await self.backend.list_experiments(kubeconfig)
-        active_owned_count = len([item for item in all_records if not item.terminal and item.owned])
+        # The concurrency budget counts what is active on the system under test this
+        # server is bound to, not what is active anywhere in the cluster. Every
+        # Controller stamps the same owner label, so a cluster-wide count makes one
+        # replica's injection exhaust every other replica's budget. With a single
+        # system under test the two counts are the same, because create() only ever
+        # accepts a namespace from this server's own allowlist.
+        active_owned_count = len(
+            [
+                item
+                for item in all_records
+                if item.namespace == namespace and not item.terminal and item.owned
+            ]
+        )
+        # The unowned guard stays cluster-wide: a chaos resource nobody here owns is a
+        # safety stop wherever it lives.
         unowned = [item for item in all_records if not item.terminal and not item.owned]
         if unowned:
             raise ChaosControlError(

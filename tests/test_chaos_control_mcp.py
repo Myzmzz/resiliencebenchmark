@@ -357,6 +357,43 @@ class ChaosControlServiceTest(unittest.TestCase):
         self.assertEqual("UNSAFE_UNOWNED_CHAOSBLADE_PRESENT", result["error"]["code"])
         self.assertEqual([], self.backend.created_manifests)
 
+    def _owned_active_experiment(self, namespace, name):
+        return ExperimentRecord(
+            name=name,
+            namespace=namespace,
+            run_id="episode-other-001-r001",
+            target_name="cart-abc123",
+            target_uid="pod-uid-9",
+            fault_type="cpu-load",
+            phase="Running",
+            owner=OWNER_VALUE,
+            labels={},
+        )
+
+    def test_create_counts_the_budget_within_the_bound_namespace(self):
+        """One system under test, one active fault: the budget is still exhausted."""
+        self.backend.experiments[("otel-demo", "other-chaos")] = self._owned_active_experiment(
+            "otel-demo", "other-chaos"
+        )
+
+        result = call(self.service.create_experiment(**self.create_kwargs()))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("PLAN_REJECTED_BY_SAFETY_POLICY", result["error"]["code"])
+        self.assertIn("CONCURRENCY_BUDGET_EXCEEDED", result["error"]["next_step"])
+        self.assertEqual([], self.backend.created_manifests)
+
+    def test_create_ignores_a_fault_active_on_another_replica(self):
+        """Replicas share an owner label, so a cluster-wide count would block them all."""
+        self.backend.experiments[("otel-demo-02", "replica-chaos")] = self._owned_active_experiment(
+            "otel-demo-02", "replica-chaos"
+        )
+
+        result = run(self.service.create_experiment(**self.create_kwargs()))
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(1, len(self.backend.created_manifests))
+
     def test_create_rejects_live_pod_uid_drift(self):
         self.backend.pod_uids[("otel-demo", "checkoutservice-abc123")] = "new-pod-uid"
 
