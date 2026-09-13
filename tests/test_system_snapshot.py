@@ -134,7 +134,16 @@ def test_run_namespace_must_match_trusted_application_registry(tmp_path: Path) -
         )
 
 
-def test_observation_adapter_uses_fixed_service_proxy_queries() -> None:
+def test_observation_adapter_uses_fixed_service_proxy_queries(tmp_path: Path) -> None:
+    """The adapter must always query the same fixed service-proxy paths.
+
+    The kubeconfig only has to exist -- ``KubectlObservationAdapter`` checks the
+    file is present before doing anything, and every response below comes from
+    the stub runner, so no cluster is contacted.  It used to be an absolute path
+    under a previous operator's home directory, which made this test fail on
+    every other machine for a reason that had nothing to do with the behaviour
+    under test.
+    """
     requested = []
 
     def runner(argv: list[str], timeout_seconds: int) -> str:
@@ -150,10 +159,9 @@ def test_observation_adapter_uses_fixed_service_proxy_queries() -> None:
             return '{"data":[{"namespace":"otel-demo"}]}'
         raise AssertionError(path)
 
-    observed = KubectlObservationAdapter(
-        Path("/Users/mymz/.kube/coroot-config"),
-        runner=runner,
-    ).scan("otel-demo")
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\nkind: Config\nclusters: []\n")
+    observed = KubectlObservationAdapter(kubeconfig, runner=runner).scan("otel-demo")
 
     assert observed.status is SnapshotStatus.QUALIFIED
     assert observed.prometheus_series == 42
