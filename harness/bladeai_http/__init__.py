@@ -12,6 +12,8 @@ from .client import (
     BladeAIHttpError,
     EventLog,
     TurnExecution,
+    bladeai_http_resume_argv_builder,
+    bladeai_http_session_id_provider,
     bladeai_http_streaming_runner,
     bladeai_http_turn_executor,
 )
@@ -39,6 +41,8 @@ __all__ = [
     "EventLog",
     "SSEFrame",
     "TurnExecution",
+    "bladeai_http_resume_argv_builder",
+    "bladeai_http_session_id_provider",
     "bladeai_http_streaming_runner",
     "bladeai_http_turn_executor",
     "event_type",

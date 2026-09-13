@@ -643,3 +643,47 @@ def bladeai_http_turn_executor(
         )
 
     return execute
+
+
+# ---- resuming a session --------------------------------------------------
+#
+# A served Harness has no command line, so "resume" is simply another turn on
+# the same session id.  ``HarnessSession`` still gates feedback delivery on
+# ``supports_resume``, which is true only when both a resume-argv builder and a
+# session-id provider are configured -- so without these two shims the platform
+# extracts the Agent's question at end of turn, answers it, and then silently
+# drops the answer because it believes the Harness cannot be resumed.
+#
+# That is the concrete gap behind finding F10: BladeAI's clarifying questions
+# arrive as ordinary text followed by ``done``, so the only way to answer one
+# is to open another turn.
+
+
+def bladeai_http_resume_argv_builder(
+    command: str = "blade-ai",
+) -> Callable[[str, int], Sequence[str]]:
+    """Return a resume-argv builder for a Harness that has no command line.
+
+    The argv is never executed -- :func:`bladeai_http_turn_executor` ignores it
+    and posts the turn instead -- but it is recorded in the session transcript,
+    so it is made descriptive rather than empty.
+    """
+
+    def build(session_id: str, turn: int) -> Sequence[str]:
+        return [command, "turn", "--session", session_id, "--turn", str(turn)]
+
+    return build
+
+
+def bladeai_http_session_id_provider(session_id: str) -> Callable[[], str | None]:
+    """Return the session id the turns run on.
+
+    The id is known before the first turn (``POST /api/v1/sessions`` returns
+    it), unlike the subprocess Harnesses where it has to be discovered from
+    the stream or from a session file.
+    """
+
+    def provide() -> str | None:
+        return session_id
+
+    return provide
