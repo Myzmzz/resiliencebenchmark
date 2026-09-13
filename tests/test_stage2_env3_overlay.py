@@ -191,3 +191,73 @@ def test_the_renderer_does_not_mutate_the_documents_it_was_given():
     render.apply_overlay(base, VALUES)
 
     assert yaml.safe_dump(base, sort_keys=True) == before
+
+
+# ---- gateway routes -------------------------------------------------------
+#
+# The repository table prefers aigcbest for GPT and Acucompute for Claude. On
+# this cluster neither is usable: the aigcbest key was never supplied here, and
+# the operator ruled the Acucompute one out on 2026-09-13. The relay is the only
+# remaining upstream, so the overlay repoints three routes onto it.
+
+GATEWAY_BASE = (REPO_ROOT / "deploy/stage2/litellm/config.yaml").read_text(encoding="utf-8")
+
+
+def _rendered_table() -> str:
+    return render.apply_gateway_routes(GATEWAY_BASE, VALUES)
+
+
+def test_exactly_the_three_unusable_routes_are_repointed():
+    rendered = _rendered_table()
+
+    assert "api2.aigcbest.top" not in rendered
+    assert "console.acucompute.com" not in rendered
+    assert rendered.count("NEXUSTOKENAI_API_KEY") == 3  # gpt-5.5, gpt-5.6-sol, + the alternate
+    assert "NEXUSTOKENAI_CLAUDE_API_KEY" in rendered
+
+
+def test_claude_uses_its_own_key_because_the_relay_scopes_them_separately():
+    """The GPT key answers 404 'not supported by any configured account in this
+    group' for claude-opus-5, so one shared variable cannot work."""
+    assert VALUES["gatewayRoutes"]["claude-opus-5"]["api_key"] != (
+        VALUES["gatewayRoutes"]["gpt-5.5"]["api_key"]
+    )
+
+
+def test_claude_is_called_through_the_openai_shape_not_anthropic():
+    """The relay speaks OpenAI; the base table's anthropic/ prefix 404s there."""
+    assert VALUES["gatewayRoutes"]["claude-opus-5"]["model"] == "openai/claude-opus-5"
+
+
+def test_the_table_keeps_the_reasoning_that_lives_in_its_comments():
+    """A YAML round-trip would drop the record of why each relay was chosen."""
+    rendered = _rendered_table()
+
+    assert "Chosen over nexustokenai on 2026-09-05" in rendered
+    assert "U+200B" in rendered
+
+
+def test_only_the_named_keys_move():
+    base_lines = GATEWAY_BASE.splitlines()
+    rendered_lines = _rendered_table().splitlines()
+
+    assert len(base_lines) == len(rendered_lines)
+    changed = sum(1 for a, b in zip(base_lines, rendered_lines) if a != b)
+    # claude-opus-5 also changes `model` (anthropic/ -> openai/), so 3 + 2 + 2.
+    assert changed == 7
+
+
+def test_an_alias_that_is_not_in_the_table_is_refused():
+    with pytest.raises(render.OverlayError, match="no route to override"):
+        render.apply_gateway_routes(
+            GATEWAY_BASE, {"gatewayRoutes": {"no-such-model": {"api_base": "x"}}}
+        )
+
+
+def test_no_credential_value_ever_reaches_the_table():
+    """Routes name an environment variable; the key itself lives in the Secret."""
+    rendered = _rendered_table()
+
+    assert "sk-" not in rendered
+    for route in VALUES["gatewayRoutes"].values():
+        assert str(route.get("api_key", "os.environ/X")).startswith("os.environ/")

@@ -58,3 +58,37 @@ harnessCapabilitiesFile: /var/lib/resbench-stage2/integration/private/harness-ca
 dnsFallback:
   nameservers:
     - 159.226.8.6
+
+# 网关路由的三处改指。仓库基线把 gpt-5.5 指向 aigcbest、claude-opus-5 与
+# gpt-5.6-sol 指向 Acucompute，那是 2026-09-05 在另一套环境做过对比取样之后的
+# 决定（基线表里有完整注释）。这套环境上两条都走不通：
+#
+#   AIGCBEST_API_KEY    本环境没有，占位值 PLACEHOLDER-not-supplied-env3
+#   ACUCOMPUTE_API_KEY  用户 2026-09-13 明确说「用不了，别用」
+#
+# 可用的只有中转站 nexustokenai，而且它的 GPT 与 Claude 是**两把不同的 key、
+# 分属不同模型组**：拿 GPT 那把去调 claude-opus-5 会返回 404
+# 「not supported by any configured account in this group」。所以 Claude 单列一个
+# 环境变量 NEXUSTOKENAI_CLAUDE_API_KEY。
+#
+# 基线选 aigcbest 的两条理由在本环境重新测过（2026-09-13，经网关各 4 次）：
+#   * U+200B 零宽前缀：**没有复现**。gpt-5.5 与 gpt-5.6-sol 共 8 次全干净，
+#     严格 json.loads 全过，探测项 structured_json_output 也是 supported。
+#   * Cloudflare 1010 拒绝 python-urllib：**仍然存在**，但只影响裸 urllib；
+#     litellm 用 httpx，不受影响（我自己用 urllib 直连时撞到过）。
+#
+# **已知偏差**：claude-opus-5 经这个中转站不遵守 response_format=json_object，
+# 4/4 把 JSON 包在 ```json 围栏里，严格 json.loads 失败。平台探测容忍围栏、
+# 仍判 supported，但依赖严格解析的地方要留意。
+gatewayRoutes:
+  gpt-5.5:
+    api_base: https://api.nexustokenai.com/v1
+    api_key: os.environ/NEXUSTOKENAI_API_KEY
+  gpt-5.6-sol:
+    api_base: https://api.nexustokenai.com/v1
+    api_key: os.environ/NEXUSTOKENAI_API_KEY
+  claude-opus-5:
+    # 中转站走 OpenAI 格式，不是 anthropic/
+    model: openai/claude-opus-5
+    api_base: https://api.nexustokenai.com/v1
+    api_key: os.environ/NEXUSTOKENAI_CLAUDE_API_KEY

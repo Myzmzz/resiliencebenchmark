@@ -29,6 +29,7 @@ import yaml
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
 DEFAULT_BASE = REPO_ROOT / "deploy/stage2/stage2-integration.yaml"
+DEFAULT_GATEWAY = REPO_ROOT / "deploy/stage2/litellm/config.yaml"
 DEFAULT_VALUES = HERE / "values.yaml"
 DEPLOYMENT_NAME = "resbench-stage2-integration"
 PVC_NAME = "resbench-stage2-data"
@@ -69,6 +70,51 @@ def apply_overlay(
             f"base manifest has no Deployment/{DEPLOYMENT_NAME}; nothing to overlay"
         )
     return rendered
+
+
+
+
+def apply_gateway_routes(config_text: str, values: Mapping[str, Any]) -> str:
+    """Repoint named routes in the LiteLLM table, keeping the table's comments.
+
+    The base table carries the reasoning behind every route choice -- which
+    relay was sampled against which, and why one was preferred. A YAML
+    round-trip would drop all of it, so the edit is done on the text: find the
+    ``- model_name: <alias>`` block, then replace only the keys named for that
+    alias, leaving everything else (including neighbouring comments) alone.
+    """
+    routes = values.get("gatewayRoutes") or {}
+    if not routes:
+        return config_text
+
+    lines = config_text.splitlines(keepends=True)
+    out: list[str] = []
+    current: str | None = None
+    seen: set[str] = set()
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("- model_name:"):
+            current = stripped.split(":", 1)[1].strip()
+        elif current and stripped.startswith("- model_name"):
+            current = None
+
+        overrides = routes.get(current or "")
+        if overrides:
+            key = stripped.split(":", 1)[0].strip() if ":" in stripped else ""
+            if key in overrides:
+                indent = line[: len(line) - len(line.lstrip())]
+                out.append(f"{indent}{key}: {overrides[key]}\n")
+                seen.add(current or "")
+                continue
+        out.append(line)
+
+    missing = sorted(set(routes) - seen)
+    if missing:
+        raise OverlayError(
+            "the gateway table has no route to override for: " + ", ".join(missing)
+        )
+    return "".join(out)
 
 
 def _apply_to_deployment(doc: dict[str, Any], values: Mapping[str, Any]) -> None:
@@ -131,9 +177,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--base", type=Path, default=DEFAULT_BASE)
     parser.add_argument("--values", type=Path, default=DEFAULT_VALUES)
     parser.add_argument("--out", type=Path, help="write here instead of stdout")
+    parser.add_argument(
+        "--gateway-config",
+        type=Path,
+        help="write this environment's LiteLLM routing table here instead of "
+        "rendering the Deployment; feed it to render_litellm_gateway.py --config",
+    )
+    parser.add_argument("--gateway-base", type=Path, default=DEFAULT_GATEWAY)
     args = parser.parse_args(argv)
 
     values = yaml.safe_load(args.values.read_text(encoding="utf-8")) or {}
+
+    if args.gateway_config is not None:
+        try:
+            table = apply_gateway_routes(
+                args.gateway_base.read_text(encoding="utf-8"), values
+            )
+        except OverlayError as exc:
+            print(f"overlay error: {exc}", file=sys.stderr)
+            return 2
+        args.gateway_config.write_text(table, encoding="utf-8")
+        print(f"rendered the gateway table to {args.gateway_config}")
+        return 0
+
     try:
         rendered = apply_overlay(load_documents(args.base), values)
     except OverlayError as exc:
