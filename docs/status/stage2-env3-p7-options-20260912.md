@@ -198,3 +198,44 @@ ok  nodeSelector: {"kubernetes.io/hostname": "otcaix-62"}
 ok  dns-fallback: 159.226.8.6
 ok  private-file-modes: 23 files, none reachable; 6 have loose modes but sit under a private directory that blocks them
 ```
+
+---
+
+## P7 验收：三家智能体可跑
+
+`/api/v1/stage2/options`（2026-09-13 03:10，第三套环境实测）：
+
+```
+codex             runnable=True   可跑模型 [deepseek-v4-pro-0813, deepseek-v4-flash-0731, qwen3.8-max, qwen3.8-flash]
+claude-code       runnable=True   可跑模型 [同上]
+deepseek-harness  runnable=True   可跑模型 [同上]
+bladeai           runnable=False  qualification_not_passed
+```
+
+**BladeAI 不可跑是对的，不是缺陷**：发布器对只有 base 记录的 BladeAI 明确保留
+`bladeai_full_chain_qualification_required`，它要走 WP8 全链验证——那是第三件事。
+启动语要求的是「三家智能体可跑」，已满足。
+
+### 资格是怎么拿到的
+
+不能手写那个能力文件——`capability_preflight.py` 的设计就是**只认真跑出来的证据**，
+手搓等于把整个 fail-closed 拆掉。按 `docs/deploy/stage2-base-channel-qualification-20260906.md`
+的正规流程走，一家一跑（每家 10 次真实模型请求，模型用 `qwen3.8-max`）：
+
+| Harness | 尝试目录 | 结果 | 七项基础检查 |
+|---|---|---|---|
+| codex | `env3-20260913-a1` | `status=passed` | 全 true |
+| claude-code | `env3-20260913-a2` | `status=passed` | 全 true |
+| deepseek-harness | `env3-20260913-a3` | `status=passed` | 全 true |
+
+三家的 `failure_reasons` 与 `cleanup_errors` 都是空。跑之前确认过环境干净
+（`task_count=0`、无 chaosblade CR、四类 chaos-mesh 故障均为 0）。
+
+三份记录**一次性**发布（发布器不隐式合并旧文件，要保留谁就得全列出来）：
+
+```
+{"status": "published", "output": ".../private/harness-capabilities.json"}
+```
+
+`collective.all_passed=false` 不是失败：它是 `complete_harness_set=false` 的映射，
+而「一次只跑一家」正是操作手册自己的要求。发布看的是每份记录的 `status`。
