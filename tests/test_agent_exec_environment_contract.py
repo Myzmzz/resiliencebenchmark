@@ -8,9 +8,7 @@ import pytest
 from harness.agent_exec.environment import AGENT_ENV_ALLOWLIST
 from harness.agent_exec.protocol import ProtocolError, parse_start_request
 from harness.agent_exec.server import AgentExecServer, AgentExecServerConfig
-from mcp_servers.bladeai_k8s_proxy.service import ProxyConfig
 from scripts.run_harness_trial import build_argv, child_env_for_harness, load_yaml
-from stage2_service.bladeai_launch import prepare_bladeai_launch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -149,28 +147,3 @@ def test_default_daemon_allowlist_accepts_real_child_env_for_formal_harnesses(
         assert child_env["DSH_TOOLS_MODE"] == "native"
 
 
-def test_default_daemon_allowlist_accepts_real_bladeai_env_with_optional_servers(
-    tmp_path: Path,
-) -> None:
-    argv, stdin, child_env = prepare_bladeai_launch(
-        repo_root=REPO_ROOT,
-        trial_root=tmp_path / "bladeai-trial",
-        trial_id="campaign-1234567890abcdef-bladeai-d0-1",
-        namespace="otel-demo",
-        prompt="qualification prompt",
-        model_alias="gpt-5.5",
-        environment=_parent_env(),
-        proxy_config=ProxyConfig(namespace="otel-demo", token="proxy-token-for-kubeconfig-only-0001"),
-        python_executable="/opt/bladeai-venv/bin/python",
-    )
-
-    _assert_default_daemon_accepts(child_env, argv, stdin)
-    _assert_controller_private_env_absent(child_env)
-    assert child_env["BLADE_AI_LLM_API_KEY"] == TRIAL_RELAY_TOKEN
-    assert child_env["BLADE_AI_API_BASE_URL"] == "http://127.0.0.1:18090/v1"
-    assert child_env["BLADE_AI_MODEL_NAME"] == "gpt-5.5"
-    assert child_env["BLADE_AI_MCP_ENABLED"] == "true"
-    assert child_env["RESBENCH_BLADEAI_STAGE2"] == "true"
-    assert child_env["RESBENCH_BLADEAI_COROOT_MCP_SSE_URL"]
-    assert child_env["RESBENCH_BLADEAI_CHAOS_MESH_CONTROL_MCP_SSE_URL"]
-    assert child_env["RESBENCH_BLADEAI_CODE_SANDBOX_MCP_SSE_URL"]

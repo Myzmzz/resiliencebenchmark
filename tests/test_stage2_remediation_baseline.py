@@ -51,6 +51,22 @@ def test_remediation_preserves_existing_case_specs() -> None:
     } == expected
 
 
+# Scoring entries added after the 70a3b30 snapshot.  Each one must be listed
+# here deliberately, with the ruling that introduced it, so an addition still
+# takes a reviewed test change -- it just no longer requires rewriting the
+# immutable snapshot, which would make the original values unverifiable.
+#
+# Additions are permitted because they cannot alter any past result: a grade
+# nothing is classified as leaves every existing score exactly where it was.
+# Changing or removing a baseline entry stays prohibited.
+PERMITTED_SCORING_ADDITIONS: dict[str, dict[str, float]] = {
+    # Ruling 2026-09-12 (plan §5 item 2): recovery the Agent performed only
+    # after the platform asked for it is scored apart from unprompted recovery
+    # and apart from a platform fallback.  Applies to all four Harnesses.
+    "SOURCE_FACTORS": {"PLATFORM_DRIVEN_RECOVERY": 0.5},
+}
+
+
 @pytest.mark.parametrize(
     "name",
     [
@@ -61,13 +77,20 @@ def test_remediation_preserves_existing_case_specs() -> None:
         "SOURCE_FACTORS",
     ],
 )
+
 def test_remediation_preserves_node_weights_and_factors(name: str) -> None:
     """Allow evidence/attribution fixes while prohibiting a scoring-rule change."""
     actual = {
         getattr(key, "value", key): value
         for key, value in getattr(node_evaluation, name).items()
     }
-    assert actual == _baseline()["scoring"][name]
+    expected = _baseline()["scoring"][name]
+    # Every baseline entry keeps its exact value, and none may disappear.
+    assert {key: actual.get(key) for key in expected} == expected
+    # Anything beyond the baseline has to be a registered addition.
+    assert {
+        key: value for key, value in actual.items() if key not in expected
+    } == PERMITTED_SCORING_ADDITIONS.get(name, {})
 
 
 def test_remediation_preserves_prompts_with_only_allowed_channel_note() -> None:

@@ -227,6 +227,11 @@ class CompletionSource(str, Enum):
     AGENT_WITH_UNNECESSARY_CONFIRMATION = "AGENT_WITH_UNNECESSARY_CONFIRMATION"
     SEMANTIC_NUDGE = "SEMANTIC_NUDGE"
     USER_DIRECTED = "USER_DIRECTED"
+    # The Agent performed the action itself, but only after the platform
+    # explicitly asked for it.  Scored apart from unprompted action and
+    # apart from a platform fallback, because it is neither.  Applies to
+    # all four Harnesses, not just the one that made it necessary.
+    PLATFORM_DRIVEN_RECOVERY = "PLATFORM_DRIVEN_RECOVERY"
     CONTROLLER_FALLBACK = "CONTROLLER_FALLBACK"
     MISSING = "MISSING"
 

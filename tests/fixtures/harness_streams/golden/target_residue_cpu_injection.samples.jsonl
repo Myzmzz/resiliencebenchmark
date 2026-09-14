@@ -1,0 +1,16 @@
+{"phase":"faulted","ts":1789266999,"cpu_millicores":5}
+{"phase":"faulted","ts":1789267004,"cpu_millicores":300}
+{"phase":"faulted","ts":1789267009,"cpu_millicores":300}
+{"phase":"faulted","ts":1789267014,"cpu_millicores":300}
+{"phase":"faulted","ts":1789267019,"cpu_millicores":785}
+{"phase":"faulted","ts":1789267024,"cpu_millicores":785}
+{"phase":"faulted","ts":1789267029,"cpu_millicores":806}
+{"phase":"faulted","ts":1789267034,"cpu_millicores":806}
+{"phase":"recovered","ts":1789267042,"cpu_millicores":806}
+{"phase":"recovered","ts":1789267047,"cpu_millicores":410}
+{"phase":"recovered","ts":1789267052,"cpu_millicores":410}
+{"phase":"recovered","ts":1789267057,"cpu_millicores":410}
+{"phase":"recovered","ts":1789267062,"cpu_millicores":5}
+{"phase":"recovered","ts":1789267067,"cpu_millicores":5}
+{"phase":"recovered","ts":1789267072,"cpu_millicores":5}
+{"phase":"recovered","ts":1789267077,"cpu_millicores":5}

@@ -164,14 +164,27 @@ def test_deepseek_post_hoc_is_derived_from_observed_native_records(tmp_path):
     assert descriptors["deepseek-harness"]["streams_tool_results"] is False
 
 
-def test_bladeai_base_record_does_not_claim_wp8_full_chain(tmp_path):
+def test_bladeai_base_record_now_qualifies_it_like_any_other_harness(tmp_path):
+    """A base channel record establishes BladeAI's execution path (WP-F).
+
+    It used to be excluded, and for a specific reason: the platform drove it by
+    replacing private functions inside its process, so a base run exercised our
+    shim rather than the Agent's own path.  Driven as a black box there is no
+    shim -- it answers the same published interface codex answers -- and every
+    base check is platform-side evidence (MCP gateway records, the model
+    gateway's request log, canonical events the driver lands itself).
+    """
     record = qualification(tmp_path, "bladeai")
     output = tmp_path / "private" / "capabilities.json"
     publish_capabilities([record], artifact_root=tmp_path / "artifacts", output=output, gateway=gateway(tmp_path))
     payload = json.loads(output.read_text())
-    assert payload["harnesses"]["bladeai"]["qualification"]["reason"] == "bladeai_full_chain_qualification_required"
+    assert payload["harnesses"]["bladeai"]["qualification"]["status"] == "passed"
+    assert payload["harnesses"]["bladeai"]["qualification"]["reason"] is None
     descriptors, _ = harness_capabilities_from_qualification(output)
-    assert descriptors["bladeai"]["qualification_passed"] is False
+    assert descriptors["bladeai"]["qualification_passed"] is True
+    # The settled grade that did not change: it runs its own built-in tooling,
+    # never code the platform sandboxes.
+    assert descriptors["bladeai"]["code_execution"] == "none"
 
 
 @pytest.mark.parametrize("corruption", ["missing_check", "failed", "gateway_mismatch", "missing_native_result", "wrong_type", "duplicate_harness", "stale_gateway", "forged_route"])
