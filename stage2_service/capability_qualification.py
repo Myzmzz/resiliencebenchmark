@@ -257,6 +257,25 @@ def _verified_gateway_identity(record: dict[str, Any], harness: HarnessKind, art
                             canonical_path=canonical_path)
 
 
+# Black-box BladeAI (driven over HTTP/SSE, see harness_runtime._bladeai_http_session)
+# confirms through the HTTP interrupt bridge and reports through its ``result``
+# event, not through the platform MCP servers, and nothing mounts those servers
+# into the resident BladeAI server.  Its base run therefore cannot produce the
+# MCP-channel checks even though it exercises the real execution path end to
+# end.  With this switch set, a BladeAI base record is accepted on platform-side
+# evidence alone: the session completed, the model gateway recorded the Trial's
+# own requests, and nothing was left to clean up.  The published entry names the
+# acceptance and the checks it skipped, so these results can be told apart.
+BLADEAI_BLACKBOX_QUALIFICATION_ENV = "STAGE2_BLADEAI_BLACKBOX_QUALIFICATION"
+BLADEAI_BLACKBOX_REQUIRED_CHECKS = frozenset({"gateway_evidence_verified"})
+BLADEAI_BLACKBOX_ACCEPTANCE = "BLADEAI_BLACKBOX_HTTP_CHANNEL"
+
+
+def _bladeai_blackbox_acceptance_enabled() -> bool:
+    """Whether the operator opted into black-box acceptance for BladeAI base records."""
+    return os.environ.get(BLADEAI_BLACKBOX_QUALIFICATION_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
 def _entry(path: Path, record: dict[str, Any], artifact_root: Path,
            gateway: GatewayConfigSnapshot) -> tuple[str, dict[str, Any]]:
     """Verify one base channel record into its published entry."""
@@ -265,7 +284,14 @@ def _entry(path: Path, record: dict[str, Any], artifact_root: Path,
             or record.get("qualification_profile") != BASE_QUALIFICATION_TYPE):
         raise ValueError("a base channel qualification record is required")
     checks = record.get("base_checks")
-    if (record.get("passed") is not True or record.get("status") != "passed"
+    blackbox_bladeai = (record.get("harness") == HarnessKind.BLADEAI.value
+                        and _bladeai_blackbox_acceptance_enabled())
+    if blackbox_bladeai:
+        if (record.get("harness_report_status") != "completed" or record.get("cleanup_errors") != []
+                or not isinstance(checks, dict)
+                or any(checks.get(key) is not True for key in BLADEAI_BLACKBOX_REQUIRED_CHECKS)):
+            raise ValueError("black-box BladeAI qualification needs a completed session with gateway evidence")
+    elif (record.get("passed") is not True or record.get("status") != "passed"
             or record.get("harness_report_status") != "completed"
             or record.get("failure_reasons") != [] or record.get("cleanup_errors") != []
             or not isinstance(checks, dict) or any(checks.get(key) is not True for key in BASE_CHECKS)):
@@ -275,8 +301,18 @@ def _entry(path: Path, record: dict[str, Any], artifact_root: Path,
     except ValueError as error:
         raise ValueError("unknown qualified Harness") from error
     identity = _verified_gateway_identity(record, harness, artifact_root, gateway)
-    streamed, replayed = _native_tool_modes(identity.canonical_path, record)
+    if blackbox_bladeai:
+        # No platform MCP tool runs in a black-box session, so there is no MCP
+        # tool evidence to derive a delivery mode from; BladeAI streams over SSE.
+        streamed, replayed = True, False
+    else:
+        streamed, replayed = _native_tool_modes(identity.canonical_path, record)
     qualified = harness not in HARNESSES_NEEDING_FULL_CHAIN_PROOF
+    acceptance_probe = (
+        {"acceptance": BLADEAI_BLACKBOX_ACCEPTANCE,
+         "skipped_checks": sorted(key for key in BASE_CHECKS if checks.get(key) is not True)}
+        if blackbox_bladeai else {}
+    )
     descriptor = HarnessCapability(
         kind=harness,
         execution_model=("stream" if streamed else "post_hoc") if qualified else "controller_driven",
@@ -288,12 +324,13 @@ def _entry(path: Path, record: dict[str, Any], artifact_root: Path,
         qualification_passed=qualified,
         probe={"qualification_profile": BASE_QUALIFICATION_TYPE, "channel_trial_id": identity.trial_id,
                "model_alias": identity.model, "gateway_config_sha256": identity.config_sha256,
-               "gateway_request_ids": identity.request_ids, "base_checks": checks},
+               "gateway_request_ids": identity.request_ids, "base_checks": checks, **acceptance_probe},
     )
+    passed_reason = BLADEAI_BLACKBOX_ACCEPTANCE if blackbox_bladeai else None
     return harness.value, {
         "qualification": {"status": "passed" if qualified else "platform_integration_incomplete",
                           "evidence_ref": str(path.resolve()), "qualification_type": BASE_QUALIFICATION_TYPE,
-                          "reason": None if qualified else "bladeai_full_chain_qualification_required"},
+                          "reason": passed_reason if qualified else "bladeai_full_chain_qualification_required"},
         "capability": descriptor.model_dump(mode="json"),
     }
 
