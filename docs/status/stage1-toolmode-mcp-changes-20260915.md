@@ -100,8 +100,39 @@ cd resiliencebenchmark-stage1-toolmode
 - **影响**：
   - 仍只放行白名单里的命名空间（otel-demo）。
   - 这个标签和另外三个一样，调用方不能在结构化查询里自己传。
-  - 结构化指标工具注入的仍是 `namespace` 选择器；应用指标要通过原始 PromQL 查询。
+  - 当时结构化指标工具仍只注入 `namespace` 选择器，查不到应用指标；已在第 5 节补上。
 - **测试**：新增 `test_prometheus_raw_query_scopes_otel_metrics_by_k8s_namespace_name`。
+
+## 5. telemetry_ro 结构化指标工具同样查得到 OTel 应用指标
+
+- **文件**：
+  - `mcp_servers/telemetry_ro/service.py`：
+    - 新增 `OTEL_NAMESPACE_LABEL_KEY`。
+    - `_build_prometheus_selector` 改为 `_build_prometheus_selectors`，并相应调整 `_build_prometheus_metric_query`、`prometheus_metric_series`、`_validate_prometheus_group_by`。
+    - `namespace_filter_reserved` 的提示补上 `k8s_namespace_name`。
+  - `mcp_servers/telemetry_ro/server.py`：三个结构化 Prometheus 工具的说明文字。
+- **改前**：
+  - 结构化工具（`telemetry_prom_metric_instant`、`telemetry_prom_metric_range`、`telemetry_prom_metric_series`）只拼 `{namespace="otel-demo"}`。
+  - 聚合时只保留 `namespace` 标签。
+- **改后**：
+  - 查询由两段选择器用 `or` 合并：
+    - `metric{namespace="otel-demo",…}`
+    - `metric{namespace="",k8s_namespace_name="otel-demo",…}`
+  - 第二段要求序列没有 `namespace` 标签，和结果过滤函数 `_namespace_value` 的标签优先级一致。
+  - rate / increase 在两段上分别套用。
+  - `group_by` 固定保留 `namespace` 和 `k8s_namespace_name`，调用方重复传入的会被忽略。
+  - series 查询传两个 `match[]`。
+- **原因**：
+  - 第 4 节只修了原始查询的结果过滤。
+  - 09-15 购物车试跑中，Claude Code 和 Codex 用结构化工具查 `app_cart_*` 都返回 0 条，据此误判"没有购物车业务指标"。实际有 6 条序列。
+- **影响**：
+  - 放行范围不变：两段都限定在白名单命名空间，结果仍逐条按命名空间标签复核。
+  - 构造出的查询约为原来的两倍长。调用方传入很多标签过滤时，会更早触到 2000 字符的上限。
+  - 工具返回的 `query` / `match` 字段会显示两段式查询。
+- **测试**：
+  - 更新 2 项断言：聚合查询语句、series 的 `match[]`。
+  - 新增 `test_structured_prometheus_metric_query_reaches_otel_application_metrics`：结构化查询能取到只带 `k8s_namespace_name` 的指标。
+  - 新增 `test_structured_group_by_keeps_both_namespace_labels_and_ignores_duplicates`：聚合保留两个命名空间标签，并忽略重复传入。
 
 ## 已知情况
 
@@ -113,4 +144,6 @@ cd resiliencebenchmark-stage1-toolmode
   - k8s_ro：读 cart Deployment 正常；PDB 列表为空（老环境没有 PDB）；读 secrets 返回 `resource_forbidden`。
   - telemetry_ro：Jaeger 服务列表返回 18 个服务；按 `namespace` 查 `kube_pod_info` 正常；Loki 标签正常（namespace 由服务端自动注入，调用方不能传）。
   - source_ro：能列出 `otel-demo-2.2.0`，并能全文搜索。
-- **测试**：`tests/test_telemetry_ro_mcp.py`、`tests/test_local_control_stack.py`、`tests/test_k8s_ro_mcp.py`、`tests/test_mcp_rbac.py` 共 70 项全部通过。
+- **测试**：
+  - 第 4 节改动后：`tests/test_telemetry_ro_mcp.py`、`tests/test_local_control_stack.py`、`tests/test_k8s_ro_mcp.py`、`tests/test_mcp_rbac.py` 共 70 项全部通过。
+  - 第 5 节改动后：以上 4 个文件，加上 `tests/test_telemetry_disturbance_interceptor.py`、`tests/test_file_telemetry_interceptor.py`，共 77 项全部通过。

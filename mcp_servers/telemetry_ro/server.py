@@ -48,7 +48,8 @@ def create_server(
         description=(
             "Read-only Prometheus, Jaeger, and Loki telemetry tools for one bounded benchmark Episode namespace. "
             "Endpoint URLs are runtime configuration only and are never accepted as tool parameters. "
-            "Default Prometheus and Loki tools construct scoped queries server-side with namespace exact matchers."
+            "Default Prometheus and Loki tools construct scoped queries server-side with namespace exact matchers "
+            "(Prometheus also matches k8s_namespace_name for OTLP-ingested application metrics)."
             + raw_notice
         ),
         version="0.1.0",
@@ -74,8 +75,9 @@ def create_server(
 
         The caller supplies only a metric name, exact non-namespace label filters,
         optional transform (none, rate, increase), and an allowlisted group_by.
-        telemetry_ro injects namespace="<episode namespace>" and preserves the
-        namespace label when aggregating.
+        telemetry_ro scopes the query to the Episode namespace through the namespace
+        label, or through k8s_namespace_name for OTLP-ingested application metrics
+        that have no namespace label, and keeps both labels when aggregating.
         """
 
         return await _call(
@@ -135,7 +137,7 @@ def create_server(
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
-        """List Prometheus series for one metric after telemetry_ro injects the Episode namespace matcher."""
+        """List Prometheus series for one metric after telemetry_ro injects the Episode namespace matchers (namespace or k8s_namespace_name)."""
 
         return await _call(
             telemetry.prometheus_metric_series(

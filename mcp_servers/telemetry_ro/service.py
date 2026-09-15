@@ -39,6 +39,8 @@ MAX_LITERAL_CONTAINS_LENGTH = 200
 # k8s_namespace_name is what Prometheus OTLP ingestion produces for the OTel resource attribute
 # k8s.namespace.name; without it every otel-demo application metric is scoped out (Stage-1, 2026-09-15).
 NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace", "k8s_namespace_name")
+# Structured Prometheus tools match `namespace` or, for series without it, this OTel label (Stage-1, 2026-09-15).
+OTEL_NAMESPACE_LABEL_KEY = "k8s_namespace_name"
 PROMETHEUS_GROUP_BY_ALLOWLIST = frozenset(
     {
         "namespace",
@@ -370,8 +372,8 @@ class TelemetryROService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
-        match = _build_prometheus_selector(namespace=self.config.namespace, metric=metric, labels=labels)
-        return await self._prometheus_list_series_raw(match=[match], start=start, end=end, limit=limit, offset=offset, constructed=True)
+        matches = _build_prometheus_selectors(namespace=self.config.namespace, metric=metric, labels=labels)
+        return await self._prometheus_list_series_raw(match=matches, start=start, end=end, limit=limit, offset=offset, constructed=True)
 
     async def prometheus_list_labels(
         self,
@@ -949,11 +951,25 @@ def _scope_metadata(config: RuntimeConfig, scoped_out_count: int, *, warning: st
     return {"scopeFiltered": scoped_out_count > 0}
 
 
-def _build_prometheus_selector(*, namespace: str, metric: str, labels: Mapping[str, str] | None = None) -> str:
+def _build_prometheus_selectors(*, namespace: str, metric: str, labels: Mapping[str, str] | None = None) -> list[str]:
+    """Build the namespace-scoped selectors for one metric.
+
+    Series scraped from Kubernetes carry `namespace`; OTel application metrics ingested through Prometheus
+    OTLP carry only `k8s_namespace_name`. The second selector requires `namespace` to be absent, so each
+    series is matched by the same label that `_namespace_value` uses for the result scope check.
+    """
     metric = _validate_metric_name(metric)
-    filters = {"namespace": namespace, **_validate_exact_label_filters(labels, family="prometheus")}
-    matchers = ",".join(f'{key}="{_escape_query_string(value)}"' for key, value in filters.items())
-    return f"{metric}{{{matchers}}}"
+    caller_filters = _validate_exact_label_filters(labels, family="prometheus")
+    namespace_filter_sets = (
+        {"namespace": namespace},
+        {"namespace": "", OTEL_NAMESPACE_LABEL_KEY: namespace},
+    )
+    selectors: list[str] = []
+    for namespace_filters in namespace_filter_sets:
+        filters = {**namespace_filters, **caller_filters}
+        matchers = ",".join(f'{key}="{_escape_query_string(value)}"' for key, value in filters.items())
+        selectors.append(f"{metric}{{{matchers}}}")
+    return selectors
 
 
 def _build_prometheus_metric_query(
@@ -965,7 +981,7 @@ def _build_prometheus_metric_query(
     window: int = 60,
     group_by: Sequence[str] | None = None,
 ) -> str:
-    selector = _build_prometheus_selector(namespace=namespace, metric=metric, labels=labels)
+    selectors = _build_prometheus_selectors(namespace=namespace, metric=metric, labels=labels)
     normalized_transform = "none" if transform is None else transform.strip().lower()
     if normalized_transform not in {"none", "rate", "increase"}:
         raise TelemetryROError(
@@ -975,9 +991,10 @@ def _build_prometheus_metric_query(
         )
     if normalized_transform in {"rate", "increase"}:
         window = _bounded_window_seconds(window)
-        expression = f"{normalized_transform}({selector}[{window}s])"
+        expressions = [f"{normalized_transform}({selector}[{window}s])" for selector in selectors]
     else:
-        expression = selector
+        expressions = selectors
+    expression = " or ".join(expressions)
     groups = _validate_prometheus_group_by(group_by)
     if groups:
         expression = f"sum by ({','.join(groups)}) ({expression})"
@@ -1047,7 +1064,7 @@ def _validate_exact_label_filters(labels: Mapping[str, str] | None, *, family: s
             raise TelemetryROError(
                 "namespace_filter_reserved",
                 "namespace labels are reserved and injected by telemetry_ro.",
-                "Do not pass namespace, kubernetes_namespace, or exported_namespace as label filters.",
+                "Do not pass namespace, kubernetes_namespace, exported_namespace, or k8s_namespace_name as label filters.",
             )
         if _SECRET_HINT_RE.search(raw_key):
             raise TelemetryROError(
@@ -1096,8 +1113,10 @@ def _validate_prometheus_group_by(group_by: Sequence[str] | None) -> list[str]:
         )
     if len(group_by) > 8:
         raise TelemetryROError("invalid_group_by", "group_by contains too many labels.", "Use at most 8 group labels.")
-    labels: list[str] = ["namespace"]
-    seen = {"namespace"}
+    # Both namespace labels stay in the aggregation so the result scope check still sees the namespace
+    # of every aggregated series (OTel application metrics only carry k8s_namespace_name).
+    labels: list[str] = ["namespace", OTEL_NAMESPACE_LABEL_KEY]
+    seen = set(labels)
     for item in group_by:
         if not isinstance(item, str) or not _LABEL_RE.fullmatch(item):
             raise TelemetryROError(
@@ -1105,6 +1124,8 @@ def _validate_prometheus_group_by(group_by: Sequence[str] | None) -> list[str]:
                 "group_by labels must be valid label identifiers.",
                 "Use only allowlisted label names; operators and expressions are not accepted.",
             )
+        if item in seen:
+            continue
         if item not in PROMETHEUS_GROUP_BY_ALLOWLIST:
             raise TelemetryROError(
                 "group_by_outside_allowlist",
