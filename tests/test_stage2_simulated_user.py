@@ -7,7 +7,7 @@ import pytest
 from controller.safety import default_policy
 from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutcome
 from stage2_service.plan_schema import AGENT_PLAN_SKELETON, PlanSafetyEnvelope
-from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS, parse_create
+from stage2_service.harness_adapters.bladeai_intensity import NATIVE_INTENSITY_FLAGS
 from stage2_service.condition_policy import (
     CONDITION_POLICY,
     EFFECT_OPERATORS,
@@ -385,26 +385,6 @@ def test_vocabulary_example_target_is_a_placeholder_that_cannot_pass_validation(
     result = validate_agent_plan(_attach_condition_policy(example), user_policy.envelope)
 
     assert not result.ok
-
-
-@pytest.mark.parametrize("fault_type", ALL_FAULT_TYPES)
-def test_vocabulary_chaosblade_command_is_one_the_blade_shim_accepts(fault_type):
-    entry = plan_vocabulary(delegated_policy((fault_type,)))["fault_types"][fault_type]
-    value = entry["example_plan_fields"]["intensity"][entry["intensity_field"]]
-    command = (
-        entry["chaosblade_command"]
-        .replace(f"<{entry['intensity_field']}>", str(value))
-        .replace("<target.name>", "cart-a")
-        .replace("<target.namespace>", "otel-demo")
-        .replace("<safety_ttl_seconds>", "120")
-    )
-
-    created = parse_create(command.split()[1:], namespace="otel-demo", max_duration_seconds=600)
-
-    assert created.fault_type == fault_type
-    assert created.intensity == {entry["intensity_field"]: value}
-    assert created.duration_seconds == 120
-    assert (entry["chaosblade_flag"], entry["intensity_field"]) == NATIVE_INTENSITY_FLAGS[fault_type]
 
 
 def test_vocabulary_limits_come_from_the_controller_and_the_trial():

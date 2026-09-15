@@ -33,6 +33,11 @@ PLATFORM_REASON_CODES = frozenset(
         "GATEWAY_EVIDENCE_MISSING",
         "GATEWAY_ROUTE_VERSION",
         "BLADEAI_MODEL_QUOTA_EXHAUSTED",
+        # Black-box BladeAI server-side platform faults: no server URL, session not opened,
+        # gateway config rejected (stage2_service/harness_runtime.py, _bladeai_http_session).
+        "BLADEAI_SERVER_URL_MISSING",
+        "BLADEAI_SESSION_UNAVAILABLE",
+        "BLADEAI_GATEWAY_CONFIG_REJECTED",
         "RESET_FAILED",
     }
 )

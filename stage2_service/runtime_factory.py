@@ -322,9 +322,10 @@ def _build_runtime(
         "RESBENCH_WORKLOAD_STATS_URL": workload_stats_url(namespace),
         "RESBENCH_WORKLOAD_STAT_NAME": "/api/cart",
         "RESBENCH_SOURCE_ROOT": str(config.source_root),
-        # The frozen source snapshot is shared by every replica, so the
-        # source_ro allowlist stays this binding's application id.
-        "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": current_target_binding().application,
+        # The frozen source snapshot is shared by every replica and its locks are
+        # registered under the bundle's application id, so a replica (otel-demo-01)
+        # keeps otel-demo here instead of its namespace.
+        "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": current_target_binding().source_application,
         "RESBENCH_CHAOS_EXECUTE_ENABLED": "true",
         "RESBENCH_CHAOS_KUBECONFIG": str(identities.executor_kubeconfig),
         "RESBENCH_CHAOS_CLEANUP_KUBECONFIG": str(identities.finalizer_kubeconfig),

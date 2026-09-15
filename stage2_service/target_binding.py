@@ -64,6 +64,16 @@ class TargetBinding:
         return int(match.group("index")) if match else None
 
     @property
+    def source_application(self) -> str:
+        """The application id the shared source locks are registered under.
+
+        ``environment/shared/source-locks.yaml`` names the bundle (``otel-demo``),
+        not a replica namespace, so ``otel-demo-01`` maps to ``otel-demo`` and a
+        plain ``otel-demo`` is returned unchanged.
+        """
+        return self.bundle
+
+    @property
     def is_default(self) -> bool:
         return (
             self.application == DEFAULT_APPLICATION

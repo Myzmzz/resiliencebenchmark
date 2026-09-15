@@ -90,6 +90,16 @@ def test_replica_binding_keeps_the_shared_deployment_bundle(replica):
 
 
 @pytest.mark.parametrize(
+    ("namespace", "expected"),
+    [("otel-demo", "otel-demo"), ("otel-demo-01", "otel-demo")],
+)
+def test_source_application_strips_the_replica_suffix(namespace: str, expected: str):
+    # source-locks.yaml registers otel-demo, so a replica must still ask source_ro for it.
+    binding = TargetBinding(application=namespace, application_namespace=namespace)
+    assert binding.source_application == expected
+
+
+@pytest.mark.parametrize(
     ("variables", "message"),
     [
         ({target_binding.APPLICATION_NAMESPACE_ENV: "Otel-Demo"}, "valid Kubernetes namespace"),

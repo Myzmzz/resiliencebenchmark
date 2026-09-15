@@ -516,6 +516,15 @@ def test_failure_classification_separates_the_two_causes():
     assert classify_failure(None, http_status=503) == "platform"
 
 
+@pytest.mark.parametrize(
+    "code",
+    ["BLADEAI_SERVER_URL_MISSING", "BLADEAI_SESSION_UNAVAILABLE", "BLADEAI_GATEWAY_CONFIG_REJECTED"],
+)
+def test_blackbox_bladeai_server_faults_are_platform_owned(code: str):
+    """The black-box BladeAI server never gave the agent a session, so the trial is voided."""
+    assert classify_failure({"code": code}) == "platform"
+
+
 def test_dry_run_reports_what_it_could_not_simulate_on_a_fresh_replica(fleet, monkeypatch):
     """A server dry run creates no namespace, so it cannot check what goes inside one."""
     monkeypatch.setattr(fleet["provisioner"].kube, "namespace_exists",
