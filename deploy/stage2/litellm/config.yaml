@@ -141,6 +141,21 @@ litellm_settings:
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
 
+# Retries for the gpt-5.5 route (nexustokenai) only, and only on upstream rate
+# limits and 5xx, waiting at least retry_after seconds (at most LiteLLM's
+# MAX_RETRY_DELAY, 8 s) between attempts. Decided 2026-09-15 after five
+# parallel BladeAI trials got 429/500/502 from nexustokenai and none could
+# inject. Timeouts are not retried, so one request stays inside the platform
+# relay's 180 s budget. litellm_settings.num_retries stays 0 for every other
+# route, and no fallback or load balancing is configured
+# (stage2_service/gateway_config.py rejects anything beyond these two keys).
+router_settings:
+  retry_after: 5
+  model_group_retry_policy:
+    gpt-5.5:
+      RateLimitErrorRetries: 4
+      InternalServerErrorRetries: 3
+
 # router_settings:
 #   # Automatic provider fail-over is intentionally disabled. If stability ever
 #   # matters more than upstream identity, enable it explicitly:
