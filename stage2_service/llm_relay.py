@@ -44,6 +44,24 @@ class TrialRelayConfig:
     upstream_base_url: str
     upstream_api_key: str
     relay_token: str
+    # A second token this Trial's relay also accepts, for a Harness that runs
+    # as a long-lived service instead of a child process.  Empty for every
+    # subprocess Harness, which is all three of the others: they receive
+    # ``relay_token`` as child environment and never see anything else.
+    #
+    # BladeAI 0.7.0 is served, so it was started before this Trial and outlives
+    # it, and its published API refuses a write to ``llm_api_key`` (``code
+    # 1002``, "not writable via the HTTP API") -- so the platform has no way to
+    # hand it a freshly minted per-Trial token.  Without this it calls the model
+    # gateway directly, the relay mints no request ids, and every Trial is
+    # scored CASE_INVALID on GATEWAY_EVIDENCE_MISSING.
+    #
+    # What this does NOT weaken: the relay still mints and records every request
+    # id, still writes the audit rows the evidence gate reads, and still refuses
+    # any model alias but this Trial's.  What it does weaken: the served Harness
+    # holds a credential of its own, where a subprocess Harness only ever holds
+    # a token that dies with the Trial.  Say so in the evaluation report.
+    served_harness_token: str = ""
     harness_name: str = "unknown"
     llm_tag: str = ""
     gateway_config_sha256: str = ""
@@ -67,6 +85,7 @@ class TrialRelayConfig:
         llm_tag: str = "",
         gateway_config_sha256: str = "",
         relay_token: str | None = None,
+        served_harness_token: str = "",
         request_timeout_seconds: float = 180.0,
         max_request_bytes: int = MAX_REQUEST_BYTES,
     ) -> "TrialRelayConfig":
@@ -82,6 +101,7 @@ class TrialRelayConfig:
             upstream_base_url=upstream_base_url.rstrip("/"),
             upstream_api_key=upstream_api_key,
             relay_token=relay_token or secrets.token_urlsafe(32),
+            served_harness_token=served_harness_token,
             harness_name=harness_name,
             llm_tag=llm_tag or model_alias,
             gateway_config_sha256=gateway_config_sha256,
@@ -119,7 +139,7 @@ def create_trial_relay_app(
     ))
 
     async def infer(request: Request) -> Response:
-        if not _authorized(request, config.relay_token):
+        if not _authorized(request, config.relay_token, config.served_harness_token):
             return JSONResponse({"error": {"message": "unauthorized"}}, status_code=401)
         # The pinned Claude client uses this exact inference URL. This is not
         # permission to forward arbitrary query-based routing or credentials.
@@ -347,10 +367,23 @@ class TrialRelay:
                 self._socket = None
 
 
-def _authorized(request: Request, token: str) -> bool:
+def _authorized(request: Request, token: str, served_token: str = "") -> bool:
+    """Accept this Trial's minted token, or a served Harness's pre-shared one.
+
+    Both comparisons are constant-time, and both run on every request so a
+    wrong token takes the same time whichever one it was compared against.
+    ``served_token`` is empty for every subprocess Harness, and an empty
+    pre-shared token authorises nothing -- an empty Bearer header is rejected
+    by the emptiness check, not by comparing it against "".
+    """
     value = request.headers.get("authorization")
-    expected = f"Bearer {token}"
-    return value is not None and secrets.compare_digest(value, expected)
+    if value is None:
+        return False
+    matches_trial = secrets.compare_digest(value, f"Bearer {token}")
+    matches_served = bool(served_token) and secrets.compare_digest(
+        value, f"Bearer {served_token}"
+    )
+    return matches_trial or matches_served
 
 
 def _error(status_code: int, code: str) -> JSONResponse:

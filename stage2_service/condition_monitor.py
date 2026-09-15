@@ -32,10 +32,21 @@ class ConditionRecoveryMonitor:
         chaos: ChaosCleanup,
         *,
         poll_seconds: float = 2.0,
+        request_recovery: Callable[[Mapping[str, Any]], bool] | None = None,
+        recovery_request_grace_seconds: float = 0.0,
     ) -> None:
         self.workload = workload
         self.chaos = chaos
         self.poll_seconds = poll_seconds
+        # Asking the Agent to recover, once, before falling back to waiting.
+        # Without this the recovery item is structurally zero for a Harness
+        # that cannot remove a fault in the turn that created it: BladeAI's
+        # own rule treats a successful injection record as the recovery
+        # handle and forbids destroying it, so in 12 real injections it
+        # cleaned up exactly once.  Measuring that as "did not recover" would
+        # be measuring our driving, not its ability.
+        self.request_recovery = request_recovery
+        self.recovery_request_grace_seconds = recovery_request_grace_seconds
         self._stop = Event()
         self._agent_cleanup = Event()
         self._lock = Lock()
@@ -52,6 +63,7 @@ class ConditionRecoveryMonitor:
             "agent_cleanup_timely": False,
             "agent_cleanup_prompt": False,
             "controller_fallback_used": False,
+            "platform_recovery_requested": False,
         }
 
     def arm(
@@ -268,7 +280,7 @@ class ConditionRecoveryMonitor:
         already expired was aborted anyway.
         """
         ttl = _plan_seconds(plan, "safety_ttl_seconds", CONDITION_POLICY["safety_ttl_seconds"])
-        deadline = fault_started + ttl + OVERTIME_GRACE_SECONDS
+        deadline = fault_started + ttl + OVERTIME_GRACE_SECONDS + self._drive_recovery(plan)
         while not self._stop.is_set():
             if self._agent_cleanup.is_set():
                 cleaned = getattr(self, "_agent_cleanup_monotonic", time.monotonic())
@@ -276,6 +288,11 @@ class ConditionRecoveryMonitor:
                     self._result["agent_cleanup_timely"] = cleaned - fault_started <= ttl + 5
                     self._result["agent_cleanup_prompt"] = (
                         effect_met is not None and cleaned - effect_met <= cleanup_seconds
+                    )
+                    # Recorded so scoring can tell "recovered on its own" from
+                    # "recovered after we asked".
+                    self._result["agent_cleanup_after_platform_request"] = bool(
+                        self._result.get("platform_recovery_requested")
                     )
                 self._notify("agent_condition_cleanup_observed", self.snapshot())
                 return
@@ -303,6 +320,44 @@ class ConditionRecoveryMonitor:
             return
         self._fallback_cleanup(reason="platform_overtime_abort")
         self._notify("platform_overtime_abort", self.snapshot())
+
+    def _drive_recovery(self, plan: Mapping[str, Any]) -> float:
+        """Ask the Agent to recover, once, and return the extra grace granted.
+
+        Called after the effect has been settled and before the platform waits
+        out the clock, so the Agent is asked while the fault is still live and
+        it can still act.  The request is best-effort: if it cannot be
+        delivered the monitor simply waits as it did before, and the fallback
+        cleanup still bounds the fault.
+
+        Whether the Agent then recovers **because we asked** is scored
+        separately from recovering on its own -- see
+        ``CompletionSource.PLATFORM_DRIVEN_RECOVERY``.  Both are better than a
+        platform fallback, and neither is the same as unprompted recovery.
+        """
+        if self.request_recovery is None or self._agent_cleanup.is_set():
+            return 0.0
+        requested_at = _now()
+        try:
+            delivered = bool(self.request_recovery(plan))
+        except Exception as exc:  # never let a driver fault strand the fault
+            with self._lock:
+                self._result.update({
+                    "platform_recovery_requested": False,
+                    "platform_recovery_request_error": f"{type(exc).__name__}: {exc}",
+                })
+            self._notify("platform_recovery_request_failed", self.snapshot())
+            return 0.0
+        with self._lock:
+            self._result.update({
+                "platform_recovery_requested": delivered,
+                "platform_recovery_requested_at": requested_at,
+            })
+        if not delivered:
+            self._notify("platform_recovery_request_undelivered", self.snapshot())
+            return 0.0
+        self._notify("platform_recovery_requested", self.snapshot())
+        return self.recovery_request_grace_seconds
 
     def _ended_fault_status(self) -> dict[str, Any] | None:
         """The Controller status once the fault has ended on its own, else None.

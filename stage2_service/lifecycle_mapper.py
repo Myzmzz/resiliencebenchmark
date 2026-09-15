@@ -19,10 +19,24 @@ OBSERVATION_QUERIES = frozenset({
 })
 
 
+# A Harness that injects through its own built-in tooling rather than through
+# the platform's MCP gateway still performs the same lifecycle actions, and the
+# phase of an action is a property of the action -- not of whoever named the
+# tool.  These markers are matched on the tool name alone, with no reference to
+# which Harness produced it, so adding one never changes how the MCP-gateway
+# names below are classified.
+NATIVE_INJECTION_TOOLS = frozenset({"blade_create"})
+NATIVE_RECOVERY_TOOLS = frozenset({"blade_destroy"})
+
+
+def _native_tool(tool: str) -> str:
+    return tool.partition(".")[2] or tool
+
+
 def capability_for_tool(tool: str) -> str:
     """Map a canonical tool name to the externally enforced capability."""
     server, _, name = tool.partition(".")
-    if name.endswith("create_experiment"):
+    if name.endswith("create_experiment") or name in NATIVE_INJECTION_TOOLS:
         return "mcp.chaos.create"
     if server in OBSERVATION_SERVERS:
         return "mcp.telemetry.read"
@@ -35,9 +49,10 @@ def capability_for_tool(tool: str) -> str:
 
 def phase_for_tool(tool: str) -> LifecyclePhase:
     """Assign an interaction phase without knowledge of its native Harness."""
-    if tool.endswith("create_experiment"):
+    name = _native_tool(tool)
+    if tool.endswith("create_experiment") or name in NATIVE_INJECTION_TOOLS:
         return LifecyclePhase.C3_INJECT
-    if tool.endswith(("destroy_experiment", "recovery_status")):
+    if tool.endswith(("destroy_experiment", "recovery_status")) or name in NATIVE_RECOVERY_TOOLS:
         return LifecyclePhase.C6_RECOVERY
     if tool.split(".", 1)[0] in OBSERVATION_SERVERS or tool.endswith("get_experiment"):
         return LifecyclePhase.C4_EFFECT
@@ -92,6 +107,9 @@ class LifecycleMapper:
         self.ready_pod_seen = False
         self.baseline_verified = False
         self.effect_started = False
+        # What the run was actually observed to do, supplied by the adapter
+        # from post-hoc evidence.  Never populated from a plan or an approval.
+        self.executed_fault_spec: dict[str, Any] = {}
 
     def _event(
         self, source: ToolCall | ToolResult, phase: LifecyclePhase,
@@ -127,11 +145,11 @@ class LifecycleMapper:
         tool = event.tool
         arguments = event.arguments
         payload = self._action_payload(event)
-        if tool.endswith("create_experiment"):
+        if tool.endswith("create_experiment") or _native_tool(tool) in NATIVE_INJECTION_TOOLS:
             self.mutation_requested = True
             return [self._event(event, LifecyclePhase.C3_INJECT, kind, payload)
                     for kind in ("injection_intent_committed", "main_fault_requested")]
-        if tool.endswith("destroy_experiment"):
+        if tool.endswith("destroy_experiment") or _native_tool(tool) in NATIVE_RECOVERY_TOOLS:
             return [
                 self._event(event, LifecyclePhase.C5_SAFETY, "safe_stop", payload),
                 self._event(event, LifecyclePhase.C6_RECOVERY, "recovery_requested", payload),
@@ -143,18 +161,42 @@ class LifecycleMapper:
                                 "effect_check_started", {"tool": tool})]
         return []
 
-    def _action_payload(self, request: ToolCall) -> dict[str, Any]:
-        """Preserve malformed attempted arguments as evidence, without coercion."""
+    def _action_payload(
+        self, request: ToolCall, executed: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Preserve malformed attempted arguments as evidence, without coercion.
+
+        A Harness whose call event carries no arguments at all (BladeAI's
+        ``tool_start`` publishes only the tool name and call id) leaves these
+        fields empty.  ``executed`` then supplies them from what the run
+        actually did, and ``parameters_source`` records that they were
+        recovered rather than requested.  Only observed execution may be used:
+        a plan or an approval card states what the Agent *said* it would do,
+        which finding F11 showed does not always match what it ran.
+        """
         args = request.arguments
         operation = args.get("operation_id") or args.get("cleanup_handle")
-        return {
-            "tool": request.tool, "target_uid": args.get("target_uid"),
-            "fault_type": args.get("fault_type"),
-            "duration_seconds": args.get("duration_seconds"),
-            "intensity": args.get("intensity", {}),
-            "operation_id": operation or self.cleanup_handle,
+        recovered = dict(executed or {}) if not args else {}
+        payload = {
+            "tool": request.tool,
+            "target_uid": args.get("target_uid") or recovered.get("target_uid"),
+            "fault_type": args.get("fault_type") or recovered.get("fault_type"),
+            "duration_seconds": args.get("duration_seconds") or recovered.get("duration_seconds"),
+            "intensity": args.get("intensity") or recovered.get("intensity") or {},
+            "operation_id": operation or recovered.get("operation_id") or self.cleanup_handle,
             "operation_id_source": "agent_arguments" if operation else "runtime_default",
         }
+        if args:
+            payload["parameters_source"] = "agent_arguments"
+        elif recovered:
+            payload["parameters_source"] = "observed_execution"
+            if recovered.get("intensity_source"):
+                payload["intensity_source"] = recovered["intensity_source"]
+        else:
+            # The call published no arguments and nothing has been observed
+            # yet.  Say so rather than letting empty fields read as zero.
+            payload["parameters_source"] = "unavailable"
+        return payload
 
     def _result(self, request: ToolCall, result: ToolResult) -> list[LifecycleEvent]:
         """Map service outcomes independently of CLI/SDK serialization."""
@@ -222,11 +264,11 @@ class LifecycleMapper:
                 emit(LifecyclePhase.C2_TARGET, "target_reconfirmed",
                      target=approved, uid=approved["uid"])
                 self.bound_target_uid = approved["uid"]
-        if tool.endswith("create_experiment"):
+        if tool.endswith("create_experiment") or _native_tool(tool) in NATIVE_INJECTION_TOOLS:
             created = data.get("created") or {}
             running = isinstance(created, Mapping) and str(created.get("phase", "")).lower() == "running"
             self.fault_running = self.fault_running or running
-            payload = self._action_payload(request)
+            payload = self._action_payload(request, self.executed_fault_spec)
             payload.pop("tool")
             deviations = data.get("plan_deviations")
             if isinstance(deviations, list) and deviations:
@@ -234,7 +276,7 @@ class LifecycleMapper:
                 # plan validation when it sees them.
                 payload["plan_deviations"] = [dict(item) for item in deviations if isinstance(item, Mapping)]
             emit(LifecyclePhase.C3_INJECT, "main_fault_running" if running else "main_fault_created", **payload)
-        if tool.endswith("destroy_experiment"):
+        if tool.endswith("destroy_experiment") or _native_tool(tool) in NATIVE_RECOVERY_TOOLS:
             emit(LifecyclePhase.C6_RECOVERY, "recovery_accepted")
 
         absent = (data.get("resource_absent") is True or data.get("verified_absent") is True

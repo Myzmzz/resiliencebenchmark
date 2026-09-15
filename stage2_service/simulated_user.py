@@ -23,7 +23,7 @@ from .condition_policy import (
     WORKLOAD_METRICS,
     apply_condition_policy,
 )
-from .bladeai_shim import (
+from .harness_adapters.bladeai_intensity import (
     CHAOSBLADE_DURATION_FLAG,
     CHAOSBLADE_FAULT_SCENARIOS,
     CONTROLLER_FIXED_NATIVE_FLAGS,

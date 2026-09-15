@@ -143,29 +143,6 @@ class McpSupervisor:
                 ),
             )
             urls[name] = resource
-        if harness is HarnessKind.BLADEAI:
-            runtime_env = dict(runtime_environment or {})
-            for key in ("RESBENCH_BLADEAI_PROXY_TOKEN", "RESBENCH_BLADEAI_PROXY_NAMESPACE"):
-                if not runtime_env.get(key):
-                    raise McpSupervisorError(f"BladeAI loopback proxy configuration is missing: {key}")
-            kubeconfig = self.base_environment.get("RESBENCH_K8S_RO_KUBECONFIG")
-            if not kubeconfig:
-                raise McpSupervisorError("BladeAI proxy requires the Controller's K8s read configuration")
-            proxy_env = {
-                **os.environ, **self.base_environment, **_shared_runtime_environment(runtime_environment),
-                **{key: value for key, value in runtime_env.items() if key.startswith("RESBENCH_BLADEAI_PROXY_")},
-                "RESBENCH_BLADEAI_PROXY_KUBECONFIG": kubeconfig,
-                "RESBENCH_MCP_TOKEN_STATE_FILE": str(token_state_files["k8s_ro"]),
-                "RESBENCH_MCP_TOKEN": token,
-            }
-            if policy_file is not None:
-                proxy_env[MCP_POLICY_FILE_ENV] = policy_file
-            proxy_port = int(runtime_env.get("RESBENCH_BLADEAI_PROXY_PORT", "18481"))
-            self.specs["bladeai_k8s_proxy"] = (proxy_port, proxy_env, log_root / "bladeai_k8s_proxy.log")
-            self._start_server(
-                "bladeai_k8s_proxy",
-                startup_timeout=BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS,
-            )
         return {
             "RESBENCH_K8S_MCP_URL": urls["k8s_ro"],
             "RESBENCH_TELEMETRY_MCP_URL": urls["telemetry_ro"],
@@ -227,7 +204,6 @@ class McpSupervisor:
                 startup_timeout=(
                     BLADEAI_MCP_STARTUP_TIMEOUT_SECONDS
                     if env.get("RESBENCH_MCP_TRANSPORT") == "sse"
-                    or name == "bladeai_k8s_proxy"
                     else DEFAULT_MCP_STARTUP_TIMEOUT_SECONDS
                 ),
             )
