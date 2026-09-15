@@ -37,6 +37,7 @@
 | `deploy/stage2/Dockerfile.runtime-overlay:30-31` | COPY 两个已删脚本 | 删除 | 同上 |
 | `tests/test_stage2_image_build.py`、`tests/test_stage2_agent_runtime_assets.py`、`tests/test_bladeai_agent_image_contract.py` | 断言旧 COPY 行存在 | 改为断言不存在，钉 0.7.0 | 跟随上面两项 |
 | `deploy/stage2/litellm/config.yaml:25-37` | `gpt-5.5` 走 aigcbest | 走 nexustokenai（`NEXUSTOKENAI_API_KEY`） | 用户指令 |
+| `stage2_service/capability_qualification.py`：`_entry` 及其上方新增的 `BLADEAI_BLACKBOX_*` 常量（67fed38） | BladeAI 的基础认定记录必须通过全部 `BASE_CHECKS`，包括 MCP 通道类检查 | 设了 `STAGE2_BLADEAI_BLACKBOX_QUALIFICATION` 后，BladeAI 只需满足：会话完成、网关证据已验证、没有清理错误；跳过 `_native_tool_modes`；发布的记录带 `acceptance=BLADEAI_BLACKBOX_HTTP_CHANNEL` 和 `skipped_checks`。不设这个变量时行为不变 | 黑盒 BladeAI 的确认走 HTTP interrupt，结果从 SSE 的 `result` 事件取；平台也从不给常驻 server 写 mcp.json（`harness/bladeai/mcp.json.template` 只有测试引用）。所以 MCP 通道类检查永远是 false，新 slot 上的 BladeAI 永远判不合格。09-13 的 L0 能过门禁，是因为 bbverify 的能力文件里还留着 09-08 旧 WP8 链路的记录 |
 
 ## 四、测试
 
@@ -45,7 +46,54 @@
 
 ## 五、部署与验证（老集群，用户 09-15 指定）
 
-（部署后补记：镜像 digest、集群对象、slot 状态、资格认定、批次结果）
+### 5.1 部署物（老集群 `~/.kube/coroot-config`，命名空间 `resiliencebenchmark-system`）
+
+| 对象 | 值 |
+|---|---|
+| 控制器镜像 | `1.94.151.57:85/observe/resbench-stage2:stage2-d0-90fdd30-bladeai070@sha256:16eff16139a1a6edab36d563361ef4d98eb3cd7ba800b70e454fbb34cc4ff4e4`（label source-head = 90fdd30） |
+| Agent 镜像 | `stage2-agent-60309d3@sha256:cae928c7…`（沿用 fleet 分支的，未重建） |
+| LiteLLM 镜像 | `resbench-litellm:1.92.0@sha256:237ed94c…`（Harbor 上的 `1.92.0` 标签已被覆盖成别的 digest，只能按 digest 钉） |
+| 网关配置 | ConfigMap `litellm-config-fleet`：本分支 `config.yaml` + `gateway_audit_callback.py`；其他部署共用的 `litellm-config` 没动 |
+| BladeAI 身份 | `deploy/stage2/bladeai-server-rbac.yaml` 已 apply |
+| Fleet | `deploy/stage2/fleet.yaml`，替换了镜像，storageClass 改为 `nfs-client` |
+| Fleet 配置 | replicas 5；nodes tcse-v100-01/02；`agent_runtime_apparmor_profile=""`；requests 200m / 1Gi；storage_class `nfs-client`；`litellm_config_map=litellm-config-fleet` |
+
+### 5.2 部署中遇到并已处理的环境问题
+
+1. 新环境被清空，且已被他人用来装 astronomy-shop / observe → 用户改定用老集群。
+2. 只有 tcse-v100-03 装了 AppArmor 档案，而它 CPU 请求已占 90% → 注解改为可配置并置空。
+3. 集群没有 `openebs-hostpath` → 改用 `nfs-client`。
+4. chaosblade-tool 在 `default` 命名空间 → exec Role 放到 `default`。
+5. 节点运行时是 Docker（cri-dockerd），只写 `@sha256` 的引用会被当成 `:latest`，Harbor 报 not found → 镜像引用一律写 `tag@sha256`。
+6. 5 个 slot 在 01/02 上并发首次拉镜像，s04 的 litellm 拉取遇到一次 `context canceled`，kubelet 自动重试后成功。
+
+### 5.3 验证（截至 2026-09-15 07:30 UTC）
+
+- **副本与控制器**：5 个副本 `otel-demo-01…05` 各 6 个 Pod 全部 Running；5 个 slot 控制器 Pod 4/4 就绪。
+- **`bladeai-server`**（在 s01 实测）：
+  - 日志 `Blade AI Server ready - 3 skills loaded`，前置工具齐全。
+  - 用生成的 kubeconfig 能列出副本 Pod，`can-i create chaosblades` 为 yes，能看到 3 个 chaosblade-tool。
+  - `/api/v1/health`、`/api/v1/sessions` 返回 200。
+- **回环端口隔离**：8399 不在 agent-runtime 的回环白名单里（18081–18088、18181–18188、18090、18481）。
+- **gpt-5.5（nexustokenai）**：
+  - 从 s01/s02 经本 slot 网关调用返回 200，约 12 s，回答开头无 U+200B。
+  - 直连 TLS 握手成功 11/12 和 12/12，偶发 7–8 s。
+  - 对比：在 tcse-v100-03 上经旧控制器的网关探测，两次都 120 s 超时，还有一次握手超时——不同节点的出网质量不一样。
+- **Fleet preflight**：5 个 slot 应用都可运行、环境门禁 ready；`available_models` 为空，因为资格认定还没发布。
+
+### 5.4 资格认定与并行批次
+
+1. **首次基础通道认定**（07:28 UTC 起，5 个 slot 并行，gpt-5.5）：
+   - 5 个 BladeAI 会话都跑完了（`harness_report_status=completed`，判定 INCONCLUSIVE），网关证据和工具证据都已验证。
+   - MCP 通道类检查全部为 false（mcp_read、confirmation 往返、consult 往返、notice ack、result submission），记录被判 failed，`available_models` 仍为空。
+   - 原因见第三节 `capability_qualification.py` 那一行。
+2. **修复后重新发布**：67fed38 修复后打出镜像 `stage2-d0-67fed38-bladeai070@sha256:a6380bf4…`，按以下顺序进行：
+   1. 5 个 slot 滚动到新镜像；
+   2. 用已有的认定记录、带上开关重新发布，不重跑认定；
+   3. preflight 确认每个 slot 上 bladeai/gpt-5.5 都可运行；
+   4. 提交批次 `bladeai-parallel-20260915-01`：5 条 L0×C0，bladeai，gpt-5.5，每个 slot 一条，同一波并行。
+
+（批次结果待完成后补记）
 
 ## 六、已知限制（本轮刻意不做）
 
@@ -54,3 +102,7 @@
 3. nexustokenai 的 chat completions 回答带 U+200B 前缀（09-05 实测），未在网关层处理。
 4. 老集群上 slot 关闭了 agent-runtime 的 AppArmor 注解；BladeAI 黑盒不经过 agent-runtime，其他三家在这些 slot 上少一层防护。
 5. 放开技能脚本后，BladeAI 目标守卫不再把技能脚本判为 banned，这是 BladeAI 的默认行为。
+6. BladeAI 0.7.0 的 `GET /api/v1/config` 会明文返回 `llm_api_key`（实测，值此处不记）。server 只绑 pod 回环 8399；同 pod 的 agent-runtime 按回环端口白名单放行出站，8399 不在白名单内（见 5.3），同 pod 的其他智能体访问不到这个接口。
+7. **黑盒认定分支不检查 `failure_reasons`**：记录里即使有 `native_boundary_violation_attempt` 或 `runner_error` 也会被接受。本轮 s02/s03/s05 的记录已人工核对，失败原因只有 6 个 MCP 通道类；这个开关不适合在没人核对记录时使用。后续应改为只容忍 MCP 通道类原因。
+8. **黑盒认定发布的 capability 字段与跳过的检查不一致**：仍写 `feedback_channels=in_band_mcp`、`supports_mid_turn_feedback=True`，而证明这两项的通道检查恰好被跳过了。对 L0×C0 没有影响；做 D 类扰动（带内通知）之前需要改正。
+9. **slot 刚启动时不能马上跑**：控制器的网关探测会依次探测配置里全部 7 个模型别名，探完之前所有智能体×模型都判为不可运行（首次观察 07:43 起）。
