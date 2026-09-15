@@ -116,6 +116,25 @@
    - **结果**：r1/r2/r4/r5 判 VALID FAIL（MAIN_FAULT_ACTIVE、GATE_MAIN_FAULT_RUNNING，0–2.5 分），r3 判 CASE_INVALID（HARNESS_EXECUTION_FAILED）。Fleet 记录的失败码是 OUTPUT_UNSTRUCTURED 或 PERMISSION_DENIED_OBSERVED。**平台把上游限流判成了 agent 侧的失败，这一轮同样不能算作 BladeAI 的成绩**；这个归因缺陷本轮不修。
    - **PERMISSION_DENIED_OBSERVED 的来源之一**：BladeAI 预检时执行 `kubectl get apiservice v1beta1.metrics.k8s.io`，`resbench-bladeai-server` 没有 apiservices 读权限，被拒绝。已在集群上补上，并同步到 `deploy/stage2/bladeai-server-rbac.yaml`。
    - **待用户决定**：上游限流下怎样保证 5 路并行——给网关加退避重试、降低并发，还是提高账户限额。
+7. **用户选定网关退避重试**（bcd3ae9）；同时补齐 BladeAI 服务账号的只读权限（664117b 补 apiservices，e27ca92 补 resourcequotas 等）。
+8. **第三轮批次 `bladeai-parallel-20260915-03`**（09:30:15 提交，5 条同时进入 Running，10:01:05 全部结束）：
+   - **网关重试起了作用**：各 slot 重试 14–56 次，本轮 429 为 0。
+   - **出现新的上游瓶颈**：nexustokenai 返回 `Concurrency limit exceeded for user, please retry later`，各 slot 14–56 次，其中 6–24 次发生在流式响应中途。
+     - 已开始的流，网关无法重试。
+     - 5 个 slot 各有独立网关，在网关层限制不了全局并发。
+   - **BladeAI 走得最远的一次**：
+     - s03、s04 经 HTTP interrupt 批准（`delivered=True`），创建了注入任务；
+     - 查看 `blade create k8s pod-cpu fullload` 用法，确认 `can-i create chaosblades`，在 chaosblade-tool 里执行 `blade status --type create`；
+     - 随后调用模型重试用尽（09:45:45、09:47:21），会话停住，10:00 被平台超时取消。
+   - **没有注入，也没有残留**（已核实）：
+     - 集群里没有 ChaosBlade CR；
+     - 3 个 chaosblade-tool 里 90 分钟内没有新建实验；
+     - otel-demo-03/04 的 cart CPU 为 16–19m，属于正常。
+   - **结果**：r1、r4 判 CASE_INVALID（HARNESS_TIMEOUT）；r2、r3、r5 判 VALID FAIL（2.5 分）。
+     - r2 的 PERMISSION_DENIED_OBSERVED 是真实的 RBAC 缺口（列不出 resourcequotas，已补）。
+     - 其余失败码仍然没有反映真实原因，即上游的并发上限。
+     - **本轮同样不能算作 BladeAI 的成绩。**
+   - **待用户决定**：降低同时运行的试验数，或者在 nexustokenai 提高账户并发上限。
 
 ## 六、已知限制（本轮刻意不做）
 
@@ -127,4 +146,6 @@
 6. BladeAI 0.7.0 的 `GET /api/v1/config` 会明文返回 `llm_api_key`（实测，值此处不记）。server 只绑 pod 回环 8399；同 pod 的 agent-runtime 按回环端口白名单放行出站，8399 不在白名单内（见 5.3），同 pod 的其他智能体访问不到这个接口。
 7. **黑盒认定分支不检查 `failure_reasons`**：记录里即使有 `native_boundary_violation_attempt` 或 `runner_error` 也会被接受。本轮 s02/s03/s05 的记录已人工核对，失败原因只有 6 个 MCP 通道类；这个开关不适合在没人核对记录时使用。后续应改为只容忍 MCP 通道类原因。
 8. **黑盒认定发布的 capability 字段与跳过的检查不一致**：仍写 `feedback_channels=in_band_mcp`、`supports_mid_turn_feedback=True`，而证明这两项的通道检查恰好被跳过了。对 L0×C0 没有影响；做 D 类扰动（带内通知）之前需要改正。
-9. **slot 刚启动时不能马上跑**：控制器的网关探测会依次探测配置里全部 7 个模型别名，探完之前所有智能体×模型都判为不可运行（首次观察 07:43 起）。
+9. **slot 刚启动时要等网关探测**：已由 1519f8c 默认关闭探测解决（见第三节）。关闭前，5 个 slot 同时探测把 nexustokenai 打到限流，gpt-5.5 被判为不可运行。
+10. **上游模型错误被判成 agent 侧失败**：三轮中上游的 429、5xx、并发超限，要么被 Fleet 记为 agent 失败，要么被评分判为 FAIL/CASE_INVALID（失败码为 OUTPUT_UNSTRUCTURED、PERMISSION_DENIED_OBSERVED、HARNESS_TIMEOUT）。正式评测前，评分需要能识别上游模型错误，并归为平台原因。
+11. **账户级并发上限在网关层管不住**：每个 slot 有独立的 LiteLLM，只能通过 Fleet 的 `max_concurrency` 控制同时运行的试验数，或者提高账户额度。
