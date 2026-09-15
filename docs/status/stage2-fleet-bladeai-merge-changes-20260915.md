@@ -160,6 +160,23 @@
        - 工具调用存在但 id 对不上：200。
      - **定性**：这是 BladeAI 0.7.0 在中断恢复路径上拼接消息的缺陷；nexustokenai 只是把它暴露了出来，换严格校验的上游同样会被拒，与限流无关。
      - **token 开销**：网关实测 BladeAI 每次请求约 1.9 万输入 token，约 $0.106/次。
+11. **用户选定：BladeAI 换模型**，平台和网关都不改。
+   - 先在 slot 网关上逐个实测候选模型：普通请求能否访问，以及是否接受孤立工具结果。
+
+     | 模型 | 普通请求 | 孤立工具结果 |
+     |---|---|---|
+     | deepseek-v4-pro-0813 | 200 | **400**（`Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`） |
+     | deepseek-v4-flash-0731 | 200 | **400**（同上） |
+     | qwen3.8-max | 200 | 200 |
+     | qwen3.8-flash | 200 | 200 |
+     | claude-opus-5 | 200 | 200 |
+
+   - 选定 **qwen3.8-max**，理由三点：
+     - 它接受孤立工具结果；
+     - 09-11 直接驱动 BladeAI 0.7.0 时用的就是它，那一轮确实完成了注入；
+     - 比 claude-opus-5 便宜，协议转换环节也更少。
+   - 模型由平台在每次试验时经 config API 推给 server，只改批次里的 `model` 字段即可，不用重新部署。
+   - 第六轮 `bladeai-parallel-20260915-06`（qwen3.8-max，2 路并发），结果待补记。
    - **没有注入，也没有残留**：集群里没有 CR，operator 没有活动，5 个副本 cart CPU 为 14–18m。
    - **结果**：r1、r3、r4 判 CASE_INVALID（HARNESS_EXECUTION_FAILED），r2、r5 判 VALID FAIL（2.5 分）。**本轮同样不能算作 BladeAI 的成绩。**
 
