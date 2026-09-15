@@ -13,6 +13,7 @@ from stage2_service.harness_adapters.bladeai_confirm import (
     GateDecision,
     UnknownGateError,
     classify_target_change,
+    plan_from_intent,
 )
 
 
@@ -59,12 +60,26 @@ def test_intent_gate_answers_on_interrupt_with_the_events_task_id() -> None:
     assert answer.delivered is True
 
 
-def test_execution_gate_answers_on_confirm_keyed_by_task_id() -> None:
+def test_execution_gate_answers_on_interrupt_keyed_by_the_turn_id() -> None:
+    """A /turn session waits for the execution gate on the same interrupt future.
+
+    ``/confirm/{task_id}`` resumes the graph thread named in the path; given the
+    turn id it re-planned from a checkpoint without a fault spec (round 4).
+    """
     client = FakeClient()
     answer = bridge(client).answer(question("execution", "turn-e708412252a4"))
+    assert client.interrupts == [("sess-1", "turn-e708412252a4", APPROVAL_WORD)]
+    assert client.confirms == []
+    assert answer.channel == "interrupt"
+    assert answer.delivered is True
+
+
+def test_execution_gate_falls_back_to_confirm_only_when_no_interrupt_waits() -> None:
+    client = FakeClient(delivered=False)
+    answer = bridge(client).answer(question("execution", "turn-e708412252a4"))
+    assert client.interrupts == [("sess-1", "turn-e708412252a4", APPROVAL_WORD)]
     assert client.confirms == [("turn-e708412252a4", "approve", "in_scope")]
-    assert client.interrupts == []
-    assert answer.channel == "confirm"
+    assert answer.channel == "confirm_fallback"
 
 
 def test_unknown_gate_is_refused_rather_than_guessed() -> None:
@@ -140,8 +155,8 @@ def test_the_two_gates_of_one_turn_are_both_answered() -> None:
     b = bridge(client)
     b.answer(question("intent", "turn-1"))
     b.answer(question("execution", "turn-1"))
-    assert len(client.interrupts) == 1
-    assert len(client.confirms) == 1
+    assert [entry[1] for entry in client.interrupts] == ["turn-1", "turn-1"]
+    assert client.confirms == []
 
 
 def test_the_same_gate_after_the_window_is_answered_again() -> None:
@@ -213,7 +228,7 @@ def test_unreadable_target_change_is_refused() -> None:
     assert classify_target_change({"original": "x", "proposed": "y"}).approved is False
 
 
-def test_target_change_gate_is_answered_on_the_confirm_channel() -> None:
+def test_target_change_gate_is_answered_on_the_interrupt_channel() -> None:
     client = FakeClient()
     b = BladeAIConfirmBridge(client, "sess-1")  # no decide function needed
     answer = b.answer(question(
@@ -222,5 +237,47 @@ def test_target_change_gate_is_answered_on_the_confirm_channel() -> None:
         proposed={"scope": "chaosblade", "namespace": "default", "names": ["uid"]},
     ))
     assert answer.approved is True
-    assert client.confirms == [("turn-17d0472480aa", "approve",
-                                "carrier_scope_within_operating_surface")]
+    assert client.interrupts == [("sess-1", "turn-17d0472480aa", APPROVAL_WORD)]
+    assert client.confirms == []
+    assert answer.channel == "interrupt"
+
+
+# ---- plan translation for BladeAI 0.7.0 intents ---------------------------
+
+ROUND_FOUR_INTENT = {
+    "type": "intent_confirm",
+    "fault_intent": {
+        "action": "load", "fault_type": "pod-cpu-load", "namespace": "otel-demo-05",
+        "names": ["cart-7ffd4d6f-lhw8j"], "duration_seconds": 600, "labels": {},
+        "params": {
+            "container": "cart", "cpu_percent": "80", "pod_uid": "da9afd5f-145b-4cb4-80be-1398f74378e6",
+            "effect_metric": "target_cpu_cores", "effect_operator": "increase_by_at_least", "effect_threshold": "0.5",
+            "recovery_metric": "target_cpu_cores", "recovery_operator": "within_baseline_delta",
+            "recovery_threshold": "0.3",
+        },
+    },
+}
+
+
+def test_plan_from_intent_reads_the_skill_spelling_of_bladeai_0_7_0() -> None:
+    plan = plan_from_intent(ROUND_FOUR_INTENT, target={"namespace": "otel-demo-05", "name": "", "uid": ""})
+    assert plan["fault_type"] == "cpu-load"
+    assert plan["intensity"] == {"cpu_percent": 80}
+    assert plan["target"] == {
+        "namespace": "otel-demo-05", "name": "cart-7ffd4d6f-lhw8j", "uid": "da9afd5f-145b-4cb4-80be-1398f74378e6",
+    }
+    assert plan["duration_seconds"] == 600
+
+
+def test_plan_from_intent_prefers_the_runtime_identity_when_it_has_one() -> None:
+    plan = plan_from_intent(ROUND_FOUR_INTENT, target={"namespace": "otel-demo-05", "name": "cart-bound", "uid": "uid-bound"})
+    assert plan["target"] == {"namespace": "otel-demo-05", "name": "cart-bound", "uid": "uid-bound"}
+
+
+def test_plan_from_intent_still_reads_the_chaosblade_triple() -> None:
+    plan = plan_from_intent(
+        {"fault_intent": {"scope": "pod", "target": "cpu", "action": "fullload", "params": {"cpu_percent": 70}}},
+        target={"namespace": "otel-demo", "name": "cart-x", "uid": "u-1"},
+    )
+    assert plan["fault_type"] == "cpu-load"
+    assert plan["intensity"] == {"cpu_percent": 70}

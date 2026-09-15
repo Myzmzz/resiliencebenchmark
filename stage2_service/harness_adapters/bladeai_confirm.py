@@ -257,15 +257,38 @@ class BladeAIConfirmBridge:
         )
 
     def _answer_execution(self, question: Question, decision: GateDecision) -> GateAnswer:
-        action = "approve" if decision.approved else "reject"
-        body = self.client.confirm_task(
-            question.question_id, action, reason=decision.reason
-        )
+        """Answer the execution or target-change gate of a black-box session.
+
+        In a ``/turn`` session BladeAI 0.7.0 emits every gate, the execution gate
+        included, as a ``confirm`` event keyed by the *turn* id and then waits on
+        the future that ``/sessions/{sid}/interrupt`` resolves.
+        ``/confirm/{task_id}`` instead resumes the graph thread named in the path:
+        handed the turn id it resumed a checkpoint holding only ``skill_name``,
+        BladeAI re-planned without a fault spec, rejected its own plan and
+        terminated, while the real wait was never answered (round 4,
+        2026-09-15; the same stall as the 2026-09-13 L0).  The confirm route is
+        kept only as the fallback when no interrupt is waiting.
+        """
+        word = APPROVAL_WORD if decision.approved else REJECTION_WORD
+        body = self.client.answer_interrupt(self.session_id, question.question_id, word)
+        delivered = body.get("delivered") if isinstance(body, Mapping) else None
+        if delivered is False:
+            action = "approve" if decision.approved else "reject"
+            confirm_body = self.client.confirm_task(
+                question.question_id, action, reason=decision.reason
+            )
+            return GateAnswer(
+                question_id=question.question_id, request_kind=question.request_kind,
+                channel="confirm_fallback", approved=decision.approved, wire_answer=action,
+                delivered=False,
+                detail={"reason": decision.reason,
+                        "server_status": confirm_body.get("status") if isinstance(confirm_body, Mapping) else None},
+            )
         return GateAnswer(
             question_id=question.question_id, request_kind=question.request_kind,
-            channel="confirm", approved=decision.approved, wire_answer=action,
-            detail={"reason": decision.reason,
-                    "server_status": body.get("status") if isinstance(body, Mapping) else None},
+            channel="interrupt", approved=decision.approved, wire_answer=word,
+            delivered=delivered if isinstance(delivered, bool) else None,
+            detail={"reason": decision.reason},
         )
 
     def drain_explanations(self) -> list[str]:
@@ -276,6 +299,14 @@ class BladeAIConfirmBridge:
         """
         pending, self.pending_explanations = self.pending_explanations, []
         return pending
+
+
+# Keys BladeAI 0.7.0 puts in ``fault_intent.params`` that are not ChaosBlade flags.
+NON_NATIVE_INTENT_PARAMS = frozenset({
+    "timeout", "duration", "pod_uid", "container", "names", "namespace", "labels",
+    "effect_metric", "effect_operator", "effect_threshold",
+    "recovery_metric", "recovery_operator", "recovery_threshold", "stop_conditions",
+})
 
 
 def plan_from_intent(
@@ -300,21 +331,31 @@ def plan_from_intent(
     intent = dict(intent) if isinstance(intent, Mapping) else {}
     plan: dict[str, Any] = {}
 
+    scope = str(intent.get("scope") or "")
+    resource = str(intent.get("target") or "")
+    native_action = str(intent.get("action") or "")
+    skill_fault = str(intent.get("fault_type") or "")
+    if not (scope and resource) and skill_fault.count("-") >= 2:
+        # BladeAI 0.7.0 writes the skill spelling -- ``fault_type:
+        # "pod-cpu-load"`` with no scope or target -- which the ChaosBlade
+        # triple lookup cannot read.  Round 4 on 2026-09-15 sent the validator a
+        # plan without fault_type, intensity or target and the proposal was
+        # rejected for it.
+        scope, resource = skill_fault.split("-", 2)[:2]
+        native_action = skill_fault
     try:
-        fault_type, action = canonical_fault_type(
-            str(intent.get("scope") or ""),
-            str(intent.get("target") or ""),
-            str(intent.get("action") or ""),
-        )
+        fault_type, action = canonical_fault_type(scope, resource, native_action)
     except BladeShimError:
-        fault_type, action = str(intent.get("fault_type") or ""), ""
+        fault_type, action = skill_fault, ""
     if fault_type:
         plan["fault_type"] = fault_type
 
     params = intent.get("params")
     if isinstance(params, Mapping) and fault_type:
+        # 0.7.0 also carries the Pod uid, the container and its effect and
+        # recovery criteria in params; only native ChaosBlade knobs are flags.
         flags = {f"--{str(k).replace('_', '-')}": v for k, v in params.items()
-                 if str(k) not in {"timeout", "duration"}}
+                 if str(k) not in NON_NATIVE_INTENT_PARAMS}
         try:
             plan["intensity"] = canonical_native_intensity(
                 fault_type, dict(flags), action=action
@@ -338,6 +379,17 @@ def plan_from_intent(
                 plan["native_params"] = dict(params)
 
     identity = {key: (target or {}).get(key) for key in ("namespace", "name", "uid")}
+    if not all(isinstance(value, str) and value for value in identity.values()):
+        # A discovery prompt leaves the Pod to the Agent, so the runtime has no
+        # identity to supply; 0.7.0 names the Pod it chose in ``names`` and
+        # carries that Pod's uid in ``params.pod_uid``.
+        names = intent.get("names")
+        chosen = params if isinstance(params, Mapping) else {}
+        identity = {
+            "namespace": identity.get("namespace") or intent.get("namespace"),
+            "name": identity.get("name") or (names[0] if isinstance(names, list) and len(names) == 1 else None),
+            "uid": identity.get("uid") or chosen.get("pod_uid"),
+        }
     if all(isinstance(value, str) and value for value in identity.values()):
         plan["target"] = {key: str(value) for key, value in identity.items()}
 
