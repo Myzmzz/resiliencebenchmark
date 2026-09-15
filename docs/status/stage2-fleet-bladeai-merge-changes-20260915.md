@@ -38,6 +38,7 @@
 | `tests/test_stage2_image_build.py`、`tests/test_stage2_agent_runtime_assets.py`、`tests/test_bladeai_agent_image_contract.py` | 断言旧 COPY 行存在 | 改为断言不存在，钉 0.7.0 | 跟随上面两项 |
 | `deploy/stage2/litellm/config.yaml:25-37` | `gpt-5.5` 走 aigcbest | 走 nexustokenai（`NEXUSTOKENAI_API_KEY`） | 用户指令 |
 | `stage2_service/capability_qualification.py`：`_entry` 及其上方新增的 `BLADEAI_BLACKBOX_*` 常量（67fed38） | BladeAI 的基础认定记录必须通过全部 `BASE_CHECKS`，包括 MCP 通道类检查 | 设了 `STAGE2_BLADEAI_BLACKBOX_QUALIFICATION` 后，BladeAI 只需满足：会话完成、网关证据已验证、没有清理错误；跳过 `_native_tool_modes`；发布的记录带 `acceptance=BLADEAI_BLACKBOX_HTTP_CHANNEL` 和 `skipped_checks`。不设这个变量时行为不变 | 黑盒 BladeAI 的确认走 HTTP interrupt，结果从 SSE 的 `result` 事件取；平台也从不给常驻 server 写 mcp.json（`harness/bladeai/mcp.json.template` 只有测试引用）。所以 MCP 通道类检查永远是 false，新 slot 上的 BladeAI 永远判不合格。09-13 的 L0 能过门禁，是因为 bbverify 的能力文件里还留着 09-08 旧 WP8 链路的记录 |
+| `stage2_service/runtime_factory.py`：`Stage2System.__init__` 里探测函数的选择；新增 `GATEWAY_MODEL_PROBE_ENV`、`_skipped_model_probe_runner`；`_model_probe_statuses` 的可运行条件 | 控制器启动时、以及每次 300 s 缓存过期后，用 `scripts/probe_models.py` 对网关里全部 7 个别名发真实请求（工具调用、流式、结构化输出）；探测没通过的模型判为不可运行 | 默认不再探测：只读网关 `/v1/models`（不耗 token），列表里有的别名记为 `not_probed` 并判为可运行；模型实际不可用时，由试验报出上游错误。`STAGE2_GATEWAY_MODEL_PROBE=on` 可恢复原探测；显式注入的探测函数（测试用）照常使用 | 用户 09-15 要求：探测浪费 token 且没必要。实测 5 个 slot 同时探测 7 个别名，把 nexustokenai 打到限流，gpt-5.5 因此被判不可运行，挡住了本轮 BladeAI 批次 |
 
 ## 四、测试
 
@@ -93,7 +94,17 @@
    3. preflight 确认每个 slot 上 bladeai/gpt-5.5 都可运行；
    4. 提交批次 `bladeai-parallel-20260915-01`：5 条 L0×C0，bladeai，gpt-5.5，每个 slot 一条，同一波并行。
 
-（批次结果待完成后补记）
+3. **网关探测把 gpt-5.5 挡住**（07:43–07:54）：5 个 slot 同时探测 7 个别名，nexustokenai 返回限流，gpt-5.5 被判为不可运行。于是在 1519f8c 里把探测默认关掉（见第三节），滚动 slot 后 5 个 slot 上 bladeai/gpt-5.5 都可运行。
+4. **第一轮批次 `bladeai-parallel-20260915-01`**（08:04:36 提交，5 条同时进入 Running；**并行执行本身跑通**）：
+   - **09-13 的批准后空转没有再出现**：s02 日志出现 `Intent confirmed by user: pod-cpu-load` 和 `Bootstrapped task session task=inject-…`。
+   - **注入流程随即崩溃**：`PermissionError: [Errno 1] Operation not permitted: '/opt/bladeai-070/blade-ai/_internal/vendor/chaosblade/blade'`。
+     - 原因：BladeAI 的 `get_bundled_blade_path()` 每次查找都会 `chmod(mode | 0o111)` 自带的 blade，blade 还要在自己目录里写 `chaosblade.dat` 和 `logs/`；而我追加镜像层时把整个包的属主改成了 root（原包属主是 10001），运行用户 10001 不能 chmod。
+     - 这是我打包造成的平台问题。
+   - **5 条结果**：r1 Done / OUTPUT_UNSTRUCTURED，r2 Failed / OUTPUT_UNSTRUCTURED，r3 Failed / PERMISSION_DENIED_OBSERVED，r5 Done / PERMISSION_DENIED_OBSERVED（得分 2.5，VALID），r4 被人工停止。**这一轮的判定和分数都是平台缺陷造成的，不能计入结果**；Fleet 把其中几条归为 agent 失败，这个归因也不成立。
+   - 集群里没有残留的 ChaosBlade CR。
+5. **重跑**：BladeAI 层按属主 10001 重新打包，推送为 `stage2-d0-1519f8c-bladeai070-own`；停掉第一轮，slot 滚动后先核实 blade 属主为 10001，再以批次 `bladeai-parallel-20260915-02` 重新提交。
+
+（第二轮结果待完成后补记）
 
 ## 六、已知限制（本轮刻意不做）
 
