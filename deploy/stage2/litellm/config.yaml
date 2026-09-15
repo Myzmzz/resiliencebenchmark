@@ -23,20 +23,18 @@
 
 model_list:
   # ---------------------------------------------------------------------------
-  # Harness default: GPT-5.5 via the aigcbest (new-api) relay.
-  # Chosen over nexustokenai on 2026-09-05 after a side-by-side sample: the
-  # nexustokenai relay prefixes chat-completion content with an invisible
-  # U+200B zero-width space (strict JSON parsing fails, so the probe check
-  # structured_json_output fails), returned one Cloudflare 524 timeout, and
-  # rejects python-urllib clients (Cloudflare error 1010). aigcbest answered
-  # 48/48 sampled requests cleanly across chat, responses and messages, with
-  # 3-8x faster tool-call round trips.
+  # Harness default: GPT-5.5 via the nexustokenai relay.
+  # Switched from aigcbest on 2026-09-15 at the user's direction: gpt-5.5 is
+  # served through nexustokenai only. Measured on 2026-09-05, that relay
+  # prefixes chat-completion content with an invisible U+200B zero-width space
+  # and rejects python-urllib clients (Cloudflare error 1010); LiteLLM's httpx
+  # client is not affected by the latter.
   # ---------------------------------------------------------------------------
   - model_name: gpt-5.5
     litellm_params:
       model: openai/gpt-5.5
-      api_base: https://api2.aigcbest.top/v1
-      api_key: os.environ/AIGCBEST_API_KEY
+      api_base: https://api.nexustokenai.com/v1
+      api_key: os.environ/NEXUSTOKENAI_API_KEY
 
   # Explicit alternate route for GPT-5.5 through the nexustokenai relay. Its
   # Responses API output is clean; chat completions carry the U+200B prefix.

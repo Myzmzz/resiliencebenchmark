@@ -56,13 +56,21 @@ dependencies = [
         _write(repo / "blade-ai/vendor/chaosblade/blade", "native-binary-placeholder\n")
     _git(repo, "add", ".")
     _git(repo, "-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-m", "fixture")
-    _git(repo, "tag", build.BLADEAI_RELEASE_TAG)
+    # The 0.7.0 release ref is a bare commit SHA (every blade-ai-v0.x tag still
+    # points at the old 0.3.0 commit), and Git resolves a 40-hex name as an
+    # object id rather than as a tag, so the fixture no longer creates a tag.
     return repo, _git(repo, "rev-parse", "HEAD")
+
+
+def _pin_release_ref(monkeypatch: pytest.MonkeyPatch, commit: str) -> None:
+    """Pin the release ref to the fixture commit, mirroring production where tag == commit."""
+    monkeypatch.setattr(build, "BLADEAI_RELEASE_TAG", commit)
+    monkeypatch.setattr(build, "BLADEAI_RELEASE_COMMIT", commit)
 
 
 def test_bladeai_source_context_uses_fixed_tag_archive_and_ignores_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo, commit = _upstream_repo(tmp_path)
-    monkeypatch.setattr(build, "BLADEAI_RELEASE_COMMIT", commit)
+    _pin_release_ref(monkeypatch, commit)
     _write(repo / "blade-ai/dirty.py", "must not enter archive\n")
     _write(repo / "blade-ai/pyproject.toml", "version = \"9.9.9\"\n")
 
@@ -70,18 +78,20 @@ def test_bladeai_source_context_uses_fixed_tag_archive_and_ignores_dirty_tree(tm
 
     assert metadata.release_tag == build.BLADEAI_RELEASE_TAG
     assert metadata.release_commit == commit
-    assert metadata.package_version == "0.3.0"
+    assert metadata.package_version == "0.7.0"
     assert metadata.mcp_dependency == "mcp>=1.0,<2.0"
     assert metadata.mcp_pin.startswith("1.")
-    assert (tmp_path / "context/pyproject.toml").read_text(encoding="utf-8").count('version = "0.3.0"') == 1
+    assert (tmp_path / "context/pyproject.toml").read_text(encoding="utf-8").count('version = "0.7.0"') == 1
     assert not (tmp_path / "context/dirty.py").exists()
     assert not (tmp_path / "context/vendor/chaosblade").exists()
 
 
-def test_bladeai_source_context_rejects_wrong_release_commit(tmp_path: Path) -> None:
-    repo, _commit = _upstream_repo(tmp_path)
+def test_bladeai_source_context_rejects_wrong_release_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, commit = _upstream_repo(tmp_path)
+    # The ref resolves (to the fixture commit) but not to the pinned 0.7.0 commit.
+    monkeypatch.setattr(build, "BLADEAI_RELEASE_TAG", commit)
 
-    with pytest.raises(RuntimeError, match="resolved to .* expected"):
+    with pytest.raises(RuntimeError, match=f"resolved to {commit}, expected {build.BLADEAI_RELEASE_COMMIT}"):
         build.prepare_bladeai_build_context(repo, tmp_path / "context")
 
 
@@ -97,7 +107,7 @@ def test_bladeai_source_context_rejects_wrong_version_dependency_or_native_blade
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, object], match: str,
 ) -> None:
     repo, commit = _upstream_repo(tmp_path, **kwargs)
-    monkeypatch.setattr(build, "BLADEAI_RELEASE_COMMIT", commit)
+    _pin_release_ref(monkeypatch, commit)
 
     with pytest.raises(RuntimeError, match=match):
         build.prepare_bladeai_build_context(repo, tmp_path / "context")
@@ -126,6 +136,7 @@ def test_source_head_label_does_not_bust_dependency_layers() -> None:
     overlay = (ROOT / "deploy/stage2/Dockerfile.runtime-overlay").read_text(encoding="utf-8")
 
     assert agent.index("RUN /opt/bladeai-venv/bin/pip install") < agent.index("ARG SOURCE_HEAD=unknown")
-    assert agent.index("COPY stage2_service/bladeai_read_cli.py") < agent.index("LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}")
+    # condition_policy.py is the last source COPY left after the BladeAI worker modules were removed.
+    assert agent.index("COPY stage2_service/condition_policy.py") < agent.index("LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}")
     assert overlay.index("RUN /app/.venv/bin/python -c") < overlay.index("ARG SOURCE_HEAD=unknown")
     assert overlay.index("COPY --chown=10001:10001 frontend/dist /app/frontend-dist") < overlay.index("LABEL resiliencebenchmark.io/source-head=${SOURCE_HEAD}")

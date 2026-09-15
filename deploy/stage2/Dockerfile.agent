@@ -16,9 +16,11 @@ RUN npm install -g npm@10.9.2 \
 FROM python:3.12.13-slim-bookworm
 
 ARG UV_VERSION=0.10.9
-ARG BLADEAI_RELEASE_TAG=blade-ai-v0.6.2
-ARG BLADEAI_RELEASE_COMMIT=d8c5473ccda329a3841f114f83a43881a2205ab5
-ARG BLADEAI_PACKAGE_VERSION=0.3.0
+# BladeAI 0.7.0 lives on feature/blade-ai at 98a9ddb.  Every blade-ai-v0.x tag
+# still points at the old d8c5473 (package 0.3.0), so the commit is the ref.
+ARG BLADEAI_RELEASE_TAG=98a9ddbdd4b6b8fe55dd218aa4812c45ea38d2ad
+ARG BLADEAI_RELEASE_COMMIT=98a9ddbdd4b6b8fe55dd218aa4812c45ea38d2ad
+ARG BLADEAI_PACKAGE_VERSION=0.7.0
 ARG BLADEAI_MCP_VERSION=1.27.0
 LABEL resiliencebenchmark.io/bladeai-release-tag=${BLADEAI_RELEASE_TAG}
 LABEL resiliencebenchmark.io/bladeai-release-commit=${BLADEAI_RELEASE_COMMIT}
@@ -76,25 +78,14 @@ COPY harness/__init__.py /app/harness/__init__.py
 COPY harness/agent_exec /app/harness/agent_exec
 COPY harness/schemas/agent-result.schema.json /app/harness/schemas/agent-result.schema.json
 COPY harness/mcp-tools.yaml /app/harness/mcp-tools.yaml
-COPY harness/bladeai/blade-shim/blade /app/harness/bladeai/blade-shim/blade
-COPY harness/bladeai/kubectl-shim/kubectl /app/harness/bladeai/kubectl-shim/kubectl
 COPY deploy/stage2/codex-eval /usr/local/bin/codex-eval
-COPY stage2_service/bladeai_worker.py /app/stage2_service/bladeai_worker.py
-COPY stage2_service/bladeai_events.py /app/stage2_service/bladeai_events.py
-COPY stage2_service/bladeai_mcp_guard.py /app/stage2_service/bladeai_mcp_guard.py
-COPY stage2_service/bladeai_duration.py /app/stage2_service/bladeai_duration.py
-COPY stage2_service/bladeai_task.py /app/stage2_service/bladeai_task.py
 COPY stage2_service/condition_policy.py /app/stage2_service/condition_policy.py
-COPY stage2_service/bladeai_shim.py /app/stage2_service/bladeai_shim.py
-COPY stage2_service/bladeai_read_cli.py /app/stage2_service/bladeai_read_cli.py
+# Black-box BladeAI runs as `blade-ai server` in its own container of the
+# Controller pod; the in-process worker, blade shim and kubectl shim are gone.
 RUN install -d -m 0755 /app/stage2_service \
     && install -d -m 0755 /run/resbench-host \
     && touch /run/resbench-host/cgroupns \
     && touch /app/stage2_service/__init__.py \
-    && cp /app/harness/bladeai/blade-shim/blade /usr/local/bin/blade \
-    && sed -i '1c #!/opt/bladeai-venv/bin/python' /app/harness/bladeai/blade-shim/blade \
-    && sed -i '1c #!/opt/bladeai-venv/bin/python' /usr/local/bin/blade \
-    && chmod 0755 /app/harness/bladeai/blade-shim/blade /app/harness/bladeai/kubectl-shim/kubectl /usr/local/bin/blade \
     && chmod 0755 /usr/local/bin/codex-eval \
     && ! command -v blade-native \
     && /usr/sbin/iptables-restore --version \

@@ -106,6 +106,10 @@ class FleetConfig(FleetModel):
     account_tpm: int | None = Field(default=None, ge=1)
     node_spread: bool = True
     nodes: tuple[str, ...] = ()
+    # AppArmor profile of the agent-runtime container. It must be loaded on every
+    # node a slot can land on; leave it empty on a cluster where only some nodes
+    # carry the profile and the slots have to be scheduled elsewhere.
+    agent_runtime_apparmor_profile: str = "localhost/resbench-agent-runtime"
     # Addresses of the Kubernetes API server, for the replica NetworkPolicy.
     # The provisioner reads them from the cluster when this is empty.
     api_server_endpoints: tuple[str, ...] = ()

@@ -25,11 +25,14 @@ DEFAULT_RUNTIME_BASE = (
 )
 TEMPLATES = ("stage2.yaml", "execution-identities.yaml", "stage2-integration.yaml",
              "stage2-matrix-job.yaml", "fleet.yaml")
-BLADEAI_RELEASE_TAG = "blade-ai-v0.6.2"
-BLADEAI_RELEASE_COMMIT = "d8c5473ccda329a3841f114f83a43881a2205ab5"
+# BladeAI 0.7.0 (black-box server) lives on feature/blade-ai at 98a9ddb.  Every
+# blade-ai-v0.x tag still resolves to the old d8c5473 (package 0.3.0), so the
+# release ref is the commit itself.
+BLADEAI_RELEASE_TAG = "98a9ddbdd4b6b8fe55dd218aa4812c45ea38d2ad"
+BLADEAI_RELEASE_COMMIT = "98a9ddbdd4b6b8fe55dd218aa4812c45ea38d2ad"
 BLADEAI_SUBTREE = "blade-ai"
 BLADEAI_PACKAGE_NAME = "blade-ai"
-BLADEAI_PACKAGE_VERSION = "0.3.0"
+BLADEAI_PACKAGE_VERSION = "0.7.0"
 BLADEAI_MCP_DEPENDENCY = "mcp>=1.0,<2.0"
 BLADEAI_MCP_PIN = "1.27.0"
 BLADEAI_REQUIRED_PATHS = (

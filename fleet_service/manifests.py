@@ -23,6 +23,46 @@ MANAGED_BY = "resbench-fleet"
 SLOT_LABEL = "benchmark.slot"
 NAMESPACE_LABEL = "benchmark.namespace"
 CONTROLLER_SERVICE_ACCOUNT = "resbench-stage2-controller"
+# Black-box BladeAI is a service, not a command: each slot runs one
+# ``blade-ai server`` next to its Controller, reachable only on the pod's
+# loopback.  One server per slot is one server per Trial, because a slot's
+# Controller runs one Trial at a time (``/cancel`` cancels every task on the
+# server it reaches).
+BLADEAI_SERVER_PORT = 8399
+BLADEAI_SERVER_BINARY = "/opt/bladeai-070/blade-ai/blade-ai"
+BLADEAI_STATE_ROOT = "/var/lib/bladeai"
+# The server shells out to kubectl with this kubeconfig.  BladeAI injects with
+# its own native providers (ChaosBlade CRs, ``blade`` inside the chaosblade-tool
+# pods), which the Controller's read-only identity cannot do, so it
+# authenticates as its own service account (deploy/stage2/bladeai-server-rbac.yaml)
+# and defaults to the replica namespace the slot is bound to.
+BLADEAI_TOKEN_SECRET = "resbench-bladeai-server-token"
+BLADEAI_TOKEN_MOUNT = "/var/run/secrets/resbench-bladeai"
+BLADEAI_SERVER_START_SCRIPT = (
+    'set -eu\n'
+    'mkdir -p "$HOME" "$BLADE_AI_MEMORY_DIR"\n'
+    'cat > "$BLADE_AI_KUBECONFIG_PATH" <<EOF\n'
+    'apiVersion: v1\n'
+    'kind: Config\n'
+    'clusters:\n'
+    '- name: in-cluster\n'
+    '  cluster:\n'
+    '    server: https://kubernetes.default.svc\n'
+    f'    certificate-authority: {BLADEAI_TOKEN_MOUNT}/ca.crt\n'
+    'users:\n'
+    '- name: bladeai-server\n'
+    '  user:\n'
+    f'    tokenFile: {BLADEAI_TOKEN_MOUNT}/token\n'
+    'contexts:\n'
+    '- name: in-cluster\n'
+    '  context:\n'
+    '    cluster: in-cluster\n'
+    '    user: bladeai-server\n'
+    '    namespace: $RESBENCH_APPLICATION_NAMESPACE\n'
+    'current-context: in-cluster\n'
+    'EOF\n'
+    f'exec {BLADEAI_SERVER_BINARY} server\n'
+)
 EXECUTOR_SERVICE_ACCOUNT = "resbench-stage2-executor"
 FINALIZER_SERVICE_ACCOUNT = "resbench-stage2-finalizer"
 AGENT_LOOPBACK_PORTS = (
@@ -244,6 +284,8 @@ def _controller_containers(config: FleetConfig, index: int) -> list[dict[str, An
         {"name": "RESBENCH_APPLICATION", "value": namespace},
         {"name": "RESBENCH_APPLICATION_NAMESPACE", "value": namespace},
         {"name": "RESBENCH_APPLICATION_COMPONENT", "value": "cart"},
+        # This slot's black-box BladeAI server (container ``bladeai-server``).
+        {"name": "RESBENCH_BLADEAI_SERVER_URL", "value": f"http://127.0.0.1:{BLADEAI_SERVER_PORT}"},
         {"name": "RESBENCH_CONTROL_NAMESPACE", "value": config.control_namespace},
         {"name": "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ",
          "value": "true" if config.coroot_allow_anonymous_read else "false"},
@@ -352,6 +394,45 @@ def _controller_containers(config: FleetConfig, index: int) -> list[dict[str, An
             },
             "resources": {"requests": {"cpu": "250m", "memory": "512Mi"}, "limits": {"cpu": "1", "memory": "1Gi"}},
         },
+        {
+            "name": "bladeai-server",
+            "image": config.controller_image,
+            "imagePullPolicy": "IfNotPresent",
+            "command": ["/bin/sh", "-c", BLADEAI_SERVER_START_SCRIPT],
+            "env": [
+                {"name": "HOME", "value": f"{BLADEAI_STATE_ROOT}/home"},
+                {"name": "RESBENCH_APPLICATION_NAMESPACE", "value": namespace},
+                {"name": "BLADE_AI_SERVER_HOST", "value": "127.0.0.1"},
+                {"name": "BLADE_AI_SERVER_PORT", "value": str(BLADEAI_SERVER_PORT)},
+                # Starting point only: every Trial repoints the server at its own
+                # inference relay over BladeAI's published config API.
+                {"name": "BLADE_AI_API_BASE_URL", "value": "http://127.0.0.1:4000/v1"},
+                {"name": "BLADE_AI_LLM_API_KEY",
+                 "valueFrom": {"secretKeyRef": {"name": "resbench-stage2-gateway-client", "key": "llm-api-key"}}},
+                {"name": "BLADE_AI_MODEL_NAME", "value": "gpt-5.5"},
+                {"name": "BLADE_AI_KUBE_CONNECTION_MODE", "value": "kubeconfig"},
+                {"name": "BLADE_AI_KUBECONFIG_PATH", "value": f"{BLADEAI_STATE_ROOT}/kubeconfig"},
+                {"name": "BLADE_AI_CONFIRMATION_REQUIRED", "value": "true"},
+                {"name": "BLADE_AI_CONFIG_DIR", "value": f"{BLADEAI_STATE_ROOT}/config"},
+                {"name": "BLADE_AI_MEMORY_DIR", "value": f"{BLADEAI_STATE_ROOT}/config/memory"},
+                {"name": "BLADE_AI_MAX_INJECT_SECONDS", "value": "300"},
+                # BLADE_AI_SKILL_SCRIPT_DEFAULT_ALLOW is left at BladeAI's own
+                # default (true).  With skill scripts denied the planner never
+                # loads a catalogue use-case and, after approval, loops between
+                # planning and agent_loop without creating a task (L0, 2026-09-13).
+            ],
+            "volumeMounts": [
+                {"name": "bladeai-state", "mountPath": BLADEAI_STATE_ROOT},
+                {"name": "bladeai-tmp", "mountPath": "/tmp"},
+                {"name": "bladeai-sa-token", "mountPath": BLADEAI_TOKEN_MOUNT, "readOnly": True},
+            ],
+            "readinessProbe": {
+                "exec": {"command": ["/app/.venv/bin/python", "-c",
+                                     f"import socket; socket.create_connection(('127.0.0.1', {BLADEAI_SERVER_PORT}), 2).close()"]},
+                "initialDelaySeconds": 5, "periodSeconds": 10, "timeoutSeconds": 3,
+            },
+            "resources": {"requests": {"cpu": "250m", "memory": "512Mi"}, "limits": {"cpu": "2", "memory": "3Gi"}},
+        },
     ]
 
 
@@ -374,7 +455,11 @@ def controller_manifests(config: FleetConfig, index: int) -> list[dict[str, Any]
                 "metadata": {
                     "labels": pod_labels,
                     "annotations": {
-                        "container.apparmor.security.beta.kubernetes.io/agent-runtime": "localhost/resbench-agent-runtime",
+                        **(
+                            {"container.apparmor.security.beta.kubernetes.io/agent-runtime": config.agent_runtime_apparmor_profile}
+                            if config.agent_runtime_apparmor_profile
+                            else {}
+                        ),
                         "resiliencebenchmark.io/fleet-slot": slot_id(index),
                     },
                 },
@@ -439,6 +524,9 @@ def controller_manifests(config: FleetConfig, index: int) -> list[dict[str, Any]
                         {"name": "delegated-cgroup", "hostPath": {"path": "/sys/fs/cgroup/resbench-agent-exec", "type": "DirectoryOrCreate"}},
                         {"name": "host-cgroup-namespace", "hostPath": {"path": "/proc/1/ns/cgroup", "type": "File"}},
                         {"name": "litellm-config", "configMap": {"name": config.litellm_config_map}},
+                        {"name": "bladeai-state", "emptyDir": {"sizeLimit": "2Gi"}},
+                        {"name": "bladeai-tmp", "emptyDir": {"sizeLimit": "1Gi"}},
+                        {"name": "bladeai-sa-token", "secret": {"secretName": BLADEAI_TOKEN_SECRET, "defaultMode": 0o440}},
                     ],
                 },
             },
