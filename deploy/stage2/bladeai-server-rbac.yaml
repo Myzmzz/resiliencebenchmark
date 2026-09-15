@@ -39,6 +39,11 @@ rules:
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods", "nodes"]
     verbs: ["get", "list"]
+  # BladeAI's pre-plan probe reads the metrics APIService; without this the
+  # denial was scored as PERMISSION_DENIED_OBSERVED (2026-09-15).
+  - apiGroups: ["apiregistration.k8s.io"]
+    resources: ["apiservices"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

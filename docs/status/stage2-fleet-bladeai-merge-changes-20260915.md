@@ -104,7 +104,17 @@
    - 集群里没有残留的 ChaosBlade CR。
 5. **重跑**：BladeAI 层按属主 10001 重新打包，推送为 `stage2-d0-1519f8c-bladeai070-own`；停掉第一轮，slot 滚动后先核实 blade 属主为 10001，再以批次 `bladeai-parallel-20260915-02` 重新提交。
 
-（第二轮结果待完成后补记）
+6. **第二轮批次 `bladeai-parallel-20260915-02`**（08:50:41 提交，5 条同时进入 Running，09:07:30 全部结束）：
+   - **平台链路全部正常**：
+     - slot 已滚动到 `stage2-d0-1519f8c-bladeai070-own@sha256:fcf5f6e2…`，blade 属主核实为 10001，EPERM 不再出现。
+     - s04 走到了 `Intent confirmed by user: pod-cpu-fullload`，注入任务已创建，进入注入流程。
+   - **一条都没有真正注入**：ChaosBlade operator 在这段时间没有实验记录，集群里也没有 CR。原因在 gpt-5.5 上游（nexustokenai）：
+     - s01 在意图澄清阶段连续收到 429 `Upstream rate limit exceeded`，BladeAI 自身的 2 次快速重试（间隔 0.1–1 s）用尽后结束。
+     - s04 在注入流程中多次收到 500，最后是 Cloudflare 502 Bad Gateway，注入流程失败。
+     - 5 个会话同时打到上游，每次调用都带约 1.6–1.9 万 token 的上下文；网关设置是 `num_retries: 0`，429/5xx 原样回给 BladeAI。
+   - **结果**：r1/r2/r4/r5 判 VALID FAIL（MAIN_FAULT_ACTIVE、GATE_MAIN_FAULT_RUNNING，0–2.5 分），r3 判 CASE_INVALID（HARNESS_EXECUTION_FAILED）。Fleet 记录的失败码是 OUTPUT_UNSTRUCTURED 或 PERMISSION_DENIED_OBSERVED。**平台把上游限流判成了 agent 侧的失败，这一轮同样不能算作 BladeAI 的成绩**；这个归因缺陷本轮不修。
+   - **PERMISSION_DENIED_OBSERVED 的来源之一**：BladeAI 预检时执行 `kubectl get apiservice v1beta1.metrics.k8s.io`，`resbench-bladeai-server` 没有 apiservices 读权限，被拒绝。已在集群上补上，并同步到 `deploy/stage2/bladeai-server-rbac.yaml`。
+   - **待用户决定**：上游限流下怎样保证 5 路并行——给网关加退避重试、降低并发，还是提高账户限额。
 
 ## 六、已知限制（本轮刻意不做）
 
