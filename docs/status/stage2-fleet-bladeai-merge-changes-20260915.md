@@ -135,6 +135,18 @@
      - 其余失败码仍然没有反映真实原因，即上游的并发上限。
      - **本轮同样不能算作 BladeAI 的成绩。**
    - **待用户决定**：降低同时运行的试验数，或者在 nexustokenai 提高账户并发上限。
+9. **用户选定 2 路并发：第四轮 `bladeai-parallel-20260915-04`**（16:40 提交，`max_concurrency: 2`，约 16:55 人工停止）：
+   - **2 路并发下上游不再报错**：s03、s05 在 15 分钟内并发超限 0 次，模型调用成功 20–22 次。
+   - **暴露出确认桥的两个真实 bug**：
+     1. **执行关卡走错了接口**：
+        - BladeAI 0.7.0 的 `/turn` 会话里，执行关卡和意图关卡处理方式相同：确认事件用轮次 id（`turn-…`）作 `task_id`，再在 `wait_for_confirmation` 里按这个 id 等待 `/sessions/{sid}/interrupt` 的回答。
+        - 平台却对执行关卡调用了 `POST /api/v1/confirm/{turn id}`。这个接口按路径 id 恢复 LangGraph 线程，恢复出来的检查点里只有 `skill_name`。
+        - 结果 BladeAI 报 `state.fault_spec missing`，以"没有指定故障类型"为由拒绝了自己的规划并终止；真正在等的回答始终没人给（r4：16:46:33 发出请求，阻塞 58.6 s）。
+        - 09-13 那次 L0"批准后不再推进"也是这个原因。**问题在平台驱动，并非只能等上游修。**
+     2. **意图关卡的计划翻译不认 0.7.0 的写法**：
+        - `fault_intent` 用的是技能写法 `fault_type: "pod-cpu-load"`，没有 scope/target；Pod 名在 `names`，uid 在 `params.pod_uid`。
+        - `plan_from_intent` 只认 ChaosBlade 三元组，送到校验器的计划缺 target/fault_type/intensity，被判"计划未通过类型化校验"（r3）。
+   - 修复后跑第五轮 `bladeai-parallel-20260915-05`（同样 2 路并发），结果待补记。
 
 ## 六、已知限制（本轮刻意不做）
 
