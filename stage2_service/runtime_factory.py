@@ -1422,7 +1422,13 @@ class Stage2System:
         self.d0_gate = D0QualificationGate(config.d0_artifact_root)
         self._active_lock = Lock()
         self._active_controls: dict[str, dict[str, Any]] = {}
-        self._model_probe_runner = model_probe_runner or self._default_model_probe_runner
+        # An injected runner (tests, tools) is always honoured; otherwise the
+        # real probe only runs when STAGE2_GATEWAY_MODEL_PROBE opts into it.
+        self._model_probe_runner = model_probe_runner or (
+            self._default_model_probe_runner
+            if self.gateway_model_probe_enabled()
+            else self._skipped_model_probe_runner
+        )
         self._probe_cache_ttl_seconds = probe_cache_ttl_seconds
         self._probe_lock = Lock()
         self._gateway_readiness: dict[tuple[str, str, tuple[str, ...]], GatewayReadinessEntry] = {}
@@ -1726,6 +1732,37 @@ class Stage2System:
             payload["error"] = entry.error
         return payload
 
+    # A real capability probe sends several requests per alias to every upstream
+    # (tool calls, streaming, structured output) whenever its cache expires.  On
+    # 2026-09-15 five replica Controllers probing seven aliases at once got
+    # nexustokenai to rate-limit gpt-5.5, which then marked gpt-5.5 unrunnable and
+    # blocked the very Trials the probe was meant to protect.  By default the
+    # Controller now trusts the gateway's own model list (``/v1/models``, no
+    # tokens) and lets a Trial fail with the upstream's error if the model cannot
+    # actually serve it.  STAGE2_GATEWAY_MODEL_PROBE=on restores the probe.
+    GATEWAY_MODEL_PROBE_ENV = "STAGE2_GATEWAY_MODEL_PROBE"
+    SKIPPED_PROBE_STATUS = "not_probed"
+    RUNNABLE_PROBE_STATUSES = frozenset({"supported", SKIPPED_PROBE_STATUS})
+
+    @classmethod
+    def gateway_model_probe_enabled(cls) -> bool:
+        """Whether this Controller sends real capability probes through the gateway."""
+        return os.environ.get(cls.GATEWAY_MODEL_PROBE_ENV, "off").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _skipped_model_probe_runner(
+        self,
+        snapshot: GatewayConfigSnapshot,
+        aliases: Sequence[str],
+    ) -> Mapping[str, Any]:
+        """Report every alias as not probed; runnability then rests on the gateway model list."""
+        del snapshot
+        return {
+            "schemaVersion": "resiliencebenchmark.model_probe/v1",
+            "mode": "skipped",
+            "issues": [],
+            "models": [{"alias": alias, "overallStatus": self.SKIPPED_PROBE_STATUS} for alias in aliases],
+        }
+
     def _default_model_probe_runner(
         self,
         snapshot: GatewayConfigSnapshot,
@@ -1784,7 +1821,7 @@ class Stage2System:
                 visible
                 and snapshot is not None
                 and not has_error_issue
-                and probe_status == "supported"
+                and probe_status in self.RUNNABLE_PROBE_STATUSES
             )
             row: dict[str, Any] = {
                 "runnable": runnable,
