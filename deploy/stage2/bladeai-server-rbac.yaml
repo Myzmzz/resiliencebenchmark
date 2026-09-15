@@ -1,0 +1,81 @@
+# Identity of the black-box BladeAI server that runs next to each replica
+# slot's Controller (container ``bladeai-server`` in fleet_service/manifests.py).
+#
+# BladeAI injects with its own native providers -- ChaosBlade CRs and ``blade``
+# executed inside the chaosblade-tool DaemonSet pods -- so it needs write access
+# that the Controller's own identity deliberately does not have.  Apply once per
+# cluster, next to deploy/stage2/fleet.yaml.  The chaosblade-tool DaemonSet runs
+# in ``default`` on both clusters; change the Role/RoleBinding namespace where it
+# lives elsewhere.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: resbench-bladeai-server
+  namespace: resiliencebenchmark-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: resbench-bladeai-server-token
+  namespace: resiliencebenchmark-system
+  annotations:
+    kubernetes.io/service-account.name: resbench-bladeai-server
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resbench-bladeai-server
+rules:
+  - apiGroups: ["chaosblade.io"]
+    resources: ["chaosblades", "chaosblades/status", "chaosblades/finalizers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints", "nodes", "namespaces", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resbench-bladeai-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: resbench-bladeai-server
+subjects:
+  - kind: ServiceAccount
+    name: resbench-bladeai-server
+    namespace: resiliencebenchmark-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resbench-bladeai-server-exec
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resbench-bladeai-server-exec
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resbench-bladeai-server-exec
+subjects:
+  - kind: ServiceAccount
+    name: resbench-bladeai-server
+    namespace: resiliencebenchmark-system
