@@ -30,12 +30,32 @@ rules:
   - apiGroups: ["chaosblade.io"]
     resources: ["chaosblades", "chaosblades/status", "chaosblades/finalizers"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Read-only view of the workloads BladeAI inspects before planning. Round 3 on
+  # 2026-09-15 was scored PERMISSION_DENIED_OBSERVED because it could not list
+  # resourcequotas in a replica namespace; the rest are granted once here rather
+  # than one denial at a time. Secrets and configmaps stay out of reach.
   - apiGroups: [""]
-    resources: ["pods", "pods/log", "services", "endpoints", "nodes", "namespaces", "events"]
+    resources: ["pods", "pods/log", "services", "endpoints", "nodes", "namespaces", "events",
+                "resourcequotas", "limitranges", "persistentvolumeclaims", "replicationcontrollers"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list"]
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods", "nodes"]
     verbs: ["get", "list"]
