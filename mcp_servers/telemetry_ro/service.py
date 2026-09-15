@@ -36,7 +36,9 @@ MAX_STEP_SECONDS = 3_600
 MAX_FILTERS = 12
 MAX_FILTER_VALUE_LENGTH = 256
 MAX_LITERAL_CONTAINS_LENGTH = 200
-NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace")
+# k8s_namespace_name is what Prometheus OTLP ingestion produces for the OTel resource attribute
+# k8s.namespace.name; without it every otel-demo application metric is scoped out (Stage-1, 2026-09-15).
+NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace", "k8s_namespace_name")
 PROMETHEUS_GROUP_BY_ALLOWLIST = frozenset(
     {
         "namespace",

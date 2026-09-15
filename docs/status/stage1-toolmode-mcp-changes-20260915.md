@@ -88,3 +88,29 @@ cd resiliencebenchmark-stage1-toolmode
 
 - `admin-old-env.kubeconfig` 由 `kubectl config view --minify --flatten --context kubernetes-admin@kubernetes` 从 `~/.kube/coroot-config` 导出。原文件没有设置 current-context。
 - 该文件权限为 0600，并且被 git 忽略。
+
+## 4. telemetry_ro 认 OTel 指标的命名空间标签
+
+- **文件**：`mcp_servers/telemetry_ro/service.py`，`NAMESPACE_LABEL_KEYS`（第 39–41 行）。
+- **改前**：只认 `namespace`、`kubernetes_namespace`、`exported_namespace`。
+- **改后**：增加 `k8s_namespace_name`。
+- **原因**：老环境的 Prometheus 通过 OTLP 接收 otel-demo 应用指标，命名空间落在 `k8s_namespace_name` 标签上。
+  改前查询 otel-demo 的应用指标会被命名空间过滤全部剔除（实测 `scopedOutCount=8`、`returned=0`），
+  智能体只能看到 kube-state-metrics 这类带 `namespace` 标签的指标，拿不到业务延迟和错误率。
+- **影响**：
+  - 仍只放行白名单里的命名空间（otel-demo）。
+  - 这个标签和另外三个一样，调用方不能在结构化查询里自己传。
+  - 结构化指标工具注入的仍是 `namespace` 选择器；应用指标要通过原始 PromQL 查询。
+- **测试**：新增 `test_prometheus_raw_query_scopes_otel_metrics_by_k8s_namespace_name`。
+
+## 已知情况
+
+- **本机栈自检**：开启 `--allow-raw-telemetry` 后，`qualification.json` 会把 telemetry_ro 判为 failed。
+  自检要求工具集合恰好是 10 个结构化工具（`scripts/qualify_mcp_endpoints.py:171`），放开后多出 6 个原始查询工具。
+  这是预期内的，不影响使用。
+- **压测统计工具**：`telemetry_workload_current` 在这套配置下没有注册（需要另外配置压测统计地址），Stage-1 prompt 里不提"压测实时统计"。
+- **直接调用验证**（2026-09-15，老环境）：
+  - k8s_ro：读 cart Deployment 正常；PDB 列表为空（老环境没有 PDB）；读 secrets 返回 `resource_forbidden`。
+  - telemetry_ro：Jaeger 服务列表返回 18 个服务；按 `namespace` 查 `kube_pod_info` 正常；Loki 标签正常（namespace 由服务端自动注入，调用方不能传）。
+  - source_ro：能列出 `otel-demo-2.2.0`，并能全文搜索。
+- **测试**：`tests/test_telemetry_ro_mcp.py`、`tests/test_local_control_stack.py`、`tests/test_k8s_ro_mcp.py`、`tests/test_mcp_rbac.py` 共 70 项全部通过。

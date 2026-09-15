@@ -751,3 +751,26 @@ def test_create_server_accepts_http_auth_injection():
     server = create_server(service=svc, auth=auth, token_verifier=verifier)
 
     assert server is not None
+
+
+def test_prometheus_raw_query_scopes_otel_metrics_by_k8s_namespace_name():
+    svc, _ = service(
+        {
+            ("http://prometheus.monitoring.svc:9090", "/api/v1/query"): {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {"metric": {"__name__": "app_cart_add_item_latency_count", "k8s_namespace_name": "otel-demo"}},
+                        {"metric": {"__name__": "app_cart_add_item_latency_count", "k8s_namespace_name": "other"}},
+                    ],
+                },
+            }
+        }
+    )
+
+    result = run(svc.prometheus_query_instant(query="app_cart_add_item_latency_count", time=1700000000))
+
+    assert result["ok"] is True
+    assert result["returned"] == 1
+    assert result["scopedOutCount"] == 1
