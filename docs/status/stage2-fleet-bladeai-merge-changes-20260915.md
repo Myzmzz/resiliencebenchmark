@@ -146,7 +146,22 @@
      2. **意图关卡的计划翻译不认 0.7.0 的写法**：
         - `fault_intent` 用的是技能写法 `fault_type: "pod-cpu-load"`，没有 scope/target；Pod 名在 `names`，uid 在 `params.pod_uid`。
         - `plan_from_intent` 只认 ChaosBlade 三元组，送到校验器的计划缺 target/fault_type/intensity，被判"计划未通过类型化校验"（r3）。
-   - 修复后跑第五轮 `bladeai-parallel-20260915-05`（同样 2 路并发），结果待补记。
+   - 修复在 ff4a999，第五轮结果见下一条。
+10. **第五轮 `bladeai-parallel-20260915-05`**（17:04:54 提交，2 路并发，约 17:22 全部结束）：
+   - **执行关卡修复生效**：
+     - s05 在 17:08:38、s04 在 17:16:19，执行关卡都经 `/interrupt` 回答（`delivered=True`）。
+     - 不再有 `state.fault_spec missing` 和自行终止。
+   - **新的阻塞是上游接口不兼容**：
+     - 批准后约 27 s，BladeAI 发出的下一次模型请求被 nexustokenai 以 HTTP 400 拒绝：`function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2`。
+     - 重试 3 次后 `Turn failed`，任务 failed。
+     - **根因已复现**：BladeAI 恢复执行后发出的请求里带有"孤立的工具结果"——`tool` 消息找不到发起它的 assistant `tool_calls`。
+       - 在 slot 网关上，只发一条孤立工具结果：返回与 BladeAI 逐字相同的 400。
+       - 正常的两步工具续写（带或不带推理参数）：200。
+       - 工具调用存在但 id 对不上：200。
+     - **定性**：这是 BladeAI 0.7.0 在中断恢复路径上拼接消息的缺陷；nexustokenai 只是把它暴露了出来，换严格校验的上游同样会被拒，与限流无关。
+     - **token 开销**：网关实测 BladeAI 每次请求约 1.9 万输入 token，约 $0.106/次。
+   - **没有注入，也没有残留**：集群里没有 CR，operator 没有活动，5 个副本 cart CPU 为 14–18m。
+   - **结果**：r1、r3、r4 判 CASE_INVALID（HARNESS_EXECUTION_FAILED），r2、r5 判 VALID FAIL（2.5 分）。**本轮同样不能算作 BladeAI 的成绩。**
 
 ## 六、已知限制（本轮刻意不做）
 
