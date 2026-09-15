@@ -10,7 +10,12 @@ from mcp_servers.harness_channel.hints import D7_A_DEFAULT
 from mcp_servers.http_runtime import TOOL_DISABLED_RESPONSE
 from stage2_service.capability_policy import read_policy_file
 from stage2_service.capability_preflight import harness_capabilities_from_qualification
-from stage2_service.capability_qualification import publish_capabilities
+from stage2_service.capability_qualification import (
+    BASE_CHECKS,
+    BLADEAI_BLACKBOX_ACCEPTANCE,
+    BLADEAI_BLACKBOX_QUALIFICATION_ENV,
+    publish_capabilities,
+)
 from stage2_service.channel_qualification import (
     ALL_CHANNEL_HARNESSES,
     BASE_CHANNEL_QUALIFICATION_MODE,
@@ -2625,3 +2630,163 @@ def test_cli_rejects_non_otel_namespace() -> None:
                 "other",
             ]
         )
+
+
+# The five in-band MCP channel checks a black-box BladeAI session cannot produce:
+# it confirms and reports over its own HTTP/SSE interface, not the platform MCP servers.
+BLACKBOX_UNREACHABLE_MCP_CHECKS = (
+    "mcp_read_verified",
+    "confirmation_roundtrip_verified",
+    "consult_roundtrip_verified",
+    "notice_ack_verified",
+    "result_submission_verified",
+)
+
+
+def _blackbox_session_record(
+    tmp_path: Path,
+    harness: HarnessKind,
+) -> tuple[Path, Path, GatewayConfigSnapshot]:
+    """Evaluate and archive a session that reached the model gateway but ran no platform MCP tool.
+
+    The record comes from the real base evaluator (an empty ledger, a completed
+    report carrying verified gateway output), so its MCP-channel checks are False
+    and it is ``failed`` exactly as a black-box BladeAI session would be.  The
+    archive's gateway receipt names the same Harness and verifies against the
+    snapshot; ``canonical-events.jsonl`` is empty because no MCP tool ran.
+
+    Returns the record path, the artifact root and the gateway snapshot.
+    """
+    model_alias = "gpt-5.5"
+    archive_name = f"{harness.value}-base"
+    artifact_root = tmp_path / "artifacts"
+    archive_directory = artifact_root / archive_name
+    archive_directory.mkdir(parents=True)
+    gateway = _gateway_snapshot(tmp_path, model_alias)
+    report = HarnessReport(
+        status="completed",
+        agent_verdict=AgentVerdict.INCONCLUSIVE,
+        lifecycle_events=(),
+        artifact_refs=(
+            f"{archive_name}/gateway-requests.json",
+            f"{archive_name}/canonical-events.jsonl",
+        ),
+        final_output={
+            **_fake_gateway_output(model_alias),
+            "gateway_route": gateway.route(model_alias),
+            "gateway_config_sha256": gateway.config_sha256,
+        },
+    )
+    # No platform ledger events: the session never called a platform MCP tool.
+    record = evaluate_base_channel_qualification(
+        [], harness=harness, model=model_alias, trial_id=TRIAL_ID, report=report,
+    )
+    record_path = write_record(tmp_path / "records", record)
+
+    gateway_receipt = {
+        "trial_id": TRIAL_ID,
+        "harness": harness.value,
+        "model_alias": model_alias,
+        "gateway_config_sha256": gateway.config_sha256,
+        "request_id": "offline-request-1",
+        "outcome": "received",
+    }
+    (archive_directory / "gateway-requests.json").write_text(json.dumps([gateway_receipt]), encoding="utf-8")
+    (archive_directory / "canonical-events.jsonl").write_text("", encoding="utf-8")
+    return record_path, artifact_root, gateway
+
+
+@pytest.mark.parametrize("switch_value", ["true", "1", "yes"])
+def test_blackbox_bladeai_record_publishes_on_gateway_evidence_when_switch_is_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, switch_value: str,
+) -> None:
+    """With the switch on, a completed BladeAI session with verified gateway evidence qualifies.
+
+    The failed MCP-channel checks are skipped, not hidden: the entry names the
+    acceptance and lists every base check that did not pass.
+    """
+    monkeypatch.setenv(BLADEAI_BLACKBOX_QUALIFICATION_ENV, switch_value)
+    record_path, artifact_root, gateway = _blackbox_session_record(tmp_path, HarnessKind.BLADEAI)
+    record_payload = json.loads(record_path.read_text(encoding="utf-8"))
+    base_checks = record_payload["base_checks"]
+
+    # Preconditions: this is the real evaluator's verdict on a black-box session.
+    assert record_payload["harness"] == HarnessKind.BLADEAI.value
+    assert record_payload["passed"] is False
+    assert record_payload["status"] == "failed"
+    assert record_payload["failure_reasons"]
+    assert record_payload["harness_report_status"] == "completed"
+    assert record_payload["cleanup_errors"] == []
+    assert base_checks["gateway_evidence_verified"] is True
+    assert all(base_checks[check_name] is False for check_name in BLACKBOX_UNREACHABLE_MCP_CHECKS)
+
+    output = tmp_path / "private" / "capabilities.json"
+    publish_capabilities([record_path], artifact_root=artifact_root, output=output, gateway=gateway)
+    published_entry = json.loads(output.read_text(encoding="utf-8"))["harnesses"]["bladeai"]
+
+    assert published_entry["qualification"]["status"] == "passed"
+    assert published_entry["qualification"]["reason"] == BLADEAI_BLACKBOX_ACCEPTANCE
+    capability = published_entry["capability"]
+    assert capability["qualification_passed"] is True
+    assert capability["execution_model"] == "stream"
+    assert capability["probe"]["acceptance"] == BLADEAI_BLACKBOX_ACCEPTANCE
+    expected_skipped_checks = sorted(
+        check_name for check_name in BASE_CHECKS if base_checks.get(check_name) is not True
+    )
+    assert capability["probe"]["skipped_checks"] == expected_skipped_checks
+    assert set(BLACKBOX_UNREACHABLE_MCP_CHECKS) <= set(capability["probe"]["skipped_checks"])
+    assert "gateway_evidence_verified" not in capability["probe"]["skipped_checks"]
+
+    # The preflight consumer must still accept what was published.
+    descriptors, source = harness_capabilities_from_qualification(output)
+    assert source["status"] == "qualification_records_loaded"
+    assert descriptors["bladeai"]["qualification_passed"] is True
+
+
+def test_blackbox_bladeai_record_is_rejected_without_the_switch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the switch, a BladeAI record must still pass every base check."""
+    monkeypatch.delenv(BLADEAI_BLACKBOX_QUALIFICATION_ENV, raising=False)
+    record_path, artifact_root, gateway = _blackbox_session_record(tmp_path, HarnessKind.BLADEAI)
+    output = tmp_path / "private" / "capabilities.json"
+
+    with pytest.raises(ValueError, match="basic channel qualification did not pass every required check"):
+        publish_capabilities([record_path], artifact_root=artifact_root, output=output, gateway=gateway)
+    assert not output.exists()
+
+
+def test_blackbox_switch_does_not_relax_other_harnesses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The switch only applies to BladeAI; the same session shape from codex is still rejected."""
+    monkeypatch.setenv(BLADEAI_BLACKBOX_QUALIFICATION_ENV, "true")
+    record_path, artifact_root, gateway = _blackbox_session_record(tmp_path, HarnessKind.CODEX)
+    output = tmp_path / "private" / "capabilities.json"
+
+    with pytest.raises(ValueError, match="basic channel qualification did not pass every required check"):
+        publish_capabilities([record_path], artifact_root=artifact_root, output=output, gateway=gateway)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("gateway_check_value", [False, "true"])
+def test_blackbox_bladeai_record_still_needs_verified_gateway_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gateway_check_value: object,
+) -> None:
+    """With the switch on, a BladeAI record whose gateway check is not literally True is rejected.
+
+    The archive's receipts still verify, so the rejection comes from the check alone.
+    """
+    monkeypatch.setenv(BLADEAI_BLACKBOX_QUALIFICATION_ENV, "true")
+    record_path, artifact_root, gateway = _blackbox_session_record(tmp_path, HarnessKind.BLADEAI)
+    record_payload = json.loads(record_path.read_text(encoding="utf-8"))
+    record_payload["base_checks"]["gateway_evidence_verified"] = gateway_check_value
+    record_path.write_text(json.dumps(record_payload), encoding="utf-8")
+    output = tmp_path / "private" / "capabilities.json"
+
+    with pytest.raises(
+        ValueError,
+        match="black-box BladeAI qualification needs a completed session with gateway evidence",
+    ):
+        publish_capabilities([record_path], artifact_root=artifact_root, output=output, gateway=gateway)
+    assert not output.exists()
