@@ -264,4 +264,13 @@
 - 控制器镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-078d039-bladeai070-own@sha256:71534a765febaa8ae618cc25b3d3d6201d8c845ea8d9e838babac6e327672e35`，仍按 5.1 的办法在 `stage2-d0-77a11bd@sha256:f3b1ffc1…` 上 `crane append` 两层（代码层 253 个文件、BladeAI 0.7.0 包 665 个成员）。
   - 核对过：新镜像的 Entrypoint、Cmd、WorkingDir、User 与在跑的镜像逐字一致，层数 59（基线 57 + 2），所以当初那步 `crane mutate` 没有改动任何配置，不必重放。
 - Fleet 配置加 `foreign_fault_attribution: true`，由 `manifests.py` 渲染成每个 slot 的 `STAGE2_FOREIGN_FAULT_ATTRIBUTION=on`；滚动脚本在提交批次前会逐个 slot 核对这个环境变量确实是 `on`（`rollout_round7.sh` 第 1b 步），不是只看部署成功。
+- **第一次下发失败，值得记一笔**：`rollout_round7.sh` 在第 1 步等了 20 分钟、5 个 slot 原地不动（exit 2），但 `provision` 返回的是 0。
+  - 真正的错在前一步：`fleet config --from-file` 被**旧的 Fleet** 以 `HTTP 422 {"type":"extra_forbidden","loc":["body","foreign_fault_attribution"]}` 拒绝——它的代码里没有这个字段。`deploy_fleet_old.sh` 不会因为这个中止，紧接着的 `provision --execute` 就拿**旧配置**（还是 `ff4a999` 镜像）重新下发了一遍并返回 0，脚本因此以为成功。
+  - **口径**：校验 `FleetConfig`、渲染 slot 清单的是 **Fleet Pod 自己**，不是本机脚本（本机那步 `FleetConfig.model_validate` 用的是工作树代码，当然通过）。所以但凡给 `FleetConfig` 加字段，必须**先把 Fleet 服务本身滚到新镜像**，再发新配置。
+  - 连带一条：换掉 Fleet Pod 会打断 `svc/resbench-fleet` 的 28090 端口转发，而后续每个 `fleet_ctl` 调用都依赖它，必须重启并等它应答。
+  - 处置：新增 `rollout_round7b.sh`——`PHASE=apply` 先把 Fleet 滚到新镜像 → 核对 Fleet 确实在新 digest 上（不在就停，不碰 slot）→ 重启并自持端口转发 → 再跑原来的链路。
+- **第二次下发：滚动成功，但发布能力被拒**（exit 3）。5 个 slot 都已在新镜像上、`STAGE2_FOREIGN_FAULT_ATTRIBUTION` 都是 `on`（脚本第 1b 步逐个核过），但 `publish_harness_capabilities.py` 在 5 个 slot 上一致返回 `{"status": "rejected", "reason": "qualification uses a different gateway configuration or route"}`。
+  - 原因查实：`capability_qualification._verified_gateway_identity`（:226-245）要求资格记录里的 `gateway_config_sha256` 等于**当前**网关配置的哈希。各 slot 上最新的记录是 `base-bladeai-20260915072820`（07:28 UTC），记的是 `97b77318…`，而现在的 `/etc/litellm/config.yaml` 是 `902aa6a7…`——差别正是我自己在第五轮加的 `router_settings` 重试块（bcd3ae9）。记录里的 `gateway_route` 已经指向 nexustokenai，所以对不上的是哈希。
+  - **这个检查是对的**，它就是为了防止拿旧网关下取得的资格去发布能力，所以只能重跑资格认定，不能改记录。
+  - 处置：`round7_requalify_and_run.sh`——在 5 个 slot 上重跑 base 资格认定，**改用 qwen3.8-max**（第七轮真正要跑的模型，路由检查比的就是它的 dashscope 路由；也避免 5 路并发打 nexustokenai，第二轮就是在那里被限流的），然后发布 → preflight → 提交 → 跟踪。
 - 第七轮 `bladeai-parallel-20260915-07`（BladeAI + qwen3.8-max，5 条 L0×C0，2 路并发）。**结果待补记。**
