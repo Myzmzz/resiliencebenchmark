@@ -350,4 +350,20 @@
    - `tests/test_stage2_fault_inventory.py`（新增 4 条和 1 个构造函数）：`:258` 按第八轮 r4 形状构造的标签选择 CR；`:304` 标签选择的实验按实际命中 Pod 归属（r4 端到端回归）；`:326` 控制器删除仍活跃的归属实验并复查确认；`:349` 开关关闭时不删任何 foreign 实验；`:360` 打在邻居 Pod 上的实验不删。
    - 回归：`test_chaosblade_record_target`、`test_stage2_fault_inventory`、`test_stage2_finalization`、`test_stage2_campaign`、`test_fleet_service`、`test_chaos_core_concurrency`、`test_chaos_control_mcp` 共 **155 条通过**。
 
-**部署**：这次没有给 `FleetConfig` 加字段、也没改网关配置（`git diff --name-only` 已核对），所以**不需要先滚 Fleet、不需要重跑资格认定**——第七轮下发踩过的前两个坑这次都不适用，只需重建控制器镜像并更换 slot 的 `controller_image`。**结果待补记。**
+**部署**：这次没有给 `FleetConfig` 加字段、也没改网关配置（`git diff --name-only` 已核对），所以**不需要先滚 Fleet、不需要重跑资格认定**——第七轮下发踩过的前两个坑这次都不适用，只需重建控制器镜像并更换 slot 的 `controller_image`。
+
+- 镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-e1d50bb-bladeai070-own@sha256:3eea624bf31e9432b8c6c1af2f12a68c2d61ea8282593b13813901ccf8fb858a`，配置与在跑镜像逐项一致（同入口、同工作目录、同用户，层数 59）。
+- 下发脚本 `round9_deploy_and_run.sh` 吸取了前几次的教训：不以 `provision` 返回码为准，而是检查下发日志里有无 HTTP 4xx/5xx，并逐个核对 slot 真的换到了新 digest；可运行判定直接读控制器的 `model_matrix`。实际过程：08:45 下发 → 08:47:28 五个 slot 全部在新 digest 上 4/4 → 开关 5/5 为 on → 可运行 5/5 → 起跑前 0 个残留 CR → 08:47:53 提交。
+
+### 9.1 第九轮 `bladeai-parallel-20260916-09`：验证残留清理修复（08:47:52–09:20:56，5 路并发）
+
+- **判分**：1 条 PASS（r4，s04，34.5 分），4 条 CASE_INVALID（`HARNESS_TIMEOUT`，各跑满约 32 分钟）。**5 条尝试次数全为 1、平台重试全为 0，失败归属 platform 为 0**；批次后无残留 CR，5 个副本全部就绪。
+- **修复一（按实际命中的 Pod 归属）：真实环境验证通过。**
+  - 本轮 5 个实验里有 2 个用标签选 Pod：`f06cdc28cd1ecc5b`（otel-demo-04）、`3e80b1ce98e96e4d`（otel-demo-05）；另 3 个用 `names`。
+  - 5 个试验产物的收尾库存里，**5 条全部 `fault_attribution: observed_foreign`、`ever_active: True`**，实验名与各自命名空间里的实验一一对应（观察次数 67–73）。其中两个标签选择的也都归属上了。修复前的第八轮 r4 是完全相同的标签选法，Pod 名为空、152 次轮询零匹配。
+  - **本轮唯一的 PASS（r4，s04）恰恰就是用标签选 Pod 的那一条**——修复前它必然判 `MAIN_FAULT_ACTIVE` 失败。
+- **修复二（控制器删除仍在跑的归属实验）：本轮没有被触发，只有单测支撑。**
+  - 5 个实验存活 609–626 秒，全部 ≥ 600 秒，没有一个被控制器提前删除；5 个产物里都没有 `deleted_foreign_experiment`。
+  - 原因：实验 08:58–09:03 创建、09:09–09:13 自然到期，而试验到 09:18–09:20 才收尾，**收尾时实验早已消失，没有需要删除的东西**。
+  - 因此"本轮没有一条被残留挡住"**不能归功于清理修复**：是因为每条试验都跑过了实验到期时间才收尾，根本没形成挡住重试的条件。这条路径的正确性目前由 `tests/test_stage2_fault_inventory.py:326` 支撑，尚待一次"注入后很快收尾"的真实试验来实测。
+- **仍需注意**：4 条超时都已正确归属（`ever_active: True`），输在 BladeAI 自身跑满预算，不是平台问题。三轮 PASS 率：第七轮 1/5、第八轮 2/5、第九轮 1/5。
