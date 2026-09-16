@@ -290,4 +290,16 @@
   - **另外记一个我判断错过的弯路**：退出当时 5 个 slot 的 `gateway_probe` 还是 `"running"`，我一度据此判成"slot 刚重启、模型列表没刷新"的时序问题（第六轮确有过这种情况）。几分钟后复查 `gateway_probe` 全部变成 `complete`、而计数仍是 0，才排除了这个猜测。凭旧经验套用是这次绕路的原因。
   - 处置：`round7_submit_and_watch.sh` 改成逐个 slot 端口转发、直接读控制器的 `model_matrix`，确认 5/5 后再提交批次并跟踪；资格认定和发布都不再重复。
   - （顺带：preflight 里 `codex: platform_sandbox_missing` 导致 codex 那栏 `supported=false`，与 bladeai 这条路无关。）
-- 第七轮 `bladeai-parallel-20260915-07`（BladeAI + qwen3.8-max，5 条 L0×C0，2 路并发）。**结果待补记。**
+- **第七轮 `bladeai-parallel-20260915-07`（BladeAI + qwen3.8-max，5 条 L0×C0，2 路并发，04:18:50 提交，05:12:29 结束）：归属改动生效，BladeAI 第一次拿到 PASS。**
+  - **r1 判 PASS，34.5 分**（`raw_score` 59.5，`verdict`/`experiment_verdict` 均 PASS，`trial_validity` VALID，原因码为空）。七项检查全部通过：`CONTROLLER_CLEANUP_VERIFIED`、`FAULT_ABSENT`、`MAIN_FAULT_ACTIVE`、`MAIN_FAULT_TARGET_VERIFIED`、`CHAOS_INVENTORY_CLEAR`、`BUSINESS_RECOVERY_VERIFIED`、`NEXT_TRIAL_READY`；`ground_truth` 里 `main_fault_ever_active`、`main_fault_target_verified`、`fault_effect_verified`、`business_recovery_verified` 全为 true；实验关卡 `status: PASS`、`main_fault_running: true`。
+  - **归属确实来自智能体自建的 CR**：r1 的效果窗口 `injection_id = d3dd227dbee9f41d`、`time_source = controller_first_observed_state`、窗口 04:35:21→04:45:26；operator 日志里这个实验 04:35:15 创建、04:45:20 删除，目标是 `otel-demo-01/cart-7ffd4d6f-gcds8`。也就是**创建后约 6 秒被观察器看到、删除后约 6 秒被记为结束**。第六轮那句 "actual fault window is not established" 和 `injection_id: null` 不再出现。
+    - **证据口径要说清**：判分文档里并没有直接透传 `fault_attribution: observed_foreign` 这个标记（`snapshot["trial"]` 的字段不会整体进判分文档），我在 r1 的判分文档里能看到的是 `effect_observation.window.injection_id`。所以"归属生效"的结论是由三条合起来支撑的：`injection_id` 指向一个平台账本里没有的实验、其时间戳与 operator 日志逐秒吻合、且 `ground_truth.main_fault_ever_active` 为 true。
+    - BladeAI 自报的注入命令是 `blade create k8s pod-cpu fullload --names=cart-7ffd4d6f-gcds8 --namespace=otel-demo-01 --cpu-percent=80 --timeout=600`，即 **k8s/pod scope**；operator 再把它翻译成 `cri cpu fullload --container-id` 下发给 chaosblade-tool。这一点是匹配键能成立的前提——**只有 pod scope 的 CR 才带 names/namespace matchers**，`backends/chaosblade.py` 正是从 matchers 里读出命名空间和 Pod 名的（标签读不到，因为那是 `chaos_control` 才写的）。
+  - **没有跨副本误归属**：本轮两个被归属的实验各归各家——`35050a0c64308f9a` 打在 otel-demo-03，归 r3（s03）；`d3dd227dbee9f41d` 打在 otel-demo-01，归 r1（s01）。两者时间窗重叠（04:35–04:38 同时在跑），仅靠时间无法区分，是命名空间 + Pod 名把它们分开的，匹配键按预期工作。
+  - **r3 判 CASE_INVALID（`HARNESS_TIMEOUT`）但归属同样生效**：`injection_id = 35050a0c64308f9a`、窗口 04:28:52→04:38:59，`main_fault_ever_active`、`main_fault_target_verified`、`business_recovery_verified` 都是 true。它输在智能体自己没在预算内收尾（又是意图澄清绕圈），不是平台不认它的注入。
+  - **另外三条没拿到归属，原因各不相同，都不是归属逻辑的问题**：
+    - r4（判 FAIL，2.5 分）：`injection_id` 为空、窗口为空，而 `CHAOS_INVENTORY_CLEAR`、`NEXT_TRIAL_READY` 都通过——它只跑了 1 分 45 秒就交了不合规结果（`OUTPUT_UNSTRUCTURED` / `RESULT_CONTRACT_INVALID`），**压根没注入**，没有东西可归属。
+    - r5（判 FAIL，2.5 分）：第 3 次尝试只跑了 21 秒，`next_trial_readiness: BLOCKED`、`CHAOS_INVENTORY_CLEAR` 未过——被前序尝试留下的实验挡住。
+    - r2：平台 BLOCKED，`elapsed_seconds: 0`、`event_count: 4`、**交互数 0、没有判分文档**，确认根本没有真正开跑。
+  - **残留**：05:03:08 在 `otel-demo-01/cart-7ffd4d6f-gcds8` 上建的 `8a317659fd446891` 是本轮唯一残留，它同时解释了 r5 的 `CHAOS_INVENTORY_CLEAR` 失败和 r2/r5 被阻断。它在 **05:13:12–05:13:13 被销毁并删除**，即批次结束（05:12:29）之后约 40 秒；operator 侧的动作是 `blade status c4a837510631b914` 之后走销毁流程。**触发者是谁尚未查实**——operator 日志只记录了销毁本身，s01 控制器日志里没有匹配到 cleanup/destroy/fallback 的记录，所以不能断言是平台兜底还是 BladeAI 自己收的尾。批次结束后集群已干净：无 ChaosBlade CR，`chaosblade-tool` 上只剩 08-28、09-04 两条历史记录，5 个副本各 6 个 Pod 全部就绪。
+  - **本轮小结**：5 条里 1 条 PASS、2 条拿到归属（r1、r3），归属机制本身已验证可用；其余失败集中在 BladeAI 自身行为（意图澄清绕圈、输出不合规）和由残留引发的连锁阻断。
