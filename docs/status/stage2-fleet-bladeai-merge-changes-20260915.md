@@ -273,4 +273,9 @@
   - 原因查实：`capability_qualification._verified_gateway_identity`（:226-245）要求资格记录里的 `gateway_config_sha256` 等于**当前**网关配置的哈希。各 slot 上最新的记录是 `base-bladeai-20260915072820`（07:28 UTC），记的是 `97b77318…`，而现在的 `/etc/litellm/config.yaml` 是 `902aa6a7…`——差别正是我自己在第五轮加的 `router_settings` 重试块（bcd3ae9）。记录里的 `gateway_route` 已经指向 nexustokenai，所以对不上的是哈希。
   - **这个检查是对的**，它就是为了防止拿旧网关下取得的资格去发布能力，所以只能重跑资格认定，不能改记录。
   - 处置：`round7_requalify_and_run.sh`——在 5 个 slot 上重跑 base 资格认定，**改用 qwen3.8-max**（第七轮真正要跑的模型，路由检查比的就是它的 dashscope 路由；也避免 5 路并发打 nexustokenai，第二轮就是在那里被限流的），然后发布 → preflight → 提交 → 跟踪。
+- **第三次下发：重跑资格认定，4/5 通过，卡在 s02**（exit 3）。
+  - 重跑后的记录 `gateway_config_sha256` 都是 `902aa6a7…`，与当前网关一致，上一次的哈希问题确实解决了。s01、s03、s04、s05 四个 `harness_report_status` 是 `completed`、`cleanup_errors` 为空、`gateway_evidence_verified` 为真，发布成功，口径写的是 `BLADEAI_BLACKBOX_HTTP_CHANNEL`。
+  - s02 的记录是 `timeout`，发布被拒：`{"status": "rejected", "reason": "black-box BladeAI qualification needs a completed session with gateway evidence"}`（`capability_qualification.py:290` 硬性要求 `completed`）。s02 上那条状态合格的老记录又是旧网关的 `97b77318`，所以它当时没有任何一条可用记录。
+  - **s02 为什么 timeout**：它的 bladeai-server 一直在意图澄清里打转——`chaos_agent.agent.nodes.planning.intent_clarification: Intent partially converged (unset), continuing dialogue` 反复出现，每次请求约 2.8–3.8 万 prompt token，绕满约 30 分钟预算。同一提示词、同一模型、同一时刻另外四个都一次过；s02 的 `failure_reasons` 只比 s01 多 `harness_report_not_completed` 一条，其余六条都是黑盒认定本就跳过的 MCP 通道类。**定性：BladeAI 自身的概率性行为，与本次归属改动无关。**
+  - 处置：`round7_fix_s02_and_run.sh` 只对 s02 重跑（最多 2 次，连续失败就停下交给人判断，不无限重试），另外四个不动，然后发布 → preflight → 提交 → 跟踪。
 - 第七轮 `bladeai-parallel-20260915-07`（BladeAI + qwen3.8-max，5 条 L0×C0，2 路并发）。**结果待补记。**
