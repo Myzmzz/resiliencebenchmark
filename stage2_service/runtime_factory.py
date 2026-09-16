@@ -1439,6 +1439,10 @@ class DirectChaosCleanup:
             return {"verified_absent": False, "principal": "CONTROLLER_FALLBACK", "reason": "fault_inventory_incomplete"}
         trial = dict(inventory.get("trial") or {})
         if int(trial.get("ledger_match_count") or 0) == 0:
+            # Only reachable with STAGE2_FOREIGN_FAULT_ATTRIBUTION on: without it
+            # fault_attribution is always "ledger" and nothing below changes.
+            if trial.get("fault_attribution") == "observed_foreign" and trial.get("resource_absent") is not True:
+                return await self._cleanup_attributed_foreign(runtime, inventory, trial)
             return {"verified_absent": inventory.get("owned_resources_absent") is True, "principal": "CONTROLLER_FALLBACK", "idempotent": True}
         if int(trial.get("ledger_match_count") or 0) != 1:
             return {"verified_absent": False, "principal": "CONTROLLER_FALLBACK", "reason": "ambiguous_trial_ledger"}
@@ -1450,6 +1454,67 @@ class DirectChaosCleanup:
             principal="CONTROLLER_FALLBACK",
         )
         return {**dict(result), "principal": "CONTROLLER_FALLBACK", "executor_id": executor_id}
+
+    async def _cleanup_attributed_foreign(
+        self,
+        runtime,
+        inventory: Mapping[str, Any],
+        trial: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Delete the one Agent-created experiment this Trial was credited with.
+
+        Before this, ``_cleanup_owned`` answered ``verified_absent: True``
+        whenever the ledger was empty -- true of the ledger, false of the
+        cluster.  With foreign attribution on, a credited experiment still
+        burning CPU was reported as cleaned up, the platform retried at once,
+        and the retry was blocked by that same experiment (round seven r5,
+        round eight r4).  All twelve BladeAI experiments measured across rounds
+        six to eight lived 605-612 s: their own ``--timeout=600``, never an
+        earlier cleanup by the Agent or by this Controller.
+
+        This is still exact deletion, not discovery.  The name comes from this
+        Trial's own attribution record, and the resource must be found exactly
+        once as a non-owned, active experiment of the recorded fault type in
+        the Trial's namespace; anything else is refused.  Absence is re-read
+        from the cluster afterwards instead of being assumed.
+        """
+        name = str(trial.get("experiment_name") or "")
+        executor_id = str(trial.get("executor_id") or "")
+        namespace = runtime.target.namespace
+        fault_type = str(trial.get("fault_type") or "")
+        refused = {"verified_absent": False, "principal": "CONTROLLER_FALLBACK"}
+        if not name or executor_id not in self.services:
+            return {**refused, "reason": "attributed_foreign_experiment_unknown"}
+        candidates = [
+            resource
+            for resource in inventory.get("resources") or []
+            if resource.get("name") == name
+            and resource.get("namespace") == namespace
+            and resource.get("executor_id") == executor_id
+            and resource.get("owned_by_trial") is not True
+            and resource.get("active") is True
+            and (not fault_type or resource.get("fault_type") == fault_type)
+        ]
+        if len(candidates) != 1:
+            return {
+                **refused,
+                "reason": "attributed_foreign_experiment_not_uniquely_found",
+                "candidate_count": len(candidates),
+            }
+        await self.services[executor_id].backend.delete_experiment(namespace, name, self.kubeconfig)
+        after = await self._inventory_trial(runtime)
+        still_active = any(
+            resource.get("name") == name
+            and resource.get("namespace") == namespace
+            and resource.get("active") is True
+            for resource in after.get("resources") or []
+        )
+        return {
+            "verified_absent": after.get("qualified") is True and not still_active,
+            "principal": "CONTROLLER_FALLBACK",
+            "executor_id": executor_id,
+            "deleted_foreign_experiment": name,
+        }
 
     @staticmethod
     def _read_ledgers(service) -> list[dict[str, Any]]:

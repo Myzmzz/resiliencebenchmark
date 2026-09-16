@@ -16,6 +16,7 @@ from stage2_service.fault_inventory import (
 )
 from stage2_service.contracts import RuntimeTarget, TrialRuntimeContext
 from stage2_service.condition_monitor import ConditionRecoveryMonitor
+from mcp_servers.chaos_core.backends.chaosblade import _record_from_resource
 from stage2_service.foreign_fault_observer import ForeignFaultObserver
 from stage2_service.runtime_factory import DirectChaosCleanup
 from stage2_service.reset_policy import ResetTier, classify_reset_policy
@@ -167,9 +168,15 @@ def _agent_fault_services(records):
         async def list_experiments(self, _kubeconfig, _namespace):
             return list(self.records)
 
+        async def delete_experiment(self, namespace, name, _kubeconfig):
+            # Record the call, then behave like kubectl: the CR is gone.
+            self.deleted.append((namespace, name))
+            self.records = [record for record in self.records if record.name != name]
+
     class Service:
         def __init__(self, records):
             self.backend = Backend(records)
+            self.backend.deleted = []
 
         def _iter_cleanup_ledger_paths(self):
             return []
@@ -246,6 +253,120 @@ def test_agent_created_fault_on_another_pod_is_not_the_trials_main_fault(
 
     assert snapshot["trial"]["ever_active"] is False
     assert snapshot["trial"]["fault_attribution"] == "ledger"
+
+
+def _label_selected_agent_cr(*, name="blade-by-label", hit_pod="cart-1"):
+    """A CR shaped like round eight's r4: chosen by label, no ``names`` matcher.
+
+    The operator still hit exactly one Pod and recorded it in the status, in the
+    cri form it really writes (namespace/node/pod/container/id/runtime).
+    """
+    return {
+        "kind": "ChaosBlade",
+        "metadata": {"name": name, "labels": {}},
+        "spec": {
+            "experiments": [
+                {
+                    "scope": "pod",
+                    "target": "cpu",
+                    "action": "fullload",
+                    "matchers": [
+                        {"name": "namespace", "value": ["otel-demo"]},
+                        {"name": "names", "value": []},
+                        {"name": "labels", "value": ["app.kubernetes.io/component=cart"]},
+                    ],
+                }
+            ]
+        },
+        "status": {
+            "phase": "Running",
+            "expStatuses": [
+                {
+                    "scope": "pod",
+                    "target": "cpu",
+                    "action": "fullload",
+                    "success": True,
+                    "resStatuses": [
+                        {
+                            "id": "eae172a30c56acef",
+                            "identifier": f"otel-demo/node-1/{hit_pod}/cart/2363c7f7269a/docker",
+                            "kind": "pod",
+                            "state": "Success",
+                            "success": True,
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+
+
+def test_label_selected_agent_fault_is_attributed_from_the_pod_it_actually_hit(
+    tmp_path, monkeypatch
+):
+    """Round eight r4, 2026-09-16: selected by label, never attributed.
+
+    Its ``names`` matcher was empty, so the parsed Pod name was "" and the
+    observer's 152 polls never matched.  The Pod the operator really hit is in
+    the CR status, and that is what the attribution must compare.
+    """
+    monkeypatch.setenv("STAGE2_FOREIGN_FAULT_ATTRIBUTION", "on")
+    record = _record_from_resource(_label_selected_agent_cr())
+    blade, mesh = _agent_fault_services([record])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    snapshot = cleanup.inventory_trial(_agent_fault_runtime())
+
+    assert record.target_name == "cart-1"
+    assert snapshot["trial"]["ever_active"] is True
+    assert snapshot["trial"]["fault_attribution"] == "observed_foreign"
+    assert snapshot["trial"]["experiment_name"] == "blade-by-label"
+
+
+def test_controller_deletes_the_attributed_agent_fault_it_still_sees_running(
+    tmp_path, monkeypatch
+):
+    """The empty-ledger branch used to report "verified absent" with the fault live.
+
+    That false answer let the platform retry straight into the same running
+    experiment.  Now the credited experiment is deleted by its recorded name and
+    absence is re-read from the cluster, attributed to the Controller.
+    """
+    monkeypatch.setenv("STAGE2_FOREIGN_FAULT_ATTRIBUTION", "on")
+    blade, mesh = _agent_fault_services([_agent_created_record()])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+    runtime = _agent_fault_runtime()
+
+    result = cleanup.cleanup_owned(runtime)
+
+    assert blade.backend.deleted == [("otel-demo", "blade-own")]
+    assert mesh.backend.deleted == []
+    assert result["verified_absent"] is True
+    assert result["principal"] == "CONTROLLER_FALLBACK"
+    assert result["deleted_foreign_experiment"] == "blade-own"
+
+
+def test_controller_never_deletes_an_agent_fault_without_the_switch(tmp_path):
+    """Default behaviour is unchanged: no attribution, so nothing foreign is touched."""
+    blade, mesh = _agent_fault_services([_agent_created_record()])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    result = cleanup.cleanup_owned(_agent_fault_runtime())
+
+    assert blade.backend.deleted == []
+    assert result["idempotent"] is True
+
+
+def test_controller_leaves_a_neighbours_agent_fault_alone(tmp_path, monkeypatch):
+    """A fault on another Pod was never credited to this Trial, so it is not deleted."""
+    monkeypatch.setenv("STAGE2_FOREIGN_FAULT_ATTRIBUTION", "on")
+    blade, mesh = _agent_fault_services([_agent_created_record(target_name="cart-9")])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    result = cleanup.cleanup_owned(_agent_fault_runtime())
+
+    assert blade.backend.deleted == []
+    assert result["idempotent"] is True
 
 
 def test_foreign_fault_observer_reports_the_first_attributed_poll():

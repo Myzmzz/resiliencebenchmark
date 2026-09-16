@@ -314,3 +314,40 @@
 - **r4 的阻断确认由残留引起**：其末次尝试 07:16:59–07:17:21 落在本副本实验 `4e9bb83c712f8b46`（07:09:08–07:19:18）**存活区间之内**，与第七轮 r5 同形态。
 - **r3 的阻断不是残留，但真实原因待查实**：其末次尝试 07:32:28 发生在本副本实验 `ee751f61043ab6c5` 销毁（07:30:16）**之后**，判分给的是 `HARNESS_TIMEOUT`。我一度写成"更可能是前两次尝试各自耗尽预算"，**这个推测当时没有证据，已删除**。附带纠正一个我自己取样不足造成的错误数字：我先按 `--tail=4000` 数 s01 的 `Intent partially converged` 得到 0 次，扩大到 `--tail=20000` 后实际是 **4 次**——**行数取窄会直接得出相反结论，这类计数必须先确认取样范围**。**已查实**：r3 的 run `lxr-f4512cc657ef473d` 于 **06:52:50 被接收**、`elapsed_seconds` 2344 秒（约 39 分钟）、交互 15 次、智能体主动提问 5 次、事件 224 条，最终 `platform_status: BLOCKED`。批次里记的"末次 07:32:28→07:32:49（21 秒）"只是最后一次平台重试的外壳，不是该 run 的主体耗时。**所以 r3 是跑满预算后超时（与判分的 `HARNESS_TIMEOUT` 一致），不是被残留挡住**；s01 上确实出现过 4 次 `Intent partially converged`，绕圈现象存在。
 - **残留与收尾**：批次结束后集群干净，无 ChaosBlade CR，5 个副本全就绪。
+
+## 九、残留清理修复（用户 09-16 要求"修残留清理"）
+
+**现象**：第七轮 r5、第八轮 r4 是同一形态——第一次尝试注入的实验还活着，平台立即重试，重试撞上活着的实验，判 `CHAOS_INVENTORY_CLEAR` 失败、`POST_TRIAL_ENVIRONMENT_NOT_READY`、`BLOCKED`。
+
+**查实的根因（两个，缺一不可）**
+
+1. **没有任何人在清理 BladeAI 的实验。** 第六到第八轮 BladeAI 建的全部 12 个实验，存活时长都是 605–612 秒，一个例外都没有，正好是它注入时自带的 `--timeout=600`：BladeAI 从不主动删，控制器也从不删。控制器不删，是因为改前的 `_cleanup_owned`（`runtime_factory.py:1441-1442`）在账本为空时直接返回 `verified_absent = owned_resources_absent`——这句话对账本是真的、对集群是假的：实验还活着，它却报"已验证清除"，平台据此认为环境干净、立即重试。
+2. **按标签选 Pod 的实验根本没被归属**，连"删掉归属到的实验"都无从谈起。第八轮 r4 的观察器在 06:55:07 批准时就武装了、轮询 152 次零报错，却一次没匹配上；试验产物里的收尾库存显示那个实验 `target_name` 为空字符串（phase 为 Running、active 为真）。原因是 BladeAI 这次用 `labels: app.kubernetes.io/component=cart` 选 Pod、`names` 为空，而同轮 r5 用的是 `names: cart-7ffd4d6f-cb5lt`——**同一个智能体、同一份提示词，选 Pod 的方式时变**。改前的 `_record_from_resource`（`chaosblade.py:251`）只从 `names` 读 Pod 名。
+
+**顺带回答第七轮标了"未查实"的清理触发者**：`8a317659fd446891` 05:03:08→05:13:13 共 605 秒，就是它自己的 `--timeout=600` 到期，不是平台兜底，也不是 BladeAI 收尾。
+
+**我查错过的方向（如实记录，避免后人重走）**：
+- "Pod 中途被重建"——otel-demo-04 的 cart Pod 创建于 09-15 07:14:59，第八轮期间没有重建事件。
+- "运行时绑定与实验不一致"——命名空间、Pod 名、故障类型三项逐一对得上。
+- "实验 phase 落入终态集合导致 active 为假"——实际 phase 是 Running、active 为真。
+- "观察器没武装"——06:55:07 批准时已武装。
+- 取证路径错误：判分文档的 `effect_observation.fault_inventory` **不透传**，两条都取到空；真正的收尾库存在试验产物 `recovery.json` 的 `fault_effect_evidence.fault_inventory` 里。
+
+**改动**
+
+1. **`mcp_servers/chaos_core/backends/chaosblade.py`**
+   - 改前 `:251`：`target_name=str(_matcher_value(experiment, "names"))`。
+   - 改后：`:247` 先算出 `namespace`；`:254-256` `names` 为空时退回 `_target_pod_from_status(status, namespace)`。
+   - 新增 `:266-297` `_target_pod_from_status`：从 `status.expStatuses[].resStatuses[].identifier` 读 operator **实际命中**的 Pod。字段结构取自集群 CRD（`chaosblades.chaosblade.io` v1alpha1）而非记忆，CRD 规定为 `Namespace/NodeName/PodName[/ContainerName]`；operator 实际写的是 `otel-demo-04/tcse-v100-02/cart-7ffd4d6f-bgrt7/cart/2363c7f7269a/docker`，多出容器 ID 与运行时两段，所以一律取第 3 段。只在所有未失败的命中都指向同一 Pod、且命名空间与 CR 一致时采用；命中多个 Pod、跨命名空间、或命中被标记失败，都返回空串，不猜。
+   - 影响面：`target_name` 只被 foreign 归属匹配使用，`owned_by_trial` 和账本匹配都不读它，所以另外三家（走 `chaos_control`，CR 必带 `names`）的判定不变。`:164` 的内存后端构造的是平台自己的清单、必带 `names`，未改。
+2. **`stage2_service/runtime_factory.py`**
+   - 改前：`_cleanup_owned` 账本为空一律返回 `verified_absent = owned_resources_absent`，不删任何东西。
+   - 改后 `:1444-1445`：账本为空、但 `fault_attribution == "observed_foreign"` 且归属实验仍活跃时，转入新方法 `_cleanup_attributed_foreign`（`:1458`）。
+   - 新方法：删除凭据是**本试验归属记录里的确切实验名**；删前在库存里核对它恰好一个、非本平台所有、仍活跃、命名空间与执行器一致、故障类型一致，否则拒绝（`:1501` `attributed_foreign_experiment_not_uniquely_found`）；调用后端现成的 `delete_experiment`；删后重新读一次集群复查，据实返回 `verified_absent`；责任方记 `CONTROLLER_FALLBACK` 并标 `deleted_foreign_experiment`（`:1516`），不算到智能体头上。
+   - **这仍是精确删除，不是按目标发现删除**，没有违反 `DirectChaosCleanup` 的安全设计——删除凭据从账本换成了本试验自己的归属记录。开关关闭时 `fault_attribution` 恒为 `ledger`，新分支不会进入，行为逐字不变。
+3. **测试**
+   - `tests/test_chaosblade_record_target.py`（新增 5 条）：`:48` `names` 优先；`:56` 标签选择时退回唯一命中的 Pod；`:63` 命中多个 Pod 不猜；`:76` 跨命名空间的命中被忽略；`:82` 被标记失败的命中不采用。
+   - `tests/test_stage2_fault_inventory.py`（新增 4 条和 1 个构造函数）：`:258` 按第八轮 r4 形状构造的标签选择 CR；`:304` 标签选择的实验按实际命中 Pod 归属（r4 端到端回归）；`:326` 控制器删除仍活跃的归属实验并复查确认；`:349` 开关关闭时不删任何 foreign 实验；`:360` 打在邻居 Pod 上的实验不删。
+   - 回归：`test_chaosblade_record_target`、`test_stage2_fault_inventory`、`test_stage2_finalization`、`test_stage2_campaign`、`test_fleet_service`、`test_chaos_core_concurrency`、`test_chaos_control_mcp` 共 **155 条通过**。
+
+**部署**：这次没有给 `FleetConfig` 加字段、也没改网关配置（`git diff --name-only` 已核对），所以**不需要先滚 Fleet、不需要重跑资格认定**——第七轮下发踩过的前两个坑这次都不适用，只需重建控制器镜像并更换 slot 的 `controller_image`。**结果待补记。**

@@ -244,11 +244,16 @@ def _record_from_resource(resource: Mapping[str, Any]) -> ExperimentRecord:
     status = resource.get("status", {}) or {}
     experiment = _first_experiment(spec)
     phase = str(status.get("phase") or status.get("status") or status.get("state") or "Unknown")
+    namespace = str(labels.get(NAMESPACE_LABEL) or _matcher_value(experiment, "namespace"))
     return ExperimentRecord(
         name=str(metadata.get("name", "")),
-        namespace=str(labels.get(NAMESPACE_LABEL) or _matcher_value(experiment, "namespace")),
+        namespace=namespace,
         run_id=str(labels.get(RUN_ID_LABEL, "")),
-        target_name=str(_matcher_value(experiment, "names")),
+        # A label-selected experiment has no ``names`` matcher; fall back to the
+        # Pod the operator actually hit (see _target_pod_from_status).
+        target_name=str(
+            _matcher_value(experiment, "names") or _target_pod_from_status(status, namespace)
+        ),
         target_uid=str(labels.get(TARGET_UID_LABEL, "")),
         fault_type=str(labels.get(FAULT_TYPE_LABEL) or _fault_type_from_experiment(experiment)),
         phase=phase,
@@ -256,6 +261,40 @@ def _record_from_resource(resource: Mapping[str, Any]) -> ExperimentRecord:
         labels=dict(labels),
         raw=resource,
     )
+
+
+def _target_pod_from_status(status: Mapping[str, Any], namespace: str) -> str:
+    """The one Pod this experiment actually acted on, read from the CR status.
+
+    ``names`` is only one way to choose a Pod.  BladeAI sometimes selects by
+    label instead (``labels: app.kubernetes.io/component=cart``), and then the
+    ``names`` matcher is empty even though the operator hit exactly one Pod.
+    The operator records what it really hit in
+    ``status.expStatuses[].resStatuses[].identifier``.  The CRD rule for that
+    field is ``Namespace/NodeName/PodName[/ContainerName]``; the cri path also
+    appends the container id and the runtime, so the Pod is always field three.
+
+    Returns the Pod name only when every hit that did not fail names the same
+    Pod in this CR's own namespace.  Several Pods, a foreign namespace, or no
+    usable hit return "" instead of a guess.  Measured 2026-09-16, round eight:
+    item r4's experiment selected by label, parsed with an empty Pod name, the
+    foreign-fault attribution never matched it across 152 polls, and its Trial
+    ended with the fault still running.
+    """
+    pods: set[str] = set()
+    for experiment_status in status.get("expStatuses") or []:
+        if not isinstance(experiment_status, Mapping):
+            continue
+        for resource_status in experiment_status.get("resStatuses") or []:
+            if not isinstance(resource_status, Mapping) or resource_status.get("success") is False:
+                continue
+            fields = str(resource_status.get("identifier") or "").split("/")
+            if len(fields) < 3 or not fields[2]:
+                continue
+            if namespace and fields[0] != namespace:
+                continue
+            pods.add(fields[2])
+    return pods.pop() if len(pods) == 1 else ""
 
 
 def _first_experiment(spec: Mapping[str, Any]) -> Mapping[str, Any]:
