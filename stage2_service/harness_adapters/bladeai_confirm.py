@@ -309,6 +309,48 @@ NON_NATIVE_INTENT_PARAMS = frozenset({
 })
 
 
+def _condition_from_params(
+    params: Mapping[str, Any] | None,
+    prefix: str,
+) -> dict[str, Any] | None:
+    """Build one platform ``Condition`` from BladeAI's flat intent params.
+
+    BladeAI 0.7.0 carries its acceptance criteria as three flat keys --
+    ``<prefix>_metric``, ``<prefix>_operator`` and ``<prefix>_threshold`` --
+    while the platform's validator wants a nested
+    ``{"metric", "operator", "threshold"}`` object.  Returns ``None`` unless
+    all three are present and the threshold is a number, because a partial
+    condition is a blocking validation issue rather than a missing field.
+
+    This matters at L0: ``simulated_user._may_supply`` is empty there, so the
+    platform may not fill these two fields in on the Agent's behalf.  Round 6
+    on 2026-09-15 sent plans without them in every trial; the simulated user
+    answered ``effect_condition: MISSING_PLAN_FIELD; recovery_condition:
+    MISSING_PLAN_FIELD`` and BladeAI spent the whole 30-minute budget in a
+    re-proposal loop (items r1 and r3 ended CASE_INVALID on HARNESS_TIMEOUT).
+    """
+    if not isinstance(params, Mapping):
+        return None
+    metric = params.get(f"{prefix}_metric")
+    operator = params.get(f"{prefix}_operator")
+    threshold = params.get(f"{prefix}_threshold")
+    if not (isinstance(metric, str) and metric.strip()):
+        return None
+    if not (isinstance(operator, str) and operator.strip()):
+        return None
+    try:
+        # 0.7.0 writes the threshold as a string ("0.5"); the contract wants a
+        # JSON number and rejects the string form.
+        threshold_value = float(threshold)
+    except (TypeError, ValueError):
+        return None
+    return {
+        "metric": metric.strip(),
+        "operator": operator.strip(),
+        "threshold": threshold_value,
+    }
+
+
 def plan_from_intent(
     recommendation: Mapping[str, Any],
     *,
@@ -377,6 +419,14 @@ def plan_from_intent(
                     plan["additional_native_constraints"] = extra
             else:
                 plan["native_params"] = dict(params)
+
+    # The two acceptance conditions the platform requires but never supplies at
+    # L0.  They live beside the ChaosBlade knobs in ``params`` and are already
+    # excluded from the native flags by NON_NATIVE_INTENT_PARAMS.
+    for field, prefix in (("effect_condition", "effect"), ("recovery_condition", "recovery")):
+        condition = _condition_from_params(params, prefix)
+        if condition is not None:
+            plan[field] = condition
 
     identity = {key: (target or {}).get(key) for key in ("namespace", "name", "uid")}
     if not all(isinstance(value, str) and value for value in identity.values()):

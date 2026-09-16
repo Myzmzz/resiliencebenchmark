@@ -269,6 +269,58 @@ def test_plan_from_intent_reads_the_skill_spelling_of_bladeai_0_7_0() -> None:
     assert plan["duration_seconds"] == 600
 
 
+def test_plan_from_intent_emits_the_two_conditions_the_platform_never_supplies() -> None:
+    """L0 leaves effect_condition and recovery_condition to the Agent.
+
+    ``simulated_user._may_supply`` is an empty set at L0, so the simulated user
+    may not fill either field in.  Round 6 on 2026-09-15 proposed plans without
+    them in all five trials; the platform answered ``effect_condition:
+    MISSING_PLAN_FIELD; recovery_condition: MISSING_PLAN_FIELD`` and BladeAI
+    re-proposed until the trial budget ran out (r1 and r3 ended CASE_INVALID on
+    HARNESS_TIMEOUT).  0.7.0 does carry the criteria -- flat, and as strings.
+    """
+    plan = plan_from_intent(
+        ROUND_FOUR_INTENT,
+        target={"namespace": "otel-demo-05", "name": "cart-7ffd4d6f-lhw8j", "uid": "uid-1"},
+    )
+    assert plan["effect_condition"] == {
+        "metric": "target_cpu_cores",
+        "operator": "increase_by_at_least",
+        "threshold": 0.5,
+    }
+    assert plan["recovery_condition"] == {
+        "metric": "target_cpu_cores",
+        "operator": "within_baseline_delta",
+        "threshold": 0.3,
+    }
+    # The criteria are not ChaosBlade flags; they must not reach the executor.
+    assert "effect_metric" not in plan.get("native_params", {})
+    assert "--effect-metric" not in plan.get("additional_native_constraints", {})
+
+
+def test_plan_from_intent_omits_a_condition_it_cannot_complete() -> None:
+    """A half-written condition is a blocking issue, a missing one is not.
+
+    ``_has_blocking_issues`` treats MISSING_PLAN_FIELD as recoverable and
+    everything else as fatal, so sending two of the three keys would be worse
+    than sending none.
+    """
+    params = {
+        key: value
+        for key, value in ROUND_FOUR_INTENT["fault_intent"]["params"].items()
+        if key != "recovery_operator"
+    }
+    intent = {
+        "type": "intent_confirm",
+        "fault_intent": {**ROUND_FOUR_INTENT["fault_intent"], "params": params},
+    }
+    plan = plan_from_intent(
+        intent, target={"namespace": "otel-demo-05", "name": "cart-7ffd4d6f-lhw8j", "uid": "uid-1"}
+    )
+    assert plan["effect_condition"]["metric"] == "target_cpu_cores"
+    assert "recovery_condition" not in plan
+
+
 def test_plan_from_intent_prefers_the_runtime_identity_when_it_has_one() -> None:
     plan = plan_from_intent(ROUND_FOUR_INTENT, target={"namespace": "otel-demo-05", "name": "cart-bound", "uid": "uid-bound"})
     assert plan["target"] == {"namespace": "otel-demo-05", "name": "cart-bound", "uid": "uid-bound"}

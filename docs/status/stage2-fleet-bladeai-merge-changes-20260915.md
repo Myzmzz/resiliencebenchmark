@@ -176,9 +176,22 @@
      - 09-11 直接驱动 BladeAI 0.7.0 时用的就是它，那一轮确实完成了注入；
      - 比 claude-opus-5 便宜，协议转换环节也更少。
    - 模型由平台在每次试验时经 config API 推给 server，只改批次里的 `model` 字段即可，不用重新部署。
-   - 第六轮 `bladeai-parallel-20260915-06`（qwen3.8-max，2 路并发），结果待补记。
-   - **没有注入，也没有残留**：集群里没有 CR，operator 没有活动，5 个副本 cart CPU 为 14–18m。
-   - **结果**：r1、r3、r4 判 CASE_INVALID（HARNESS_EXECUTION_FAILED），r2、r5 判 VALID FAIL（2.5 分）。**本轮同样不能算作 BladeAI 的成绩。**
+12. **第六轮 `bladeai-parallel-20260915-06`**（qwen3.8-max，2 路并发，17:38:58 提交，18:35:16 全部结束）：
+   - **BladeAI 第一次真正完成注入**（前五轮都是 0 次）。chaosblade-operator 日志里有 4 个 `cri cpu fullload` 实验，目标都是 cart 容器、80% CPU、`--timeout=600`：
+
+     | 实验 | 命名空间 / Pod | 创建 → 删除 | 对应条目 |
+     |---|---|---|---|
+     | `437dada9fc368f28` | otel-demo-01 / cart-7ffd4d6f-gcds8 | 17:50:14 → 18:00:19 | r1 |
+     | `d6de78237ff8a7ef` | otel-demo-05 / cart-7ffd4d6f-lhw8j | 17:50:47 → 18:00:52 | r3 |
+     | `39196ee993783c83` | otel-demo-01 / cart-7ffd4d6f-gcds8 | 18:22:21 → 18:32:27 | r2 |
+     | `6d8b7ad676e6d6a4` | otel-demo-05 / cart-7ffd4d6f-lhw8j | 18:26:45 → 18:36:50 | r5 的早期尝试 |
+
+   - **结果**：r1、r3 判 CASE_INVALID（`HARNESS_TIMEOUT`，各跑满约 1824 s）；r2、r4、r5 判 VALID FAIL（2.5 分，`raw_score` 12.5 / `verified_nodes` 1）。**5 条都不能算作 BladeAI 的成绩。**
+   - **注入没有被计分**：三条 VALID 条目的失败规则都是 `MAIN_FAULT_ACTIVE`（期望 true、实测 false），`effect_observation` 写的是"actual fault window is not established"、`window.injection_id` 为 null。
+   - **两个互相独立的根因**：
+     1. 计划体始终缺 `effect_condition` / `recovery_condition`，被模拟用户反复拒绝。r3 的重试原因逐字为 `ConversationError: confirmation completion failed validation: effect_condition: MISSING_PLAN_FIELD; recovery_condition: MISSING_PLAN_FIELD`；r1 的 17 次交互全部停在 `C1_PLAN`，关卡名一路变成"提供合法的 metric 取值""提供合法的 operator 取值"，30 分钟预算就这样耗光。**已修，见第七节。**
+     2. 平台只承认自己账本里的实验，BladeAI 原生建的 CR 永远算 foreign。**未修，见第六节 12。**
+   - **残留**：只有 r5 的 `CHAOS_INVENTORY_CLEAR` 没过、并判了 `POST_TRIAL_ENVIRONMENT_NOT_READY`，原因是上一次尝试留下的 `6d8b7ad676e6d6a4` 还在（18:36:50 由 operator 清掉）。批次结束后复查：集群无 ChaosBlade CR，5 个副本各 6 个 Pod 全部 Ready，chaosblade-tool 上只剩 08-28、09-04 两条历史记录。
 
 ## 六、已知限制（本轮刻意不做）
 
@@ -193,3 +206,23 @@
 9. **slot 刚启动时要等网关探测**：已由 1519f8c 默认关闭探测解决（见第三节）。关闭前，5 个 slot 同时探测把 nexustokenai 打到限流，gpt-5.5 被判为不可运行。
 10. **上游模型错误被判成 agent 侧失败**：三轮中上游的 429、5xx、并发超限，要么被 Fleet 记为 agent 失败，要么被评分判为 FAIL/CASE_INVALID（失败码为 OUTPUT_UNSTRUCTURED、PERMISSION_DENIED_OBSERVED、HARNESS_TIMEOUT）。正式评测前，评分需要能识别上游模型错误，并归为平台原因。
 11. **账户级并发上限在网关层管不住**：每个 slot 有独立的 LiteLLM，只能通过 Fleet 的 `max_concurrency` 控制同时运行的试验数，或者提高账户额度。
+12. **黑盒 BladeAI 的原生注入永远拿不到 `MAIN_FAULT_ACTIVE`**（第六轮查实，未修，需用户定夺）：
+    - `finalization.py:83` 的 `ever_active` 取自 `runtime_factory.py:1317` 的 `ledger.get("ever_active")`，而账本行只有平台自己的 chaos_core 服务会写——实验转 Running 时置 `ever_active=True`（`mcp_servers/chaos_core/service.py:806`）。
+    - `fault_inventory.py:45` 的 `owned_by_trial` 另外要求 `owner == "chaos_control"`、`run_id`、`target_uid`、`ledger_matched` 四项齐全，而这四项全部来自平台注入时打的标签（`mcp_servers/chaos_core/backends/chaosblade.py:249-255`）。
+    - BladeAI 黑盒用自己的 ServiceAccount 直接建 CR，四项一个都没有，只会落进 `foreign_present` / `foreign_active`（`fault_inventory.py:131-133`）。foreign 只影响 `CHAOS_INVENTORY_CLEAR`，不会被算作主故障。
+    - 结论：**只要 BladeAI 走原生注入，L0×C0 最好也只是 VALID FAIL 2.5 分，重跑多少轮都一样**。第一到第六轮的判分由此得到统一解释。
+    - 两条出路：(a) 让平台按"命名空间 + 目标 Pod uid + 故障类型 + 时间窗"承认观察到的 foreign 实验——快照里已有 `foreign_active` 和每个资源的 `namespace`/`target_name`/`fault_type`/`phase`，但 `run_id`、`target_uid` 对 foreign 资源是空串，匹配逻辑要新写，且改的是判分语义；(b) 不走 L0–L4 判分，改用 WP8 执行通道认定口径（`BLADEAI_BLACKBOX_ACCEPTANCE`）评价 BladeAI。
+13. **第七节的桥接修复还没有构建镜像、没有部署**：第六轮跑的仍是 `stage2-d0-ff4a999-bladeai070-own` 镜像。要让它生效，需按 5.1 的 `crane append` 方式重出控制器镜像并重新部署 5 个 slot。
+
+## 七、第六轮后的修复（本提交）
+
+**`stage2_service/harness_adapters/bladeai_confirm.py`**
+
+- **改前**：`plan_from_intent` 只产出 `fault_type`、`intensity`、`additional_native_constraints` / `native_params`、`target`、`duration_seconds` 六个键；`NON_NATIVE_INTENT_PARAMS`（:305-309）把 `effect_metric` / `effect_operator` / `effect_threshold` 和 `recovery_*` 从原生 flag 里剔掉之后，就直接丢弃了。
+- **改后**：
+  - 新增 `_condition_from_params()`（:312-351）：把 BladeAI 的三个扁平键拼成平台要的 `{"metric", "operator", "threshold"}`；阈值 0.7.0 写成字符串（`"0.5"`），这里转成 JSON 数字。三项缺一就返回 `None`。
+  - `plan_from_intent` 在写 `target` 之前补出这两个条件（:422-429）。
+- **原因**：`AgentPlan` 必填 `effect_condition` 和 `recovery_condition`（`plan_schema.py:235-236`），而 L0 的 `_may_supply` 是空集（`simulated_user.py:1442-1444`），平台不允许替智能体补这两个字段，`_OMITTABLE_CONDITIONS` 也只在 L1/L2 才生效。于是第六轮每条试验的计划体都缺这两项，被模拟用户逐次拒绝（r3 的重试原因逐字记在 5.4 第 12 条）。BladeAI 自己其实带了合法取值——`target_cpu_cores` / `increase_by_at_least` / `within_baseline_delta` 都在平台词表里（`condition_policy.py:65-87`），只是桥接没有翻译。
+- **为什么缺一项就整条不发**：`_has_blocking_issues`（`simulated_user.py:865-869`）只把 `MISSING_PLAN_FIELD` 当可恢复，其余问题一律致命；发半条残缺条件比不发更糟。
+- **测试**：`tests/test_bladeai_confirm_bridge.py` 新增两条——`test_plan_from_intent_emits_the_two_conditions_the_platform_never_supplies`（:272）用第四轮真实载荷断言两个条件都译出且不漏进原生参数，`test_plan_from_intent_omits_a_condition_it_cannot_complete`（:301）断言缺 `recovery_operator` 时整条不发。全文件 22 条通过（`run_snapshot_pytest.py`，d0-integration venv，Python 3.13.12）。
+- **部署**：未构建镜像、未上线（见第六节 13）。修好之后 BladeAI 的计划能通过校验、试验能正常走完，但因第六节 12 的账本归属问题，`MAIN_FAULT_ACTIVE` 仍然不会为真。
