@@ -212,7 +212,7 @@
     - BladeAI 黑盒用自己的 ServiceAccount 直接建 CR，四项一个都没有，只会落进 `foreign_present` / `foreign_active`（`fault_inventory.py:131-133`）。foreign 只影响 `CHAOS_INVENTORY_CLEAR`，不会被算作主故障。
     - 结论：**只要 BladeAI 走原生注入，L0×C0 最好也只是 VALID FAIL 2.5 分，重跑多少轮都一样**。第一到第六轮的判分由此得到统一解释。
     - 两条出路：(a) 让平台按"命名空间 + 目标 Pod uid + 故障类型 + 时间窗"承认观察到的 foreign 实验——快照里已有 `foreign_active` 和每个资源的 `namespace`/`target_name`/`fault_type`/`phase`，但 `run_id`、`target_uid` 对 foreign 资源是空串，匹配逻辑要新写，且改的是判分语义；(b) 不走 L0–L4 判分，改用 WP8 执行通道认定口径（`BLADEAI_BLACKBOX_ACCEPTANCE`）评价 BladeAI。
-13. **第七节的桥接修复还没有构建镜像、没有部署**：第六轮跑的仍是 `stage2-d0-ff4a999-bladeai070-own` 镜像。要让它生效，需按 5.1 的 `crane append` 方式重出控制器镜像并重新部署 5 个 slot。
+13. ~~第七节的桥接修复还没有构建镜像、没有部署~~ **已解决**：第六轮跑的是 `stage2-d0-ff4a999-bladeai070-own`；第七节和第八节的改动已一起打进 `stage2-d0-078d039-bladeai070-own@sha256:71534a76…`（见第八节"部署"）。
 
 ## 七、第六轮后的修复（本提交）
 
@@ -259,4 +259,9 @@
 - `:251` 观察器本身：轮询、只在第一次看到时发一次事件、`finish()` 汇总。
 - 回归：`test_fleet_service.py`、`test_stage2_campaign.py`、`test_stage2_fault_inventory.py` 共 75 条通过；`test_stage2_finalization.py`、`test_bladeai_confirm_bridge.py` 一并跑过 66 条。
 
-**部署**：待重建控制器镜像并用 `foreign_fault_attribution: true` 重新下发 5 个 slot，然后跑第七轮。
+**部署**
+
+- 控制器镜像 `1.94.151.57:85/observe/resbench-stage2:stage2-d0-078d039-bladeai070-own@sha256:71534a765febaa8ae618cc25b3d3d6201d8c845ea8d9e838babac6e327672e35`，仍按 5.1 的办法在 `stage2-d0-77a11bd@sha256:f3b1ffc1…` 上 `crane append` 两层（代码层 253 个文件、BladeAI 0.7.0 包 665 个成员）。
+  - 核对过：新镜像的 Entrypoint、Cmd、WorkingDir、User 与在跑的镜像逐字一致，层数 59（基线 57 + 2），所以当初那步 `crane mutate` 没有改动任何配置，不必重放。
+- Fleet 配置加 `foreign_fault_attribution: true`，由 `manifests.py` 渲染成每个 slot 的 `STAGE2_FOREIGN_FAULT_ATTRIBUTION=on`；滚动脚本在提交批次前会逐个 slot 核对这个环境变量确实是 `on`（`rollout_round7.sh` 第 1b 步），不是只看部署成功。
+- 第七轮 `bladeai-parallel-20260915-07`（BladeAI + qwen3.8-max，5 条 L0×C0，2 路并发）。**结果待补记。**
