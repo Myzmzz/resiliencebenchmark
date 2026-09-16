@@ -171,6 +171,10 @@ class CampaignEngine:
         evaluator: TrialEvaluator,
         resetter: EnvironmentResetter,
         condition_monitor_factory: Callable[[], ConditionMonitor],
+        # Only built when STAGE2_FOREIGN_FAULT_ATTRIBUTION is on; see
+        # stage2_service.foreign_fault_observer for why it has to run during
+        # the Agent's turn rather than at finalization.
+        foreign_fault_observer_factory: Callable[[], Any] | None = None,
         artifacts: ArtifactStore,
         platform_ledger: PlatformLedger,
         qualification_gate: D0QualificationGate | None = None,
@@ -187,6 +191,7 @@ class CampaignEngine:
         self.evaluator = evaluator
         self.resetter = resetter
         self.condition_monitor_factory = condition_monitor_factory
+        self.foreign_fault_observer_factory = foreign_fault_observer_factory
         self.artifacts = artifacts
         self.platform_ledger = platform_ledger
         self.qualification_gate = qualification_gate or D0QualificationGate(None)
@@ -308,6 +313,11 @@ class CampaignEngine:
                     report: HarnessReport | None = None
                     recovery: RecoveryResult | None = None
                     condition_monitor = self.condition_monitor_factory()
+                    foreign_fault_observer = (
+                        self.foreign_fault_observer_factory()
+                        if self.foreign_fault_observer_factory is not None
+                        else None
+                    )
                     permission_started = False
                     disturbance_records: list[DisturbanceRecord] = []
                     d5_restoration_lock = threading.RLock()
@@ -498,6 +508,23 @@ class CampaignEngine:
                                     and isinstance(event.payload.get("approved_plan"), Mapping)
                                 ):
                                     condition_plan = dict(event.payload["approved_plan"])
+                                    if foreign_fault_observer is not None and runtime is not None:
+                                        # Approval is the earliest the Agent may
+                                        # inject and the last moment still before
+                                        # the fault exists.
+                                        foreign_fault_observer.arm(
+                                            trial_id=trial_id,
+                                            runtime=runtime,
+                                            emit=lambda observer_kind, observer_payload: emit(
+                                                "foreign_fault_event",
+                                                {
+                                                    "trial_id": trial_id,
+                                                    "case_id": case.case_id.value,
+                                                    "event_kind": observer_kind,
+                                                    **dict(observer_payload),
+                                                },
+                                            ),
+                                        )
                                 if event.kind == "recovery_requested":
                                     condition_monitor.agent_cleanup_requested(
                                         event.occurred_at
@@ -779,11 +806,17 @@ class CampaignEngine:
                             runner_kwargs["expected_outcome"] = request.expected_outcome
                         report = self.harness_runner.run(**runner_kwargs)
                         condition_result = dict(condition_monitor.finish())
+                        foreign_fault_result = (
+                            dict(foreign_fault_observer.finish())
+                            if foreign_fault_observer is not None
+                            else {}
+                        )
                         report = report.model_copy(
                             update={
                                 "final_output": {
                                     **dict(report.final_output),
                                     "condition_monitor": condition_result,
+                                    "foreign_fault": foreign_fault_result,
                                 }
                             }
                         )
@@ -1297,6 +1330,8 @@ class CampaignEngine:
                         )
                     except Exception as exc:  # noqa: BLE001 - cleanup is mandatory.
                         condition_monitor.finish()
+                        if foreign_fault_observer is not None:
+                            foreign_fault_observer.finish()
                         if (
                             case.case_id in {Stage2CaseId.D7, Stage2CaseId.D8}
                             and not capability_loss_finalized

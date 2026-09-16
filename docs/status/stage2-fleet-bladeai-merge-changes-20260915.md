@@ -226,3 +226,37 @@
 - **为什么缺一项就整条不发**：`_has_blocking_issues`（`simulated_user.py:865-869`）只把 `MISSING_PLAN_FIELD` 当可恢复，其余问题一律致命；发半条残缺条件比不发更糟。
 - **测试**：`tests/test_bladeai_confirm_bridge.py` 新增两条——`test_plan_from_intent_emits_the_two_conditions_the_platform_never_supplies`（:272）用第四轮真实载荷断言两个条件都译出且不漏进原生参数，`test_plan_from_intent_omits_a_condition_it_cannot_complete`（:301）断言缺 `recovery_operator` 时整条不发。全文件 22 条通过（`run_snapshot_pytest.py`，d0-integration venv，Python 3.13.12）。
 - **部署**：未构建镜像、未上线（见第六节 13）。修好之后 BladeAI 的计划能通过校验、试验能正常走完，但因第六节 12 的账本归属问题，`MAIN_FAULT_ACTIVE` 仍然不会为真。
+
+## 八、承认智能体自建的故障（用户 09-15 拍板："扩归属 + 重跑"）
+
+**目的**：让平台把「智能体用自己的客户端建的、且作用在本试验目标上的实验」算作主故障。这是第六节 12 的唯一出路，否则黑盒 BladeAI 永远停在 VALID FAIL 2.5 分。
+
+**开关**：`STAGE2_FOREIGN_FAULT_ATTRIBUTION`，**默认关**。关着时行为和以前逐字一致——账本仍是唯一证据，另外三家（走 `chaos_control` 注入）完全不受影响。
+
+**改动**
+
+1. **新文件 `stage2_service/foreign_fault_observer.py`（116 行）**：`ForeignFaultObserver`，在计划批准时武装、每 5 秒调一次 `inventory_trial`，试验结束时 `finish()`。
+   - **为什么必须有它**：`inventory_trial` 的调用点只有 finalization（开始、等待循环、结束）和 capability_loss，全都在 harness 返回之后。而 BladeAI 的实验带 `--timeout`，operator 会提前回收——第六轮 r1 的 CR 存活 17:50:14–18:00:19，试验却跑到 18:09:39，等到收尾再看，什么都没有了。所以必须有人在故障还活着的时候去看一眼。
+   - 它只读，不创建、不删除、不自己做归属判断。
+2. **`stage2_service/runtime_factory.py`**（归属判定本体，在 `DirectChaosCleanup` 里，因为账本归它管）
+   - `:1239` 新增 `FOREIGN_FAULT_ATTRIBUTION_ENV`，`:1241-1244` 新增 `foreign_fault_attribution_enabled()`（照搬 `gateway_model_probe_enabled` 的写法）。
+   - `:1261` 新增 `self._foreign_observations`：trial_id → 首次/末次看到的时间，**粘性**保存。
+   - `:1382` 新增 `_observe_foreign_fault()`：匹配键是**命名空间 + 目标 Pod 名 + 故障类型 + 该资源处于活动态**。
+     - **与用户原话的一处偏离**：用户说的是"目标 Pod uid"，但 foreign CR 上**没有 uid**——`target_uid` 和 `run_id` 都是只有 `chaos_control` 才写的标签（`backends/chaosblade.py:249-255`）。CR 上能读到的是 matchers 里的命名空间和 Pod 名、以及 target/action 推出的故障类型。因此改用 Pod 名匹配，再由控制器用自己已知的 uid 回填。
+   - `:1338` 调用；紧随 `snapshot["trial"]` 之后写回 `ever_active=True`、`fault_attribution="observed_foreign"`、`experiment_name`、`started_at`/`ended_at`、`resource_absent`。
+     - `target_name` / `target_uid` **仍取运行时的值**，因为 finalization 要拿它们和批准计划里的 target 逐字段比对（`finalization.py:87-99`）。
+     - `started_at` / `ended_at` 正是 finalization 用来定效果窗口的两个字段（`finalization.py:166-167`），第六轮那句 "actual fault window is not established" 就是它们为空导致的。
+   - `:1995` 在 `condition_monitor_factory` 旁边加 `foreign_fault_observer_factory`，只在开关打开时才构造。
+   - **一处连带好处**：`node_evaluation.py:331` 的关卡项 `main_fault_running` 本来就取自 `recovery.main_fault_ever_active`，所以这一处修好，`MAIN_FAULT_ACTIVE` 和 `GATE_MAIN_FAULT_RUNNING` 一起通过。
+3. **`stage2_service/campaign.py`**：`:177` 新增构造参数、`:194` 赋值、`:316` 每条试验建一个、`:511-527` 在 `user_decision_received`+`approved_plan` 分支武装（批准是智能体最早可以注入、也是故障尚不存在的最后时刻）、`:808-816` 与 `condition_monitor.finish()` 并列收尾并写进 `final_output["foreign_fault"]`、`:1333-1334` 异常清理路径上一并停掉，避免轮询线程泄漏。
+4. **`fleet_service/contracts.py:107`** 新增 `foreign_fault_attribution: bool = False`；**`fleet_service/manifests.py:292-293`** 把它渲染成 slot 控制器的 `STAGE2_FOREIGN_FAULT_ATTRIBUTION` 环境变量。
+
+**测试**（`tests/test_stage2_fault_inventory.py` 新增 4 条，全部通过）
+
+- `:191` 开关打开时，作用在本试验 cart 上的自建实验被判为主故障；CR 消失后**仍然**是 `ever_active=True`、`resource_absent=True`、`ended_at` 有值（粘性）。
+- `:225` 不开开关时，同样的输入仍是 `ever_active=False`、`fault_attribution="ledger"`——默认行为不变。
+- `:237` 打在**别的 Pod** 上的自建实验不算本试验的主故障（5 个副本共用一个集群，必须排除邻居）。
+- `:251` 观察器本身：轮询、只在第一次看到时发一次事件、`finish()` 汇总。
+- 回归：`test_fleet_service.py`、`test_stage2_campaign.py`、`test_stage2_fault_inventory.py` 共 75 条通过；`test_stage2_finalization.py`、`test_bladeai_confirm_bridge.py` 一并跑过 66 条。
+
+**部署**：待重建控制器镜像并用 `foreign_fault_attribution: true` 重新下发 5 个 slot，然后跑第七轮。

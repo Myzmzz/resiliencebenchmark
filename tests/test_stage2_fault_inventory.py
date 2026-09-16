@@ -16,6 +16,7 @@ from stage2_service.fault_inventory import (
 )
 from stage2_service.contracts import RuntimeTarget, TrialRuntimeContext
 from stage2_service.condition_monitor import ConditionRecoveryMonitor
+from stage2_service.foreign_fault_observer import ForeignFaultObserver
 from stage2_service.runtime_factory import DirectChaosCleanup
 from stage2_service.reset_policy import ResetTier, classify_reset_policy
 
@@ -134,6 +135,153 @@ def test_dual_executor_inventory_lists_real_backend_records_and_marks_a_failed_c
     assert snapshot["unavailable_executors"] == ["chaos_mesh"]
     assert snapshot["owned_active_count"] == 1
     assert snapshot["trial"]["ever_active"] is True
+
+
+def _agent_created_record(*, name="blade-own", target_name="cart-1", fault_type="cpu-load", phase="Running"):
+    """A CR an Agent created with its own client: no platform labels at all.
+
+    ``run_id``, ``target_uid`` and ``owner`` come from labels only
+    ``chaos_control`` writes, so they are empty here.  The namespace, Pod name
+    and fault type still parse -- from the CR's own matchers and its
+    target/action pair -- which is exactly what the attribution matches on.
+    """
+    return ExperimentRecord(
+        name=name,
+        namespace="otel-demo",
+        run_id="",
+        target_name=target_name,
+        target_uid="",
+        fault_type=fault_type,
+        phase=phase,
+        owner=None,
+        labels={},
+        raw={"kind": "ChaosBlade"},
+    )
+
+
+def _agent_fault_services(records):
+    class Backend:
+        def __init__(self, records):
+            self.records = list(records)
+
+        async def list_experiments(self, _kubeconfig, _namespace):
+            return list(self.records)
+
+    class Service:
+        def __init__(self, records):
+            self.backend = Backend(records)
+
+        def _iter_cleanup_ledger_paths(self):
+            return []
+
+    return Service(records), Service([])
+
+
+def _agent_fault_runtime():
+    return TrialRuntimeContext(
+        trial_id="trial-1",
+        episode_id="EPI-OTEL-CART-DEADLINE-001",
+        target=RuntimeTarget(namespace="otel-demo", component="cart", name="cart-1", uid="uid-1"),
+        main_fault={"fault_type": "cpu-load"},
+        cleanup_handle="cleanup-" + "a" * 36,
+        baseline_capability="b" * 40,
+    )
+
+
+def test_agent_created_fault_on_the_trial_target_counts_as_the_main_fault_when_enabled(
+    tmp_path, monkeypatch
+):
+    """BladeAI round six, 2026-09-15: four real cpu-load experiments, no credit.
+
+    The Agent injects with its own ServiceAccount, so nothing reaches the
+    private ledger and MAIN_FAULT_ACTIVE could never pass.  With the switch on,
+    an experiment acting on the Trial's own target counts -- and keeps counting
+    after the CR is gone, because BladeAI's own ``--timeout`` reaps it long
+    before finalization reads the inventory.
+    """
+    monkeypatch.setenv("STAGE2_FOREIGN_FAULT_ATTRIBUTION", "on")
+    blade, mesh = _agent_fault_services([_agent_created_record()])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+    runtime = _agent_fault_runtime()
+
+    live = cleanup.inventory_trial(runtime)
+
+    assert live["trial"]["ever_active"] is True
+    assert live["trial"]["fault_attribution"] == "observed_foreign"
+    assert live["trial"]["experiment_name"] == "blade-own"
+    assert live["trial"]["resource_absent"] is False
+    # The uid comes from the runtime, never from the CR, because finalization
+    # compares it against the approved plan's target.
+    assert live["trial"]["target_uid"] == "uid-1"
+
+    blade.backend.records = []
+    after_cleanup = cleanup.inventory_trial(runtime)
+
+    assert after_cleanup["trial"]["ever_active"] is True
+    assert after_cleanup["trial"]["resource_absent"] is True
+    assert after_cleanup["trial"]["ended_at"]
+
+
+def test_agent_created_fault_is_ignored_without_the_switch(tmp_path):
+    """Default behaviour is unchanged: the ledger stays the only evidence."""
+    blade, mesh = _agent_fault_services([_agent_created_record()])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    snapshot = cleanup.inventory_trial(_agent_fault_runtime())
+
+    assert snapshot["trial"]["ever_active"] is False
+    assert snapshot["trial"]["fault_attribution"] == "ledger"
+    assert snapshot["foreign_active_count"] == 1
+
+
+def test_agent_created_fault_on_another_pod_is_not_the_trials_main_fault(
+    tmp_path, monkeypatch
+):
+    """Replicas share one cluster, so a neighbour's experiment must not count."""
+    monkeypatch.setenv("STAGE2_FOREIGN_FAULT_ATTRIBUTION", "on")
+    blade, mesh = _agent_fault_services([_agent_created_record(target_name="cart-9")])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    snapshot = cleanup.inventory_trial(_agent_fault_runtime())
+
+    assert snapshot["trial"]["ever_active"] is False
+    assert snapshot["trial"]["fault_attribution"] == "ledger"
+
+
+def test_foreign_fault_observer_reports_the_first_attributed_poll():
+    """The observer only reads; it is what makes somebody look while it runs."""
+
+    class Backend:
+        def __init__(self):
+            self.calls = 0
+
+        def inventory_trial(self, _runtime):
+            self.calls += 1
+            return {
+                "trial": {
+                    "fault_attribution": "observed_foreign",
+                    "experiment_name": "blade-own",
+                    "fault_type": "cpu-load",
+                    "target_name": "cart-1",
+                }
+            }
+
+    backend = Backend()
+    observer = ForeignFaultObserver(backend, poll_seconds=0.01)
+    emitted = []
+    observer.arm(
+        trial_id="trial-1",
+        runtime=SimpleNamespace(),
+        emit=lambda kind, payload: emitted.append(kind),
+    )
+    time.sleep(0.08)
+    result = observer.finish()
+
+    assert result["observed"] is True
+    assert result["experiment_name"] == "blade-own"
+    assert result["polls"] >= 1
+    # Announced once, on the poll that first saw it.
+    assert emitted == ["foreign_fault_observed"]
 
 
 def test_direct_cleanup_uses_exact_ledger_and_never_treats_terminal_cr_as_absent(

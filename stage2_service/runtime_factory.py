@@ -29,6 +29,7 @@ from .campaign import CampaignEngine
 from .capability_preflight import harness_capabilities_from_qualification
 from .capability_loss.factory import CapabilityLossRuntimeFactory
 from .condition_monitor import ConditionRecoveryMonitor
+from .foreign_fault_observer import ForeignFaultObserver
 from .condition_policy import RESOURCE_METRICS
 from .condition_policy import evaluate_condition
 from .contracts import (
@@ -1225,6 +1226,23 @@ class DirectChaosCleanup:
     destroy method; foreign resources remain evidence for the reset gate.
     """
 
+    # An Agent that injects with its own ChaosBlade client leaves a CR the
+    # ledger knows nothing about: ``run_id``, ``target_uid`` and ``owner`` all
+    # come from labels only ``chaos_control`` writes, so such a resource can
+    # only ever be counted as foreign and ``MAIN_FAULT_ACTIVE`` can never pass.
+    # Measured 2026-09-15 (BladeAI black-box, round six): four real cpu-load
+    # experiments on the Trials' own cart Pods, and every Trial was scored "no
+    # fault ever ran".  With this switch on, a foreign experiment acting on the
+    # Trial's own target with the Trial's own fault type counts as the main
+    # fault.  It stays off by default, because for an Agent that injects
+    # through ``chaos_control`` the private ledger is the stricter evidence.
+    FOREIGN_FAULT_ATTRIBUTION_ENV = "STAGE2_FOREIGN_FAULT_ATTRIBUTION"
+
+    @classmethod
+    def foreign_fault_attribution_enabled(cls) -> bool:
+        """Whether an observed foreign experiment may count as the main fault."""
+        return os.environ.get(cls.FOREIGN_FAULT_ATTRIBUTION_ENV, "off").strip().lower() in {"1", "true", "yes", "on"}
+
     def __init__(
         self,
         chaosblade: ChaosControlService,
@@ -1236,6 +1254,11 @@ class DirectChaosCleanup:
             "chaos_mesh": chaos_mesh,
         }
         self.kubeconfig = str(kubeconfig)
+        # trial_id -> when a matching foreign experiment was first and last
+        # seen acting.  The CR is usually gone before finalization reads the
+        # inventory (BladeAI passes ``--timeout`` and the operator reaps it),
+        # so the observation has to be remembered when it is made.
+        self._foreign_observations: dict[str, dict[str, Any]] = {}
 
     def inventory_trial(self, runtime):
         return asyncio.run(self._inventory_trial(runtime))
@@ -1312,9 +1335,11 @@ class DirectChaosCleanup:
         matching_resources = [
             resource for resource in resources if resource.owned_by_trial(runtime.trial_id)
         ]
+        observed_foreign = self._observe_foreign_fault(runtime, resources, ledger)
         snapshot["trial"] = {
             "resource_absent": snapshot["owned_resources_absent"],
             "ever_active": bool(ledger.get("ever_active")),
+            "fault_attribution": "ledger",
             "namespace": str(ledger.get("namespace") or runtime.target.namespace),
             "target_name": str(ledger.get("target_name") or runtime.target.name),
             "target_uid": str(ledger.get("target_uid") or runtime.target.uid),
@@ -1331,7 +1356,82 @@ class DirectChaosCleanup:
             "ledger_match_count": len(trial_ledgers),
             "executor_id": ledger_executor,
         }
+        if observed_foreign is not None:
+            # The Trial's own target is under a fault the ledger cannot see.
+            # ``target_name`` and ``target_uid`` deliberately keep the runtime
+            # values set above: a foreign CR carries no uid (it is a label),
+            # and finalization compares those two against the approved plan.
+            snapshot["trial"].update(
+                {
+                    "resource_absent": observed_foreign.get("ended_at") is not None,
+                    "ever_active": True,
+                    "fault_attribution": "observed_foreign",
+                    "fault_type": str(
+                        observed_foreign.get("fault_type")
+                        or snapshot["trial"]["fault_type"]
+                    ),
+                    "experiment_name": observed_foreign.get("experiment_name"),
+                    "executor_id": observed_foreign.get("executor_id"),
+                    "started_at": observed_foreign.get("started_at"),
+                    "ended_at": observed_foreign.get("ended_at"),
+                    "foreign_observations": int(observed_foreign.get("observations") or 0),
+                }
+            )
         return snapshot
+
+    def _observe_foreign_fault(
+        self,
+        runtime,
+        resources: list[Any],
+        ledger: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Remember a foreign experiment acting on this Trial's own target.
+
+        Returns the sticky record for this Trial, or ``None`` when the feature
+        is off or the ledger already owns a fault -- the ledger is the stricter
+        evidence and always wins.  The match is namespace + Pod name + fault
+        type, because a foreign CR has no ``run_id`` or ``target_uid``: those
+        are labels only ``chaos_control`` writes.  The Pod name and namespace
+        come from the CR's own matchers and the fault type from its
+        target/action pair, so all three are readable on a foreign resource.
+        """
+        if ledger.get("ever_active") or not self.foreign_fault_attribution_enabled():
+            return None
+        planned_fault = str(runtime.main_fault.get("fault_type") or "")
+        acting = [
+            resource
+            for resource in resources
+            if resource.active
+            and not resource.owned_by_trial(runtime.trial_id)
+            and resource.namespace == runtime.target.namespace
+            and resource.target_name == runtime.target.name
+            and (not planned_fault or resource.fault_type == planned_fault)
+        ]
+        memo = self._foreign_observations.get(runtime.trial_id)
+        stamp = datetime.now(UTC).isoformat()
+        if acting:
+            observed = acting[0]
+            if memo is None:
+                memo = {
+                    "experiment_name": observed.name,
+                    "executor_id": observed.executor_id,
+                    "fault_type": observed.fault_type,
+                    "namespace": observed.namespace,
+                    "target_name": observed.target_name,
+                    "started_at": stamp,
+                    "ended_at": None,
+                    "observations": 0,
+                }
+                self._foreign_observations[runtime.trial_id] = memo
+            memo["observations"] = int(memo.get("observations") or 0) + 1
+            memo["last_seen_at"] = stamp
+            memo["ended_at"] = None
+            return memo
+        if memo is not None and memo.get("ended_at") is None:
+            # First read after it disappeared is the closest the Controller can
+            # get to when the Agent's own cleanup landed.
+            memo["ended_at"] = stamp
+        return memo
 
     async def _cleanup_owned(self, runtime) -> dict[str, Any]:
         inventory = await self._inventory_trial(runtime)
@@ -1891,6 +1991,11 @@ class Stage2System:
             resetter=components.resetter,
             condition_monitor_factory=lambda: ConditionRecoveryMonitor(
                 components.traffic, components.cleanup_backend
+            ),
+            foreign_fault_observer_factory=(
+                (lambda: ForeignFaultObserver(components.cleanup_backend))
+                if DirectChaosCleanup.foreign_fault_attribution_enabled()
+                else None
             ),
             artifacts=ArtifactStore(self.config.artifact_root),
             platform_ledger=components.token_registry.platform_ledger,

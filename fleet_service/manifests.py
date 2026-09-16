@@ -289,6 +289,8 @@ def _controller_containers(config: FleetConfig, index: int) -> list[dict[str, An
         {"name": "RESBENCH_CONTROL_NAMESPACE", "value": config.control_namespace},
         {"name": "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ",
          "value": "true" if config.coroot_allow_anonymous_read else "false"},
+        {"name": "STAGE2_FOREIGN_FAULT_ATTRIBUTION",
+         "value": "on" if config.foreign_fault_attribution else "off"},
         {"name": "RESBENCH_LLM_BASE_URL",
          "valueFrom": {"secretKeyRef": {"name": "resbench-stage2-gateway-client", "key": "llm-base-url"}}},
         {"name": "RESBENCH_LLM_API_KEY",

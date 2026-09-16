@@ -99,6 +99,12 @@ class FleetConfig(FleetModel):
     gateway_url: str = "http://127.0.0.1:4000/v1"
     coroot_project_id: str = ""
     coroot_allow_anonymous_read: bool = True
+    # Credit an experiment the Agent created with its own client as the main
+    # fault when it acts on the Trial's own target.  Needed for a black-box
+    # Agent that never calls ``chaos_control`` -- BladeAI injects through its
+    # own ServiceAccount, so nothing reaches the Controller's private ledger.
+    # Off by default: where the ledger exists it is the stricter evidence.
+    foreign_fault_attribution: bool = False
     resources: SlotResources = Field(default_factory=SlotResources)
     # Limits published by the upstream account, read from its console. When
     # set, they cap how many trials may run at once.
