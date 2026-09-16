@@ -278,4 +278,16 @@
   - s02 的记录是 `timeout`，发布被拒：`{"status": "rejected", "reason": "black-box BladeAI qualification needs a completed session with gateway evidence"}`（`capability_qualification.py:290` 硬性要求 `completed`）。s02 上那条状态合格的老记录又是旧网关的 `97b77318`，所以它当时没有任何一条可用记录。
   - **s02 为什么 timeout**：它的 bladeai-server 一直在意图澄清里打转——`chaos_agent.agent.nodes.planning.intent_clarification: Intent partially converged (unset), continuing dialogue` 反复出现，每次请求约 2.8–3.8 万 prompt token，绕满约 30 分钟预算。同一提示词、同一模型、同一时刻另外四个都一次过；s02 的 `failure_reasons` 只比 s01 多 `harness_report_not_completed` 一条，其余六条都是黑盒认定本就跳过的 MCP 通道类。**定性：BladeAI 自身的概率性行为，与本次归属改动无关。**
   - 处置：`round7_fix_s02_and_run.sh` 只对 s02 重跑（最多 2 次，连续失败就停下交给人判断，不无限重试），另外四个不动，然后发布 → preflight → 提交 → 跟踪。
+- **第四次下发：资格认定与发布全部通过，卡在 preflight 的时序上**（exit 4）。
+  - s02 第 1 次补跑就是 `completed`（记录 `base-bladeai-20260916041354`，哈希 `902aa6a7…`、`cleanup_errors` 为空），印证了它上一次的 timeout 是概率性的，重跑一次即可，不必调超时。
+  - 5 个 slot 的能力全部发布成功、`qualified=True`、口径 `BLADEAI_BLACKBOX_HTTP_CHANNEL`。**资格认定这一关到此彻底通过。**
+  - 退出在 preflight：脚本按"5 个 slot 都有 `model_matrix.bladeai[qwen3.8-max]` 为真"来计数，结果算出 0。
+  - **已查实：是我的判定脚本读错了地方，5 个 slot 本来就可以跑。**
+    - Fleet 的 preflight 文档里，每个 slot 只有 `applications`、`available_models`、`capability_loss`、`environment`、`gateway_probe`、`namespace`、`reachable`、`slot_id` 八个键，**没有 `model_matrix`**；而脚本要找的正是 `model_matrix.bladeai[qwen3.8-max]`，所以永远算出 0。
+    - `model_matrix` 是**控制器**侧的字段（`runtime_factory.py:1581` 生成，经控制器的 `/api/v1/stage2/options` 暴露）。
+    - 直接查 s01 控制器：`model_matrix.bladeai["qwen3.8-max"] = true`，`model_probes["qwen3.8-max"]` 为 `runnable: true`、`visible_in_gateway_models: true`、`probe_status: "not_probed"`（探测按用户要求默认关闭），路由指向 dashscope。
+    - 这段判定是从第一版滚动脚本 `rollout_publish_submit.sh` 抄下来的（它判 gpt-5.5 时同样错），前几轮没暴露是因为那几轮用的是另一条直接查控制器的链路。
+  - **另外记一个我判断错过的弯路**：退出当时 5 个 slot 的 `gateway_probe` 还是 `"running"`，我一度据此判成"slot 刚重启、模型列表没刷新"的时序问题（第六轮确有过这种情况）。几分钟后复查 `gateway_probe` 全部变成 `complete`、而计数仍是 0，才排除了这个猜测。凭旧经验套用是这次绕路的原因。
+  - 处置：`round7_submit_and_watch.sh` 改成逐个 slot 端口转发、直接读控制器的 `model_matrix`，确认 5/5 后再提交批次并跟踪；资格认定和发布都不再重复。
+  - （顺带：preflight 里 `codex: platform_sandbox_missing` 导致 codex 那栏 `supported=false`，与 bladeai 这条路无关。）
 - 第七轮 `bladeai-parallel-20260915-07`（BladeAI + qwen3.8-max，5 条 L0×C0，2 路并发）。**结果待补记。**
