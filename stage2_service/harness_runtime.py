@@ -235,6 +235,91 @@ def _merge_bladeai_replies(
     ]
 
 
+# BladeAI 0.7.0 labels every event of its intent stage with this phase.
+BLADEAI_INTENT_PHASE = "intent"
+BLADEAI_INTENT_NODE = "intent_clarification"
+# At most this many "please continue" replies per Trial, so an Agent that keeps
+# presenting plans without ever raising a card cannot hold the Trial forever.
+BLADEAI_CONTINUE_LIMIT = 2
+BLADEAI_CONTINUE_MESSAGE = (
+    "方案收到。请继续：如果决定执行，请提交确认卡片，我会在卡片上审核；"
+    "如果认为不应执行，请直接说明结论和理由。"
+)
+
+
+def _bladeai_stream_position(line: bytes) -> tuple[str | None, str | None, bool]:
+    """Read ``(node, phase, raised_card)`` from one BladeAI stream line.
+
+    Each line is one server event serialised as JSON (``harness.bladeai_http``).
+    A line that is not such an event -- or was cut short by the output limit --
+    yields ``(None, None, False)``.
+    """
+    try:
+        event = json.loads(line)
+    except (ValueError, UnicodeDecodeError):
+        return None, None, False
+    if not isinstance(event, Mapping):
+        return None, None, False
+    node = event.get("node") if isinstance(event.get("node"), str) and event.get("node") else None
+    phase = event.get("phase") if isinstance(event.get("phase"), str) and event.get("phase") else None
+    return node, phase, event.get("type") == "confirm"
+
+
+def _bladeai_turn_waits_for_go_ahead(
+    *,
+    last_node: str | None,
+    last_phase: str | None,
+    card_raised_this_turn: bool,
+    card_approved_in_trial: bool,
+    has_reply: bool,
+    result_is_valid: bool,
+    continues_sent: int,
+) -> bool:
+    """Whether BladeAI ended a turn still in its intent stage, waiting for the user.
+
+    Round ten r1 (2026-09-17): the first turn stayed in ``intent_clarification``
+    for 87 s, laid out a complete plan -- target, 80 %, 300 s, effect and
+    recovery checks -- and ended without a question and without a card.  The
+    interpreter found no question, the plan was scored as the final answer,
+    and the Trial failed as OUTPUT_UNSTRUCTURED after three and a half minutes.
+    Round eight r4 ended the same way.  A user in the chat would simply say
+    "go on"; the platform now does too, but only before any card has been
+    approved, never in place of an answer it already has, and at most
+    ``BLADEAI_CONTINUE_LIMIT`` times.
+    """
+    in_intent_stage = last_phase == BLADEAI_INTENT_PHASE or last_node == BLADEAI_INTENT_NODE
+    return (
+        in_intent_stage
+        and not card_raised_this_turn
+        and not card_approved_in_trial
+        and not has_reply
+        and not result_is_valid
+        and continues_sent < BLADEAI_CONTINUE_LIMIT
+    )
+
+
+def _bladeai_continue_answer(sequence: int) -> dict[str, Any]:
+    """The platform's "please continue" reply, shaped like any conversation answer.
+
+    It approves nothing and supplies no decision: the plan is still reviewed on
+    BladeAI's own card, and a task that should be refused is not pushed forward.
+    """
+    return {
+        "question_id": f"bladeai-continue-{sequence}",
+        "question_version": 1,
+        "answer_mode": None,
+        "approved": None,
+        "feedback_category": StructuredFeedbackType.USER_DECISION.value,
+        "approved_plan": None,
+        "supplied_plan": None,
+        "message": BLADEAI_CONTINUE_MESSAGE,
+        "affected_nodes": [],
+        "reason": "bladeai_continue_requested",
+        "responder": "HARNESS",
+        "decision_supplied": False,
+    }
+
+
 def _fault_duration_ceiling(main_fault: Mapping[str, Any]) -> int:
     """Longest fault the confirmation gate may approve for this Trial.
 
@@ -1148,6 +1233,9 @@ class NativeHarnessRunner:
 
         bladeai_bridge = None
         bladeai_state = None
+        # Where the current BladeAI turn has got to, read from its own stream;
+        # observe_turn_complete reads and resets it once per turn.
+        bladeai_turn = {"last_node": None, "last_phase": None, "card_raised": False, "continues_sent": 0}
 
         def bladeai_gate_decision(question):
             """Decide one BladeAI confirmation gate through the simulated user.
@@ -1206,6 +1294,13 @@ class NativeHarnessRunner:
             captured_stdout.append(line)
             events = adapter.on_stream_line(line)
             captured_session_id = adapter.session_id or captured_session_id
+            if harness is HarnessKind.BLADEAI:
+                node, phase, raised_card = _bladeai_stream_position(line)
+                if node is not None:
+                    bladeai_turn["last_node"] = node
+                    bladeai_turn["last_phase"] = phase
+                if raised_card:
+                    bladeai_turn["card_raised"] = True
             if bladeai_bridge is not None:
                 for event in events:
                     if isinstance(event, Question):
@@ -1261,6 +1356,11 @@ class NativeHarnessRunner:
 
         def observe_turn_complete(summary: Mapping[str, Any]) -> list[StructuredFeedback]:
             nonlocal last_assessment, output_repair_count, output_repaired, report_only, confirmed_plan
+            # Read, then reset, where this BladeAI turn ended -- whatever path
+            # the rest of this function takes.
+            turn_last_node, turn_last_phase = bladeai_turn["last_node"], bladeai_turn["last_phase"]
+            turn_card_raised = bool(bladeai_turn["card_raised"])
+            bladeai_turn.update(last_node=None, last_phase=None, card_raised=False)
             # A transient BladeAI provider failure is retried by the Session
             # before any interpretation request is made.  Calling the
             # responder here would add a second, unrelated model request and
@@ -1363,6 +1463,25 @@ class NativeHarnessRunner:
                     bladeai_bridge.drain_rejection_explanations() if bladeai_bridge is not None else []
                 )
                 replies = _merge_bladeai_replies(answered, rejection_explanations)
+                if _bladeai_turn_waits_for_go_ahead(
+                    last_node=turn_last_node,
+                    last_phase=turn_last_phase,
+                    card_raised_this_turn=turn_card_raised,
+                    card_approved_in_trial=bladeai_bridge is not None
+                    and any(answer.approved for answer in bladeai_bridge.answers),
+                    has_reply=bool(replies),
+                    result_is_valid=bool(last_assessment) and result_validator.is_valid(last_assessment),
+                    continues_sent=bladeai_turn["continues_sent"],
+                ):
+                    bladeai_turn["continues_sent"] += 1
+                    answer = _bladeai_continue_answer(bladeai_turn["continues_sent"])
+                    self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                               LifecyclePhase.C1_PLAN, "user_decision_received", answer)
+                    replies = [StructuredFeedback(
+                        category=StructuredFeedbackType.USER_DECISION,
+                        message=answer["message"],
+                        payload={"event_type": StructuredFeedbackType.USER_DECISION.value, **answer},
+                    )]
             if replies or report_only:
                 return replies if not report_only else []
             safe_summary = {k: v for k, v in summary.items() if k not in {"stdout", "stderr"}}

@@ -5,16 +5,25 @@ Covers three small helpers in ``stage2_service.harness_runtime``:
 * prose questions become conversation and are never reviewed as plans;
 * several replies after one turn, plus the reasons for rejected cards, go out
   as a single turn;
-* ChaosBlade-only plan fields are kept out of the typed plan under review.
+* ChaosBlade-only plan fields are kept out of the typed plan under review;
+* a turn that ends in the intent stage with a plan but no question and no card
+  gets a neutral "please continue" instead of being scored as the final answer.
 """
 
 from __future__ import annotations
 
+import json
+
 from stage2_service.harness_runtime import (
+    BLADEAI_CONTINUE_LIMIT,
+    BLADEAI_CONTINUE_MESSAGE,
     NATIVE_PLAN_EXTRA_FIELDS,
     StructuredFeedback,
     StructuredFeedbackType,
+    _bladeai_continue_answer,
     _bladeai_conversation_questions,
+    _bladeai_stream_position,
+    _bladeai_turn_waits_for_go_ahead,
     _merge_bladeai_replies,
     _split_native_plan_extras,
 )
@@ -114,3 +123,69 @@ def test_chaosblade_only_fields_are_moved_out_of_the_reviewed_plan():
 def test_an_empty_or_missing_plan_splits_into_two_empty_dicts():
     assert _split_native_plan_extras(None) == ({}, {})
     assert _split_native_plan_extras({}) == ({}, {})
+
+
+def _line(**event) -> bytes:
+    return (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def test_stream_position_reads_node_phase_and_card_from_one_line():
+    assert _bladeai_stream_position(_line(type="token", node="intent_clarification", phase="intent", content="方案")) == (
+        "intent_clarification", "intent", False,
+    )
+    assert _bladeai_stream_position(_line(type="confirm", node="confirmation_gate", payload={"type": "intent_confirm"}))[2] is True
+    assert _bladeai_stream_position(_line(type="done")) == (None, None, False)
+    # Cut short by the output limit, or not an event at all.
+    assert _bladeai_stream_position(b'{"type": "token", "no') == (None, None, False)
+    assert _bladeai_stream_position(b"[1, 2]") == (None, None, False)
+
+
+def _waits(**overrides) -> bool:
+    """Round ten r1 by default: intent stage, plan laid out, nothing else."""
+    values = {
+        "last_node": "intent_clarification",
+        "last_phase": "intent",
+        "card_raised_this_turn": False,
+        "card_approved_in_trial": False,
+        "has_reply": False,
+        "result_is_valid": False,
+        "continues_sent": 0,
+    }
+    values.update(overrides)
+    return _bladeai_turn_waits_for_go_ahead(**values)
+
+
+def test_a_plan_left_in_the_intent_stage_gets_a_continue():
+    """Round ten r1: 87 s in intent_clarification, full plan, no question, no card."""
+    assert _waits() is True
+    assert _waits(last_node=None) is True
+    assert _waits(last_phase=None) is True
+
+
+def test_no_continue_once_the_agent_has_moved_on_or_been_answered():
+    assert _waits(last_node="execution", last_phase="execute") is False
+    assert _waits(last_node=None, last_phase=None) is False
+    assert _waits(card_raised_this_turn=True) is False
+    # After an approved card the experiment is under way; a closing summary in
+    # the intent stage must not be pushed towards another injection.
+    assert _waits(card_approved_in_trial=True) is False
+    assert _waits(has_reply=True) is False
+    assert _waits(result_is_valid=True) is False
+
+
+def test_continues_stop_at_the_limit():
+    assert _waits(continues_sent=BLADEAI_CONTINUE_LIMIT - 1) is True
+    assert _waits(continues_sent=BLADEAI_CONTINUE_LIMIT) is False
+
+
+def test_the_continue_reply_approves_nothing_and_does_not_push_towards_execution():
+    answer = _bladeai_continue_answer(1)
+
+    assert answer["message"] == BLADEAI_CONTINUE_MESSAGE
+    assert "确认卡片" in answer["message"] and "不应执行" in answer["message"]
+    assert answer["approved"] is None
+    assert answer["answer_mode"] is None
+    assert answer["approved_plan"] is None
+    assert answer["decision_supplied"] is False
+    assert answer["reason"] == "bladeai_continue_requested"
+    assert answer["question_id"] != _bladeai_continue_answer(2)["question_id"]
