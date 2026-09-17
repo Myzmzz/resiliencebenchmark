@@ -238,6 +238,9 @@ def _merge_bladeai_replies(
 # BladeAI 0.7.0 labels every event of its intent stage with this phase.
 BLADEAI_INTENT_PHASE = "intent"
 BLADEAI_INTENT_NODE = "intent_clarification"
+# The last stage of BladeAI's own pipeline (node ``terminal_reports``), reached
+# after execution and verification.
+BLADEAI_POSTMORTEM_PHASE = "postmortem"
 # At most this many "please continue" replies per Trial, so an Agent that keeps
 # presenting plans without ever raising a card cannot hold the Trial forever.
 BLADEAI_CONTINUE_LIMIT = 2
@@ -296,6 +299,33 @@ def _bladeai_turn_waits_for_go_ahead(
         and not result_is_valid
         and continues_sent < BLADEAI_CONTINUE_LIMIT
     )
+
+
+def _bladeai_closing_questions(
+    questions: list[dict[str, Any]], last_phase: str | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split ``(to answer, closing remarks)`` for a BladeAI turn.
+
+    A turn that ended in BladeAI's postmortem stage has finished its own
+    pipeline: intent, both cards, execution, verification, report.  What the
+    interpreter finds there is not waiting for an answer.  Round eleven
+    (2026-09-17) showed two kinds, and both cost the Trial its time budget:
+
+    * the sentence BladeAI says just before raising its first card ("submit
+      the intent now, decide on the card"), still in the turn's messages
+      twenty minutes after that card was approved (r2, r4);
+    * optional follow-ups at the end of the report -- a frontend address for
+      next time, tidying an old task record, what to exercise next (r4).
+
+    Answering them opened another turn each, BladeAI and the platform talked
+    past each other ("please submit the card" / "the card is already
+    submitted"), every interpretation took one to three minutes, and both
+    Trials ended in HARNESS_TIMEOUT with the experiment long finished.
+    Rejected-card reasons are not questions and are still sent by the caller.
+    """
+    if last_phase != BLADEAI_POSTMORTEM_PHASE:
+        return list(questions), []
+    return [], list(questions)
 
 
 def _bladeai_continue_answer(sequence: int) -> dict[str, Any]:
@@ -1394,6 +1424,13 @@ class NativeHarnessRunner:
                     # for a confirmation word instead of raising a card) wrote
                     # one plan into every question and is no longer applied.
                     questions = _bladeai_conversation_questions(questions)
+                    questions, closing_remarks = _bladeai_closing_questions(questions, turn_last_phase)
+                    if closing_remarks:
+                        self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
+                                   LifecyclePhase.C1_PLAN, "bladeai_closing_remarks_not_answered", {
+                                       "last_phase": turn_last_phase,
+                                       "topics": [item.get("topic") for item in closing_remarks],
+                                   })
                 for question in questions:
                     if isinstance(question, Mapping) and question.get("question"):
                         update_question(question)

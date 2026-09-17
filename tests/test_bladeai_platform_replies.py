@@ -20,6 +20,7 @@ from stage2_service.harness_runtime import (
     NATIVE_PLAN_EXTRA_FIELDS,
     StructuredFeedback,
     StructuredFeedbackType,
+    _bladeai_closing_questions,
     _bladeai_continue_answer,
     _bladeai_conversation_questions,
     _bladeai_stream_position,
@@ -189,3 +190,25 @@ def test_the_continue_reply_approves_nothing_and_does_not_push_towards_execution
     assert answer["decision_supplied"] is False
     assert answer["reason"] == "bladeai_continue_requested"
     assert answer["question_id"] != _bladeai_continue_answer(2)["question_id"]
+
+
+def test_questions_found_in_a_postmortem_turn_are_closing_remarks():
+    """Round eleven r2/r4: a finished pipeline, a stale card prompt, optional follow-ups."""
+    found = [
+        {"topic": "chaos_injection_execution_confirmation", "question": "现在提交该意图，请在弹出的确认卡上核准执行。"},
+        {"topic": "frontend_access_availability", "question": "若你确认有可用的 frontend 访问入口，我可以补充调用级验证。"},
+    ]
+
+    to_answer, closing = _bladeai_closing_questions(found, "postmortem")
+
+    assert to_answer == []
+    assert [item["topic"] for item in closing] == ["chaos_injection_execution_confirmation", "frontend_access_availability"]
+
+
+def test_questions_before_the_postmortem_stage_are_still_answered():
+    found = [{"topic": "pick_target", "question": "A 还是 B？"}]
+
+    for phase in ("intent", "safety", "inject", "verify", None):
+        to_answer, closing = _bladeai_closing_questions(found, phase)
+        assert to_answer == found
+        assert closing == []

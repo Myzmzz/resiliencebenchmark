@@ -404,11 +404,11 @@
 
 ## 十一、09-17 平台完善（用户："到时间没恢复我们主动恢复即可，然后给我完善下平台"）
 
-用户 09-17 定：BladeAI 自身的两个问题（最短 600 秒、说好主动恢复却不做）先不管，实验超过批准时长还在，就由平台主动恢复；平台这边的问题修好。共 7 项改动，其中第 6、7 项是第十轮部署后发现、补上的。
+用户 09-17 定：BladeAI 自身的两个问题（最短 600 秒、说好主动恢复却不做）先不管，实验超过批准时长还在，就由平台主动恢复；平台这边的问题修好。共 8 项改动：第 6、7 项是第十轮后发现、补上的，第 8 项是第十一轮后补上的。
 
 ### 1. BladeAI 的文字提问按对话回答，不再当计划审批
 
-- **位置**：`stage2_service/harness_runtime.py:179`（新增 `_bladeai_conversation_questions`）、`:1396`（调用处）；`stage2_service/simulated_user.py:352`（`reply` 新分支）、`:505`（新增 `_conversation_answer`）、`:1080-1081`（两个常量）。
+- **位置**：`stage2_service/harness_runtime.py:179`（新增 `_bladeai_conversation_questions`）、`:1426`（调用处）；`stage2_service/simulated_user.py:352`（`reply` 新分支）、`:505`（新增 `_conversation_answer`）、`:1080-1081`（两个常量）。
 - **改前**：BladeAI 一轮结束后，平台解读出来的每个问题都按"确认"走计划审批；BladeAI 分支还会从这一轮的文字里抠出一份计划，塞进每个没带计划的问题（事件 `agent_plan_recovered_from_text`）。于是"请在确认卡片中做最终决策""选 A 还是 B""是否先回收旧实验"都被当成计划来审，回复"不批准：…MISSING_PLAN_FIELD"。
 - **改后**：BladeAI 的文字提问一律标为 `request_kind="conversation"`，不再塞计划。模拟用户对这类问题只调一次模型，写一句中文回答：有选项就选并说明理由；可以同意清理、恢复、回收已有实验；不编造 Pod 或 UID；需要审批的，请它提交确认卡片。模型没给内容时，回固定兜底话术。回答里 `approved`、`answer_mode`、`approved_plan` 都为空，`decision_supplied=False`，所以不写决策文件、不武装观察器，评分也不会记成"平台代为决策"。
 - **为什么安全**：BladeAI 0.7.0 真正的计划审批只发生在它自己的确认卡片上，卡片由确认桥（`bladeai_gate_decision`）单独处理，不走这条路径。抠计划的事件只有 `harness_runtime.py` 自己用。`plan_from_text`（`bladeai_confirm.py:476`）运行时不再调用，函数及其测试暂时保留。
@@ -426,7 +426,7 @@
 
 ### 3. 同一轮的多条回复合成一条发出
 
-- **位置**：`harness_runtime.py:204`（新增 `_merge_bladeai_replies`）、`:1432`、`:1461-1465`。
+- **位置**：`harness_runtime.py:204`（新增 `_merge_bladeai_replies`）、`:1469`、`:1498-1502`。
 - **改前**：一个问题一条回复，每条回复都要单独占 BladeAI 一整轮。第九轮 s01 的两条批准，第二条始终没发出去（见第十节第 2 条更正）。
 - **改后**：
   - BladeAI 试验里，一轮结束后的所有回复和被拒卡片的理由合成一条 USER_DECISION。
@@ -437,7 +437,7 @@
 
 ### 4. ChaosBlade 专有参数不再让卡片直接被判不合法
 
-- **位置**：`harness_runtime.py:157-176`（新增 `_split_native_plan_extras`）、`:1260`、`:1274`。
+- **位置**：`harness_runtime.py:157-176`（新增 `_split_native_plan_extras`）、`:1290`、`:1304`。
 - **改前**：平台的强度只有一个维度，表达不了的原生参数（如 cpu-load 的 `--cpu-count`），会被 `plan_from_intent` 写成 `additional_native_constraints` / `native_params` 放进计划。`AgentPlan` 不允许多余字段（`plan_schema.py:230`），模拟用户的预处理又只删掉 `duration_seconds` 等少数字段（`simulated_user.py:813`），这样的卡片内容还没审，就会先被判字段非法。这是读代码发现的，实跑中出现过几次没有单独统计。
 - **改后**：这两个字段从计划挪到审批载荷的 `native_constraints` 里，审批模型仍然看得到，计划本身也能通过类型校验。
 
@@ -471,7 +471,7 @@
 
 第十轮部署后发现，与前 5 项同一节提交。
 
-- **位置**：`harness_runtime.py:239-318`，新增常量、`_bladeai_stream_position`、`_bladeai_turn_waits_for_go_ahead`、`_bladeai_continue_answer`；`:1238`，每轮状态；`:1298`，逐行记录节点与卡片；`:1361`，轮末读取并清零；`:1466`，判断后发送。
+- **位置**：`harness_runtime.py:239-352`，新增常量、`_bladeai_stream_position`、`_bladeai_turn_waits_for_go_ahead`、`_bladeai_continue_answer`；`:1268`，每轮状态；`:1328`，逐行记录节点与卡片；`:1391`，轮末读取并清零；`:1503`，判断后发送。
 - **现象**（第十轮 r1，s01，`campaign-470c6b78798748dd`）：BladeAI 第一轮在 `intent_clarification`（阶段 `intent`）里停留 87 秒。它把方案完整列了出来：目标 Pod、80%、300 秒、生效与恢复判据、影响面，然后没提问、没弹卡片就结束了这一轮。平台解读模型给出的提问列表为空，这份方案被当成最终答复评判，3 分半后判 FAIL（`OUTPUT_UNSTRUCTURED`，没有故障）。第八轮 r4 只跑 1 分 45 秒就结束，也是这个模式。这条路径与前 5 项改动无关：没有提问时，改前改后走的是同一个分支。
 - **改前**：没有提问、也没有合规结果时，平台把"本轮结束"交给评估器；评估器不回话，会话随即结束。
 - **改后**：平台逐行读 BladeAI 的事件，记下这一轮最后停在哪个节点、哪个阶段，以及有没有弹卡片。一轮结束时，以下条件**全部**满足，平台就回一句固定的话："方案收到。请继续：如果决定执行，请提交确认卡片，我会在卡片上审核；如果认为不应执行，请直接说明结论和理由。"
@@ -501,15 +501,30 @@
   - 收尾时如果智能体请求过恢复，就不等待、直接删除，原因记为 `finalization_cleanup`。
 - **为什么收尾不再加 120 秒宽限**：宽限是留给还在运行的智能体自己恢复用的；会话一结束，它就恢复不了了。
 
+### 8. BladeAI 走完自己的流水线后，平台不再逐条回答它的收尾话
+
+第十一轮跑完后发现。
+
+- **位置**：`harness_runtime.py:243`（常量 `BLADEAI_POSTMORTEM_PHASE`）、`:304`（新增 `_bladeai_closing_questions`）、`:1427`（调用处，并发 `bladeai_closing_remarks_not_answered` 事件）。
+- **现象**（第十一轮 r2 在 s01、r4 在 s05，两条都是 `HARNESS_TIMEOUT` → CASE_INVALID）：
+  - BladeAI 的第一轮在同一轮里走完了整条流水线：意图澄清 → 意图卡片 → 注入准备 → 执行卡片 → 注入 → 验证 → 复盘（阶段 `postmortem`，节点 `terminal_reports`）。r2 这一轮从 11:41 跑到 12:04。
+  - 平台解读这 43–50 条消息时，读出了弹第一张卡片前 8 秒说的那句"现在提交该意图，请在弹出的确认卡上核准执行"，当成待答的确认问题；r4 还读出了复盘末尾的几条可选建议（frontend 访问方式、清理旧任务记录、下次演练方向）。
+  - 平台照常回答"请直接提交确认卡"。BladeAI 回"确认卡已提交，请在卡片上核准"，双方各说各话。r4 还因为回答了"清理旧任务记录"，又进入了恢复校验。
+  - 每次解读要 1–3 分钟，两条都在实验早已结束后撞上 30 分钟上限。
+  - 同轮另外 3 条 PASS 的试验（r1、r3、r5）里，r3、r5 的复盘轮没有解读出问题，直接收尾判 PASS；r1 也读出了同一句过期提示，但第二轮 BladeAI 直接回"实验已执行完毕且验证通过"，刚好赶上。
+- **改前**：不管 BladeAI 停在哪个阶段，解读出问题就回答并开新一轮。
+- **改后**：一轮停在复盘阶段时，这一轮解读出的问题一律当作收尾话，不回答，也不开新轮，直接交给评估收尾；并记一个事件，写明是哪些话题。被拒卡片的理由不属于问题，照常发送。
+- **为什么这样判断**：复盘是 BladeAI 自己流水线的最后一站，走到这里说明它已认定任务完成；这个信号来自它自己的事件流，不依赖解读模型的判断。r3、r5 正是在复盘轮之后收尾并判了 PASS。
+
 ### 11.1 测试
 
-- 新增 27 条（第 6 项另加 5 条，在 `tests/test_bladeai_platform_replies.py:132-190`；第 7 项另加 2 条，在 `tests/test_stage2_finalization.py:452`、`:479`）：
+- 新增 29 条（第 6 项另加 5 条，在 `tests/test_bladeai_platform_replies.py:132-190`；第 7 项另加 2 条，在 `tests/test_stage2_finalization.py:452`、`:479`；第 8 项另加 2 条，在 `tests/test_bladeai_platform_replies.py:195`、`:208`）：
   - `tests/test_bladeai_platform_replies.py`：新文件，7 条，覆盖对话标记、合并回复、拆分原生参数；
   - `tests/test_stage2_simulated_user.py:251`、`:285`：对话回答不批准任何计划，模型没给内容时回兜底话术；
   - `tests/test_bladeai_confirm_bridge.py:338`：只有被拒卡片的理由进待发队列；
   - `tests/test_stage2_fault_inventory.py:409-592`：8 条。其中超时删除路径 3 条（删除、开关关闭时不动、已自行消失时不邀功），观察器 4 条（用假时钟验证 t=400 秒不删、t=500 秒删；没有批准时长不删；失败 3 次后停止；稍后一次观察补记确认），批准时长取值 1 条；
   - `tests/test_stage2_finalization.py:378`、`:402`：平台确认删除时记为 `CONTROLLER_FALLBACK`，未确认时仍记 `UNATTRIBUTED`。
-- 全量测试：`run_snapshot_pytest.py tests`（d0-integration venv，Python 3.13）。第 1–5 项提交时 2162 通过、9 跳过、0 失败（跑了两次）；加第 6 项后 2167 通过；加第 7 项后 2169 通过，均为 9 跳过、0 失败。观察器与收尾这两个文件连续跑 3 次，每次 36 条全部通过。
+- 全量测试：`run_snapshot_pytest.py tests`（d0-integration venv，Python 3.13）。第 1–5 项提交时 2162 通过、9 跳过、0 失败（跑了两次）；加第 6 项后 2167 通过；加第 7 项后 2169 通过；加第 8 项后 2171 通过，均为 9 跳过、0 失败。观察器与收尾这两个文件连续跑 3 次，每次 36 条全部通过。
 
 ### 11.2 部署与验证
 
@@ -535,7 +550,18 @@
   - 存活时间比 420 秒多出 10–30 秒，来自三部分：首次看到比创建晚 5–8 秒；每 5 秒查一次；`kubectl delete` 要等 CR 销毁完成，再重读一次集群（r4 从发出删除到记下"已确认"约 20 秒）。
   - 这是"平台删除仍在运行的归属实验"第一次在实跑中被触发并验证；第九轮这条路径一次也没触发。
 
-**第十一轮（第 6、7 项）**：待部署验证。第 6 项镜像 `stage2-d0-c65f82f-bladeai070-own@sha256:c45bb906ad1448827dbde449cbe5c175c4244c69bd3cf0a02bff2b3a0bd59d1f` 已推送；第 7 项提交后需要重新构建。
+**第十一轮 `bladeai-parallel-20260917-11`（第 1–7 项，镜像 b141b6e）**
+
+- **镜像**：`stage2-d0-b141b6e-bladeai070-own@sha256:6dbc498484d142d29b5c9e54b89b895c34c688780cbe180fdde5aa0b749ca988`。中间构建过只含第 6 项的 `stage2-d0-c65f82f-bladeai070-own@sha256:c45bb906…`，没有部署。
+- **下发**：11:37–11:41。第一次判定 4 个可运行，补发布能力后 5 个；批次 11:41:37 提交，12:14 全部结束。
+- **结果：3 条 PASS、2 条 CASE_INVALID。**
+  - PASS：r1（s02）34.5 分，r3（s04）34.5 分，r5（s03）28.5 分。
+  - CASE_INVALID：r2（s01）、r4（s05），均为 `HARNESS_TIMEOUT`，原因见第 8 项。
+- **第 5 项再次全部生效**：5 个实验 11:56:42–11:57:39 创建，12:04:06–12:04:59 之间被观察器删除，存活 439–453 秒；每条都是 `cleanup_attempts` 1、`verified_absent` 为真、`removed_by: observer`，收尾记为 `CONTROLLER_FALLBACK`。
+- **第 6、7 项**：这一轮没有触发。没有试验停在意图阶段不提问；也没有会话早于删除时间点结束。两项仍只有单元测试覆盖。
+- **第 1 项**：r5（s03）第一轮问"确认无误请回复'执行'"，平台回"执行"；r3（s04）被问要不要调整强度，平台回"按原方案提交确认卡片即可，无需调整强度或时长"。两条都是对话式回复，立即发出，不带批准。
+
+**第十二轮（第 8 项）**：待部署验证。
 
 ### 11.3 仍未解决
 
