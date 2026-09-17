@@ -584,12 +584,13 @@ def test_observer_confirms_absence_on_a_later_poll_after_an_unverified_delete():
 
 
 def test_approved_duration_prefers_the_reviewed_plan_over_the_runtime_contract():
-    from stage2_service.campaign import _approved_duration_seconds
+    from stage2_service.foreign_fault_observer import approved_duration_seconds
 
-    assert _approved_duration_seconds({"safety_ttl_seconds": 300}, {"duration_seconds": 600}) == 300
-    assert _approved_duration_seconds({}, {"duration_seconds": 600}) == 600
-    assert _approved_duration_seconds({"safety_ttl_seconds": True}, {}) is None
-    assert _approved_duration_seconds({"safety_ttl_seconds": 0}, {"duration_seconds": None}) is None
+    assert approved_duration_seconds({"safety_ttl_seconds": 300}, {"duration_seconds": 600}) == 300
+    assert approved_duration_seconds({}, {"duration_seconds": 600}) == 600
+    assert approved_duration_seconds({"safety_ttl_seconds": True}, {}) is None
+    assert approved_duration_seconds({"safety_ttl_seconds": 0}, {"duration_seconds": None}) is None
+    assert approved_duration_seconds(None, None) is None
 
 
 def test_direct_cleanup_uses_exact_ledger_and_never_treats_terminal_cr_as_absent(

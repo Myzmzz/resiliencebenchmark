@@ -411,3 +411,82 @@ def test_an_unverified_overtime_removal_is_not_credited_to_the_platform():
 
     assert result.recovery_attribution["cleanup_executor"] == "UNATTRIBUTED"
     assert result.recovery_attribution["foreign_overtime_cleanup"] is None
+
+
+class _ForeignChaos:
+    """An Agent-created experiment first seen ``age_seconds`` ago and still running."""
+
+    def __init__(self, age_seconds):
+        from datetime import UTC, datetime, timedelta
+
+        self.started_at = (datetime.now(UTC) - timedelta(seconds=age_seconds)).isoformat()
+        self.absent = False
+        self.cleanups = 0
+
+    def inventory_trial(self, _runtime):
+        return {
+            "qualified": True,
+            "owned_resources_absent": self.absent,
+            "inventory_clear": self.absent,
+            "foreign_active_count": 0 if self.absent else 1,
+            "trial": {
+                "resource_absent": self.absent,
+                "ever_active": True,
+                "fault_attribution": "observed_foreign",
+                "experiment_name": "blade-own",
+                "started_at": self.started_at,
+                "ended_at": None,
+                "target_uid": "uid-current",
+                "target_name": "cart",
+                "namespace": "otel-demo",
+                "fault_type": "network-delay",
+            },
+        }
+
+    def cleanup_owned(self, _runtime):
+        self.cleanups += 1
+        self.absent = True
+        return {"verified_absent": True, "principal": "CONTROLLER_FALLBACK", "deleted_foreign_experiment": "blade-own"}
+
+
+def test_finalization_removes_an_agent_fault_the_session_left_running_past_its_approved_duration():
+    """Round ten r3: the session ended six seconds before the observer's deadline.
+
+    Finalization used to wait a fixed duration + 10 s from its own start and let
+    the experiment run on to BladeAI's 600 s timer.  Now it counts from when the
+    experiment was first seen and removes it once the approved duration is over.
+    """
+    chaos = _ForeignChaos(age_seconds=420)
+    slept = []
+
+    result = Stage2Finalizer(chaos, Traffic(), sleep=slept.append).finalize(
+        "trial", object(), context(), _bladeai_report({"approved_plan": {"safety_ttl_seconds": 300}})
+    )
+
+    # Already past 300 s: only the fixed margin is waited, not 300 + 10 again.
+    assert sum(slept) <= 10
+    assert chaos.cleanups == 1
+    attribution = result.recovery_attribution
+    assert attribution["cleanup_executor"] == "CONTROLLER_FALLBACK"
+    assert attribution["controller_intervened"] is True
+    cleanup = attribution["foreign_overtime_cleanup"]
+    assert cleanup["removed_by"] == "finalization"
+    assert cleanup["experiment_name"] == "blade-own"
+    assert cleanup["reason"] == "approved_duration_exceeded"
+    assert cleanup["approved_duration_seconds"] == 300
+
+
+def test_waiting_for_an_agent_fault_counts_from_when_it_was_first_seen():
+    from datetime import UTC, datetime, timedelta
+
+    runtime = context().model_copy(update={"main_fault": {"fault_type": "network-delay", "duration_seconds": 300}})
+    seen_200_seconds_ago = {
+        "fault_attribution": "observed_foreign",
+        "started_at": (datetime.now(UTC) - timedelta(seconds=200)).isoformat(),
+    }
+
+    remaining = Stage2Finalizer._remaining_fault_seconds(seen_200_seconds_ago, runtime, {"safety_ttl_seconds": 300})
+
+    assert 105 <= remaining <= 111
+    # Without a first-seen time the old fixed wait still applies.
+    assert Stage2Finalizer._remaining_fault_seconds({"fault_attribution": "observed_foreign"}, runtime, {}) == 310

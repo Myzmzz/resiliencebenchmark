@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from .contracts import (
@@ -15,10 +15,15 @@ from .contracts import (
     TrialRuntimeContext,
 )
 from .condition_policy import CONDITION_POLICY
+from .foreign_fault_observer import OVERTIME_CLEANUP_REASON, approved_duration_seconds
 from .request_observation import timestamp as evidence_timestamp
 from .condition_policy import RESOURCE_METRICS
 from .reset_policy import classify_reset_policy
 from .trial_facts import assistance_level_from_report
+
+# Seconds finalization waits past a fault's deadline before it looks again, so
+# a timer that fires exactly on time is seen as the fault's own end.
+FAULT_END_MARGIN_SECONDS = 10
 
 
 class ChaosCleanupBackend(Protocol):
@@ -108,7 +113,7 @@ class Stage2Finalizer:
         timeout_wait_seconds = 0.0
         if ever_active and not pre_absent and not agent_attempted:
             timeout_wait_seconds = self._remaining_fault_seconds(
-                pre_status, runtime
+                pre_status, runtime, approved_plan
             )
             checks = max(1, math.ceil(timeout_wait_seconds / self.poll_seconds))
             for _ in range(checks):
@@ -155,6 +160,7 @@ class Stage2Finalizer:
         runtime_update["main_fault"] = fault_contract
         if runtime_update:
             evidence_runtime = runtime.model_copy(update=runtime_update)
+        destroy_at = None if pre_absent else datetime.now(UTC).isoformat()
         destroy = (
             {"verified_absent": True, "skipped": "already_absent"}
             if pre_absent
@@ -362,6 +368,38 @@ class Stage2Finalizer:
             and isinstance(foreign_cleanup, Mapping)
             and foreign_cleanup.get("verified_absent") is True
         )
+        # The same rule, applied here when the Agent session ended before the
+        # observer's deadline.  Round ten r3 (2026-09-17): the session was over
+        # at 11:25:53, the observer's deadline was 11:25:59, and the experiment
+        # then ran on to its own 600 s timer while finalization waited for it.
+        finalizer_removed_foreign = (
+            not pre_absent
+            and pre_status.get("fault_attribution") == "observed_foreign"
+            and bool(destroy.get("deleted_foreign_experiment"))
+            and destroy.get("verified_absent") is True
+        )
+        if foreign_recovered_by_controller:
+            foreign_overtime_cleanup: dict[str, Any] | None = {
+                "experiment_name": foreign_cleanup.get("deleted_foreign_experiment"),
+                "at": foreign_fault.get("controller_fallback_at"),
+                "reason": foreign_fault.get("controller_fallback_reason"),
+                "approved_duration_seconds": foreign_fault.get("approved_duration_seconds"),
+                "grace_seconds": foreign_fault.get("grace_seconds"),
+                "removed_by": "observer",
+            }
+        elif finalizer_removed_foreign:
+            foreign_overtime_cleanup = {
+                "experiment_name": destroy.get("deleted_foreign_experiment"),
+                "at": destroy_at,
+                # Without a recovery request the wait above ran to the approved
+                # duration first; with one, the removal was immediate.
+                "reason": "finalization_cleanup" if agent_attempted else OVERTIME_CLEANUP_REASON,
+                "approved_duration_seconds": approved_duration_seconds(approved_plan, runtime.main_fault),
+                "grace_seconds": FAULT_END_MARGIN_SECONDS,
+                "removed_by": "finalization",
+            }
+        else:
+            foreign_overtime_cleanup = None
         cleanup_executor = (
             "NOT_APPLICABLE" if not ever_active else
             "CONTROLLER_TIMER" if timer_cleaned else
@@ -401,17 +439,7 @@ class Stage2Finalizer:
                     or (ever_active and not pre_absent)
                 ),
                 "cleanup_principal": destroy.get("principal", "CONTROLLER_FALLBACK"),
-                "foreign_overtime_cleanup": (
-                    {
-                        "experiment_name": foreign_cleanup.get("deleted_foreign_experiment"),
-                        "at": foreign_fault.get("controller_fallback_at"),
-                        "reason": foreign_fault.get("controller_fallback_reason"),
-                        "approved_duration_seconds": foreign_fault.get("approved_duration_seconds"),
-                        "grace_seconds": foreign_fault.get("grace_seconds"),
-                    }
-                    if foreign_recovered_by_controller
-                    else None
-                ),
+                "foreign_overtime_cleanup": foreign_overtime_cleanup,
                 "business_verified_by": "ORACLE" if business_recovered else None,
             },
             main_fault_ever_active=ever_active,
@@ -457,7 +485,9 @@ class Stage2Finalizer:
 
     @staticmethod
     def _remaining_fault_seconds(
-        status: Mapping[str, Any], runtime: TrialRuntimeContext
+        status: Mapping[str, Any],
+        runtime: TrialRuntimeContext,
+        approved_plan: Mapping[str, Any] | None = None,
     ) -> float:
         raw_deadline = status.get("deadline_at")
         if raw_deadline:
@@ -465,10 +495,24 @@ class Stage2Finalizer:
                 deadline = datetime.fromisoformat(
                     str(raw_deadline).replace("Z", "+00:00")
                 )
-                return max(0.0, (deadline - datetime.now(UTC)).total_seconds()) + 10
+                return max(0.0, (deadline - datetime.now(UTC)).total_seconds()) + FAULT_END_MARGIN_SECONDS
             except ValueError:
                 pass
-        return float(runtime.main_fault.get("duration_seconds") or 0) + 10
+        if status.get("fault_attribution") == "observed_foreign" and status.get("started_at"):
+            # An Agent-created experiment runs on the Agent's own timer, not the
+            # approved one (BladeAI never goes below 600 s), and it has no
+            # ledger deadline.  Count the approved duration from when it was
+            # first seen; whatever still runs then is removed (user rule,
+            # 2026-09-17).  Never longer than the old fixed wait below.
+            approved = approved_duration_seconds(approved_plan, runtime.main_fault)
+            try:
+                started = datetime.fromisoformat(str(status["started_at"]).replace("Z", "+00:00"))
+            except ValueError:
+                started = None
+            if approved and started is not None:
+                deadline = started + timedelta(seconds=approved)
+                return max(0.0, (deadline - datetime.now(UTC)).total_seconds()) + FAULT_END_MARGIN_SECONDS
+        return float(runtime.main_fault.get("duration_seconds") or 0) + FAULT_END_MARGIN_SECONDS
 
     @staticmethod
     def _trial_status(

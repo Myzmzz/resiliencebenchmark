@@ -49,6 +49,25 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def approved_duration_seconds(
+    approved_plan: Mapping[str, Any] | None, main_fault: Mapping[str, Any] | None
+) -> int | None:
+    """The fault duration the user approved, for the foreign-fault overtime rule.
+
+    ``safety_ttl_seconds`` is what the reviewer approved; the runtime's
+    ``duration_seconds`` is only a fallback for a plan that lacks it.  ``None``
+    means no usable duration, and nothing is removed on its account.  Shared by
+    the live observer (armed in ``campaign``) and by finalization, which applies
+    the same rule when the Agent session ends before the observer's deadline.
+    """
+    for value in ((approved_plan or {}).get("safety_ttl_seconds"), (main_fault or {}).get("duration_seconds")):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if value > 0:
+            return int(value)
+    return None
+
+
 class ForeignFaultObserver:
     """Poll one Trial's fault inventory on a timer until the Trial ends."""
 

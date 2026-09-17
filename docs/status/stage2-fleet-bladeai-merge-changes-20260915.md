@@ -404,7 +404,7 @@
 
 ## 十一、09-17 平台完善（用户："到时间没恢复我们主动恢复即可，然后给我完善下平台"）
 
-用户 09-17 定：BladeAI 自身的两个问题（最短 600 秒、说好主动恢复却不做）先不管，实验超过批准时长还在，就由平台主动恢复；平台这边的问题修好。共 6 项改动，其中第 6 项是第十轮部署后发现、补上的。
+用户 09-17 定：BladeAI 自身的两个问题（最短 600 秒、说好主动恢复却不做）先不管，实验超过批准时长还在，就由平台主动恢复；平台这边的问题修好。共 7 项改动，其中第 6、7 项是第十轮部署后发现、补上的。
 
 ### 1. BladeAI 的文字提问按对话回答，不再当计划审批
 
@@ -444,10 +444,10 @@
 ### 5. 实验超过批准时长时由平台主动恢复
 
 - **位置**：
-  - `stage2_service/foreign_fault_observer.py`：`:40-44` 常量，`:177` `_is_overdue`，`:193` `_clean_up_overdue`，`:110` `finish`；
+  - `stage2_service/foreign_fault_observer.py`：`:40-44` 常量，`:52` `approved_duration_seconds`（由 campaign 挪来，与收尾共用），`:196` `_is_overdue`，`:212` `_clean_up_overdue`，`:129` `finish`；
   - `stage2_service/runtime_factory.py:1269`、`:1467`：新增 `cleanup_overdue_foreign`；
-  - `stage2_service/campaign.py:530`、`:1790`：布防时传入批准时长；
-  - `stage2_service/finalization.py:360-369`、`:404`：收尾归属。
+  - `stage2_service/campaign.py:54`、`:531`：布防时传入批准时长；
+  - `stage2_service/finalization.py:366-407`、`:442`：收尾归属。
 - **改前**：BladeAI 把 300 秒改成 600 秒，说好会提前恢复，实际从不恢复。第六到第九轮的实验都活到 605–626 秒，平台要到收尾才处理。到收尾时，实验早已被它自带的超时销毁，清理执行方记为 `UNATTRIBUTED`。
 - **改后**：
   - **计时**：观察器从第一次看到归属实验时开始计时。阈值是批准时长加 120 秒宽限：批准时长取计划里的 `safety_ttl_seconds`，没有时取任务的 `duration_seconds`；宽限与账本故障的 `OVERTIME_GRACE_SECONDS` 相同。超过阈值实验还在，就调用 `cleanup_overdue_foreign`。L0×C0 批准的是 300 秒，所以注入后约 420 秒删除。观察器每 5 秒查一次，最多晚 5 秒左右。
@@ -487,19 +487,55 @@
   - "卡片已批准过就不再发"是为了避免实验做完后，它在意图阶段写的收尾总结又被推回去重新注入。
   - 用固定话术、不调模型，是因为这一轮单是解读就花了 68 秒。
 
+### 7. 会话在删除时间点之前结束时，由收尾阶段按同一规则删除
+
+第十轮跑完后发现。
+
+- **位置**：`stage2_service/finalization.py`：`:26` 新常量 `FAULT_END_MARGIN_SECONDS`；`:487-513` `_remaining_fault_seconds` 新增外部实验分支；`:163` 记下删除时间；`:375-399` 收尾删除的归属；`:442` 写入归属。
+- **现象**（第十轮 r3，s05，`campaign-90dd99e183a24dbe`）：观察器 11:18:59 看到实验 `0dee86bfb9008401`，本该在 11:25:59 删除，但 BladeAI 会话 11:25:53 就结束了，观察器随之停止。收尾阶段原来的等法是"从收尾开始再等 时长 + 10 秒"，一直等到 11:29:00，实验被 BladeAI 自带的 600 秒超时销毁（存活 617 秒），清理执行方记为 `UNATTRIBUTED`。这条试验本身判了 PASS，但"到时间没恢复由平台恢复"在这里没有兑现。
+- **改前**：外部实验没有账本截止时间，收尾一律从自己开始的时刻起等 `duration_seconds + 10` 秒，不管实验已经跑了多久。
+- **改后**：
+  - 对归属为外部实验、且有首次观察时间的，等待截止时间改为"首次观察 + 批准时长 + 10 秒"。这和账本故障在收尾时用的"截止时间 + 10 秒"是同一种等法，等待时长只会比原来短。
+  - 到点仍在的，由原有的精确删除（`cleanup_owned` → `_cleanup_attributed_foreign`）删掉，清理执行方记为 `CONTROLLER_FALLBACK`。
+  - `foreign_overtime_cleanup` 里用 `removed_by` 区分由观察器删的（`observer`）和由收尾删的（`finalization`）。
+  - 收尾时如果智能体请求过恢复，就不等待、直接删除，原因记为 `finalization_cleanup`。
+- **为什么收尾不再加 120 秒宽限**：宽限是留给还在运行的智能体自己恢复用的；会话一结束，它就恢复不了了。
+
 ### 11.1 测试
 
-- 新增 25 条（第 6 项另加 5 条，在 `tests/test_bladeai_platform_replies.py:132-190`）：
+- 新增 27 条（第 6 项另加 5 条，在 `tests/test_bladeai_platform_replies.py:132-190`；第 7 项另加 2 条，在 `tests/test_stage2_finalization.py:452`、`:479`）：
   - `tests/test_bladeai_platform_replies.py`：新文件，7 条，覆盖对话标记、合并回复、拆分原生参数；
   - `tests/test_stage2_simulated_user.py:251`、`:285`：对话回答不批准任何计划，模型没给内容时回兜底话术；
   - `tests/test_bladeai_confirm_bridge.py:338`：只有被拒卡片的理由进待发队列；
   - `tests/test_stage2_fault_inventory.py:409-592`：8 条。其中超时删除路径 3 条（删除、开关关闭时不动、已自行消失时不邀功），观察器 4 条（用假时钟验证 t=400 秒不删、t=500 秒删；没有批准时长不删；失败 3 次后停止；稍后一次观察补记确认），批准时长取值 1 条；
   - `tests/test_stage2_finalization.py:378`、`:402`：平台确认删除时记为 `CONTROLLER_FALLBACK`，未确认时仍记 `UNATTRIBUTED`。
-- 全量测试：`run_snapshot_pytest.py tests`（d0-integration venv，Python 3.13）结果为 2162 通过、9 跳过、0 失败。观察器与收尾这两个文件连续跑 3 次，每次 36 条全部通过。
+- 全量测试：`run_snapshot_pytest.py tests`（d0-integration venv，Python 3.13）。第 1–5 项提交时 2162 通过、9 跳过、0 失败（跑了两次）；加第 6 项后 2167 通过；加第 7 项后 2169 通过，均为 9 跳过、0 失败。观察器与收尾这两个文件连续跑 3 次，每次 36 条全部通过。
 
 ### 11.2 部署与验证
 
-待补：构建镜像、部署 5 个 slot，并跑一轮 5 路验证。验证时看三点：文字提问不再被回"不批准"；实验约 420 秒被平台删除，而不是 605 秒；PASS 情况。
+**第十轮 `bladeai-parallel-20260917-10`（第 1–5 项，镜像 064433f）**
+
+- **镜像**：`1.94.151.57:85/observe/resbench-stage2:stage2-d0-064433f-bladeai070-own@sha256:796bb8a23f4a7a906675041caf8266c36f74061854823015f3cfab35851c88b6`。仍是在 `stage2-d0-77a11bd@sha256:f3b1ffc1…` 上 `crane append` 两层；BladeAI 层是确定性构建，digest 与上次相同。入口、工作目录、用户与层数（59）都已核对一致。
+- **下发**：11:02–11:05 下发，5 个 slot 都换上新 digest，归属开关都是 on。第一次判定只有 4 个可运行，补发布一次能力后 5 个全部可运行。清理用的身份 `resbench-stage2-finalizer` 对 ChaosBlade 实验有 delete 权限（`kubectl auth can-i` 实测）。批次 11:05:30 提交，5 路并发，11:30:44 全部结束。
+- **结果：4 条 PASS、1 条 FAIL**（第九轮是 1 条 PASS、4 条 CASE_INVALID）。Fleet 统计的失败归属：智能体 0、平台 0。
+  - PASS：r2 34.5 分，r3 34.5 分，r4 28.5 分，r5 34.5 分。
+  - FAIL：r1，3 分半就结束，原因见第 6 项。
+  - 5 条都带 `PERMISSION_DENIED_OBSERVED` 标记，第九轮的 5 条（包括那条 PASS）也都有。这是 BladeAI 尝试进容器被 RBAC 拒绝的提示性记录，不影响判定。
+- **第 1 项生效**：r2 的提问得到"按 80 提交"，本轮结束后 49 秒发出；r5 得到"请提交确认卡片，由卡片流程审批。"。两条都是 `conversation_answered`，`approved` 为空，立即投递。本轮没有再看到对文字提问回"不批准"。
+- **第 5 项生效，4 个实验里有 3 个由平台删除**：
+
+  | 试验 | slot | 实验 | 创建 | 首次看到 | 平台删除 | 存活 | 收尾记为 |
+  |---|---|---|---|---|---|---|---|
+  | r4 | s03 | `3531b1c5c3d0bcdb` | 11:17:50 | 11:17:55 | 11:24:59（operator 日志开始销毁） | 429 秒 | `CONTROLLER_FALLBACK` |
+  | r5 | s04 | `34eeffcead17e499` | 11:19:45 | 11:19:52 | 11:27:04 前后 | 约 440 秒 | `CONTROLLER_FALLBACK` |
+  | r2 | s02 | `cde812e5013a0811` | 11:20:18 | 11:20:24 | 11:27:45 前后 | 约 450 秒 | `CONTROLLER_FALLBACK` |
+  | r3 | s05 | `0dee86bfb9008401` | 11:18:51 | 11:18:59 | 未删除，11:29:00 被自身 600 秒超时销毁 | 617 秒 | `UNATTRIBUTED`（见第 7 项） |
+
+  - 三个被删的实验，`cleanup_attempts` 都是 1，`verified_absent` 都是真，`foreign_overtime_cleanup` 也都写进了收尾归属。
+  - 存活时间比 420 秒多出 10–30 秒，来自三部分：首次看到比创建晚 5–8 秒；每 5 秒查一次；`kubectl delete` 要等 CR 销毁完成，再重读一次集群（r4 从发出删除到记下"已确认"约 20 秒）。
+  - 这是"平台删除仍在运行的归属实验"第一次在实跑中被触发并验证；第九轮这条路径一次也没触发。
+
+**第十一轮（第 6、7 项）**：待部署验证。第 6 项镜像 `stage2-d0-c65f82f-bladeai070-own@sha256:c45bb906ad1448827dbde449cbe5c175c4244c69bd3cf0a02bff2b3a0bd59d1f` 已推送；第 7 项提交后需要重新构建。
 
 ### 11.3 仍未解决
 

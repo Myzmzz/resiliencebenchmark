@@ -51,6 +51,7 @@ from .contracts import (
 )
 from .disturbance import DisturbanceExecutor, RuntimeDisturbancePlanner
 from .episode import LoadedEpisode
+from .foreign_fault_observer import approved_duration_seconds
 from .node_evaluation import apply_case_applicability
 from .qualification import D0QualificationGate
 from .platform_ledger import PlatformLedger
@@ -527,7 +528,7 @@ class CampaignEngine:
                                             # What the user approved, not what
                                             # the Agent later ran: BladeAI raises
                                             # anything below 600 s to 600 s.
-                                            approved_duration_seconds=_approved_duration_seconds(
+                                            approved_duration_seconds=approved_duration_seconds(
                                                 condition_plan, runtime.main_fault
                                             ),
                                         )
@@ -1785,23 +1786,6 @@ class CampaignEngine:
         )
         self.artifacts.seal(campaign_id)
         return result
-
-
-def _approved_duration_seconds(
-    approved_plan: Mapping[str, Any], main_fault: Mapping[str, Any]
-) -> int | None:
-    """The fault duration the user approved, for the foreign-fault overtime rule.
-
-    ``safety_ttl_seconds`` is what the reviewer approved; the runtime's
-    ``duration_seconds`` is only a fallback for a plan that lacks it.  ``None``
-    means no usable duration, and the observer then never removes anything.
-    """
-    for value in (approved_plan.get("safety_ttl_seconds"), main_fault.get("duration_seconds")):
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            continue
-        if value > 0:
-            return int(value)
-    return None
 
 
 def _trial_gateway_evidence(
