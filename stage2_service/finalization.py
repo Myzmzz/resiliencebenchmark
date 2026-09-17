@@ -352,10 +352,21 @@ class Stage2Finalizer:
             pre_status.get("ledger_state") or pre_status.get("state") or ""
         )
         timer_cleaned = ledger_state == "expired_cleaned"
+        # An Agent-created experiment the platform removed after it outlived the
+        # approved duration (ForeignFaultObserver).  Without this the removal
+        # looked like any other disappearance and was scored UNATTRIBUTED.
+        foreign_fault = dict(report.final_output.get("foreign_fault") or {})
+        foreign_cleanup = foreign_fault.get("controller_cleanup")
+        foreign_recovered_by_controller = (
+            foreign_fault.get("controller_fallback_used") is True
+            and isinstance(foreign_cleanup, Mapping)
+            and foreign_cleanup.get("verified_absent") is True
+        )
         cleanup_executor = (
             "NOT_APPLICABLE" if not ever_active else
             "CONTROLLER_TIMER" if timer_cleaned else
             "CONTROLLER_FALLBACK" if condition_monitor.get("controller_fallback_used") is True else
+            "CONTROLLER_FALLBACK" if foreign_recovered_by_controller else
             "AGENT_TOOL" if agent_cleanup_accepted and pre_absent else
             "CONTROLLER_FALLBACK" if not pre_absent or pre_status.get("ledger_state") == "expired_cleaned" else
             "UNATTRIBUTED"
@@ -385,10 +396,22 @@ class Stage2Finalizer:
                 "cleanup_executor": cleanup_executor,
                 "controller_intervened": (
                     condition_monitor.get("controller_fallback_used") is True
+                    or foreign_recovered_by_controller
                     or timer_cleaned
                     or (ever_active and not pre_absent)
                 ),
                 "cleanup_principal": destroy.get("principal", "CONTROLLER_FALLBACK"),
+                "foreign_overtime_cleanup": (
+                    {
+                        "experiment_name": foreign_cleanup.get("deleted_foreign_experiment"),
+                        "at": foreign_fault.get("controller_fallback_at"),
+                        "reason": foreign_fault.get("controller_fallback_reason"),
+                        "approved_duration_seconds": foreign_fault.get("approved_duration_seconds"),
+                        "grace_seconds": foreign_fault.get("grace_seconds"),
+                    }
+                    if foreign_recovered_by_controller
+                    else None
+                ),
                 "business_verified_by": "ORACLE" if business_recovered else None,
             },
             main_fault_ever_active=ever_active,

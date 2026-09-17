@@ -153,6 +153,88 @@ _BLADEAI_MUTATION_TOOL_SUFFIXES = (
 )
 
 
+# ChaosBlade-only fields ``plan_from_intent`` may add next to the typed plan.
+NATIVE_PLAN_EXTRA_FIELDS: tuple[str, ...] = ("additional_native_constraints", "native_params")
+
+
+def _split_native_plan_extras(
+    plan: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Separate the ChaosBlade-only fields from a BladeAI plan before it is reviewed.
+
+    ``plan_from_intent`` records native knobs the Controller's one-dimensional
+    intensity cannot express -- ``--cpu-count`` next to ``--cpu-percent``, or
+    parameters it cannot map at all -- as ``additional_native_constraints`` or
+    ``native_params``.  ``AgentPlan`` forbids unknown fields
+    (``plan_schema.py:230``), so leaving them in turned any such card into a
+    hard ``PLAN_UNKNOWN_FIELD`` rejection before a word of the plan was read.
+    They are returned separately so the reviewer still sees them; the caller's
+    dict is not modified.
+    """
+    reviewed = dict(plan or {})
+    extras = {key: reviewed.pop(key) for key in NATIVE_PLAN_EXTRA_FIELDS if key in reviewed}
+    return reviewed, extras
+
+
+def _bladeai_conversation_questions(questions: list[Any]) -> list[dict[str, Any]]:
+    """Mark the questions BladeAI asked in prose as conversation, never as plan review.
+
+    BladeAI 0.7.0 reviews plans only on its own confirmation card, which the
+    confirmation bridge answers.  The prose around it -- "please make the final
+    decision on the card", "pick A or B", "should I recycle the old experiment
+    first?" -- was read by the interpretation model as a confirmation and
+    reviewed as a plan.  Round nine on 2026-09-16 showed where that leads: no
+    plan in the question, every typed field missing, a "not approved" reply to
+    a question that asked for none, and a trial that ran out of time.
+
+    The older text-plan recovery made it worse by writing one plan found
+    anywhere in the turn into every question, so "recycle the old experiment?"
+    was validated as an injection plan too.  It is no longer applied; the
+    interpreter's own recommendation stays only as context.
+    """
+    from stage2_service.simulated_user import CONVERSATION_REQUEST_KIND
+
+    return [
+        {**question, "request_kind": CONVERSATION_REQUEST_KIND}
+        for question in questions
+        if isinstance(question, Mapping) and question.get("question")
+    ]
+
+
+def _merge_bladeai_replies(
+    answered: list[tuple[str, StructuredFeedback]],
+    rejection_explanations: list[str],
+) -> list[StructuredFeedback]:
+    """Say everything the platform has for BladeAI after one turn, in one turn.
+
+    Each queued reply is sent as its own BladeAI turn, and a turn is minutes of
+    Agent work.  In round nine two answers produced after the same turn went
+    out one turn apart, and the second never left before the trial deadline.
+    The reasons for rejected confirmation cards are added here as well: a card
+    is answered with a single word, so without them the Agent only learns that
+    it was refused, not why.
+    """
+    reasons = [str(text).strip() for text in rejection_explanations if str(text).strip()]
+    replies = [reply for _question, reply in answered]
+    if len(replies) <= 1 and not reasons:
+        return replies
+    sections = [f"关于刚才被拒绝的确认卡片：{reason}" for reason in reasons]
+    for question_text, reply in answered:
+        sections.append(f"你问：{question_text}\n回复：{reply.message}" if question_text else reply.message)
+    return [
+        StructuredFeedback(
+            category=StructuredFeedbackType.USER_DECISION,
+            message="\n\n".join(sections),
+            payload={
+                "event_type": StructuredFeedbackType.USER_DECISION.value,
+                "merged_reply_count": len(replies),
+                "rejection_explanation_count": len(reasons),
+                "merged_question_ids": [reply.payload.get("question_id") for reply in replies],
+            },
+        )
+    ]
+
+
 def _fault_duration_ceiling(main_fault: Mapping[str, Any]) -> int:
     """Longest fault the confirmation gate may approve for this Trial.
 
@@ -1087,11 +1169,11 @@ class NativeHarnessRunner:
             # arrives as null and every field reports missing, so the simulated
             # user can only reject -- which is what a real L0 run did on
             # 2026-09-13 before this was added.
-            plan = plan_from_intent(question.recommendation, target={
+            plan, native_constraints = _split_native_plan_extras(plan_from_intent(question.recommendation, target={
                 "namespace": runtime_context.target.namespace,
                 "name": runtime_context.target.name,
                 "uid": runtime_context.target.uid,
-            })
+            }))
             payload = {
                 "topic": f"bladeai_{question.request_kind}",
                 "question_id": question.question_id,
@@ -1099,6 +1181,9 @@ class NativeHarnessRunner:
                 "question": card,
                 "recommendation": plan or question.recommendation,
                 "native_card": question.recommendation,
+                # Kept for the reviewer, but outside the plan: AgentPlan
+                # forbids fields it does not define.
+                "native_constraints": native_constraints,
                 "required_decisions": [],
                 "risk_boundary": "",
                 "request_kind": "confirmation",
@@ -1198,31 +1283,19 @@ class NativeHarnessRunner:
                     "assessment": dict(last_assessment), "source": "harness_interpretation",
                     "raw_messages": list(turn_messages),
                 })
-                proposed_plan = None
+                questions = list(interpreted["questions"])
                 if harness is HarnessKind.BLADEAI:
-                    # BladeAI states its plan as prose plus a fenced JSON block
-                    # and asks for a confirmation word instead of raising its
-                    # own gate (F10).  The interpreter answers with the word --
-                    # "A", "确认" -- so the plan the Agent actually wrote never
-                    # reaches the validator, which then reports every field
-                    # missing.  Recover it from the Agent's own text; the
-                    # validator still decides whether to accept it.
-                    from stage2_service.harness_adapters.bladeai_confirm import (
-                        plan_from_text,
-                    )
-
-                    proposed_plan = plan_from_text(turn_messages)
-                for question in interpreted["questions"]:
+                    # BladeAI 0.7.0 reviews plans only on its own confirmation
+                    # card, answered by the confirmation bridge.  Its prose
+                    # questions are conversation; reviewing them as plans is
+                    # what produced round nine's "not approved" replies to
+                    # questions that carried no plan (2026-09-16).  The older
+                    # text-plan recovery (F10, written for a BladeAI that asked
+                    # for a confirmation word instead of raising a card) wrote
+                    # one plan into every question and is no longer applied.
+                    questions = _bladeai_conversation_questions(questions)
+                for question in questions:
                     if isinstance(question, Mapping) and question.get("question"):
-                        if proposed_plan is not None and not isinstance(
-                            question.get("recommendation"), Mapping
-                        ):
-                            question = {**question, "recommendation": proposed_plan}
-                            self._emit(
-                                lifecycle, event_observer, campaign_id, trial_id, harness,
-                                LifecyclePhase.C1_PLAN, "agent_plan_recovered_from_text",
-                                {"topic": question.get("topic"), "fields": sorted(proposed_plan)},
-                            )
                         update_question(question)
                 if last_assessment:
                     self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
@@ -1256,6 +1329,7 @@ class NativeHarnessRunner:
                     payload={"event_type": "OUTPUT_REPAIR", "report_only": True},
                 )]
             replies = []
+            answered: list[tuple[str, StructuredFeedback]] = []
             for question in list(pending_questions.values()):
                 self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
                            LifecyclePhase.C1_PLAN, "agent_clarification_requested", question)
@@ -1277,11 +1351,18 @@ class NativeHarnessRunner:
                 self._emit(lifecycle, event_observer, campaign_id, trial_id, harness,
                            LifecyclePhase.C1_PLAN,
                            "harness_fact_answered" if answer.get("feedback_category") == "FACT_EVENT" else "user_decision_received", answer)
-                replies.append(StructuredFeedback(
+                reply = StructuredFeedback(
                     category=StructuredFeedbackType(answer.get("feedback_category", "USER_DECISION")),
                     message=answer["message"], payload={"event_type": answer.get("feedback_category", "USER_DECISION"), **answer},
-                ))
+                )
+                replies.append(reply)
+                answered.append((str(question.get("question") or ""), reply))
             pending_questions.clear()
+            if harness is HarnessKind.BLADEAI and not report_only:
+                rejection_explanations = (
+                    bladeai_bridge.drain_rejection_explanations() if bladeai_bridge is not None else []
+                )
+                replies = _merge_bladeai_replies(answered, rejection_explanations)
             if replies or report_only:
                 return replies if not report_only else []
             safe_summary = {k: v for k, v in summary.items() if k not in {"stdout", "stderr"}}

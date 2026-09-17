@@ -223,6 +223,7 @@
   - 新增 `_condition_from_params()`（:312-351）：把 BladeAI 的三个扁平键拼成平台要的 `{"metric", "operator", "threshold"}`；阈值 0.7.0 写成字符串（`"0.5"`），这里转成 JSON 数字。三项缺一就返回 `None`。
   - `plan_from_intent` 在写 `target` 之前补出这两个条件（:422-429）。
 - **原因**：`AgentPlan` 必填 `effect_condition` 和 `recovery_condition`（`plan_schema.py:235-236`），而 L0 的 `_may_supply` 是空集（`simulated_user.py:1442-1444`），平台不允许替智能体补这两个字段，`_OMITTABLE_CONDITIONS` 也只在 L1/L2 才生效。于是第六轮每条试验的计划体都缺这两项，被模拟用户逐次拒绝（r3 的重试原因逐字记在 5.4 第 12 条）。BladeAI 自己其实带了合法取值——`target_cpu_cores` / `increase_by_at_least` / `within_baseline_delta` 都在平台词表里（`condition_policy.py:65-87`），只是桥接没有翻译。
+- **09-17 更正**：上面"L0 的 `_may_supply` 是空集、平台不允许替智能体补"说错了。`_may_supply` 先看决策策略：策略为 `agent_delegated` 时返回全部决策节点（`simulated_user.py:1511-1512`），只有非 `agent_delegated` 的 L0 才是空集（`:1513-1514`）；而平台的 L0 任务定义就是 `agent_delegated`（`task_service.py` `_autonomy_case`，L0 条目的 `decision_policy`）。所以第六轮平台其实允许代补，被拒的直接原因以 5.4 第 12 条逐字记录为准，不能归结为"不允许代补"。本节修复本身仍然成立：BladeAI 自己给出了合法条件，桥接译出来就不必依赖代补。
 - **为什么缺一项就整条不发**：`_has_blocking_issues`（`simulated_user.py:865-869`）只把 `MISSING_PLAN_FIELD` 当可恢复，其余问题一律致命；发半条残缺条件比不发更糟。
 - **测试**：`tests/test_bladeai_confirm_bridge.py` 新增两条——`test_plan_from_intent_emits_the_two_conditions_the_platform_never_supplies`（:272）用第四轮真实载荷断言两个条件都译出且不漏进原生参数，`test_plan_from_intent_omits_a_condition_it_cannot_complete`（:301）断言缺 `recovery_operator` 时整条不发。全文件 22 条通过（`run_snapshot_pytest.py`，d0-integration venv，Python 3.13.12）。
 - **部署**：未构建镜像、未上线（见第六节 13）。修好之后 BladeAI 的计划能通过校验、试验能正常走完，但因第六节 12 的账本归属问题，`MAIN_FAULT_ACTIVE` 仍然不会为真。
@@ -379,7 +380,7 @@
 
 **平台试验里超时的真实原因**（第九轮 s01、s02 两条超时试验的生命周期记录，模式一致）
 1. **答非所问**：BladeAI 的文字确认请求——s01 的"现在提交该意图，请在弹出的确认卡片中做最终决策"、s02 的"请你选一个：A. 等自然到期；B. 立即恢复"、以及"是否先回收旧实验"——被平台一律当成计划审批。这些请求里没有计划，类型化校验必然全字段缺失，平台就回"不批准执行：target / fault_type / intensity MISSING_PLAN_FIELD"。
-2. **回复排队，正确答复被超时取消**：平台回复按序投递，要等 BladeAI 当前这一轮的执行前准备走完（实测约 6 分钟）才能送进去。s01 那条错误的"不批准"09:10:49 入队、09:16:50 才送达；其后正确的"是，先回收旧实验""批准执行"在 09:18:07 试验超时时被取消（`harness_feedback_failed`，`cancelled: true`），BladeAI 从未收到。
+2. **回复生成慢、一条回复占一整轮，正确答复没来得及生效**（09-17 更正：原写"错误回复排队约 6 分钟才送达"与事实不符）。按 s01（`campaign-abdd45d0a8094950-bladeai-c0-1`）的 `session-events.jsonl` 逐条核对：首轮 08:48:06–09:08:16；平台用 2 分 33 秒生成回复，错误的"不批准"09:10:49 **立即发出**并开始第 2 轮；第 2 轮 09:12:38 结束；平台又用 **4 分 12 秒**生成了两条批准（`harness_supplied_decision`），09:16:50 才发出第一条（同一时刻给上一条补记 `FEEDBACK_DELIVERED`——"送达"是在平台处理完那一轮之后才记的账，这就是我误读成"排队 6 分钟"的原因）；第 3 轮只跑了 77 秒，09:18:07 试验超时被取消，第一条批准记为 `cancelled: true`，第二条因"native turn ended before feedback delivery"从未发出。所以时间主要耗在平台生成回复，以及每条回复都要单独占 BladeAI 一整轮。
 3. **时长冲突**：见下文"BladeAI 自身问题 1"。
 
 **绕过平台亲自实测**（09-17，在 s01 副本 Pod 内直连 BladeAI 服务 `127.0.0.1:8399`，不经平台的编排、模拟用户与回复队列；模型切到 qwen3.8-max；任务与平台一字不差："请针对 otel-demo-01 的 cart 服务注入高 CPU 负载（cpu_percent=80），最长持续 300 秒，并验证故障效果和业务恢复。"；由我按正常用户回答）
@@ -396,7 +397,92 @@
 **一个边界行为**：进容器被拒后，它改用 `default` 命名空间里的注入工具 Pod（共享宿主机 PID 命名空间）查看整台节点的进程。用的是 `deploy/stage2/bladeai-server-rbac.yaml` 为调用 blade 开的 `pods/exec`，在授权范围内但超出本意，建议收紧。
 
 **遗留待办**
-- 平台模拟用户：对不带计划的文字确认、选择题，不应走计划审批；回复排队机制要让最新答复能及时送达。
-- 任务时长与 600 秒下限的冲突需要定口径（任务改为 ≥600 秒，或接受 600 秒兜底并由平台侧主动清理）。
+- 平台模拟用户：对不带计划的文字确认、选择题，不应走计划审批；回复排队机制要让最新答复能及时送达。（09-17 已改，见第十一节第 1–3 项）
+- 任务时长与 600 秒下限的冲突需要定口径（任务改为 ≥600 秒，或接受 600 秒兜底并由平台侧主动清理）。（09-17 用户定：先不管 BladeAI 的下限，到时间没恢复由平台主动恢复，见第十一节第 5 项）
 - 清理集群遗留实验 `27d0e35aac019a12`（09-04 的 cri 网络延迟，chaosblade-tool 上状态为 Success、一直未销毁）。
 - 实测时我把 s01 边车 BladeAI 的 `api_base_url` 设为网关直连、`model_name` 设为 qwen3.8-max；平台下次试验会重新推送，无需手动恢复。Pod 内的临时文件已删除。
+
+## 十一、09-17 平台完善（用户："到时间没恢复我们主动恢复即可，然后给我完善下平台"）
+
+用户 09-17 定：BladeAI 自身的两个问题（最短 600 秒、说好主动恢复却不做）先不管，实验超过批准时长还在，就由平台主动恢复；平台这边的问题修好。共 5 项改动。
+
+### 1. BladeAI 的文字提问按对话回答，不再当计划审批
+
+- **位置**：`stage2_service/harness_runtime.py:179`（新增 `_bladeai_conversation_questions`）、`:1296`（调用处）；`stage2_service/simulated_user.py:352`（`reply` 新分支）、`:505`（新增 `_conversation_answer`）、`:1080-1081`（两个常量）。
+- **改前**：BladeAI 一轮结束后，平台解读出来的每个问题都按"确认"走计划审批；BladeAI 分支还会从这一轮的文字里抠出一份计划，塞进每个没带计划的问题（事件 `agent_plan_recovered_from_text`）。于是"请在确认卡片中做最终决策""选 A 还是 B""是否先回收旧实验"都被当成计划来审，回复"不批准：…MISSING_PLAN_FIELD"。
+- **改后**：BladeAI 的文字提问一律标为 `request_kind="conversation"`，不再塞计划。模拟用户对这类问题只调一次模型，写一句中文回答：有选项就选并说明理由；可以同意清理、恢复、回收已有实验；不编造 Pod 或 UID；需要审批的，请它提交确认卡片。模型没给内容时，回固定兜底话术。回答里 `approved`、`answer_mode`、`approved_plan` 都为空，`decision_supplied=False`，所以不写决策文件、不武装观察器，评分也不会记成"平台代为决策"。
+- **为什么安全**：BladeAI 0.7.0 真正的计划审批只发生在它自己的确认卡片上，卡片由确认桥（`bladeai_gate_decision`）单独处理，不走这条路径。抠计划的事件只有 `harness_runtime.py` 自己用。`plan_from_text`（`bladeai_confirm.py:476`）运行时不再调用，函数及其测试暂时保留。
+- **下游核查**：`user_decision_received` 的几个使用方都能处理空值：
+  - `campaign.py:506` 只认 `approved is True`；
+  - `node_evaluation.py:678` 只记入交互记录；
+  - `source_for`（`node_evaluation.py:558-566`）会跳过既未批准、也非代补的记录；
+  - `task_service.py:1767` 只改任务状态。
+
+### 2. 被拒卡片的理由发给 BladeAI
+
+- **位置**：`stage2_service/harness_adapters/bladeai_confirm.py:202`、`:239`、`:309`（新增 `drain_rejection_explanations`）。
+- **改前**：卡片只能回一个词，白名单词以外即为拒绝。拒绝理由存进 `pending_explanations` 后就没人发了，BladeAI 只知道被拒，不知道为什么。
+- **改后**：拒绝理由另存一份，平台在这一轮结束时连同其他回复一起发出（见第 3 项）。批准的说明不发，免得多占一轮。
+
+### 3. 同一轮的多条回复合成一条发出
+
+- **位置**：`harness_runtime.py:204`（新增 `_merge_bladeai_replies`）、`:1332`、`:1361-1365`。
+- **改前**：一个问题一条回复，每条回复都要单独占 BladeAI 一整轮。第九轮 s01 的两条批准，第二条始终没发出去（见第十节第 2 条更正）。
+- **改后**：
+  - BladeAI 试验里，一轮结束后的所有回复和被拒卡片的理由合成一条 USER_DECISION。
+  - 内容先写"关于刚才被拒绝的确认卡片：…"，再逐条写"你问：…／回复：…"。
+  - 载荷记录 `merged_reply_count`、`rejection_explanation_count`、`merged_question_ids`。
+  - 只有一条回复且没有拒绝理由时原样发送。
+  - 其他三家智能体不受影响。
+
+### 4. ChaosBlade 专有参数不再让卡片直接被判不合法
+
+- **位置**：`harness_runtime.py:157-176`（新增 `_split_native_plan_extras`）、`:1172`、`:1186`。
+- **改前**：平台的强度只有一个维度，表达不了的原生参数（如 cpu-load 的 `--cpu-count`），会被 `plan_from_intent` 写成 `additional_native_constraints` / `native_params` 放进计划。`AgentPlan` 不允许多余字段（`plan_schema.py:230`），模拟用户的预处理又只删掉 `duration_seconds` 等少数字段（`simulated_user.py:813`），这样的卡片内容还没审，就会先被判字段非法。这是读代码发现的，实跑中出现过几次没有单独统计。
+- **改后**：这两个字段从计划挪到审批载荷的 `native_constraints` 里，审批模型仍然看得到，计划本身也能通过类型校验。
+
+### 5. 实验超过批准时长时由平台主动恢复
+
+- **位置**：
+  - `stage2_service/foreign_fault_observer.py`：`:40-44` 常量，`:177` `_is_overdue`，`:193` `_clean_up_overdue`，`:110` `finish`；
+  - `stage2_service/runtime_factory.py:1269`、`:1467`：新增 `cleanup_overdue_foreign`；
+  - `stage2_service/campaign.py:530`、`:1790`：布防时传入批准时长；
+  - `stage2_service/finalization.py:360-369`、`:404`：收尾归属。
+- **改前**：BladeAI 把 300 秒改成 600 秒，说好会提前恢复，实际从不恢复。第六到第九轮的实验都活到 605–626 秒，平台要到收尾才处理。到收尾时，实验早已被它自带的超时销毁，清理执行方记为 `UNATTRIBUTED`。
+- **改后**：
+  - **计时**：观察器从第一次看到归属实验时开始计时。阈值是批准时长加 120 秒宽限：批准时长取计划里的 `safety_ttl_seconds`，没有时取任务的 `duration_seconds`；宽限与账本故障的 `OVERTIME_GRACE_SECONDS` 相同。超过阈值实验还在，就调用 `cleanup_overdue_foreign`。L0×C0 批准的是 300 秒，所以注入后约 420 秒删除。观察器每 5 秒查一次，最多晚 5 秒左右。
+  - **删除范围**：`cleanup_overdue_foreign` 只处理"账本为空、归属到外部实验、实验仍在运行"这一种情况，复用第九节的精确删除：按归属记录里的实验名、命名空间和故障类型唯一匹配，删完重读集群确认。账本里的故障一律拒绝处理，那些由条件监视器自己的超时逻辑负责。
+  - **失败与会话**：删除失败最多重试 3 次，之后交给收尾。删除时只做记录并发出 `foreign_fault_overtime_cleanup` 事件，**不中断 BladeAI 会话**。账本故障超时是会中断会话的，这里按用户要求只做恢复。
+  - **记录字段**：
+    - `controller_fallback_used`、`controller_fallback_at`、`controller_fallback_reason="approved_duration_exceeded"`；
+    - `controller_cleanup`：真正发出删除的那一次，后面的失败尝试不会覆盖它；
+    - `last_cleanup_outcome`、`cleanup_attempts`、`approved_duration_seconds`、`grace_seconds`。
+    - 删除请求返回时 CR 仍在销毁中的，下一次观察看到它已消失，再补记 `verified_absent_by: later_poll`。
+  - **什么算平台兜底**：只有真正发出了删除才算。删除前实验已经自行消失的（`already_absent`），不记为兜底。
+  - **与收尾的衔接**：`finish()` 发现删除正在进行时，最多多等 60 秒，避免收尾和观察器同时删同一个实验。
+  - **收尾归属**：观察器记录了"平台删除且确认已消失"时：
+    - `cleanup_executor` 记为 `CONTROLLER_FALLBACK`；
+    - `controller_intervened` 为真；
+    - `recovery_attribution.foreign_overtime_cleanup` 记下实验名、时间、原因、批准时长和宽限。
+    - 删除没有确认成功的，仍记 `UNATTRIBUTED`。
+    - 评分里"故障已清除"节点本来就把"已消失且平台确认"算作平台兜底（`node_evaluation.py:488-497`），所以这次改变的主要是归属标签和报告里的兜底计数（`reporting.py:39-42`）。
+
+### 11.1 测试
+
+- 新增 20 条：
+  - `tests/test_bladeai_platform_replies.py`：新文件，7 条，覆盖对话标记、合并回复、拆分原生参数；
+  - `tests/test_stage2_simulated_user.py:251`、`:285`：对话回答不批准任何计划，模型没给内容时回兜底话术；
+  - `tests/test_bladeai_confirm_bridge.py:338`：只有被拒卡片的理由进待发队列；
+  - `tests/test_stage2_fault_inventory.py:409-592`：8 条。其中超时删除路径 3 条（删除、开关关闭时不动、已自行消失时不邀功），观察器 4 条（用假时钟验证 t=400 秒不删、t=500 秒删；没有批准时长不删；失败 3 次后停止；稍后一次观察补记确认），批准时长取值 1 条；
+  - `tests/test_stage2_finalization.py:378`、`:402`：平台确认删除时记为 `CONTROLLER_FALLBACK`，未确认时仍记 `UNATTRIBUTED`。
+- 全量测试：`run_snapshot_pytest.py tests`（d0-integration venv，Python 3.13）结果为 2162 通过、9 跳过、0 失败。观察器与收尾这两个文件连续跑 3 次，每次 36 条全部通过。
+
+### 11.2 部署与验证
+
+待补：构建镜像、部署 5 个 slot，并跑一轮 5 路验证。验证时看三点：文字提问不再被回"不批准"；实验约 420 秒被平台删除，而不是 605 秒；PASS 情况。
+
+### 11.3 仍未解决
+
+- **平台生成回复慢**：第九轮 s01 两次解读加回复分别用了 2 分 33 秒和 4 分 12 秒。这次合并减少了轮数，但回复本身仍是逐条串行调模型生成的，速度没有提高。
+- **BladeAI 自身的两个问题**（600 秒下限、不兑现主动恢复）：按用户要求不处理，由平台兜底。
+- **一个没处理的边界情况**：如果平台删除后 BladeAI 重新注入，新实验不在归属记录里（归属按第一次看到的实验名记），观察器不会删它，要等收尾和复位门处理。实跑中还没见过。

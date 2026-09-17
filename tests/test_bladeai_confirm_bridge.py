@@ -333,3 +333,25 @@ def test_plan_from_intent_still_reads_the_chaosblade_triple() -> None:
     )
     assert plan["fault_type"] == "cpu-load"
     assert plan["intensity"] == {"cpu_percent": 70}
+
+
+def test_only_a_rejected_cards_reason_is_queued_for_sending() -> None:
+    """A card takes one word, so the reason for a rejection has to follow as text.
+
+    Until 2026-09-17 nothing sent it.  An approval's explanation is not queued:
+    sending it would cost BladeAI a whole turn to read "approved" again.
+    """
+    client = FakeClient()
+    approving = bridge(client, decide=lambda q: GateDecision(
+        approved=True, reason="in_scope", explanation="同意：范围仅限 cart。",
+    ))
+    approving.answer(question("intent"))
+    assert approving.drain_rejection_explanations() == []
+
+    client = FakeClient()
+    rejecting = bridge(client, decide=lambda q: GateDecision(
+        approved=False, reason="out_of_scope", explanation="不批准：目标超出 otel-demo-01。",
+    ))
+    rejecting.answer(question("intent"))
+    assert rejecting.drain_rejection_explanations() == ["不批准：目标超出 otel-demo-01。"]
+    assert rejecting.drain_rejection_explanations() == []

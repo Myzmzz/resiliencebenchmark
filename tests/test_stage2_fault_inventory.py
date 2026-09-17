@@ -405,6 +405,193 @@ def test_foreign_fault_observer_reports_the_first_attributed_poll():
     assert emitted == ["foreign_fault_observed"]
 
 
+
+def test_overdue_path_deletes_the_credited_agent_fault(tmp_path, monkeypatch):
+    """The overtime removal deletes exactly the experiment this Trial was credited with."""
+    monkeypatch.setenv("STAGE2_FOREIGN_FAULT_ATTRIBUTION", "on")
+    blade, mesh = _agent_fault_services([_agent_created_record()])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    result = cleanup.cleanup_overdue_foreign(_agent_fault_runtime())
+
+    assert blade.backend.deleted == [("otel-demo", "blade-own")]
+    assert mesh.backend.deleted == []
+    assert result["verified_absent"] is True
+    assert result["deleted_foreign_experiment"] == "blade-own"
+
+
+def test_overdue_path_touches_nothing_without_attribution(tmp_path):
+    """With the switch off nothing is credited, so there is nothing overdue to remove."""
+    blade, mesh = _agent_fault_services([_agent_created_record()])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+
+    result = cleanup.cleanup_overdue_foreign(_agent_fault_runtime())
+
+    assert blade.backend.deleted == []
+    assert result["verified_absent"] is False
+    assert result["reason"] == "not_an_attributed_foreign_fault"
+
+
+def test_overdue_path_does_not_claim_a_fault_that_was_already_gone(tmp_path, monkeypatch):
+    """Reaped by its own timer between two reads: no delete, and no credit taken."""
+    monkeypatch.setenv("STAGE2_FOREIGN_FAULT_ATTRIBUTION", "on")
+    blade, mesh = _agent_fault_services([_agent_created_record()])
+    cleanup = DirectChaosCleanup(blade, mesh, tmp_path / "kubeconfig")
+    runtime = _agent_fault_runtime()
+    cleanup.inventory_trial(runtime)
+    blade.backend.records = []
+
+    result = cleanup.cleanup_overdue_foreign(runtime)
+
+    assert blade.backend.deleted == []
+    assert result["already_absent"] is True
+    assert "deleted_foreign_experiment" not in result
+
+
+class _OverdueBackend:
+    """An attributed Agent fault that stays active until a removal succeeds.
+
+    Every inventory read advances the fake clock by ``step`` seconds, so the
+    observer's own polling drives time forward deterministically.
+    """
+
+    def __init__(self, *, step=100.0, outcome=None, absent_after_cleanup=True):
+        self.now = 0.0
+        self.step = step
+        self.outcome = outcome or {
+            "verified_absent": True,
+            "principal": "CONTROLLER_FALLBACK",
+            "deleted_foreign_experiment": "blade-own",
+        }
+        self.absent_after_cleanup = absent_after_cleanup
+        self.cleanup_clock: list[float] = []
+        self.polls = 0
+
+    def clock(self):
+        return self.now
+
+    def inventory_trial(self, _runtime):
+        self.polls += 1
+        self.now += self.step
+        return {
+            "trial": {
+                "fault_attribution": "observed_foreign",
+                "experiment_name": "blade-own",
+                "fault_type": "cpu-load",
+                "target_name": "cart-1",
+                "resource_absent": bool(self.cleanup_clock) and self.absent_after_cleanup,
+            }
+        }
+
+    def cleanup_overdue_foreign(self, _runtime):
+        self.cleanup_clock.append(self.now)
+        return dict(self.outcome)
+
+
+def _run_observer(backend, *, approved_duration_seconds, until, timeout=3.0):
+    observer = ForeignFaultObserver(backend, poll_seconds=0.001, clock=backend.clock)
+    emitted = []
+    observer.arm(
+        trial_id="trial-1",
+        runtime=SimpleNamespace(),
+        emit=lambda kind, payload: emitted.append((kind, dict(payload))),
+        approved_duration_seconds=approved_duration_seconds,
+    )
+    deadline = time.monotonic() + timeout
+    while not until() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    return observer.finish(), emitted
+
+
+def test_observer_removes_the_credited_fault_once_duration_plus_grace_has_passed():
+    """BladeAI raises 300 s to 600 s and never recovers early; the platform steps in at 420 s."""
+    backend = _OverdueBackend()
+
+    result, emitted = _run_observer(
+        backend,
+        approved_duration_seconds=300,
+        until=lambda: backend.polls >= 10,
+    )
+
+    # First seen at t=100; the poll at t=500 is 400 s in and must not act.
+    assert backend.cleanup_clock == [600.0]
+    assert result["controller_fallback_used"] is True
+    assert result["controller_fallback_reason"] == "approved_duration_exceeded"
+    assert result["controller_cleanup"]["deleted_foreign_experiment"] == "blade-own"
+    assert result["cleanup_attempts"] == 1
+    assert result["approved_duration_seconds"] == 300
+    assert result["grace_seconds"] == 120
+    assert [kind for kind, _payload in emitted] == [
+        "foreign_fault_observed",
+        "foreign_fault_overtime_cleanup",
+    ]
+
+
+def test_observer_never_removes_anything_without_an_approved_duration():
+    backend = _OverdueBackend(step=1000.0)
+
+    result, _emitted = _run_observer(
+        backend,
+        approved_duration_seconds=None,
+        until=lambda: backend.polls >= 10,
+    )
+
+    assert backend.cleanup_clock == []
+    assert "controller_fallback_used" not in result
+
+
+def test_observer_stops_after_a_few_failed_removals():
+    """A refused removal is retried a bounded number of times, then left to finalization."""
+    backend = _OverdueBackend(
+        step=1000.0,
+        outcome={"verified_absent": False, "reason": "attributed_foreign_experiment_not_uniquely_found"},
+        absent_after_cleanup=False,
+    )
+
+    result, _emitted = _run_observer(
+        backend,
+        approved_duration_seconds=300,
+        until=lambda: backend.polls >= 12,
+    )
+
+    assert len(backend.cleanup_clock) == 3
+    assert result["cleanup_attempts"] == 3
+    assert result["last_cleanup_outcome"]["reason"] == "attributed_foreign_experiment_not_uniquely_found"
+    # Nothing was deleted, so the platform takes no credit for the recovery.
+    assert "controller_fallback_used" not in result
+    assert "controller_cleanup" not in result
+
+
+def test_observer_confirms_absence_on_a_later_poll_after_an_unverified_delete():
+    """kubectl returned while the CR was still being destroyed; the next read shows it gone."""
+    backend = _OverdueBackend(
+        outcome={
+            "verified_absent": False,
+            "principal": "CONTROLLER_FALLBACK",
+            "deleted_foreign_experiment": "blade-own",
+        },
+    )
+
+    result, _emitted = _run_observer(
+        backend,
+        approved_duration_seconds=300,
+        until=lambda: backend.polls >= 10,
+    )
+
+    assert backend.cleanup_clock == [600.0]
+    assert result["controller_cleanup"]["verified_absent"] is True
+    assert result["controller_cleanup"]["verified_absent_by"] == "later_poll"
+
+
+def test_approved_duration_prefers_the_reviewed_plan_over_the_runtime_contract():
+    from stage2_service.campaign import _approved_duration_seconds
+
+    assert _approved_duration_seconds({"safety_ttl_seconds": 300}, {"duration_seconds": 600}) == 300
+    assert _approved_duration_seconds({}, {"duration_seconds": 600}) == 600
+    assert _approved_duration_seconds({"safety_ttl_seconds": True}, {}) is None
+    assert _approved_duration_seconds({"safety_ttl_seconds": 0}, {"duration_seconds": None}) is None
+
+
 def test_direct_cleanup_uses_exact_ledger_and_never_treats_terminal_cr_as_absent(
     tmp_path,
 ):

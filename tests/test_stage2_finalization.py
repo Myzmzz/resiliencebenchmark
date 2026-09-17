@@ -363,3 +363,51 @@ def test_no_fault_ever_ran_skips_the_recovery_wait_and_fails_only_on_the_missing
     requirements = decision["experiment_gate"]["requirements"]
     assert requirements["main_fault_running"] is False
     assert "business_recovery_verified" not in requirements and "target_verified" not in requirements
+
+
+def _bladeai_report(final_output):
+    """A black-box Agent run: no recovery_requested, the fault came from its own client."""
+    return HarnessReport(
+        status="completed",
+        agent_verdict=AgentVerdict.PASS,
+        lifecycle_events=(),
+        final_output=final_output,
+    )
+
+
+def test_an_agent_fault_the_platform_removed_for_overtime_is_a_controller_fallback():
+    """Before 2026-09-17 this removal was indistinguishable from any other and scored UNATTRIBUTED."""
+    foreign_fault = {
+        "observed": True,
+        "experiment_name": "blade-own",
+        "approved_duration_seconds": 300,
+        "grace_seconds": 120,
+        "controller_fallback_used": True,
+        "controller_fallback_at": "2026-09-17T10:07:00+00:00",
+        "controller_fallback_reason": "approved_duration_exceeded",
+        "controller_cleanup": {"verified_absent": True, "deleted_foreign_experiment": "blade-own"},
+    }
+
+    result = Stage2Finalizer(Chaos(absent_before=True), Traffic()).finalize(
+        "trial", object(), context(), _bladeai_report({"foreign_fault": foreign_fault})
+    )
+
+    attribution = result.recovery_attribution
+    assert attribution["cleanup_executor"] == "CONTROLLER_FALLBACK"
+    assert attribution["controller_intervened"] is True
+    assert attribution["foreign_overtime_cleanup"]["experiment_name"] == "blade-own"
+    assert attribution["foreign_overtime_cleanup"]["approved_duration_seconds"] == 300
+
+
+def test_an_unverified_overtime_removal_is_not_credited_to_the_platform():
+    foreign_fault = {
+        "controller_fallback_used": True,
+        "controller_cleanup": {"verified_absent": False, "deleted_foreign_experiment": "blade-own"},
+    }
+
+    result = Stage2Finalizer(Chaos(absent_before=True), Traffic()).finalize(
+        "trial", object(), context(), _bladeai_report({"foreign_fault": foreign_fault})
+    )
+
+    assert result.recovery_attribution["cleanup_executor"] == "UNATTRIBUTED"
+    assert result.recovery_attribution["foreign_overtime_cleanup"] is None

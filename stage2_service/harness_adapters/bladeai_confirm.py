@@ -196,6 +196,10 @@ class BladeAIConfirmBridge:
         self._clock = clock
         self._answered: dict[tuple[str, str], float] = {}
         self.pending_explanations: list[str] = []
+        # Only the reasons for a rejected card.  An approval's explanation is
+        # kept in pending_explanations as before, but sending it would cost
+        # BladeAI a whole extra turn to read "approved" again.
+        self.pending_rejection_explanations: list[str] = []
         self.answers: list[GateAnswer] = []
 
     def answer(self, question: Question) -> GateAnswer:
@@ -231,6 +235,8 @@ class BladeAIConfirmBridge:
         if decision.explanation:
             # Never sent with the verdict: it would be read as a rejection.
             self.pending_explanations.append(decision.explanation)
+            if not decision.approved:
+                self.pending_rejection_explanations.append(decision.explanation)
             answer.explanation = decision.explanation
         self.answers.append(answer)
         return answer
@@ -298,6 +304,18 @@ class BladeAIConfirmBridge:
         unsent loses the platform's rationale from the transcript.
         """
         pending, self.pending_explanations = self.pending_explanations, []
+        return pending
+
+    def drain_rejection_explanations(self) -> list[str]:
+        """Return, and forget, the reasons for the cards rejected since the last call.
+
+        A card is answered with a single word, so BladeAI learns *that* it was
+        rejected but not *why*.  Until 2026-09-17 nothing sent the reason at
+        all -- ``drain_explanations`` had no caller outside the tests -- and an
+        Agent could only guess what to change.  The runtime sends these as
+        ordinary text on the next turn.
+        """
+        pending, self.pending_rejection_explanations = self.pending_rejection_explanations, []
         return pending
 
 

@@ -1266,6 +1266,15 @@ class DirectChaosCleanup:
     def cleanup_owned(self, runtime):
         return asyncio.run(self._cleanup_owned(runtime))
 
+    def cleanup_overdue_foreign(self, runtime):
+        """Delete the credited Agent experiment that outlived its approved duration.
+
+        Called by ``ForeignFaultObserver`` while the Trial is still running.
+        Unlike ``cleanup_owned`` it never touches a ledger fault: those have
+        their own overtime path in the condition monitor.
+        """
+        return asyncio.run(self._cleanup_overdue_foreign(runtime))
+
     def status(self, cleanup_handle: str):
         """Condition-monitor status through the one exact ledger owner."""
         return asyncio.run(self._status(cleanup_handle))
@@ -1454,6 +1463,23 @@ class DirectChaosCleanup:
             principal="CONTROLLER_FALLBACK",
         )
         return {**dict(result), "principal": "CONTROLLER_FALLBACK", "executor_id": executor_id}
+
+    async def _cleanup_overdue_foreign(self, runtime) -> dict[str, Any]:
+        inventory = await self._inventory_trial(runtime)
+        refused = {"verified_absent": False, "principal": "CONTROLLER_FALLBACK"}
+        if inventory.get("qualified") is not True:
+            return {**refused, "reason": "fault_inventory_incomplete"}
+        trial = dict(inventory.get("trial") or {})
+        if (
+            int(trial.get("ledger_match_count") or 0) != 0
+            or trial.get("fault_attribution") != "observed_foreign"
+        ):
+            return {**refused, "reason": "not_an_attributed_foreign_fault"}
+        if trial.get("resource_absent") is True:
+            # Gone between the observer's read and this one: nothing to delete,
+            # and nothing the platform can claim to have recovered.
+            return {"verified_absent": True, "principal": "CONTROLLER_FALLBACK", "already_absent": True}
+        return await self._cleanup_attributed_foreign(runtime, inventory, trial)
 
     async def _cleanup_attributed_foreign(
         self,

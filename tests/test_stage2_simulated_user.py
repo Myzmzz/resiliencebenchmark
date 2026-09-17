@@ -23,6 +23,8 @@ from stage2_service.simulated_user import (
     METRIC_MEANINGS,
     OPERATOR_MEANINGS,
     PLATFORM_MODEL_ENV,
+    CONVERSATION_FALLBACK_MESSAGE,
+    CONVERSATION_REQUEST_KIND,
     ConversationError,
     HarnessResponder,
     SimulatedUserPolicy,
@@ -244,6 +246,50 @@ def test_decision_help_can_return_partial_target_suggestion_without_approval():
     }
     assert answer["affected_nodes"] == ["TARGET_IDENTITY"]
     assert answer["supplied_fields"] == ["target"]
+
+
+def test_conversation_question_is_answered_without_reviewing_or_approving_a_plan():
+    """BladeAI's prose questions are conversation; only its card is plan review.
+
+    Round nine (2026-09-16) reviewed "please decide on the confirmation card" as
+    a plan and answered "not approved".  Even a complete, valid plan in the
+    recommendation must not be approved from here, and a plan the model returns
+    is ignored.
+    """
+    calls = []
+
+    def model(instructions, _context):
+        calls.append(instructions)
+        return {"message": "好的，请提交确认卡片。", "plan": PLAN}
+
+    answer = responder(model).reply(
+        {
+            **confirmation(PLAN),
+            "request_kind": CONVERSATION_REQUEST_KIND,
+            "question": "现在提交该意图，请在弹出的确认卡片中做最终决策。",
+        },
+        {},
+    )
+
+    assert len(calls) == 1
+    assert answer["message"] == "好的，请提交确认卡片。"
+    assert answer["approved"] is None
+    assert answer["answer_mode"] is None
+    assert answer["approved_plan"] is None
+    assert answer["supplied_plan"] is None
+    assert answer["feedback_category"] == "USER_DECISION"
+    assert answer["reason"] == "conversation_answered"
+    assert answer["decision_supplied"] is False
+
+
+def test_conversation_question_gets_a_safe_reply_when_the_model_says_nothing():
+    answer = responder(lambda _instructions, _context: {}).reply(
+        {**confirmation(None), "request_kind": CONVERSATION_REQUEST_KIND, "question": "A 还是 B？"},
+        {},
+    )
+
+    assert answer["message"] == CONVERSATION_FALLBACK_MESSAGE
+    assert answer["approved"] is None
 
 
 def test_l0_policy_does_not_let_model_supply_missing_plan_fields():
