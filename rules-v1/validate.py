@@ -20,8 +20,10 @@ ADV_REQUIRED = ["advisory_id", "mechanism_group", "mechanism", "statement", "glo
 FAULT_TYPES = {"dependency-delay", "dependency-unavailable", "packet-loss", "instance-kill",
                "cpu-pressure", "memory-pressure", "network-partition", "disk-pressure",
                "traffic-surge", "dependency-error"}
-CHECKABILITY = {"static-code", "static-config", "static-manifest", "needs-requirement",
-                "needs-runtime", "static-cross-object"}
+CHECKABILITY = {"static-code", "static-config", "static-manifest", "static-cross-object"}
+# 2026-09-19 决定：需求相对型的检查一律降级为"有没有显式配置"的弱判定，
+# 原来那句需要 SLO/容量/对端配置才能判的强条件记在 strong_form + strong_form_needs 里，不作为执行条件。
+RETIRED_CHECKABILITY = {"needs-requirement", "needs-runtime"}
 
 errors, warns = [], []
 
@@ -165,8 +167,15 @@ def main():
         if not (checks.get("static") or checks.get("runtime")):
             err("%s：checks 里 static 和 runtime 都空——写不出可核对条件的应放 advisories.yaml" % rid)
         for c in checks.get("static") or []:
-            if c.get("checkability") not in CHECKABILITY:
+            if c.get("checkability") in RETIRED_CHECKABILITY:
+                err("%s：static check %s 仍是 %s——按已定口径需降级为弱判定（可判的写进 what，"
+                    "需要外部输入的那句挪到 strong_form + strong_form_needs）" % (
+                        rid, c.get("id"), c.get("checkability")))
+            elif c.get("checkability") not in CHECKABILITY:
                 err("%s：static check %s 的 checkability 非法：%r" % (rid, c.get("id"), c.get("checkability")))
+            if c.get("strong_form") and not c.get("strong_form_needs"):
+                err("%s：static check %s 写了 strong_form 却没写 strong_form_needs（要说明缺哪项外部输入）"
+                    % (rid, c.get("id")))
             if not c.get("what"):
                 err("%s：static check %s 缺 what" % (rid, c.get("id")))
         for c in checks.get("runtime") or []:

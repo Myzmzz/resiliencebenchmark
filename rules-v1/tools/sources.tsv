@@ -8,11 +8,11 @@ DOC-ISTIO-ANALYZERS	11	Istio	linter-ruleset	Istio configuration analysis message
 DOC-SRE-OVERLOAD	10	Google SRE	curated-guideline	SRE Book ch.21 Handling Overload	https://sre.google/sre-book/handling-overload/
 DOC-SRE-CASCADING	10	Google SRE	curated-guideline	SRE Book ch.22 Addressing Cascading Failures	https://sre.google/sre-book/addressing-cascading-failures/
 DOC-SRE-WORKBOOK-OVERLOAD	10	Google SRE	curated-guideline	SRE Workbook ch.11 Managing Load	https://sre.google/workbook/managing-load/
-DOC-AWS-TIMEOUTS	10	AWS Builders Library	curated-guideline	Timeouts, retries and backoff with jitter	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
-DOC-AWS-HEALTHCHECKS	10	AWS Builders Library	curated-guideline	Implementing health checks	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/implementing-health-checks/
-DOC-AWS-FALLBACK	10	AWS Builders Library	curated-guideline	Avoiding fallback in distributed systems	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
-DOC-AWS-LOADSHED	10	AWS Builders Library	curated-guideline	Using load shedding to avoid overload	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
-DOC-AWS-RETRY-IDEMPOTENT	10	AWS Builders Library	curated-guideline	Making retries safe with idempotent APIs	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
+DOC-AWS-TIMEOUTS	10	AWS Builders Library	archived-snapshot	Timeouts, retries and backoff with jitter	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+DOC-AWS-HEALTHCHECKS	10	AWS Builders Library	archived-snapshot	Implementing health checks	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/implementing-health-checks/
+DOC-AWS-FALLBACK	10	AWS Builders Library	archived-snapshot	Avoiding fallback in distributed systems	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
+DOC-AWS-LOADSHED	10	AWS Builders Library	archived-snapshot	Using load shedding to avoid overload	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
+DOC-AWS-RETRY-IDEMPOTENT	10	AWS Builders Library	archived-snapshot	Making retries safe with idempotent APIs	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
 DOC-AWS-WAF-REL	10	AWS Well-Architected	curated-guideline	Reliability Pillar - Design interactions to prevent failures	https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/rel_mitigate_interaction_failure_graceful_degradation.html
 DOC-AZ-PATTERN-RETRY	10	Azure Architecture Center	pattern-catalog	Retry pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/retry
 DOC-AZ-PATTERN-CB	10	Azure Architecture Center	pattern-catalog	Circuit Breaker pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker
@@ -125,7 +125,7 @@ DOC-GO-DATABASESQL	7	Go database/sql	official-doc	database/sql package	https://p
 DOC-PGX-POOL	7	pgx	official-doc	pgxpool package	https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool
 DOC-GOREDIS	7	go-redis	official-doc	go-redis v9 package (Options)	https://pkg.go.dev/github.com/redis/go-redis/v9
 DOC-JEDIS	7	Jedis	official-doc	Jedis README (pool)	https://raw.githubusercontent.com/redis/jedis/master/README.md
-DOC-MYSQL-CONNJ-NET	7	MySQL Connector/J	official-doc	Networking properties (socketTimeout)	https://web.archive.org/web/2024/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
+DOC-MYSQL-CONNJ-NET	7	MySQL Connector/J	archived-snapshot	Networking properties (socketTimeout)	https://web.archive.org/web/2024/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
 DOC-PGJDBC	7	PostgreSQL JDBC	official-doc	Connection parameters	https://jdbc.postgresql.org/documentation/use/
 DOC-MONGO-CONNSTR	7	MongoDB driver	official-doc	Connection String Options	https://www.mongodb.com/docs/manual/reference/connection-string-options/
 DOC-IOREDIS	7	ioredis	official-doc	ioredis README	https://raw.githubusercontent.com/redis/ioredis/main/README.md
@@ -146,12 +146,21 @@ DOC-AZ-PATTERN-COMPENSATE	10	Azure Architecture Center	pattern-catalog	Compensat
 DOC-AZ-PATTERN-RATELIMIT	10	Azure Architecture Center	pattern-catalog	Rate Limiting pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/rate-limiting-pattern
 DOC-AZ-PATTERN-CACHEASIDE	10	Azure Architecture Center	pattern-catalog	Cache-Aside pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside
 DOC-SRE-BOOK-RELIABILITY	10	Google SRE	curated-guideline	SRE Book ch.20 Load Balancing in the Datacenter	https://sre.google/sre-book/load-balancing-datacenter/
-DOC-DUBBO-XML-REFERENCE	3	Dubbo	official-doc	dubbo:reference 配置项（timeout/retries/cluster/actives 默认值）	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-reference/
-DOC-DUBBO-XML-CONSUMER	3	Dubbo	official-doc	dubbo:consumer 配置项	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-consumer/
-DOC-DUBBO-XML-PROVIDER	3	Dubbo	official-doc	dubbo:provider 配置项（线程池/accepts/executes）	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-provider/
-DOC-DUBBO-XML-METHOD	3	Dubbo	official-doc	dubbo:method 配置项（方法级 timeout/retries）	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-method/
 DOC-NACOS-INSTANCE-LIFECYCLE	5	Nacos	official-doc	实例生命周期与健康检查	https://nacos.io/docs/latest/manual/user/naming/instance-lifecycle/
 DOC-NACOS-JAVA-FAILOVER	5	Nacos	official-doc	Java SDK 容灾（failover）	https://nacos.io/docs/latest/manual/user/java-sdk/failover/
 DOC-KAFKA-PRODUCER-CFG	6	Kafka	official-doc	Producer configs (acks, retries, enable.idempotence, delivery.timeout.ms)	https://kafka.apache.org/40/generated/producer_config.html
 DOC-KAFKA-TOPIC-CFG	6	Kafka	official-doc	Topic configs (min.insync.replicas, unclean.leader.election.enable)	https://kafka.apache.org/40/generated/topic_config.html
 DOC-KAFKA-CONSUMER-CFG	6	Kafka	official-doc	Consumer configs (enable.auto.commit, max.poll.interval.ms, session.timeout.ms)	https://kafka.apache.org/40/generated/consumer_config.html
+DOC-DUBBO-API-CONFIG	3	Dubbo	official-doc	API 配置项参考（维护中的版本）	https://cn.dubbo.apache.org/zh-cn/overview/mannual/java-sdk/reference-manual/config/api/api/
+DOC-SEATA-OVERVIEW	4	Seata	official-doc	Seata 是什么（分布式事务模型与角色）	https://seata.apache.org/zh-cn/docs/overview/what-is-seata
+DOC-SEATA-AT	4	Seata	official-doc	AT 模式（全局锁、两阶段提交、回滚）	https://seata.apache.org/zh-cn/docs/user/mode/at
+DOC-SEATA-TCC	4	Seata	official-doc	TCC 模式（空回滚、悬挂、幂等）	https://seata.apache.org/zh-cn/docs/user/mode/tcc
+DOC-SEATA-SAGA	4	Seata	official-doc	Saga 模式（补偿、状态机）	https://seata.apache.org/zh-cn/docs/user/mode/saga
+DOC-SEATA-CONFIG	4	Seata	official-doc	Seata 配置项（超时、重试、回滚）	https://seata.apache.org/zh-cn/docs/user/configurations/
+DOC-SHENYU-RATELIMITER	2	ShenYu	official-doc	rate-limiter 插件（限流算法与参数）	https://shenyu.apache.org/docs/plugin-center/fault-tolerance/rate-limiter-plugin
+DOC-SHENYU-RESILIENCE4J	2	ShenYu	official-doc	resilience4j 插件（熔断与限流）	https://shenyu.apache.org/docs/plugin-center/fault-tolerance/resilience4j-plugin
+DOC-SHENYU-SENTINEL	2	ShenYu	official-doc	sentinel 插件（流控与降级）	https://shenyu.apache.org/docs/plugin-center/fault-tolerance/sentinel-plugin
+DOC-SENTINEL-CLUSTER	4	Sentinel	official-doc	集群流量控制（token server 失效退化）	https://sentinelguard.io/zh-cn/docs/cluster-flow-control.html
+DOC-SENTINEL-GATEWAY	4	Sentinel	official-doc	网关限流	https://sentinelguard.io/zh-cn/docs/api-gateway-flow-control.html
+DOC-NACOS-JAVA-PROPERTIES	5	Nacos	official-doc	Java SDK 配置项（超时、重试、本地缓存）	https://nacos.io/docs/latest/manual/user/java-sdk/properties/
+DOC-NACOS-JAVA-USAGE	5	Nacos	official-doc	Java SDK 使用（订阅与本地快照）	https://nacos.io/docs/latest/manual/user/java-sdk/usage/

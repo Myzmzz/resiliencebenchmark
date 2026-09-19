@@ -40,6 +40,9 @@ def gen_documents(log):
             "retrieved": v["retrieved"],
             "fetch_status": v["status"],
         }
+        if v["source_type"] == "archived-snapshot" and "/https://" in v["url"]:
+            e["archived_from"] = "https://" + v["url"].split("/https://", 1)[1]
+            e["archive_note"] = "官方站点已改为前端渲染/拒绝脚本访问，正文取自 Wayback 快照；按口径不计入 official-doc"
         if v["status"] == "ok":
             e["local_copy"] = v["cache"]
             e["chars"] = v["chars"]
@@ -187,7 +190,7 @@ def gen_stats(log, rules, advisories):
     A("\n## 6. 规则的支撑构成\n")
     A("| 支撑构成 | 规则数 | 说明 |")
     A("|---|---|---|")
-    only_linter, has_official, only_guideline = 0, 0, 0
+    only_linter, has_official, only_guideline, only_archived = 0, 0, 0, 0
     for r in rules:
         ts = {st_of.get(s["doc_id"], "?") for s in r.get("sources", [])}
         if "official-doc" in ts:
@@ -196,9 +199,15 @@ def gen_stats(log, rules, advisories):
             only_guideline += 1
         elif ts == {"linter-ruleset"}:
             only_linter += 1
+        elif ts == {"archived-snapshot"}:
+            only_archived += 1
     A("| 有官方文档原文支撑 | %d | sources 里至少一条 official-doc |" % has_official)
     A("| 只有准则/模式目录支撑 | %d | 没有 official-doc，只有 curated-guideline / pattern-catalog |" % only_guideline)
     A("| 只有现成规则集支撑 | %d | 只有 linter-ruleset |" % only_linter)
+    A("| 只有归档快照支撑 | %d | 只有 archived-snapshot（AWS Builders Library 等，按口径不算官方文档） |" % only_archived)
+    used_archived = {r["rule_id"] for r in rules
+                     if any(st_of.get(s["doc_id"]) == "archived-snapshot" for s in r.get("sources", []))}
+    A("| 用到了归档快照（不论是否还有别的支撑） | %d | |" % len(used_archived))
     used_linter = {r["rule_id"] for r in rules
                    if any(st_of.get(s["doc_id"]) == "linter-ruleset" for s in r.get("sources", []))}
     A("| 用到了现成规则集（不论是否还有别的支撑） | %d | |" % len(used_linter))

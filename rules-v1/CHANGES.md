@@ -12,7 +12,7 @@
 | `documents.yaml` | 第 2 步 | 文档清单：每份文档的层、组件、标题、网址、版本线索、取回日期、来源类型、抓取状态、本地副本路径 | 全部由 `tools/gen_tables.py` 依据 `tools/sources.tsv` + `tools/fetch-log.json` 生成 |
 | `docs-cache/*.txt` | 第 2 步 | 文档的归一化文本副本，供逐字引用与 `validate.py` 回查 | 由 `tools/fetch.py` 生成 |
 | `docs-cache/raw/*.html` | 第 2 步 | 抓取到的原始页面，改解析规则时可离线重放，不必重抓 | 由 `tools/fetch.py` 生成 |
-| `rules.yaml` | 第 4 步 | 规则登记表，66 条 | 手写 |
+| `rules.yaml` | 第 4 步 | 规则登记表，69 条 | 手写 |
 | `advisories.yaml` | 第 4 步 | 写不出可核对检查条件的条款，8 条 | 手写 |
 | `validate.py` | 第 5 步 | 校验脚本：字段齐全、doc_id 存在、quote 逐字可查、机制与组件都在 `stack.md` 里 | 手写 |
 | `stats.md` | 第 5 步 | 统计与覆盖情况 | 由 `tools/gen_tables.py` 生成 |
@@ -33,6 +33,8 @@
 | `instantiations[].config_or_code` | 取值加 `manifest` 和 `both` | `manifest` 对应 Kubernetes 清单；`both` 对应"配置和代码两处都要改才生效"的情况（例如多层重试的清点、幂等键既要服务端实现也要客户端传）。 |
 | `fault_types` | 取值集合固定为 10 种（`dependency-delay / dependency-unavailable / dependency-error / packet-loss / instance-kill / cpu-pressure / memory-pressure / disk-pressure / network-partition / traffic-surge`），由 `validate.py` 强制 | 任务书只给了 `dependency-delay` 一个示例。固定取值集合是为了后面按故障类型反查"哪些规则会被这种注入触发"时不出现同义异名。 |
 | `notes` | 保留，用于记录跨文档冲突、易错点、组合型规则的说明 | 任务书标为可选。 |
+| `checks.static[].strong_form` / `strong_form_needs` | 新增一对字段 | 2026-09-19 定：需求相对型的检查一律降级为"有没有显式配置"的弱判定。原来那句需要 SLO/容量/对端配置才能判的强条件不能就此丢掉，挪到 `strong_form`，并用 `strong_form_needs` 写清缺的是哪项外部输入，将来拿到预算声明可以直接升回强判定。`validate.py` 强制：写了 `strong_form` 必须写 `strong_form_needs`；`checkability` 再出现 `needs-requirement` 直接报错。 |
+| `checks.static[].adopted_threshold` | 新增字段 | 三个规则集的阈值不一致时（副本数、HPA minReplicas），记录最终采用哪个口径、以及不采用哪些，避免以后有人按 defaults 里记的别的阈值去判。 |
 
 ### 2.2 `advisories.yaml` 的字段
 
@@ -47,21 +49,29 @@
   2. `h1`–`h6` 标题前加 `[[Hn]]` 标记，用来给 `location` 字段定位；引用正文时不会碰到这个标记。
   3. 表格 `<td>/<th>` 用 ` | ` 分隔，一行一 `<tr>`，这样参数默认值表能整行引用。
   URL 后缀是 `.md/.adoc/.txt/.rst` 或来自 `raw.githubusercontent.com` 的按纯文本处理，保留原有换行。
+- **来源类型新增 `archived-snapshot`**：2026-09-19 定，Wayback 快照不算官方文档。AWS Builders' Library 5 篇与 MySQL Connector/J 1 篇改成这个类型（官方站点已改成前端渲染或拒绝脚本访问，正文只能从快照取）。`documents.yaml` 里额外记 `archived_from`（原始网址）和 `archive_note`；`stats.md` 的"支撑构成"表给它单列了两行，不再混进"有官方文档原文支撑"。这 6 份仍可引用，只是不计入 official-doc。
 - **`validate.py` 的 quote 匹配**：先做逐字（精确子串）匹配，失败再做"空白归一化后"匹配并报警告。当前 202 条引用全部是逐字命中，0 条走了归一化通道。
 
 ### 2.4 机制清单与层次的扩展
 
 见 `stack.md` 第 2、3 节。新增三个机制（冷启动容量与预热、连接保活与死连接探测、容器重启策略），各自注明了出处；十组分组与 11 层分层都没有增删。
 
-## 3. 需要人拍板的问题清单
+## 3. 已定的口径（2026-09-19）
 
-1. **回退路径到底推不推荐**：AWS Builders' Library 的《Avoiding fallback in distributed systems》说 "we now almost always prefer alternatives to fallback"，而 Azure 的 Circuit Breaker 模式和各容错库都把 fallback 当标准配置——当前处理是保留"回退路径"这个机制，但规则写成 `R-FALLBACK-001`（回退必须常态演练）而不是"必须有回退"，要不要更进一步，把"存在未经演练的 fallback"直接判为缺陷？
-2. **副本数阈值取几**：kube-score 默认 ≥2，kube-linter 建议 ≥3，Polaris 只在等于 1 时告警。`R-REPL-001` 现在把三个阈值都记在 `defaults` 里，实际判定留白，需要定一个。
-3. **HPA `minReplicas` 阈值**同上：kube-linter 要求 ≥3，Kubernetes 官方文档没给建议值。
-4. **`maxEjectionPercent` 默认 10% 在小副本数下等于不生效**：3 副本时 10% 连一个都摘不掉。`R-OUTLIER-002` 只写了"要有上限"，要不要额外加一条"剔除比例上限 × 副本数必须 ≥ 1"？这条会和 `R-HEALTH-002`（全体不健康要放行）有张力。
-5. **"需求相对型"规则怎么落地**：`R-TIMEOUT-002`、`R-POOL-001`、`R-RES-002` 这类要拿到被测系统自己的 SLO/预算才能判。是要求被测系统提供一份预算声明，还是退而求其次只做"有没有显式配置"的弱判定？
-6. **Dubbo 的官方文档现状**：`cn.dubbo.apache.org` 上的 XML 配置参考页面自带"此文档已经不再维护。您当前查看的是快照版本"的提示，但它是目前唯一能拿到带默认值的配置表的官方页面（`.../overview/mannual/java-sdk/reference-manual/config/properties/` 那份不带默认值）。默认值继续引它，还是标为不可引用？
-7. **Istio 的 `istioctl analyze` 基本用不上**：147 条分析器消息里只有 IST0130/IST0131 沾韧性的边，其余是 schema 校验和引用有效性。要不要把它从第 11 层的"现成规则集"里降级为参考？
-8. **AWS Builders' Library 走的是 Wayback 快照**：`aws.amazon.com/builders-library/*` 现在 302 到 `builder.aws.com` 的前端渲染页，curl 拿不到正文，5 篇都引的 `https://web.archive.org/web/2024/...` 快照。快照算不算"官方文档"，还是要标成另一种来源类型？
-9. **缺陷类别 2（需求相对型）和 3（组合型）的边界**：`R-QUORUM-001`（replication.factor / min.insync.replicas / acks 三者组合）现在记为 3，但它也可以说是"相对系统的持久性要求"的 2。需要一条判定口径。
-10. **中文技术栈的官方文档覆盖偏薄**：Sentinel、Nacos、Dubbo、RocketMQ 加起来只有 11 份文档、规则数明显少于 Kubernetes/Envoy 系。是接受这个偏差，还是补抓 Spring Cloud Alibaba、Seata、Apache ShenYu 等再做一轮？
+| # | 问题 | 结论 | 落在哪里 |
+|---|---|---|---|
+| 1 | 回退路径推不推荐（AWS 说几乎别用，Azure 与各容错库当标配） | 更狠一点：**只在故障时才会被走到的 fallback，本身就判为缺陷**，要么让它承担常态流量/有定期演练/有覆盖它的集成测试，要么去掉它去加固主路径 | `R-FALLBACK-001` 的 statement 与 S1 已改写 |
+| 2 | 副本数阈值取几 | 采用 Polaris 口径：**只判"等于 1"**，不套用 kube-score 的 ≥2 与 kube-linter 的 ≥3 | `R-REPL-001` S1；两个更严的阈值仍记在 `defaults` 里备查 |
+| 3 | HPA `minReplicas` 阈值 | 同上，**只判"等于 1"** | `R-HPA-001` S1；`defect_class` 随之从 2 改为 1（判据不再需要外部输入） |
+| 4 | 需求相对型规则怎么落地 | **降级为弱判定**：执行的检查只问"有没有显式配置"，需要 SLO/容量/对端配置的强条件记进 `strong_form` + `strong_form_needs` | 16 处 `needs-requirement` 全部改写；`validate.py` 加了守卫 |
+| 5 | Dubbo 自称"不再维护的快照版本"的配置页还引不引 | **不引**。4 份 XML 配置页已从文档清单删除，本地副本一并删掉 | 连带删掉了 3 个 Dubbo 默认值与 1 条 Dubbo 引用；维护中的 `DOC-DUBBO-CONFIG` 与 `DOC-DUBBO-API-CONFIG` 里没有 timeout/retries 默认值，这些默认值就不写了，`instantiations` 改成"需按所用版本确认" |
+| 6 | AWS Builders' Library 的 Wayback 快照算不算官方文档 | **不算**，改用新来源类型 `archived-snapshot` | 6 份文档改型；`stats.md` 支撑构成表单列 |
+| 7 | 中文栈文档偏薄要不要补 | **补**。第二轮加了 13 份：Seata 5、ShenYu 3、Sentinel 集群流控与网关限流 2、Nacos Java SDK 容灾与配置项 2、Dubbo 维护中的 API 配置页 1 | 新增 3 条规则（`R-ADMIT-004`、`R-DISCOVERY-002`、`R-SAGA-002`）与 8 处实例化 |
+| 8 | 缺陷类别 2 和 3 的边界口径 | 写成四问判定表，优先级 2 > 3 > 1 > 4：先问"判定所需信息是不是全在被测系统的代码与配置里"，不是就判 2；是、但要跨对象才判得出就判 3 | 口径正文在 `stack.md` 第 0 节；按它复核后只改了 `R-HPA-001`（2→1），`R-QUORUM-001` 确认为 3，`R-FD-001` 补了边界说明 |
+
+口径 8 有一点要强调：**类别是按规则的正确性判据定的，与检查条件后来被弱化与否无关**。所以口径 4 把 16 处检查降级之后，那些规则的 `defect_class` 仍然是 2——判据依旧需要外部输入，只是暂时不执行强判定。`R-HPA-001` 改成 1 是因为口径 2/3 换掉了判据本身（从"够不够容错"换成"是不是 1"），不是因为检查被弱化。
+
+## 4. 仍需要人拍板的
+
+1. **`maxEjectionPercent` 默认 10% 在小副本数下等于不生效**：3 副本时一个都摘不掉。要不要在 `R-OUTLIER-002` 上再加一条"剔除比例上限 × 副本数 ≥ 1"？这条会和 `R-HEALTH-002`（全体不健康要放行）形成张力，两条都加需要说明谁优先。
+2. **Istio 的 `istioctl analyze` 要不要从"现成规则集"降级为参考**：147 条分析器消息里只有 IST0130/IST0131 沾韧性的边，其余是 schema 校验和引用有效性，目前它在第 11 层占一个位置但没贡献规则。

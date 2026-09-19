@@ -47,10 +47,12 @@ documents:
   component: AWS Builders Library
   title: Avoiding fallback in distributed systems
   url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
-  source_type: curated-guideline
+  source_type: archived-snapshot
   version: unstated-on-page
   retrieved: '2026-09-19'
   fetch_status: ok
+  archived_from: https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
+  archive_note: 官方站点已改为前端渲染/拒绝脚本访问，正文取自 Wayback 快照；按口径不计入 official-doc
   local_copy: docs-cache/DOC-AWS-FALLBACK.txt
   chars: 19703
   final_url: https://web.archive.org/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
@@ -60,10 +62,12 @@ documents:
   component: AWS Builders Library
   title: Implementing health checks
   url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/implementing-health-checks/
-  source_type: curated-guideline
+  source_type: archived-snapshot
   version: unstated-on-page
   retrieved: '2026-09-19'
   fetch_status: ok
+  archived_from: https://aws.amazon.com/builders-library/implementing-health-checks/
+  archive_note: 官方站点已改为前端渲染/拒绝脚本访问，正文取自 Wayback 快照；按口径不计入 official-doc
   local_copy: docs-cache/DOC-AWS-HEALTHCHECKS.txt
   chars: 33156
   final_url: https://web.archive.org/web/20241224144628/https://aws.amazon.com/builders-library/implementing-health-checks/
@@ -73,10 +77,12 @@ documents:
   component: AWS Builders Library
   title: Using load shedding to avoid overload
   url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
-  source_type: curated-guideline
+  source_type: archived-snapshot
   version: unstated-on-page
   retrieved: '2026-09-19'
   fetch_status: ok
+  archived_from: https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
+  archive_note: 官方站点已改为前端渲染/拒绝脚本访问，正文取自 Wayback 快照；按口径不计入 official-doc
   local_copy: docs-cache/DOC-AWS-LOADSHED.txt
   chars: 34694
   final_url: https://web.archive.org/web/20250113051047/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
@@ -86,10 +92,12 @@ documents:
   component: AWS Builders Library
   title: Making retries safe with idempotent APIs
   url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
-  source_type: curated-guideline
+  source_type: archived-snapshot
   version: unstated-on-page
   retrieved: '2026-09-19'
   fetch_status: ok
+  archived_from: https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
+  archive_note: 官方站点已改为前端渲染/拒绝脚本访问，正文取自 Wayback 快照；按口径不计入 official-doc
   local_copy: docs-cache/DOC-AWS-RETRY-IDEMPOTENT.txt
   chars: 18967
   final_url: https://web.archive.org/web/20241129033912/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
@@ -99,10 +107,12 @@ documents:
   component: AWS Builders Library
   title: Timeouts, retries and backoff with jitter
   url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
-  source_type: curated-guideline
+  source_type: archived-snapshot
   version: unstated-on-page
   retrieved: '2026-09-19'
   fetch_status: ok
+  archived_from: https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+  archive_note: 官方站点已改为前端渲染/拒绝脚本访问，正文取自 Wayback 快照；按口径不计入 official-doc
   local_copy: docs-cache/DOC-AWS-TIMEOUTS.txt
   chars: 14494
   final_url: https://web.archive.org/web/20241229100910/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
@@ -443,6 +453,19 @@ documents:
   local_copy: docs-cache/DOC-DOTNET-HTTPFACTORY.txt
   chars: 29821
   http_last_modified: Mon, 24 Aug 2026 13:25:50 GMT
+- doc_id: DOC-DUBBO-API-CONFIG
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Dubbo
+  title: API 配置项参考（维护中的版本）
+  url: https://cn.dubbo.apache.org/zh-cn/overview/mannual/java-sdk/reference-manual/config/api/api/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DUBBO-API-CONFIG.txt
+  chars: 10917
+  http_last_modified: Thu, 13 Aug 2026 01:21:00 GMT
 - doc_id: DOC-DUBBO-CONFIG
   layer: 3
   layer_name: RPC 与 HTTP 框架
@@ -456,58 +479,6 @@ documents:
   local_copy: docs-cache/DOC-DUBBO-CONFIG.txt
   chars: 61152
   http_last_modified: Thu, 13 Aug 2026 01:21:00 GMT
-- doc_id: DOC-DUBBO-XML-CONSUMER
-  layer: 3
-  layer_name: RPC 与 HTTP 框架
-  component: Dubbo
-  title: dubbo:consumer 配置项
-  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-consumer/
-  source_type: official-doc
-  version: unstated-on-page
-  retrieved: '2026-09-19'
-  fetch_status: ok
-  local_copy: docs-cache/DOC-DUBBO-XML-CONSUMER.txt
-  chars: 2317
-  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
-- doc_id: DOC-DUBBO-XML-METHOD
-  layer: 3
-  layer_name: RPC 与 HTTP 框架
-  component: Dubbo
-  title: dubbo:method 配置项（方法级 timeout/retries）
-  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-method/
-  source_type: official-doc
-  version: unstated-on-page
-  retrieved: '2026-09-19'
-  fetch_status: ok
-  local_copy: docs-cache/DOC-DUBBO-XML-METHOD.txt
-  chars: 2218
-  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
-- doc_id: DOC-DUBBO-XML-PROVIDER
-  layer: 3
-  layer_name: RPC 与 HTTP 框架
-  component: Dubbo
-  title: dubbo:provider 配置项（线程池/accepts/executes）
-  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-provider/
-  source_type: official-doc
-  version: unstated-on-page
-  retrieved: '2026-09-19'
-  fetch_status: ok
-  local_copy: docs-cache/DOC-DUBBO-XML-PROVIDER.txt
-  chars: 4623
-  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
-- doc_id: DOC-DUBBO-XML-REFERENCE
-  layer: 3
-  layer_name: RPC 与 HTTP 框架
-  component: Dubbo
-  title: dubbo:reference 配置项（timeout/retries/cluster/actives 默认值）
-  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-reference/
-  source_type: official-doc
-  version: unstated-on-page
-  retrieved: '2026-09-19'
-  fetch_status: ok
-  local_copy: docs-cache/DOC-DUBBO-XML-REFERENCE.txt
-  chars: 3136
-  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
 - doc_id: DOC-ENVOY-CB
   layer: 2
   layer_name: 网关、代理与服务网格
@@ -1364,10 +1335,12 @@ documents:
   component: MySQL Connector/J
   title: Networking properties (socketTimeout)
   url: https://web.archive.org/web/2024/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
-  source_type: official-doc
+  source_type: archived-snapshot
   version: unstated-on-page
   retrieved: '2026-09-19'
   fetch_status: ok
+  archived_from: https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
+  archive_note: 官方站点已改为前端渲染/拒绝脚本访问，正文取自 Wayback 快照；按口径不计入 official-doc
   local_copy: docs-cache/DOC-MYSQL-CONNJ-NET.txt
   chars: 6476
   final_url: https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
@@ -1409,6 +1382,32 @@ documents:
   fetch_status: ok
   local_copy: docs-cache/DOC-NACOS-JAVA-FAILOVER.txt
   chars: 2367
+  http_last_modified: Tue, 08 Sep 2026 03:00:03 GMT
+- doc_id: DOC-NACOS-JAVA-PROPERTIES
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Nacos
+  title: Java SDK 配置项（超时、重试、本地缓存）
+  url: https://nacos.io/docs/latest/manual/user/java-sdk/properties/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NACOS-JAVA-PROPERTIES.txt
+  chars: 10698
+  http_last_modified: Tue, 08 Sep 2026 03:00:03 GMT
+- doc_id: DOC-NACOS-JAVA-USAGE
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Nacos
+  title: Java SDK 使用（订阅与本地快照）
+  url: https://nacos.io/docs/latest/manual/user/java-sdk/usage/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NACOS-JAVA-USAGE.txt
+  chars: 74778
   http_last_modified: Tue, 08 Sep 2026 03:00:03 GMT
 - doc_id: DOC-NACOS-PROTECT
   layer: 5
@@ -1817,6 +1816,75 @@ documents:
   local_copy: docs-cache/DOC-SCCB.txt
   chars: 1033
   http_last_modified: Thu, 17 Sep 2026 20:30:55 GMT
+- doc_id: DOC-SEATA-AT
+  layer: 4
+  layer_name: 容错库
+  component: Seata
+  title: AT 模式（全局锁、两阶段提交、回滚）
+  url: https://seata.apache.org/zh-cn/docs/user/mode/at
+  source_type: official-doc
+  version: meta:v2.6
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SEATA-AT.txt
+  chars: 1253
+  http_last_modified: Sat, 19 Sep 2026 00:33:05 GMT
+  final_url: https://seata.apache.org/zh-cn/docs/user/mode/at/
+- doc_id: DOC-SEATA-CONFIG
+  layer: 4
+  layer_name: 容错库
+  component: Seata
+  title: Seata 配置项（超时、重试、回滚）
+  url: https://seata.apache.org/zh-cn/docs/user/configurations/
+  source_type: official-doc
+  version: meta:v2.6
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SEATA-CONFIG.txt
+  chars: 16960
+  http_last_modified: Sat, 19 Sep 2026 00:33:05 GMT
+- doc_id: DOC-SEATA-OVERVIEW
+  layer: 4
+  layer_name: 容错库
+  component: Seata
+  title: Seata 是什么（分布式事务模型与角色）
+  url: https://seata.apache.org/zh-cn/docs/overview/what-is-seata
+  source_type: official-doc
+  version: meta:v2.6
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SEATA-OVERVIEW.txt
+  chars: 4520
+  http_last_modified: Sat, 19 Sep 2026 00:33:05 GMT
+  final_url: https://seata.apache.org/zh-cn/docs/overview/what-is-seata/
+- doc_id: DOC-SEATA-SAGA
+  layer: 4
+  layer_name: 容错库
+  component: Seata
+  title: Saga 模式（补偿、状态机）
+  url: https://seata.apache.org/zh-cn/docs/user/mode/saga
+  source_type: official-doc
+  version: meta:v2.6
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SEATA-SAGA.txt
+  chars: 26503
+  http_last_modified: Sat, 19 Sep 2026 00:33:05 GMT
+  final_url: https://seata.apache.org/zh-cn/docs/user/mode/saga/
+- doc_id: DOC-SEATA-TCC
+  layer: 4
+  layer_name: 容错库
+  component: Seata
+  title: TCC 模式（空回滚、悬挂、幂等）
+  url: https://seata.apache.org/zh-cn/docs/user/mode/tcc
+  source_type: official-doc
+  version: meta:v2.6
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SEATA-TCC.txt
+  chars: 2926
+  http_last_modified: Sat, 19 Sep 2026 00:33:05 GMT
+  final_url: https://seata.apache.org/zh-cn/docs/user/mode/tcc/
 - doc_id: DOC-SENTINEL-CB
   layer: 4
   layer_name: 容错库
@@ -1829,6 +1897,19 @@ documents:
   fetch_status: ok
   local_copy: docs-cache/DOC-SENTINEL-CB.txt
   chars: 3061
+  http_last_modified: Thu, 21 Sep 2023 06:24:05 GMT
+- doc_id: DOC-SENTINEL-CLUSTER
+  layer: 4
+  layer_name: 容错库
+  component: Sentinel
+  title: 集群流量控制（token server 失效退化）
+  url: https://sentinelguard.io/zh-cn/docs/cluster-flow-control.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SENTINEL-CLUSTER.txt
+  chars: 6528
   http_last_modified: Thu, 21 Sep 2023 06:24:05 GMT
 - doc_id: DOC-SENTINEL-FLOW
   layer: 4
@@ -1843,6 +1924,19 @@ documents:
   local_copy: docs-cache/DOC-SENTINEL-FLOW.txt
   chars: 4570
   http_last_modified: Thu, 21 Sep 2023 06:24:07 GMT
+- doc_id: DOC-SENTINEL-GATEWAY
+  layer: 4
+  layer_name: 容错库
+  component: Sentinel
+  title: 网关限流
+  url: https://sentinelguard.io/zh-cn/docs/api-gateway-flow-control.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SENTINEL-GATEWAY.txt
+  chars: 9750
+  http_last_modified: Thu, 21 Sep 2023 06:24:04 GMT
 - doc_id: DOC-SENTINEL-SYSTEM
   layer: 4
   layer_name: 容错库
@@ -1869,6 +1963,48 @@ documents:
   local_copy: docs-cache/DOC-SENTINEL-THREADISOLATION.txt
   chars: 10127
   http_last_modified: Thu, 21 Sep 2023 06:24:04 GMT
+- doc_id: DOC-SHENYU-RATELIMITER
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: ShenYu
+  title: rate-limiter 插件（限流算法与参数）
+  url: https://shenyu.apache.org/docs/plugin-center/fault-tolerance/rate-limiter-plugin
+  source_type: official-doc
+  version: meta:current;page:2.7.1
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SHENYU-RATELIMITER.txt
+  chars: 5923
+  http_last_modified: Tue, 15 Sep 2026 15:55:06 GMT
+  final_url: https://shenyu.apache.org/docs/plugin-center/fault-tolerance/rate-limiter-plugin/
+- doc_id: DOC-SHENYU-RESILIENCE4J
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: ShenYu
+  title: resilience4j 插件（熔断与限流）
+  url: https://shenyu.apache.org/docs/plugin-center/fault-tolerance/resilience4j-plugin
+  source_type: official-doc
+  version: meta:current;page:2.7.1
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SHENYU-RESILIENCE4J.txt
+  chars: 3255
+  http_last_modified: Tue, 15 Sep 2026 15:55:06 GMT
+  final_url: https://shenyu.apache.org/docs/plugin-center/fault-tolerance/resilience4j-plugin/
+- doc_id: DOC-SHENYU-SENTINEL
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: ShenYu
+  title: sentinel 插件（流控与降级）
+  url: https://shenyu.apache.org/docs/plugin-center/fault-tolerance/sentinel-plugin
+  source_type: official-doc
+  version: meta:current;page:2.7.1
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SHENYU-SENTINEL.txt
+  chars: 5705
+  http_last_modified: Tue, 15 Sep 2026 15:55:06 GMT
+  final_url: https://shenyu.apache.org/docs/plugin-center/fault-tolerance/sentinel-plugin/
 - doc_id: DOC-SPRING-RESTCLIENT
   layer: 3
   layer_name: RPC 与 HTTP 框架

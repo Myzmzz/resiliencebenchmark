@@ -69,6 +69,12 @@ rules:
   - component: Polly
     how: TimeoutStrategyOptions；超时抛 TimeoutRejectedException
     config_or_code: config
+  - component: Seata
+    how: transport.rpcRmRequestTimeout / rpcTmRequestTimeout / rpcTcRequestTimeout 分别控制 RM/TM/TC 的二阶段下发超时
+    config_or_code: config
+  - component: ShenYu
+    how: resilience4j 插件的 timeoutDuration（默认 30000ms）
+    config_or_code: config
   applies_when: 调用方对被调方有同步依赖（HTTP/RPC/数据库/缓存皆算）
   checks:
     static:
@@ -88,8 +94,9 @@ rules:
     defaults:
       Envoy route.timeout: {value: 15s, doc_id: DOC-ENVOY-TIMEOUTS}
       Istio VirtualService http.timeout: {value: disabled by default, doc_id: DOC-ISTIO-TIMEOUTS}
+      Seata transport.rpcRmRequestTimeout: {value: 默认 15 秒, doc_id: DOC-SEATA-CONFIG}
+      ShenYu resilience4j timeoutDuration: {value: "30000", doc_id: DOC-SHENYU-RESILIENCE4J}
       gRPC client deadline: {value: no deadline by default, doc_id: DOC-GRPC-DEADLINES}
-      Dubbo consumer timeout: {value: 1000 (ms), doc_id: DOC-DUBBO-XML-CONSUMER}
   violation_manifestation: 等待时长随注入延迟单调增长，不在任何值处截断；调用方线程/连接被长期占住
   defect_class: 1
   fault_types: [dependency-delay, dependency-unavailable, packet-loss]
@@ -127,8 +134,10 @@ rules:
   checks:
     static:
     - id: S1
-      what: 出站超时值是否 ≤ 入站预算（需要系统自己的 SLO/预算才能判断）
-      checkability: needs-requirement
+      what: 出站超时与入站超时之间是否存在可见的推导关系（从入站 context/deadline 派生，或配置里引用同一个预算来源），而不是两个互不相干的字面量
+      checkability: static-code
+      strong_form: 出站超时值是否 ≤ 入站剩余预算
+      strong_form_needs: 被测系统自己的入站预算或 SLO
     - id: S2
       what: 出站调用是否复用了入站请求的 context/deadline，而不是新建一个独立超时
       checkability: static-code
@@ -443,7 +452,7 @@ rules:
     how: RetryConfig.maxAttempts
     config_or_code: config
   - component: Dubbo
-    how: retries 属性（默认 2，即最多 3 次调用）
+    how: dubbo:reference / dubbo:method 的 retries 属性（不含首次调用）；维护中的官方页面未给出默认值，需按所用版本确认
     config_or_code: config
   - component: Failsafe
     how: RetryPolicy.withMaxRetries(n)，另可用 withMaxDuration 限总时长
@@ -469,7 +478,6 @@ rules:
     activation: 依赖 100% 失败时 A 应收敛到 n；A 随故障持续时间增长即违反
     defaults:
       Envoy num_retries: {value: 1, doc_id: DOC-ENVOY-ROUTE-PROTO}
-      Dubbo consumer retries: {value: "2", doc_id: DOC-DUBBO-XML-CONSUMER}
   violation_manifestation: 依赖不可用期间下游入站 QPS 持续攀升而非稳定在有限倍数
   defect_class: 1
   fault_types: [dependency-unavailable, dependency-error]
@@ -563,8 +571,10 @@ rules:
       what: 是否配置了重试节流/预算（gRPC retryThrottling、Linkerd retry budget、Envoy max_retries）
       checkability: static-config
     - id: S2
-      what: 预算值相对该依赖的正常错误率是否留有余量（需要系统自己的错误率基线）
-      checkability: needs-requirement
+      what: 重试预算/节流是否被配置成一个有限值，而不是缺省关闭或设成等同于不限
+      checkability: static-config
+      strong_form: 预算值相对该依赖的正常错误率是否留有余量
+      strong_form_needs: 该依赖的正常错误率基线
     runtime:
     - id: T1
       what: 依赖持续失败时，重试流量占总出站流量的比例是否被压在预算之内
@@ -687,7 +697,7 @@ rules:
   defect_class: 3
   fault_types: [dependency-delay]
   mitigation_family: 用总截止时间约束整串重试，单次超时由总预算除以次数推导
-  notes: Dubbo 这类"timeout 是单次语义"的框架最容易踩：配 timeout=1s、retries=2，实际最坏等 3s。
+  notes: Dubbo 这类"timeout 是单次语义"的框架最容易踩：timeout 配 1s、retries 配 2，实际最坏等约 3s。
 
 - rule_id: R-IDEM-001
   mechanism_group: 处理瞬时失败
@@ -720,6 +730,9 @@ rules:
   - component: gRPC
     how: 只有幂等方法才应放进 retryableStatusCodes
     config_or_code: both
+  - component: Seata
+    how: TCC 模式的 Confirm/Cancel 必须自行处理幂等、空回滚与悬挂三类重复/乱序情况
+    config_or_code: code
   applies_when: 会被自动重试的调用带有写副作用
   checks:
     static:
@@ -930,6 +943,9 @@ rules:
   - component: Failsafe
     how: CircuitBreaker 的 withFailureThreshold(failures, executions) 与 withSuccessThreshold
     config_or_code: code
+  - component: ShenYu
+    how: resilience4j 插件（熔断 + 限流 + fallbackUri）或 sentinel 插件，二选一挂在网关上
+    config_or_code: config
   applies_when: 对某个远程依赖启用了熔断
   checks:
     static:
@@ -937,8 +953,10 @@ rules:
       what: 是否同时配置了失败率阈值与最小请求数（只有其中之一都算不完整）
       checkability: static-config
     - id: S2
-      what: 统计窗口大小是否与依赖的正常 QPS 匹配（低 QPS 下窗口太大会永远攒不满）
-      checkability: needs-requirement
+      what: 滑动窗口类型与大小、最小请求数是否都被显式配置，而不是任其落在框架默认值上
+      checkability: static-config
+      strong_form: 统计窗口大小是否与依赖的正常 QPS 匹配（低 QPS 下窗口太大会永远攒不满）
+      strong_form_needs: 该依赖的正常 QPS
     runtime:
     - id: T1
       what: 让依赖失败率越过阈值后，熔断器是否在窗口内跳闸
@@ -1097,8 +1115,10 @@ rules:
       what: 各依赖的调用是否走各自独立的线程池/连接池/信号量，而不是共用一个默认池
       checkability: static-code
     - id: S2
-      what: 各池的上限之和是否在进程资源承受范围内
-      checkability: needs-requirement
+      what: 是否存在没有设上限的池（任一依赖走的是无上限的共享默认池即违反）
+      checkability: static-code
+      strong_form: 各池的上限之和是否在进程资源承受范围内
+      strong_form_needs: 进程可用线程数与内存预算
     runtime:
     - id: T1
       what: 只让依赖 A 变慢，依赖 B 的成功率与延迟是否不受影响
@@ -1151,8 +1171,10 @@ rules:
       what: 是否显式设置了并发/连接/挂起请求上限，而不是沿用默认或设成最大值
       checkability: static-config
     - id: S2
-      what: 上限值是否与本进程的线程/内存预算一致
-      checkability: needs-requirement
+      what: 并发上限是否被显式设置为有限值，而不是沿用默认或被调成框架允许的最大值
+      checkability: static-config
+      strong_form: 上限值是否与本进程的线程/内存预算一致
+      strong_form_needs: 进程线程与内存预算
     runtime:
     - id: T1
       what: 注入上游延迟后，在途请求数是否被压在上限处，超出的是否立即失败而不是排队
@@ -1315,8 +1337,10 @@ rules:
       what: 池的获取等待是否有超时值（或调用点是否带 deadline 的 context）
       checkability: static-config
     - id: S2
-      what: 获取超时 + 查询超时之和是否仍在入站预算内
-      checkability: needs-requirement
+      what: 连接获取超时是否被显式设置，而不是沿用框架默认（HikariCP 默认 30 秒通常远大于上游预算）
+      checkability: static-config
+      strong_form: 获取超时 + 查询超时之和是否仍在入站预算内
+      strong_form_needs: 被测系统自己的入站预算
     runtime:
     - id: T1
       what: 注入下游延迟把池占满后，新请求是在获取超时处失败，还是无限排队
@@ -1372,8 +1396,10 @@ rules:
   checks:
     static:
     - id: S1
-      what: 池的 maxLifetime / idleTimeout 是否小于对端的空闲断连时间（需要对端配置才能判断）
-      checkability: needs-requirement
+      what: 是否显式设置了 maxLifetime / idleTimeout（不设或设为 0 表示连接寿命无上限，直接判为违反）
+      checkability: static-config
+      strong_form: 池的 maxLifetime / idleTimeout 是否小于对端的空闲断连时间
+      strong_form_needs: 对端（数据库、云 LB、NAT 网关）的空闲断连时间
     - id: S2
       what: 是否启用了连接可用性校验（keepalive / validation query）
       checkability: static-config
@@ -1430,6 +1456,12 @@ rules:
   - component: Kong
     how: rate-limiting 插件
     config_or_code: config
+  - component: ShenYu
+    how: rate-limiter 插件的 algorithmName（tokenBucket / leakyBucket / slidingWindow / concurrent）加 replenishRate、burstCapacity
+    config_or_code: config
+  - component: Spring Cloud Alibaba
+    how: 接入 Sentinel 后由流控规则统一承担准入控制
+    config_or_code: config
   applies_when: 服务对外暴露接口且入站流量不可控
   checks:
     static:
@@ -1437,8 +1469,10 @@ rules:
       what: 是否存在服务端准入控制（QPS 限流、并发上限或自适应过载保护）
       checkability: static-config
     - id: S2
-      what: 限流阈值是否来自压测得到的容量，而不是拍脑袋
-      checkability: needs-requirement
+      what: 限流阈值是否被显式配置为有限值，而不是缺省关闭或设成等同于不限
+      checkability: static-config
+      strong_form: 限流阈值是否来自压测得到的容量
+      strong_form_needs: 压测得到的服务容量
     runtime:
     - id: T1
       what: 把入站 QPS 抬到容量以上，被接受请求的延迟是否仍在目标内、超出部分是否被快速拒绝
@@ -1562,10 +1596,6 @@ rules:
     quote: |-
       Queued requests consume memory and increase latency.
     location: Preventing Server Overload > Queue Management
-  - doc_id: DOC-DUBBO-XML-PROVIDER
-    quote: |-
-      线程池队列大小，当线程池满时，排队等待执行的队列大小，建议不要设置，当线程池满时应立即失败，重试其它服务提供机器，而不是排队，除非有特殊需求。
-    location: dubbo:provider 配置项 > queues
   - doc_id: DOC-SENTINEL-FLOW
     quote: |-
       这种隔离方案虽然能够控制线程数量，但无法控制请求排队时间。当请求过多时排队也是无益的，直接拒绝能够迅速降低系统压力。
@@ -1578,7 +1608,7 @@ rules:
     how: max_pending_requests 即队列上限，溢出立即拒绝
     config_or_code: config
   - component: Dubbo
-    how: provider 线程池 queues 参数，默认 0（不排队）
+    how: provider 线程池的 queues 参数决定线程满后的排队深度；维护中的官方页面未给出默认值，需按所用版本确认
     config_or_code: config
   - component: Sentinel
     how: 线程数限流只统计当前上下文线程数、超阈值立即拒绝；若改用匀速器（漏桶）流控效果则必须同时限定最大排队时间
@@ -1593,8 +1623,10 @@ rules:
       what: 队列是否有界（无界队列或无界 backlog 直接算违反）
       checkability: static-code
     - id: S2
-      what: 队列长度与线程池大小的比例是否符合流量形态（平稳流量宜 ≤ 50%）
-      checkability: needs-requirement
+      what: 队列长度与线程池大小是否都被显式配置（任一留默认就推不出排队时长）
+      checkability: static-code
+      strong_form: 队列长度与线程池大小的比例是否符合流量形态（平稳流量宜 ≤ 50%）
+      strong_form_needs: 该服务的流量形态（平稳还是突发）
     runtime:
     - id: T1
       what: 过载时新请求是被立刻拒绝，还是在队列里等到超时
@@ -1602,8 +1634,7 @@ rules:
   parameter_relation:
     symbols: {Q: 队列长度, N: 线程数, p: 单请求处理时长}
     activation: 队列排满时请求的总耗时 ≈ (Q/N)×p；该值超过上游预算即等同于"全部超时"
-    defaults:
-      Dubbo provider queues: {value: "0", doc_id: DOC-DUBBO-XML-PROVIDER}
+    defaults: {}
   violation_manifestation: 过载时内存被排队请求吃光，或所有请求排到超时才失败，有效吞吐为 0
   defect_class: 1
   fault_types: [traffic-surge, cpu-pressure, memory-pressure, dependency-delay]
@@ -1799,11 +1830,11 @@ rules:
   checks:
     static:
     - id: S1
-      what: replicas 或 HPA.minReplicas 是否 ≥ 2（三个规则集分别用 2 和 3 作阈值）
+      what: replicas（被 HPA 管的看 minReplicas）是否等于 1——等于 1 即违反，≥ 2 即通过
       checkability: static-manifest
-    - id: S2
-      what: 副本数是否足以在丢掉一个实例后仍满足容量需求
-      checkability: needs-requirement
+      adopted_threshold: 采用「等于 1 即违反」，不套用 kube-score 的 ≥2 与 kube-linter 的 ≥3 这两个更严的阈值
+      strong_form: 副本数是否足以在丢掉一个实例后仍满足容量需求
+      strong_form_needs: 单实例容量与目标 QPS，属被测系统自己的容量声明
     runtime:
     - id: T1
       what: 杀掉一个实例后服务是否仍可用
@@ -1818,7 +1849,7 @@ rules:
   defect_class: 1
   fault_types: [instance-kill, memory-pressure, cpu-pressure]
   mitigation_family: 多副本部署，副本数按"丢一个仍够用"反推
-  notes: 三个规则集的阈值不一致（kube-score 2、kube-linter 3、Polaris 只查"是不是 1"），取哪个要人拍板，见 CHANGES.md。
+  notes: 三个规则集的阈值不一致（kube-score ≥2、kube-linter ≥3、Polaris 只查是不是 1）。已定：采用 Polaris 的口径，只判「等于 1」；另外两个阈值仍记在 defaults 里备查。
 
 - rule_id: R-PDB-001
   mechanism_group: 保住容量
@@ -2015,8 +2046,11 @@ rules:
   checks:
     static:
     - id: S1
-      what: minReplicas 是否 ≥ 容错所需的最低副本数
+      what: HPA 的 minReplicas 是否等于 1——等于 1 即违反，≥ 2 即通过
       checkability: static-manifest
+      adopted_threshold: 采用「等于 1 即违反」，不套用 kube-linter 的 ≥3
+      strong_form: minReplicas 是否 ≥ 该服务容错所需的最低副本数
+      strong_form_needs: 容错目标与单实例容量
     - id: S2
       what: 被 HPA 管理的 Deployment 是否还硬写了 spec.replicas（会互相打架）
       checkability: static-cross-object
@@ -2031,7 +2065,7 @@ rules:
       HPA downscale stabilization: {value: 5 minutes, doc_id: DOC-K8S-HPA}
       kube-linter HPA minReplicas 阈值: {value: "3", doc_id: DOC-KUBELINTER-CHECKS}
   violation_manifestation: 低峰期缩到 1 副本，此时杀一个实例即全断；或副本数持续抖动带来反复冷启动
-  defect_class: 2
+  defect_class: 1
   fault_types: [traffic-surge, instance-kill, cpu-pressure]
   mitigation_family: 设置与容错需求一致的 minReplicas 并配置缩容稳定窗口
 
@@ -2550,8 +2584,10 @@ rules:
       what: 注册是否绑定到心跳/会话/租约/主动检查，而不是一次性静态注册
       checkability: static-code
     - id: S2
-      what: 剔除延迟（心跳间隔 × 容忍次数）相对调用方超时是否可接受
-      checkability: needs-requirement
+      what: 心跳间隔与容忍次数是否被显式配置，而不是全盘沿用注册中心默认
+      checkability: static-config
+      strong_form: 剔除延迟（心跳间隔 × 容忍次数）相对调用方超时是否可接受
+      strong_form_needs: 调用方能容忍的失败请求比例
     runtime:
     - id: T1
       what: 强杀一个实例后，它在多长时间内从服务发现结果里消失
@@ -2761,8 +2797,10 @@ rules:
       what: cpu / memory 的 requests 与 limits 是否都已设置
       checkability: static-manifest
     - id: S2
-      what: requests 是否接近实际稳态用量（过低会导致节点超卖后被驱逐）
-      checkability: needs-requirement
+      what: requests 是否为显式的非零值（未设或设为 0 即违反）
+      checkability: static-manifest
+      strong_form: requests 是否接近实际稳态用量
+      strong_form_needs: 该容器的实测稳态资源用量
     runtime:
     - id: T1
       what: 在同节点制造资源压力，本工作负载是否被驱逐或被 OOM 杀
@@ -2811,8 +2849,10 @@ rules:
       what: 堆上限是按容器限额推导的（百分比或显式值），还是用了运行时默认
       checkability: static-config
     - id: S2
-      what: 堆上限 + 堆外（元空间、线程栈、直接内存、本地库）是否小于容器限额
-      checkability: needs-requirement
+      what: 堆上限是否用与容器限额挂钩的方式设置（MaxRAMPercentage 这类比例参数），而不是写死绝对值或完全不设
+      checkability: static-config
+      strong_form: 堆上限 + 堆外（元空间、线程栈、直接内存、本地库）是否小于容器限额
+      strong_form_needs: 该进程的实测堆外占用
     - id: S3
       what: 是否显式关闭了容器感知（-XX:-UseContainerSupport）
       checkability: static-config
@@ -2912,8 +2952,10 @@ rules:
   checks:
     static:
     - id: S1
-      what: 每客户端实例的连接上限 × 实例数，是否超过服务端/数据库能承受的连接数
-      checkability: needs-requirement
+      what: 客户端连接池是否设了每实例连接上限（不设即无上限，直接判为违反）
+      checkability: static-config
+      strong_form: 每客户端实例的连接上限 × 实例数，是否超过服务端/数据库能承受的连接数
+      strong_form_needs: 服务端/数据库的最大连接数与客户端实例数
     - id: S2
       what: 容器/进程的文件描述符上限是否高于预期连接数
       checkability: static-config
@@ -2929,7 +2971,7 @@ rules:
   defect_class: 3
   fault_types: [traffic-surge, instance-kill]
   mitigation_family: 按"实例数 × 每实例连接上限"反推并设上限，同时抬高 fd 限制
-  notes: 组合型——每个客户端的池配置都合规，乘上实例数就超了服务端上限。
+  notes: 组合型——每个客户端的池配置都合规，乘上实例数就超了服务端上限。按 2/3 判定口径：服务端连接上限若在被测范围内（自部署的库或服务）判 3；若对端是托管服务、上限要人从外部给出，则该实例按 2 处理。
 
 # ============================================================ 组 8 状态与一致性
 - rule_id: R-PV-001
@@ -3010,6 +3052,9 @@ rules:
   - component: Spring Boot
     how: 每个 saga 步骤有对应补偿方法，且补偿本身幂等
     config_or_code: code
+  - component: Seata
+    how: AT 模式靠 undo_log 自动反向补偿；TCC 模式要自己写 Confirm/Cancel 并处理幂等、空回滚、悬挂；Saga 模式用状态机编排补偿
+    config_or_code: both
   applies_when: 一次业务操作跨越多个服务或多个数据库，无法用单一本地事务
   checks:
     static:
@@ -3049,6 +3094,10 @@ rules:
     quote: |-
       But without using 2PC, sending a message in the middle of a transaction is not reliable. There’s no guarantee that the transaction will commit. Similarly, if a service sends a message after committing the transaction there’s no guarantee that it won’t crash before sending the message.
     location: Transactional outbox > Context
+  - doc_id: DOC-SEATA-AT
+    quote: |-
+      一阶段：业务数据和回滚日志记录在同一个本地事务中提交，释放本地锁和连接资源。
+    location: Seata AT 模式 > 整体机制
   instantiations:
   - component: Spring Boot
     how: 业务写与 outbox 表写在同一本地事务，另有轮询/CDC 进程负责投递
@@ -3059,6 +3108,9 @@ rules:
   - component: RocketMQ
     how: 用事务消息替代 outbox（半消息 + 回查）
     config_or_code: code
+  - component: Seata
+    how: AT 模式把 undo_log 与业务数据写在同一个本地事务里，是同一条"同事务落盘"原则的另一种用法
+    config_or_code: config
   applies_when: 一次业务写之后必须发出一条消息，且两者不能不一致
   checks:
     static:
@@ -3255,8 +3307,8 @@ rules:
 - rule_id: R-FALLBACK-001
   mechanism_group: 降级
   mechanism: 回退路径
-  statement: A fallback path must be exercised continuously in production rather than only on failure; a rarely-taken fallback is itself a latent failure.
-  gloss_zh: 回退路径要常态跑在生产里，不能只在出事时才走一次——平时不走的回退本身就是一颗定时炸弹。
+  statement: A fallback path that is only taken during failures is itself a defect; either exercise it continuously in production or remove it and harden the primary path instead.
+  gloss_zh: 只在出故障时才走的回退路径，本身就算缺陷——要么让它常态跑在生产里，要么干脆去掉、把主路径做硬。
   sources:
   - doc_id: DOC-AWS-FALLBACK
     quote: |-
@@ -3270,6 +3322,10 @@ rules:
     quote: |-
       Given these pitfalls we encountered in distributed fallback, we now almost always prefer alternatives to fallback.
     location: Avoiding fallback in distributed systems > How Amazon avoids fallback
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Remember that the code path you never use is the code path that (often) doesn’t work.
+    location: Preventing Server Overload > Load Shedding and Graceful Degradation
   instantiations:
   - component: Resilience4j
     how: CircuitBreaker 的 fallback 方法；需有覆盖它的测试与生产演练
@@ -3287,7 +3343,7 @@ rules:
   checks:
     static:
     - id: S1
-      what: 回退分支是否有测试覆盖；回退逻辑本身是否还会调用可能失败的远程依赖
+      what: 回退分支是否有常态执行的证据（承担一部分生产流量、有定期演练、或有覆盖它的集成测试）——只在故障时才会被走到即判为违反
       checkability: static-code
     - id: S2
       what: 回退分支是否会放大问题（例如切到更慢、更贵、同样在故障中的资源）
@@ -3394,8 +3450,10 @@ rules:
       what: 缓存不可用时是否能穿透到源（还是把缓存故障直接抛给调用方）
       checkability: static-code
     - id: S3
-      what: 源的容量是否足以承受缓存全空时的流量（容量型缓存 vs 延迟型缓存）
-      checkability: needs-requirement
+      what: 源侧是否配置了准入控制或限流，使得缓存全空时源不会被瞬间打垮
+      checkability: static-cross-object
+      strong_form: 源的容量是否足以承受缓存全空时的流量（容量型缓存还是延迟型缓存）
+      strong_form_needs: 源的容量与缓存命中率
     runtime:
     - id: T1
       what: 分别注入"源不可用"与"缓存不可用"，两种情况下服务是否都还能工作
@@ -3494,8 +3552,10 @@ rules:
       what: 非关键依赖的调用是否被单独捕获处理，而不是让异常冒泡到整体失败
       checkability: static-code
     - id: S2
-      what: 关键与非关键依赖是否被区分标注（缺少这个划分就无从判断）
-      checkability: needs-requirement
+      what: 代码或配置里是否存在关键与非关键依赖的显式区分（非关键调用被单独装饰、单独捕获或单独标注）
+      checkability: static-code
+      strong_form: 这个区分是否与业务上真实的关键性一致
+      strong_form_needs: 业务对各功能关键性的判断
     runtime:
     - id: T1
       what: 只注入非关键依赖故障，整体请求成功率是否保持
@@ -3570,3 +3630,171 @@ rules:
   fault_types: [dependency-delay]
   mitigation_family: 包装层超时之外，底层 I/O 也要有自己的超时，并把取消信号传到最底层
   notes: 实现错误型的典型——机制在、参数也配了，但行为不对。
+
+# ============================================================ 补充：中文技术栈补抓后新增的规则
+- rule_id: R-ADMIT-004
+  mechanism_group: 卸载过载
+  mechanism: 准入控制与限流（服务端与客户端）
+  statement: When rate limiting depends on a central token server, the client must degrade to local limiting if that server is unreachable, rather than failing open or failing closed.
+  gloss_zh: 限流要是靠中心 token server 算的，那台 server 连不上时客户端必须退化成本地限流——不能全放行，也不能全拒绝。
+  sources:
+  - doc_id: DOC-SENTINEL-CLUSTER
+    quote: |-
+      而集群流控可以精确地控制整个集群的调用总量，结合单机限流兜底，可以更好地发挥流量控制的效果。
+    location: 集群流量控制 > 介绍
+  - doc_id: DOC-SENTINEL-CLUSTER
+    quote: |-
+      // 在 client 连接失败或通信失败时，是否退化到本地的限流模式
+      private boolean fallbackToLocalWhenFail = true;
+    location: 集群流量控制 > 集群流控规则配置 > ClusterFlowConfig
+  - doc_id: DOC-AZ-PATTERN-RATELIMIT
+    quote: |-
+      Regardless of the metric that you use for throttling, your rate limiting implementation will involve controlling the number and/or size of operations sent to the service during a specific time period.
+    location: Rate Limiting pattern > Issues and considerations
+  instantiations:
+  - component: Sentinel
+    how: ClusterFlowConfig.fallbackToLocalWhenFail（默认 true）；同时要给该资源配好单机流控规则作为兜底
+    config_or_code: config
+  - component: Envoy
+    how: 全局 rate limit filter 的 failure_mode_deny；连不上 RLS 时是放行还是拒绝要显式选，并配本地 local_rate_limit 兜底
+    config_or_code: config
+  - component: ShenYu
+    how: rate-limiter 插件依赖 Redis 计数，Redis 不可用时的行为要显式确认
+    config_or_code: config
+  - component: APISIX
+    how: limit-count 的 redis/redis-cluster 策略同理，需与 local 策略配合
+    config_or_code: config
+  applies_when: 限流决策依赖一个独立的计数服务（token server、Redis、RLS）
+  checks:
+    static:
+    - id: S1
+      what: 中心计数服务不可用时的行为是否被显式配置（退化本地 / 放行 / 拒绝），而不是留给默认
+      checkability: static-config
+    - id: S2
+      what: 是否同时配了单机兜底规则；只有集群规则、没有单机规则即无处可退
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 切断到 token server / Redis 的连接，限流是否仍在本地生效，通过量是否落到单机阈值附近
+      signals: [限流通过量与拒绝量, token server 连接状态, 单机阈值与实测通过量的偏差]
+  parameter_relation:
+    symbols: {Q: 集群总阈值, m: 实例数, q_local: 单机兜底阈值}
+    activation: 切断中心计数后，若无本地兜底则总通过量跳到不限（放行）或跌到 0（拒绝）；有兜底时应收敛到 m × q_local
+    defaults:
+      Sentinel fallbackToLocalWhenFail: {value: "true", doc_id: DOC-SENTINEL-CLUSTER}
+  violation_manifestation: Redis 或 token server 一抖，限流整体失效、后端被打穿；或反过来全部请求被拒
+  defect_class: 3
+  fault_types: [dependency-unavailable, dependency-delay, network-partition, traffic-surge]
+  mitigation_family: 集群限流配单机兜底，并显式指定控制面失效时的退化方向
+  notes: 按 2/3 判定口径判 3——集群规则、单机规则、退化开关三项都在被测系统配置里，但必须一起看才知道控制面挂掉会发生什么。
+
+- rule_id: R-DISCOVERY-002
+  mechanism_group: 检测与恢复
+  mechanism: 服务发现的健康与会话
+  statement: A client must keep resolving service addresses from a local cache when the registry is unavailable, including on a cold start.
+  gloss_zh: 注册中心挂了的时候，客户端要能继续用本地缓存解析地址——冷启动那一刻也得能。
+  sources:
+  - doc_id: DOC-NACOS-JAVA-FAILOVER
+    quote: |-
+      我们可以在客户端开启本地容灾，用来应对Nacos服务端出现问题时，保证客户端的数据和接口稳定性。
+    location: Java SDK 容灾 > 概述
+  - doc_id: DOC-NACOS-JAVA-FAILOVER
+    quote: |-
+      在Nacos运行期间，突然出现接口不可用或者数据异常，我们可以快速的开启容灾，让客户端使用容灾数据，减小服务受影响的窗口，等Nacos服务端恢复后再关闭容灾；
+    location: Java SDK 容灾 > 使用场景
+  - doc_id: DOC-NACOS-JAVA-PROPERTIES
+    quote: |-
+      namingLoadCacheAtStart | NAMING_LOAD_CACHE_AT_START | 注册中心NamingService在启动时读取本地磁盘缓存来初始化数据 | boolean | false
+    location: Java SDK 配置项 > 注册中心
+  instantiations:
+  - component: Nacos
+    how: FailoverReactor 本地容灾 + namingLoadCacheAtStart（默认 false，冷启动时不读磁盘缓存）
+    config_or_code: config
+  - component: Consul
+    how: 客户端需自行缓存上一次的健康实例列表；agent 本地模式可缓解
+    config_or_code: code
+  - component: Eureka
+    how: 客户端有本地注册表缓存，定期增量拉取
+    config_or_code: config
+  - component: Istio
+    how: Sidecar 保留 xDS 最后一次下发的配置，控制面挂掉时数据面继续按旧配置转发
+    config_or_code: config
+  applies_when: 服务地址由注册中心/控制面下发
+  checks:
+    static:
+    - id: S1
+      what: 客户端是否开启了本地缓存/容灾，缓存是否落盘（只在内存里则重启即丢）
+      checkability: static-config
+    - id: S2
+      what: 冷启动路径是否允许从本地缓存初始化（Nacos 的 namingLoadCacheAtStart 默认 false，不改就起不来）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 切断注册中心后，已在运行的客户端能否继续调用；再重启一个客户端实例，它能否起来并解析到地址
+      signals: [注册中心不可用期间的调用成功率, 新实例启动是否成功, 本地缓存文件是否存在与被读取]
+  parameter_relation:
+    symbols: {T_down: 注册中心不可用时长, T_cache: 本地缓存有效期}
+    activation: T_down 内运行中的客户端应不受影响；重启实例时若未开启启动读盘，注册中心不可用即无法启动，与 T_down 长短无关
+    defaults:
+      Nacos namingLoadCacheAtStart: {value: "false", doc_id: DOC-NACOS-JAVA-PROPERTIES}
+  violation_manifestation: 注册中心一挂，正在跑的还行，一旦有实例重启就再也起不来——故障范围随重启逐步扩大
+  defect_class: 2
+  fault_types: [dependency-unavailable, network-partition, instance-kill]
+  mitigation_family: 客户端本地缓存落盘，并允许冷启动时从缓存初始化
+  notes: 按判定口径判 2——"缓存多旧算可接受"要业务给出容忍度；但 S2（启动读盘开关）本身是内部可判的弱判定。
+
+- rule_id: R-SAGA-002
+  mechanism_group: 状态与一致性
+  mechanism: 补偿与 Saga
+  statement: A transaction coordinator's second-phase retry must have a finite bound, and giving up at that bound leaves an inconsistency that must be detectable and correctable.
+  gloss_zh: 事务协调器的二阶段重试要有上限；而一旦到上限放弃，就会留下不一致——这个不一致必须能被发现、能被校准。
+  sources:
+  - doc_id: DOC-SEATA-CONFIG
+    quote: |-
+      server.maxCommitRetryTimeout | 二阶段提交重试超时时长 | 单位 ms,s,m,h,d,对应毫秒,秒,分,小时,天,默认毫秒。默认值-1 表示无限重试。公式: timeout>=now-globalTransactionBeginTime,true 表示超时则不再重试(注: 达到超时时间后将不会做任何重试,有数据不一致风险,除非业务自行可校准数据,否者慎用)
+    location: Seata 配置项 > server 配置
+  - doc_id: DOC-SEATA-CONFIG
+    quote: |-
+      server.rollbackRetryTimeoutUnlockEnable | 二阶段回滚超时后是否释放锁 | 默认 false
+    location: Seata 配置项 > server 配置
+  - doc_id: DOC-AZ-PATTERN-COMPENSATE
+    quote: |-
+      You can use a workflow to implement an eventually consistent operation that requires compensation. As the original operation runs, the system records information about each step and how to undo it. If the operation fails, the workflow rewinds through the completed steps and reverses each step.
+    location: Compensating Transaction pattern > Solution
+  instantiations:
+  - component: Seata
+    how: server.maxCommitRetryTimeout / maxRollbackRetryTimeout（默认 -1 无限重试）与 rollbackRetryTimeoutUnlockEnable（默认 false，超时不放锁）
+    config_or_code: config
+  - component: RocketMQ
+    how: 事务消息的回查次数上限；超过上限后半消息被丢弃，业务需自行校准
+    config_or_code: config
+  - component: Spring Boot
+    how: 自研 saga 的补偿重试上限，以及超限后的对账/告警出口
+    config_or_code: code
+  applies_when: 用协调器驱动跨服务事务的提交或回滚
+  checks:
+    static:
+    - id: S1
+      what: 二阶段提交/回滚的重试是否有时限（Seata 默认 -1 表示无限重试，会让全局锁一直占着）
+      checkability: static-config
+    - id: S2
+      what: 放弃重试之后是否有可发现的出口（对账任务、告警、残留事务的可查询状态），而不是静默不一致
+      checkability: static-code
+    - id: S3
+      what: 回滚超时后是否释放锁——不放锁会把后续事务一起堵死，放锁则留下不一致，两种取舍都要是显式选择
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 让某个分支长时间不可用，协调器的重试是否收敛；收敛之后残留的不一致能否被查出来
+      signals: [全局事务表中长期未完结的记录数, 全局锁持有时长, 重试次数随时间的曲线, 对账任务发现的差异数]
+  parameter_relation:
+    symbols: {R: 重试超时时长, T_branch: 分支不可用时长, L: 全局锁持有时长}
+    activation: T_branch > R 时协调器放弃，留下不一致；R = -1（无限重试）时 L 随 T_branch 无限增长，后续事务被锁死
+    defaults:
+      Seata server.maxCommitRetryTimeout: {value: "-1（表示无限重试）", doc_id: DOC-SEATA-CONFIG}
+      Seata server.rollbackRetryTimeoutUnlockEnable: {value: "false", doc_id: DOC-SEATA-CONFIG}
+  violation_manifestation: 一个分支长期不可用，全局锁一直不放，所有碰同一行的事务全部阻塞；或者协调器悄悄放弃，账目对不上却没人知道
+  defect_class: 3
+  fault_types: [dependency-unavailable, dependency-delay, instance-kill, network-partition]
+  mitigation_family: 给二阶段重试设时限，超限后释放资源并把不一致暴露到对账/告警出口
+  notes: 按判定口径判 3——重试时限、放锁开关、对账出口三处各自都合规，合起来才决定"锁死"还是"静默不一致"。

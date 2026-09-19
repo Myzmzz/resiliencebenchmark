@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<!-- Global site tag (gtag.js) - Google Analytics -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=UA-163094446-1"></script>
+	<script>
+	  window.dataLayer = window.dataLayer || [];
+	  function gtag(){dataLayer.push(arguments);}
+	  gtag('js', new Date());
+
+	  gtag('config', 'UA-163094446-1');
+	</script>
+	<meta name="aes-config" content="pid=xux-opensource&user_type=101&uid=&username=&dim10=Sentinel" />
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<meta name="keywords" content="api-gateway-flow-control,Sentinel" />
+	<meta name="description" content="api-gateway-flow-control" />
+	<!-- 网页标签标题 -->
+	<title>api-gateway-flow-control | Sentinel</title>
+	<link rel="shortcut icon" href="/img/sentinel.ico"/>
+	<link rel="stylesheet" href="/build/documentation.css" />
+	<link rel="stylesheet" href="https://g.alicdn.com/mamba/assets/0.0.19/mse-arc-ui.min.css" />
+</head>
+<body>
+	<div id="root"><div class="documentation-page" data-reactroot="" data-reactid="1" data-react-checksum="1283015557"><header class="header-container header-container-normal" data-reactid="2"><div class="header-body" data-reactid="3"><a href="/zh-cn/index.html" data-reactid="4"><img class="logo" src="/img/sentinel_colorful.png" data-reactid="5"/></a><div class="search search-normal" data-reactid="6"><span class="icon-search" data-reactid="7"></span></div><span class="language-switch language-switch-normal" data-reactid="8">En</span><div class="header-menu" data-reactid="9"><img class="header-menu-toggle" src="/img/system/menu_gray.png" data-reactid="10"/><ul data-reactid="11"><li class="menu-item menu-item-normal" data-reactid="12"><span data-reactid="13"><a href="/zh-cn/index.html" data-reactid="14">首页</a></span></li><li class="menu-item menu-item-normal menu-item-normal-active" data-reactid="15"><span data-reactid="16"><a href="/zh-cn/docs/introduction.html" data-reactid="17">文档</a></span></li><li class="menu-item menu-item-normal" data-reactid="18"><div class="nav-container" data-reactid="19"><div class="word" data-reactid="20"><a data-reactid="21">解决方案</a><img class="menu-img" src="https://img.alicdn.com/tfs/TB1esl_m.T1gK0jSZFrXXcNCXXa-200-200.png" data-reactid="22"/></div><ul class="sub-nav-container" style="width:220px;" data-reactid="23"><li data-reactid="24"><a href="https://www.aliyun.com/product/aliware/mse?spm=sentinel-website.topbar.0.0.0" target="_blank" data-reactid="25">微服务解决方案</a></li><li data-reactid="26"><a href="https://www.aliyun.com/product/ahas?spm=sentinel-website.topbar.0.0.0" target="_blank" data-reactid="27">高可用解决方案</a></li><li data-reactid="28"><a href="https://cn.aliyun.com/product/aliware/sae?spm=sentinel-website.topbar.0.0.0" target="_blank" data-reactid="29">微服务Serverless解决方案</a></li><li data-reactid="30"><a href="https://www.aliyun.com/product/edas?spm=sentinel-website.topbar.0.0.0" target="_blank" data-reactid="31">APaaS解决方案</a></li><li data-reactid="32"><a href="https://www.aliyun.com/product/servicemesh?spm=sentinel-website.topbar.0.0.0" target="_blank" data-reactid="33">服务网格解决方案</a></li></ul><!-- react-text: 34 --> <!-- /react-text --></div></li><li class="menu-item menu-item-normal" data-reactid="35"><span data-reactid="36"><a href="/zh-cn/docs/developers/developers_dev.html" data-reactid="37">开发者</a></span></li><li class="menu-item menu-item-normal" data-reactid="38"><span data-reactid="39"><a href="/zh-cn/blog/index.html" data-reactid="40">博客</a></span></li><li class="menu-item menu-item-normal" data-reactid="41"><span data-reactid="42"><a href="/zh-cn/community/index.html" data-reactid="43">社区</a></span></li><li class="menu-item menu-item-normal" data-reactid="44"><span data-reactid="45"><a href="https://developer.aliyun.com/ebook/7565?spm=sentinel-website.topbar.0.0.0" data-reactid="46">服务治理白皮书</a><img class="menu-img" src="https://img.alicdn.com/tfs/TB1esl_m.T1gK0jSZFrXXcNCXXa-200-200.png" data-reactid="47"/></span></li><li class="menu-item menu-item-normal" data-reactid="48"><span data-reactid="49"><a href="https://www.aliyun.com/product/aliware/mse?spm=sentinel-website.topbar.0.0.0" data-reactid="50">企业版 Sentinel</a><img class="menu-img" src="https://img.alicdn.com/tfs/TB1esl_m.T1gK0jSZFrXXcNCXXa-200-200.png" data-reactid="51"/></span></li></ul></div></div></header><div class="bar" data-reactid="52"><div class="bar-body" data-reactid="53"><img src="/img/system/docs.png" class="front-img" data-reactid="54"/><span data-reactid="55">文档</span><img src="/img/system/docs.png" class="back-img" data-reactid="56"/></div></div><section class="content-section" data-reactid="57"><div class="sidemenu" data-reactid="58"><div class="sidemenu-toggle" data-reactid="59"><img src="https://img.alicdn.com/tfs/TB1E6apXHGYBuNjy0FoXXciBFXa-200-200.png" data-reactid="60"/></div><ul data-reactid="61"><li class="menu-item menu-item-level-1" data-reactid="62"><span data-reactid="63">用户文档</span><ul data-reactid="64"><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="65"><a href="/zh-cn/docs/introduction.html" target="_self" data-reactid="66">Sentinel 介绍</a></li><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="67"><span data-reactid="68"><!-- react-text: 69 -->入门参考<!-- /react-text --><img style="transform:rotate(-90deg);" class="menu-toggle" src="/img/system/arrow_down.png" data-reactid="70"/></span><ul data-reactid="71"><li class="menu-item menu-item-level-3" data-reactid="72"><a href="/zh-cn/docs/quick-start.html" target="_self" data-reactid="73">快速开始</a></li><li class="menu-item menu-item-level-3" data-reactid="74"><a href="/zh-cn/docs/basic-implementation.html" target="_self" data-reactid="75">基本原理</a></li></ul></li><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="76"><span data-reactid="77"><!-- react-text: 78 -->使用文档<!-- /react-text --><img style="transform:rotate(-90deg);" class="menu-toggle" src="/img/system/arrow_down.png" data-reactid="79"/></span><ul data-reactid="80"><li class="menu-item menu-item-level-3" data-reactid="81"><a href="/zh-cn/docs/basic-api-resource-rule.html" target="_self" data-reactid="82">基本使用（资源与规则）</a></li><li class="menu-item menu-item-level-3" data-reactid="83"><a href="/zh-cn/docs/flow-control.html" target="_self" data-reactid="84">流量控制</a></li><li class="menu-item menu-item-level-3" data-reactid="85"><a href="/zh-cn/docs/circuit-breaking.html" target="_self" data-reactid="86">熔断降级</a></li><li class="menu-item menu-item-level-3" data-reactid="87"><a href="/zh-cn/docs/system-adaptive-protection.html" target="_self" data-reactid="88">系统自适应保护</a></li><li class="menu-item menu-item-level-3" data-reactid="89"><a href="/zh-cn/docs/cluster-flow-control.html" target="_self" data-reactid="90">集群流量控制</a></li><li class="menu-item menu-item-level-3" data-reactid="91"><a href="/zh-cn/docs/api-gateway-flow-control.html" target="_self" data-reactid="92">网关流量控制</a></li><li class="menu-item menu-item-level-3" data-reactid="93"><a href="/zh-cn/docs/parameter-flow-control.html" target="_self" data-reactid="94">热点参数限流</a></li><li class="menu-item menu-item-level-3" data-reactid="95"><a href="/zh-cn/docs/origin-authority-control.html" target="_self" data-reactid="96">来源访问控制</a></li><li class="menu-item menu-item-level-3" data-reactid="97"><a href="/zh-cn/docs/annotation-support.html" target="_self" data-reactid="98">注解支持</a></li><li class="menu-item menu-item-level-3" data-reactid="99"><a href="/zh-cn/docs/dynamic-rule-configuration.html" target="_self" data-reactid="100">动态规则扩展</a></li><li class="menu-item menu-item-level-3" data-reactid="101"><a href="/zh-cn/docs/logs.html" target="_self" data-reactid="102">日志</a></li><li class="menu-item menu-item-level-3" data-reactid="103"><a href="/zh-cn/docs/metrics.html" target="_self" data-reactid="104">实时监控</a></li><li class="menu-item menu-item-level-3" data-reactid="105"><a href="/zh-cn/docs/general-configuration.html" target="_self" data-reactid="106">启动配置项</a></li></ul></li><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="107"><a href="/zh-cn/docs/dashboard.html" target="_self" data-reactid="108">Sentinel 控制台</a></li><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="109"><a href="/zh-cn/docs/opensergo-data-source.html" target="_self" data-reactid="110">OpenSergo 流量治理</a></li><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="111"><a href="/zh-cn/docs/open-source-framework-integrations.html" target="_self" data-reactid="112">开源框架适配</a></li><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="113"><a href="/zh-cn/docs/polyglot-support.html" target="_self" data-reactid="114">多语言支持</a></li><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="115"><a href="/zh-cn/docs/faq.html" target="_self" data-reactid="116">FAQ</a></li></ul></li><li class="menu-item menu-item-level-1" data-reactid="117"><span data-reactid="118">多语言文档</span><ul data-reactid="119"><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="120"><span data-reactid="121"><!-- react-text: 122 -->Sentinel Go<!-- /react-text --><img style="transform:rotate(-90deg);" class="menu-toggle" src="/img/system/arrow_down.png" data-reactid="123"/></span><ul data-reactid="124"><li class="menu-item menu-item-level-3" data-reactid="125"><a href="/zh-cn/docs/golang/quick-start.html" target="_self" data-reactid="126">快速开始</a></li><li class="menu-item menu-item-level-3" data-reactid="127"><a href="/zh-cn/docs/golang/basic-api-usage.html" target="_self" data-reactid="128">基本 API 使用指南</a></li><li class="menu-item menu-item-level-3" data-reactid="129"><a href="/zh-cn/docs/golang/flow-control.html" target="_self" data-reactid="130">流量控制</a></li><li class="menu-item menu-item-level-3" data-reactid="131"><a href="/zh-cn/docs/golang/circuit-breaking.html" target="_self" data-reactid="132">熔断降级</a></li><li class="menu-item menu-item-level-3" data-reactid="133"><a href="/zh-cn/docs/golang/concurrency-limiting-isolation.html" target="_self" data-reactid="134">并发隔离控制</a></li><li class="menu-item menu-item-level-3" data-reactid="135"><a href="/zh-cn/docs/golang/system-adaptive-protection.html" target="_self" data-reactid="136">系统自适应保护</a></li><li class="menu-item menu-item-level-3" data-reactid="137"><a href="/zh-cn/docs/golang/hotspot-param-flow-control.html" target="_self" data-reactid="138">热点参数流控</a></li><li class="menu-item menu-item-level-3" data-reactid="139"><a href="/zh-cn/docs/golang/open-source-framework-integrations.html" target="_self" data-reactid="140">开源框架适配</a></li><li class="menu-item menu-item-level-3" data-reactid="141"><a href="/zh-cn/docs/golang/dynamic-data-source-usage.html" target="_self" data-reactid="142">动态规则扩展</a></li><li class="menu-item menu-item-level-3" data-reactid="143"><a href="/zh-cn/docs/golang/general-configuration.html" target="_self" data-reactid="144">通用配置</a></li><li class="menu-item menu-item-level-3" data-reactid="145"><a href="/zh-cn/docs/golang/logging.html" target="_self" data-reactid="146">日志</a></li></ul></li></ul></li><li class="menu-item menu-item-level-1" data-reactid="147"><span data-reactid="148">贡献手册</span><ul data-reactid="149"><li style="height:36px;overflow:hidden;" class="menu-item menu-item-level-2" data-reactid="150"><a href="/zh-cn/docs/contribution/contribution-guideline.html" target="_self" data-reactid="151">开源贡献指南</a></li></ul></li></ul></div><div class="doc-content markdown-body" data-reactid="152"><h1>网关流量控制</h1>
+<p>Sentinel 支持对 Spring Cloud Gateway、Zuul 等主流的 API Gateway 进行限流。</p>
+<p><img src="https://user-images.githubusercontent.com/9434884/58381714-266d7980-7ff3-11e9-8617-d0d7c325d703.png" alt="sentinel-api-gateway-common-arch"></p>
+<p>Sentinel 1.6.0 引入了 Sentinel API Gateway Adapter Common 模块，此模块中包含网关限流的规则和自定义 API 的实体和管理逻辑：</p>
+<ul>
+<li><code>GatewayFlowRule</code>：网关限流规则，针对 API Gateway 的场景定制的限流规则，可以针对不同 route 或自定义的 API 分组进行限流，支持针对请求中的参数、Header、来源 IP 等进行定制化的限流。</li>
+<li><code>ApiDefinition</code>：用户自定义的 API 定义分组，可以看做是一些 URL 匹配的组合。比如我们可以定义一个 API 叫 <code>my_api</code>，请求 path 模式为 <code>/foo/**</code> 和 <code>/baz/**</code> 的都归到 <code>my_api</code> 这个 API 分组下面。限流的时候可以针对这个自定义的 API 分组维度进行限流。</li>
+</ul>
+<p>其中网关限流规则 <code>GatewayFlowRule</code> 的字段解释如下：</p>
+<ul>
+<li><code>resource</code>：资源名称，可以是网关中的 route 名称或者用户自定义的 API 分组名称。</li>
+<li><code>resourceMode</code>：规则是针对 API Gateway 的 route（<code>RESOURCE_MODE_ROUTE_ID</code>）还是用户在 Sentinel 中定义的 API 分组（<code>RESOURCE_MODE_CUSTOM_API_NAME</code>），默认是 route。</li>
+<li><code>grade</code>：限流指标维度，同限流规则的 <code>grade</code> 字段。</li>
+<li><code>count</code>：限流阈值</li>
+<li><code>intervalSec</code>：统计时间窗口，单位是秒，默认是 1 秒。</li>
+<li><code>controlBehavior</code>：流量整形的控制效果，同限流规则的 <code>controlBehavior</code> 字段，目前支持快速失败和匀速排队两种模式，默认是快速失败。</li>
+<li><code>burst</code>：应对突发请求时额外允许的请求数目。</li>
+<li><code>maxQueueingTimeoutMs</code>：匀速排队模式下的最长排队时间，单位是毫秒，仅在匀速排队模式下生效。</li>
+<li><code>paramItem</code>：参数限流配置。若不提供，则代表不针对参数进行限流，该网关规则将会被转换成普通流控规则；否则会转换成热点规则。其中的字段：
+<ul>
+<li><code>parseStrategy</code>：从请求中提取参数的策略，目前支持提取来源 IP（<code>PARAM_PARSE_STRATEGY_CLIENT_IP</code>）、Host（<code>PARAM_PARSE_STRATEGY_HOST</code>）、任意 Header（<code>PARAM_PARSE_STRATEGY_HEADER</code>）和任意 URL 参数（<code>PARAM_PARSE_STRATEGY_URL_PARAM</code>）四种模式。</li>
+<li><code>fieldName</code>：若提取策略选择 Header 模式或 URL 参数模式，则需要指定对应的 header 名称或 URL 参数名称。</li>
+<li><code>pattern</code>：参数值的匹配模式，只有匹配该模式的请求属性值会纳入统计和流控；若为空则统计该请求属性的所有值。（1.6.2 版本开始支持）</li>
+<li><code>matchStrategy</code>：参数值的匹配策略，目前支持精确匹配（<code>PARAM_MATCH_STRATEGY_EXACT</code>）、子串匹配（<code>PARAM_MATCH_STRATEGY_CONTAINS</code>）和正则匹配（<code>PARAM_MATCH_STRATEGY_REGEX</code>）。（1.6.2 版本开始支持）</li>
+</ul>
+</li>
+</ul>
+<p>用户可以通过 <code>GatewayRuleManager.loadRules(rules)</code> 手动加载网关规则，或通过 <code>GatewayRuleManager.register2Property(property)</code> 注册动态规则源动态推送（推荐方式）。</p>
+<h2>Spring Cloud Gateway</h2>
+<p>从 1.6.0 版本开始，Sentinel 提供了 Spring Cloud Gateway 的适配模块，可以提供两种资源维度的限流：</p>
+<ul>
+<li>route 维度：即在 Spring 配置文件中配置的路由条目，资源名为对应的 routeId</li>
+<li>自定义 API 维度：用户可以利用 Sentinel 提供的 API 来自定义一些 API 分组</li>
+</ul>
+<p>使用时需引入以下模块（以 Maven 为例）：</p>
+<pre><code class="language-xml"><span class="hljs-tag">&lt;<span class="hljs-name">dependency</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">groupId</span>&gt;</span>com.alibaba.csp<span class="hljs-tag">&lt;/<span class="hljs-name">groupId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">artifactId</span>&gt;</span>sentinel-spring-cloud-gateway-adapter<span class="hljs-tag">&lt;/<span class="hljs-name">artifactId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">version</span>&gt;</span>x.y.z<span class="hljs-tag">&lt;/<span class="hljs-name">version</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">dependency</span>&gt;</span>
+</code></pre>
+<p>使用时只需注入对应的 <code>SentinelGatewayFilter</code> 实例以及 <code>SentinelGatewayBlockExceptionHandler</code> 实例即可。比如：</p>
+<pre><code class="language-java"><span class="hljs-meta">@Configuration</span>
+<span class="hljs-keyword">public</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">GatewayConfiguration</span> </span>{
+
+    <span class="hljs-keyword">private</span> <span class="hljs-keyword">final</span> List&lt;ViewResolver&gt; viewResolvers;
+    <span class="hljs-keyword">private</span> <span class="hljs-keyword">final</span> ServerCodecConfigurer serverCodecConfigurer;
+
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-title">GatewayConfiguration</span><span class="hljs-params">(ObjectProvider&lt;List&lt;ViewResolver&gt;&gt; viewResolversProvider,
+                                ServerCodecConfigurer serverCodecConfigurer)</span> </span>{
+        <span class="hljs-keyword">this</span>.viewResolvers = viewResolversProvider.getIfAvailable(Collections::emptyList);
+        <span class="hljs-keyword">this</span>.serverCodecConfigurer = serverCodecConfigurer;
+    }
+
+    <span class="hljs-meta">@Bean</span>
+    <span class="hljs-meta">@Order</span>(Ordered.HIGHEST_PRECEDENCE)
+    <span class="hljs-function"><span class="hljs-keyword">public</span> SentinelGatewayBlockExceptionHandler <span class="hljs-title">sentinelGatewayBlockExceptionHandler</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-comment">// Register the block exception handler for Spring Cloud Gateway.</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> SentinelGatewayBlockExceptionHandler(viewResolvers, serverCodecConfigurer);
+    }
+
+    <span class="hljs-meta">@Bean</span>
+    <span class="hljs-meta">@Order</span>(-<span class="hljs-number">1</span>)
+    <span class="hljs-function"><span class="hljs-keyword">public</span> GlobalFilter <span class="hljs-title">sentinelGatewayFilter</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> SentinelGatewayFilter();
+    }
+}
+</code></pre>
+<p>Demo 示例：<a href="https://github.com/alibaba/Sentinel/tree/master/sentinel-demo/sentinel-demo-spring-cloud-gateway">sentinel-demo-spring-cloud-gateway</a></p>
+<p>比如我们在 Spring Cloud Gateway 中配置了以下路由：</p>
+<pre><code class="language-yaml"><span class="hljs-attr">server:</span>
+<span class="hljs-attr">  port:</span> <span class="hljs-number">8090</span>
+<span class="hljs-attr">spring:</span>
+<span class="hljs-attr">  application:</span>
+<span class="hljs-attr">    name:</span> <span class="hljs-string">spring-cloud-gateway</span>
+<span class="hljs-attr">  cloud:</span>
+<span class="hljs-attr">    gateway:</span>
+<span class="hljs-attr">      enabled:</span> <span class="hljs-literal">true</span>
+<span class="hljs-attr">      discovery:</span>
+<span class="hljs-attr">        locator:</span>
+<span class="hljs-attr">          lower-case-service-id:</span> <span class="hljs-literal">true</span>
+<span class="hljs-attr">      routes:</span>
+        <span class="hljs-comment"># Add your routes here.</span>
+<span class="hljs-attr">        - id:</span> <span class="hljs-string">product_route</span>
+<span class="hljs-attr">          uri:</span> <span class="hljs-attr">lb://product</span>
+<span class="hljs-attr">          predicates:</span>
+<span class="hljs-bullet">            -</span> <span class="hljs-string">Path=/product/**</span>
+<span class="hljs-attr">        - id:</span> <span class="hljs-string">httpbin_route</span>
+<span class="hljs-attr">          uri:</span> <span class="hljs-attr">https://httpbin.org</span>
+<span class="hljs-attr">          predicates:</span>
+<span class="hljs-bullet">            -</span> <span class="hljs-string">Path=/httpbin/**</span>
+<span class="hljs-attr">          filters:</span>
+<span class="hljs-bullet">            -</span> <span class="hljs-string">RewritePath=/httpbin/(?&lt;segment&gt;.*),</span> <span class="hljs-string">/$\{segment}</span>
+</code></pre>
+<p>同时自定义了一些 API 分组：</p>
+<pre><code class="language-java"><span class="hljs-function"><span class="hljs-keyword">private</span> <span class="hljs-keyword">void</span> <span class="hljs-title">initCustomizedApis</span><span class="hljs-params">()</span> </span>{
+    Set&lt;ApiDefinition&gt; definitions = <span class="hljs-keyword">new</span> HashSet&lt;&gt;();
+    ApiDefinition api1 = <span class="hljs-keyword">new</span> ApiDefinition(<span class="hljs-string">"some_customized_api"</span>)
+        .setPredicateItems(<span class="hljs-keyword">new</span> HashSet&lt;ApiPredicateItem&gt;() {{
+            add(<span class="hljs-keyword">new</span> ApiPathPredicateItem().setPattern(<span class="hljs-string">"/product/baz"</span>));
+            add(<span class="hljs-keyword">new</span> ApiPathPredicateItem().setPattern(<span class="hljs-string">"/product/foo/**"</span>)
+                .setMatchStrategy(SentinelGatewayConstants.PARAM_MATCH_STRATEGY_PREFIX));
+        }});
+    ApiDefinition api2 = <span class="hljs-keyword">new</span> ApiDefinition(<span class="hljs-string">"another_customized_api"</span>)
+        .setPredicateItems(<span class="hljs-keyword">new</span> HashSet&lt;ApiPredicateItem&gt;() {{
+            add(<span class="hljs-keyword">new</span> ApiPathPredicateItem().setPattern(<span class="hljs-string">"/ahas"</span>));
+        }});
+    definitions.add(api1);
+    definitions.add(api2);
+    GatewayApiDefinitionManager.loadApiDefinitions(definitions);
+}
+</code></pre>
+<p>那么这里面的 route ID（如 <code>product_route</code>）和 API name（如 <code>some_customized_api</code>）都会被标识为 Sentinel 的资源。比如访问网关的 URL 为 <code>http://localhost:8090/product/foo/22</code> 的时候，对应的统计会加到 <code>product_route</code> 和 <code>some_customized_api</code> 这两个资源上面，而 <code>http://localhost:8090/httpbin/json</code> 只会对应到 <code>httpbin_route</code> 资源上面。</p>
+<blockquote>
+<p><strong>注意</strong>：有的时候 Spring Cloud Gateway 会自己在 route 名称前面拼一个前缀，如 <code>ReactiveCompositeDiscoveryClient_xxx</code> 这种。请观察簇点链路页面实际的资源名。</p>
+</blockquote>
+<p>您可以在 <code>GatewayCallbackManager</code> 注册回调进行定制：</p>
+<ul>
+<li><code>setBlockHandler</code>：注册函数用于实现自定义的逻辑处理被限流的请求，对应接口为 <code>BlockRequestHandler</code>。默认实现为 <code>DefaultBlockRequestHandler</code>，当被限流时会返回类似于下面的错误信息：<code>Blocked by Sentinel: FlowException</code>。</li>
+</ul>
+<p><strong>注意</strong>：</p>
+<ul>
+<li>Sentinel 网关流控默认的粒度是 route 维度以及自定义 API 分组维度，默认<strong>不支持 URL 粒度</strong>。若通过 Spring Cloud Alibaba 接入，请将 <code>spring.cloud.sentinel.filter.enabled</code> 配置项置为 false（若在网关流控控制台上看到了 URL 资源，就是此配置项没有置为 false）。</li>
+<li>若使用 Spring Cloud Alibaba Sentinel 数据源模块，需要注意网关流控规则数据源类型是 <code>gw-flow</code>，若将网关流控规则数据源指定为 flow 则不生效。</li>
+</ul>
+<h2>Zuul 1.x</h2>
+<p>Sentinel 提供了 Zuul 1.x 的适配模块，可以为 Zuul Gateway 提供两种资源维度的限流：</p>
+<ul>
+<li>route 维度：即在 Spring 配置文件中配置的路由条目，资源名为对应的 route ID（对应 <code>RequestContext</code> 中的 <code>proxy</code> 字段）</li>
+<li>自定义 API 维度：用户可以利用 Sentinel 提供的 API 来自定义一些 API 分组</li>
+</ul>
+<p>使用时需引入以下模块（以 Maven 为例）：</p>
+<pre><code class="language-xml"><span class="hljs-tag">&lt;<span class="hljs-name">dependency</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">groupId</span>&gt;</span>com.alibaba.csp<span class="hljs-tag">&lt;/<span class="hljs-name">groupId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">artifactId</span>&gt;</span>sentinel-zuul-adapter<span class="hljs-tag">&lt;/<span class="hljs-name">artifactId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">version</span>&gt;</span>x.y.z<span class="hljs-tag">&lt;/<span class="hljs-name">version</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">dependency</span>&gt;</span>
+</code></pre>
+<p>若使用的是 Spring Cloud Netflix Zuul，我们可以直接在配置类中将三个 filter 注入到 Spring 环境中即可：</p>
+<pre><code class="language-java"><span class="hljs-meta">@Configuration</span>
+<span class="hljs-keyword">public</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">ZuulConfig</span> </span>{
+
+    <span class="hljs-meta">@Bean</span>
+    <span class="hljs-function"><span class="hljs-keyword">public</span> ZuulFilter <span class="hljs-title">sentinelZuulPreFilter</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-comment">// We can also provider the filter order in the constructor.</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> SentinelZuulPreFilter();
+    }
+
+    <span class="hljs-meta">@Bean</span>
+    <span class="hljs-function"><span class="hljs-keyword">public</span> ZuulFilter <span class="hljs-title">sentinelZuulPostFilter</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> SentinelZuulPostFilter();
+    }
+
+    <span class="hljs-meta">@Bean</span>
+    <span class="hljs-function"><span class="hljs-keyword">public</span> ZuulFilter <span class="hljs-title">sentinelZuulErrorFilter</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> SentinelZuulErrorFilter();
+    }
+}
+</code></pre>
+<p>Sentinel Zuul Adapter 生成的调用链路类似于下面，其中的资源名都是 route ID 或者自定义的 API 分组名称：</p>
+<pre><code>-EntranceNode: sentinel_gateway_context$$route$$another-route-b(t:0 pq:0.0 bq:0.0 tq:0.0 rt:0.0 prq:0.0 1mp:8 1mb:1 1mt:9)
+--another-route-b(t:0 pq:0.0 bq:0.0 tq:0.0 rt:0.0 prq:0.0 1mp:4 1mb:1 1mt:5)
+--another_customized_api(t:0 pq:0.0 bq:0.0 tq:0.0 rt:0.0 prq:0.0 1mp:4 1mb:0 1mt:4)
+-EntranceNode: sentinel_gateway_context$$route$$my-route-1(t:0 pq:0.0 bq:0.0 tq:0.0 rt:0.0 prq:0.0 1mp:6 1mb:0 1mt:6)
+--my-route-1(t:0 pq:0.0 bq:0.0 tq:0.0 rt:0.0 prq:0.0 1mp:2 1mb:0 1mt:2)
+--some_customized_api(t:0 pq:0.0 bq:0.0 tq:0.0 rt:0.0 prq:0.0 1mp:2 1mb:0 1mt:2)
+</code></pre>
+<p>发生限流之后的处理流程 ：</p>
+<ul>
+<li>发生限流之后可自定义返回参数，通过实现 <code>SentinelFallbackProvider</code> 接口，默认的实现是 <code>DefaultBlockFallbackProvider</code>。</li>
+<li>默认的 fallback route 的规则是 route ID 或自定义的 API 分组名称。</li>
+</ul>
+<p>比如：</p>
+<pre><code class="language-java"><span class="hljs-comment">// 自定义 FallbackProvider </span>
+<span class="hljs-keyword">public</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyBlockFallbackProvider</span> <span class="hljs-keyword">implements</span> <span class="hljs-title">ZuulBlockFallbackProvider</span> </span>{
+
+    <span class="hljs-keyword">private</span> Logger logger = LoggerFactory.getLogger(DefaultBlockFallbackProvider.class);
+    
+    <span class="hljs-comment">// you can define route as service level </span>
+    <span class="hljs-meta">@Override</span>
+    <span class="hljs-function"><span class="hljs-keyword">public</span> String <span class="hljs-title">getRoute</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">return</span> <span class="hljs-string">"/book/app"</span>;
+    }
+
+    <span class="hljs-meta">@Override</span>
+        <span class="hljs-function"><span class="hljs-keyword">public</span> BlockResponse <span class="hljs-title">fallbackResponse</span><span class="hljs-params">(String route, Throwable cause)</span> </span>{
+            RecordLog.info(String.format(<span class="hljs-string">"[Sentinel DefaultBlockFallbackProvider] Run fallback route: %s"</span>, route));
+            <span class="hljs-keyword">if</span> (cause <span class="hljs-keyword">instanceof</span> BlockException) {
+                <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> BlockResponse(<span class="hljs-number">429</span>, <span class="hljs-string">"Sentinel block exception"</span>, route);
+            } <span class="hljs-keyword">else</span> {
+                <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> BlockResponse(<span class="hljs-number">500</span>, <span class="hljs-string">"System Error"</span>, route);
+            }
+        }
+ }
+ 
+ <span class="hljs-comment">// 注册 FallbackProvider</span>
+ ZuulBlockFallbackManager.registerProvider(<span class="hljs-keyword">new</span> MyBlockFallbackProvider());
+</code></pre>
+<p>限流发生之后的默认返回：</p>
+<pre><code class="language-json">{
+    <span class="hljs-attr">"code"</span>:<span class="hljs-number">429</span>,
+    <span class="hljs-attr">"message"</span>:<span class="hljs-string">"Sentinel block exception"</span>,
+    <span class="hljs-attr">"route"</span>:<span class="hljs-string">"/"</span>
+}
+</code></pre>
+<p><strong>注意</strong>：</p>
+<ul>
+<li>Sentinel 网关流控默认的粒度是 route 维度以及自定义 API 分组维度，默认<strong>不支持 URL 粒度</strong>。若通过 Spring Cloud Alibaba 接入，请将 <code>spring.cloud.sentinel.filter.enabled</code> 配置项置为 false（若在网关流控控制台上看到了 URL 资源，就是此配置项没有置为 false）。</li>
+<li>若使用 Spring Cloud Alibaba Sentinel 数据源模块，需要注意网关流控规则数据源类型是 <code>gw-flow</code>，若将网关流控规则数据源指定为 flow 则不生效。</li>
+</ul>
+<h2>Zuul 2.x</h2>
+<blockquote>
+<p>注：从 1.7.2 版本开始支持，需要 Java 8 及以上版本。</p>
+</blockquote>
+<p>Sentinel 提供了 Zuul 2.x 的适配模块，可以为 Zuul Gateway 提供两种资源维度的限流：</p>
+<ul>
+<li>route 维度：对应 SessionContext 中的 <code>routeVIP</code></li>
+<li>自定义 API 维度：用户可以利用 Sentinel 提供的 API 来自定义一些 API 分组</li>
+</ul>
+<p>使用时需引入以下模块（以 Maven 为例）：</p>
+<pre><code class="language-xml"><span class="hljs-tag">&lt;<span class="hljs-name">dependency</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">groupId</span>&gt;</span>com.alibaba.csp<span class="hljs-tag">&lt;/<span class="hljs-name">groupId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">artifactId</span>&gt;</span>sentinel-zuul2-adapter<span class="hljs-tag">&lt;/<span class="hljs-name">artifactId</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">version</span>&gt;</span>x.y.z<span class="hljs-tag">&lt;/<span class="hljs-name">version</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">dependency</span>&gt;</span>
+</code></pre>
+<p>然后配置对应的 filter 即可：</p>
+<pre><code class="language-java">filterMultibinder.addBinding().toInstance(<span class="hljs-keyword">new</span> SentinelZuulInboundFilter(<span class="hljs-number">500</span>));
+filterMultibinder.addBinding().toInstance(<span class="hljs-keyword">new</span> SentinelZuulOutboundFilter(<span class="hljs-number">500</span>));
+filterMultibinder.addBinding().toInstance(<span class="hljs-keyword">new</span> SentinelZuulEndpoint());
+</code></pre>
+<p>可以参考 <a href="https://github.com/alibaba/Sentinel/tree/master/sentinel-demo/sentinel-demo-zuul2-gateway">sentinel-demo-zuul2-gateway 示例</a>。</p>
+<h2>网关流控实现原理</h2>
+<p>当通过 <code>GatewayRuleManager</code> 加载网关流控规则（<code>GatewayFlowRule</code>）时，无论是否针对请求属性进行限流，Sentinel 底层都会将网关流控规则转化为热点参数规则（<code>ParamFlowRule</code>），存储在 <code>GatewayRuleManager</code> 中，与正常的热点参数规则相隔离。转换时 Sentinel 会根据请求属性配置，为网关流控规则设置参数索引（<code>idx</code>），并同步到生成的热点参数规则中。</p>
+<p>外部请求进入 API Gateway 时会经过 Sentinel 实现的 filter，其中会依次进行 <strong>路由/API 分组匹配</strong>、<strong>请求属性解析</strong>和<strong>参数组装</strong>。Sentinel 会根据配置的网关流控规则来解析请求属性，并依照参数索引顺序组装参数数组，最终传入 <code>SphU.entry(res, args)</code> 中。Sentinel API Gateway Adapter Common 模块向 Slot Chain 中添加了一个 <code>GatewayFlowSlot</code>，专门用来做网关规则的检查。<code>GatewayFlowSlot</code> 会从 <code>GatewayRuleManager</code> 中提取生成的热点参数规则，根据传入的参数依次进行规则检查。若某条规则不针对请求属性，则会在参数最后一个位置置入预设的常量，达到普通流控的效果。</p>
+<p><img src="https://user-images.githubusercontent.com/9434884/58381786-5406f280-7ff4-11e9-9020-016ccaf7ab7d.png" alt="image"></p>
+<h2>网关流控控制台</h2>
+<p>Sentinel 1.6.3 引入了网关流控控制台的支持，用户可以直接在 Sentinel 控制台上查看 API Gateway 实时的 route 和自定义 API 分组监控，管理网关规则和 API 分组配置。</p>
+<p>在 API Gateway 端，用户只需要在<a href="https://github.com/alibaba/Sentinel/wiki/%E6%8E%A7%E5%88%B6%E5%8F%B0#32-%E9%85%8D%E7%BD%AE%E5%90%AF%E5%8A%A8%E5%8F%82%E6%95%B0">原有启动参数</a>的基础上添加如下启动参数即可标记应用为 API Gateway 类型：</p>
+<pre><code class="language-bash"><span class="hljs-comment"># 注：通过 Spring Cloud Alibaba Sentinel 自动接入的 API Gateway 整合则无需此参数</span>
+-Dcsp.sentinel.app.type=1
+</code></pre>
+<p>添加正确的启动参数并有访问量后，我们就可以在 Sentinel 上面看到对应的 API Gateway 了。我们可以查看实时的 route 和自定义 API 分组的监控和调用信息：</p>
+<p><img src="https://sentinelguard.io/blog/zh-cn/img/sentinel-dashboard-api-gateway-route-list.png" alt="sentinel-dashboard-api-gateway-route-list"></p>
+<p>我们可以在控制台配置自定义的 API 分组，将一些 URL 匹配模式归为一个 API 分组：</p>
+<p><img src="https://sentinelguard.io/blog/zh-cn/img/sentinel-dashboard-api-gateway-customized-api-group.png" alt="sentinel-dashboard-api-gateway-customized-api-group"></p>
+<p>然后我们可以在控制台针对预设的 route ID 或自定义的 API 分组配置网关流控规则：</p>
+<p><img src="https://sentinelguard.io/blog/zh-cn/img/sentinel-dashboard-api-gateway-flow-rule.png" alt="sentinel-dashboard-api-gateway-flow-rule"></p>
+<p>网关规则动态配置及网关集群流控可以参考 <a href="https://help.aliyun.com/document_detail/118482.html">AHAS Sentinel 网关流控</a>。</p>
+</div></section><footer class="footer-container" data-reactid="153"><div class="footer-body" data-reactid="154"><img src="/img/sentinel_gray.png" data-reactid="155"/><div class="cols-container" data-reactid="156"><div class="col col-12" data-reactid="157"><h3 data-reactid="158">Disclaimer</h3><p data-reactid="159">Sentinel is an open-source project under Apache License 2.0.</p></div><div class="col col-6" data-reactid="160"><dl data-reactid="161"><dt data-reactid="162">文档</dt><dd data-reactid="163"><a href="/zh-cn/docs/introduction.html" target="_self" data-reactid="164">概览</a></dd><dd data-reactid="165"><a href="/zh-cn/docs/quick-start.html" target="_self" data-reactid="166">快速开始</a></dd><dd data-reactid="167"><a href="/zh-cn/docs/contribution/contribution-guideline.html" target="_self" data-reactid="168">开发者指南</a></dd></dl></div><div class="col col-6" data-reactid="169"><dl data-reactid="170"><dt data-reactid="171">资源</dt><dd data-reactid="172"><a href="/zh-cn/blog/index.html" target="_self" data-reactid="173">博客</a></dd><dd data-reactid="174"><a href="/zh-cn/community/index.html" target="_self" data-reactid="175">社区</a></dd></dl></div></div><div class="copyright" data-reactid="176"><span data-reactid="177">Copyright © 2018 - 2022 The Sentinel Authors | An Alibaba Middleware (Aliware) Project</span></div></div></footer></div></div>
+	<script src="https://f.alicdn.com/react/15.4.1/react-with-addons.min.js"></script>
+	<script src="https://f.alicdn.com/react/15.4.1/react-dom.min.js"></script>
+	<script>
+		window.rootPath = '';
+    </script>
+	<script src="/build/documentation.js"></script>
+	<script src="https://g.alicdn.com/mamba/assets/0.0.19/mse-arc-ui.min.js"></script>
+</body>
+</html>

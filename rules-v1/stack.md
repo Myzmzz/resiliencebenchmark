@@ -7,6 +7,22 @@
 - **韧性缺陷**：正常条件下不影响运行，但在依赖变慢或不可用、丢包、实例被终止、CPU 或内存压力这类局部故障下，使某个韧性机制没有按它应有的方式工作的实现或配置。
 - **缺陷类别**：1 规范明示型（文档写明该做或不该做）；2 需求相对型（文档允许，但相对系统自己的预算或 SLO 是错的）；3 组合型（各自合规，合起来放大故障）；4 实现错误型（机制在、参数对、行为错）。
 
+### 类别判定口径（2 与 3 最容易两边都说得通，按这个顺序问）
+
+判定的依据是**这条规则的正确性判据需要哪些信息**，与该规则的检查条件后来是否被弱化无关。
+
+1. 判定这条规则被没被违反，所需的全部信息**是不是都在被测系统的代码与配置里**？
+   - **不是**——必须有人从外部给出一项（SLO、延迟预算、容量、业务重要性、实测用量），或者关键数值来自被测范围之外的系统（托管数据库、云负载均衡、上游团队的配置）→ **类别 2**。
+2. 信息都在系统内，但**必须把两个及以上的机制或对象放在一起**才判得出（每个单独看都合规）→ **类别 3**。
+3. 信息都在系统内，**只看一个对象**就能判，且官方文档或准则写明了该做或不该做 → **类别 1**。
+4. 机制在、参数也对，但**运行起来的行为**与文档描述不符 → **类别 4**。
+
+优先级是 2 > 3 > 1 > 4：先问要不要外部输入，再问要不要跨对象。
+
+按这条口径，`R-QUORUM-001`（replication.factor / min.insync.replicas / acks 三者的组合）判为 **3**——三个值都在被测系统自己的配置里，不需要任何外部输入，但必须一起看才知道"杀一个副本就写不进去"。同一条规则若换成"这个持久性等级是否满足业务要求"，那就变成 2 了。
+
+边界情况按口径第 1 问处理并在规则的 `notes` 里写明，例如 `R-FD-001`：服务端连接上限若在被测范围内判 3，若对端是托管服务则该实例按 2 处理。
+
 ## 1. 机制清单是怎么来的
 
 先从第 10、11 层（准则、模式目录、检查规则集）里读它们自己的分类和命名，再与任务给的十组起点清单合并。归纳时实际用到的分类源：
@@ -22,6 +38,7 @@
 | kube-score | `DOC-KUBESCORE-CHECKS` | 按被检查对象（Pod / Deployment / StatefulSet / PDB / HPA）分组 |
 | kube-linter | `DOC-KUBELINTER-CHECKS` | 一 check 一 template，带 Description + Remediation |
 | Istio `istioctl analyze` | `DOC-ISTIO-ANALYZERS` | 按消息码 IST0xxx；**绝大多数是 schema 校验与引用有效性，对韧性机制贡献很小**，只有 IST0130/IST0131（路由规则不可达/无效匹配）沾边 |
+| 中文栈补抓（2026-09-19 第二轮） | `DOC-SEATA-*`、`DOC-SHENYU-*`、`DOC-SENTINEL-CLUSTER`、`DOC-SENTINEL-GATEWAY`、`DOC-NACOS-JAVA-*` | 没有引入新机制，但补出了三条规则：集群限流的控制面退化、注册中心不可用时的客户端本地容灾、事务协调器二阶段重试的时限与不一致兜底 |
 
 ## 2. 机制清单（本任务采用）
 
@@ -46,7 +63,7 @@
 ### 组 3 阻断传播（防：一个慢依赖拖垮全部路径）
 | 机制 | 出处 |
 |---|---|
-| 熔断 | 起点；`DOC-AZ-PATTERN-CB`、`DOC-MSIO-CIRCUITBREAKER`、`DOC-R4J-CB` |
+| 熔断 | 起点；`DOC-AZ-PATTERN-CB`、`DOC-MSIO-CIRCUITBREAKER`、`DOC-R4J-CB`、`DOC-SHENYU-RESILIENCE4J` |
 | 舱壁隔离（线程池/连接池/信号量） | 起点；`DOC-AZ-PATTERN-BULKHEAD`、`DOC-R4J-BULKHEAD`、`DOC-ENVOY-CB` |
 | 异常实例剔除（outlier detection、被动健康检查） | 起点；`DOC-ENVOY-OUTLIER`、`DOC-LINKERD-CB`、`DOC-NGINX-UPSTREAM` |
 | 连接池上限与空闲超时 | 起点；`DOC-HIKARICP`、`DOC-ENVOY-CB`、`DOC-SRE-OVERLOAD`「Load from Connections」 |
@@ -54,7 +71,7 @@
 ### 组 4 卸载过载（防：请求多到全体变慢）
 | 机制 | 出处 |
 |---|---|
-| 准入控制与限流（服务端与客户端） | 起点；`DOC-AZ-PATTERN-THROTTLE`、`DOC-AZ-PATTERN-RATELIMIT`、`DOC-SENTINEL-FLOW`；**[细化] 客户端节流** = `DOC-SRE-OVERLOAD`「Client-Side Throttling」；**[细化] 按调用方配额** = 同篇「Per-Customer Limits」 |
+| 准入控制与限流（服务端与客户端） | 起点；`DOC-AZ-PATTERN-THROTTLE`、`DOC-AZ-PATTERN-RATELIMIT`、`DOC-SENTINEL-FLOW`、`DOC-SENTINEL-CLUSTER`、`DOC-SENTINEL-GATEWAY`、`DOC-SHENYU-RATELIMITER`；**[细化] 客户端节流** = `DOC-SRE-OVERLOAD`「Client-Side Throttling」；**[细化] 按调用方配额** = 同篇「Per-Customer Limits」 |
 | 排队与背压 | 起点；**[细化] 有界队列与排队时长上限** = `DOC-SRE-CASCADING`「Queue Management」 |
 | 负载削峰 | 起点；`DOC-AZ-PATTERN-QBLL` |
 | 优先级与降级 | 起点；`DOC-SRE-CASCADING`「Load Shedding and Graceful Degradation」；**[细化] 请求分级 criticality** = `DOC-SRE-OVERLOAD`「Criticality」 |
@@ -75,7 +92,7 @@
 | 存活/就绪/启动探针 | 起点；`DOC-K8S-PROBES-TASK`、`DOC-K8S-POD-LIFECYCLE`、三个规则集都查 |
 | 健康端点及其依赖范围 | 起点；`DOC-AWS-HEALTHCHECKS`、`DOC-AZ-PATTERN-HEM`、`DOC-MSIO-HEALTHCHECK`、`DOC-BOOT-ACTUATOR` |
 | 故障后自愈（依赖恢复后能否回来） | 起点；`DOC-AZ-WAF-SELFPRES`、`DOC-R4J-CB`（half-open） |
-| 服务发现的健康与会话 | 起点；`DOC-CONSUL-CHECKS`、`DOC-NACOS-*`、`DOC-ZK-PROGRAMMERS` |
+| 服务发现的健康与会话 | 起点；`DOC-CONSUL-CHECKS`、`DOC-NACOS-*`（含 `DOC-NACOS-JAVA-FAILOVER` 本地容灾）、`DOC-ZK-PROGRAMMERS` |
 | 负载均衡的健康剔除 | 起点；`DOC-ENVOY-HEALTHCHECK`、`DOC-NGINX-UPSTREAM` |
 | **[新增] 连接保活与死连接探测（keepalive）** | `DOC-GRPC-KEEPALIVE` 是 gRPC 官方独立文档页；`DOC-SRE-OVERLOAD`「Load from Connections」。防的是"连接半开、对端已死但调用方不知道，请求挂到超时才失败"，起点清单的"连接池上限与空闲超时"不覆盖探测这一面 |
 | **[新增] 容器重启策略** | `DOC-KUBELINTER-CHECKS` 的 `no-restart-policy` 检查明确把 restartPolicy 归为容错项；`DOC-K8S-POD-LIFECYCLE` |
@@ -91,8 +108,8 @@
 | 机制 | 出处 |
 |---|---|
 | 持久卷 | 起点；`DOC-K8S-STORAGE-PV`、`DOC-K8S-STATEFULSET` |
-| 补偿与 Saga | 起点；`DOC-AZ-PATTERN-SAGA`、`DOC-AZ-PATTERN-COMPENSATE`、`DOC-MSIO-SAGA` |
-| 事务发件箱 | 起点；`DOC-MSIO-OUTBOX` |
+| 补偿与 Saga | 起点；`DOC-AZ-PATTERN-SAGA`、`DOC-AZ-PATTERN-COMPENSATE`、`DOC-MSIO-SAGA`、`DOC-SEATA-SAGA`、`DOC-SEATA-TCC`、`DOC-SEATA-CONFIG` |
+| 事务发件箱 | 起点；`DOC-MSIO-OUTBOX`、`DOC-SEATA-AT`（undo_log 与业务数据同事务，是同一条原则的另一种用法） |
 | 幂等消费 | 起点；`DOC-MSIO-IDEMPOTENT`、`DOC-KAFKA-DOC`（enable.idempotence）、`DOC-ROCKETMQ-*` |
 
 ### 组 9 有状态组件的容错（防：主挂了没人接）
@@ -132,41 +149,43 @@
 | 层 | 层名 | 组件 | 文档数(成功/总) | 已有规则数 |
 |---|---|---|---|---|
 | 1 | 容器编排 | Kubernetes | 13/13 | 20 |
-| 2 | 网关、代理与服务网格 | APISIX | 3/3 | 3 |
-| 2 | 网关、代理与服务网格 | Envoy | 7/7 | 31 |
+| 2 | 网关、代理与服务网格 | APISIX | 3/3 | 4 |
+| 2 | 网关、代理与服务网格 | Envoy | 7/7 | 32 |
 | 2 | 网关、代理与服务网格 | HAProxy | 1/1 | 1 |
-| 2 | 网关、代理与服务网格 | Istio | 4/4 | 13 |
+| 2 | 网关、代理与服务网格 | Istio | 4/4 | 14 |
 | 2 | 网关、代理与服务网格 | Kong | 1/1 | 2 |
 | 2 | 网关、代理与服务网格 | Linkerd | 2/2 | 2 |
 | 2 | 网关、代理与服务网格 | NGINX | 2/2 | 5 |
+| 2 | 网关、代理与服务网格 | ShenYu | 3/3 | 4 |
 | 2 | 网关、代理与服务网格 | ingress-nginx | 1/1 | 1 |
 | 3 | RPC 与 HTTP 框架 | .NET HttpClient | 2/2 | 2 |
-| 3 | RPC 与 HTTP 框架 | Dubbo | 5/5 | 8 |
+| 3 | RPC 与 HTTP 框架 | Dubbo | 2/2 | 8 |
 | 3 | RPC 与 HTTP 框架 | Go net/http | 1/1 | 3 |
 | 3 | RPC 与 HTTP 框架 | Node.js http | 1/1 | 1 |
 | 3 | RPC 与 HTTP 框架 | Python httpx | 1/1 | 1 |
 | 3 | RPC 与 HTTP 框架 | Python requests | 1/1 | 1 |
-| 3 | RPC 与 HTTP 框架 | Spring Boot | 1/1 | 8 |
+| 3 | RPC 与 HTTP 框架 | Spring Boot | 1/1 | 9 |
 | 3 | RPC 与 HTTP 框架 | gRPC | 7/7 | 18 |
 | 4 | 容错库 | Failsafe | 3/3 | 4 |
 | 4 | 容错库 | Hystrix | 1/1 | 1 |
 | 4 | 容错库 | Polly | 4/4 | 8 |
 | 4 | 容错库 | Resilience4j | 5/5 | 14 |
-| 4 | 容错库 | Sentinel | 4/4 | 11 |
-| 4 | 容错库 | Spring Cloud Alibaba | 1/1 | 1 |
+| 4 | 容错库 | Seata | 5/5 | 5 |
+| 4 | 容错库 | Sentinel | 6/6 | 12 |
+| 4 | 容错库 | Spring Cloud Alibaba | 1/1 | 2 |
 | 4 | 容错库 | Spring Cloud CircuitBreaker | 1/1 | 1 |
 | 4 | 容错库 | Spring Retry | 1/1 | 1 |
 | 4 | 容错库 | gobreaker | 1/1 | 1 |
-| 5 | 服务发现与配置中心 | Consul | 2/2 | 2 |
-| 5 | 服务发现与配置中心 | Eureka | 1/1 | 2 |
-| 5 | 服务发现与配置中心 | Nacos | 4/4 | 3 |
+| 5 | 服务发现与配置中心 | Consul | 2/2 | 3 |
+| 5 | 服务发现与配置中心 | Eureka | 1/1 | 3 |
+| 5 | 服务发现与配置中心 | Nacos | 6/6 | 4 |
 | 5 | 服务发现与配置中心 | ZooKeeper | 2/2 | 3 |
 | 5 | 服务发现与配置中心 | etcd | 2/2 | 4 |
 | 6 | 消息与流 | Kafka | 3/3 | 9 |
 | 6 | 消息与流 | NATS | 1/1 | 1 |
 | 6 | 消息与流 | Pulsar | 1/1 | 3 |
 | 6 | 消息与流 | RabbitMQ | 4/4 | 8 |
-| 6 | 消息与流 | RocketMQ | 2/2 | 7 |
+| 6 | 消息与流 | RocketMQ | 2/2 | 8 |
 | 7 | 数据存储客户端与连接池 | Go database/sql | 1/1 | 1 |
 | 7 | 数据存储客户端与连接池 | HikariCP | 1/1 | 6 |
 | 7 | 数据存储客户端与连接池 | Jedis | 1/1 | 1 |
@@ -191,7 +210,7 @@
 | 10 | 跨层准则与模式目录 | Google Cloud Architecture Framework | 1/1 | n/a（准则层，不作为 instantiations 的组件） |
 | 10 | 跨层准则与模式目录 | Google SRE | 4/4 | n/a（准则层，不作为 instantiations 的组件） |
 | 10 | 跨层准则与模式目录 | microservices.io | 6/6 | n/a（准则层，不作为 instantiations 的组件） |
-| 11 | 已有的检查规则集 | Istio | 1/1 | 13 |
+| 11 | 已有的检查规则集 | Istio | 1/1 | 14 |
 | 11 | 已有的检查规则集 | Kubernetes | 1/1 | 20 |
 | 11 | 已有的检查规则集 | Polaris | 2/2 | 7 |
 | 11 | 已有的检查规则集 | kube-linter | 1/1 | 9 |

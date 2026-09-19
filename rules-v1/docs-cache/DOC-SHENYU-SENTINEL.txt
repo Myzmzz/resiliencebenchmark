@@ -1,0 +1,147 @@
+# doc_id: DOC-SHENYU-SENTINEL
+# url: https://shenyu.apache.org/docs/plugin-center/fault-tolerance/sentinel-plugin
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Plugin Center
+Fault Tolerance
+Sentinel Plugin
+Version: 2.7.1
+On this page
+[[H1]] 1. Overview
+[[H2]] 1.1 Plugin Name
+Sentinel Plugin
+[[H2]] 1.2 Appropriate Scenario
+Sentinel is one of the options that supports flow control and circuit breaking.
+Sentinel supports flow control and circuit breaking functions for gateway.
+[[H2]] 1.3 Plugin functionality
+flow control
+request circuit breaker and service degrade
+[[H2]] 1.4 Plugin code
+Core Module shenyu-plugin-sentinel.
+Core Class org.apache.shenyu.plugin.sentinel.SentinelPlugin
+[[H2]] 1.5 Added Since Which shenyu version
+Since 2.4.0
+[[H1]] 2. How to use plugin
+[[H2]] 2.1 Plugin-use procedure chart
+[[H2]] 2.2 Import pom
+Add sentinel dependency in the pom.xml file of the gateway(shenyu-bootstrap).
+<!-- apache shenyu sentinel plugin start-->
+<dependency>
+<groupId>org.apache.shenyu</groupId>
+<artifactId>shenyu-spring-boot-starter-plugin-sentinel</artifactId>
+<version>${project.version}</version>
+</dependency>
+<!-- apache shenyu sentinel plugin end-->
+[[H2]] 2.3 Enable plugin
+In shenyu-admin--> BasicConfig --> Plugin --> sentinel set to enable.
+[[H2]] 2.4 Config plugin
+[[H3]] 2.4.1 Plugin configuration
+[[H3]] 2.4.2 Selector configuration
+It is used to filter traffic for the first time and does not require handle fields.
+[[H3]] 2.4.3 Rule configuration
+For the final filtering of traffic, there is a rule handler logic.
+field | default value | field type | desc
+degradeRuleCount | | Doule | degrade threshold
+degradeRuleEnable | 1(enabled) | Integer | whether enable circuit breaking function of sentinel
+degradeRuleGrade | 0(slow call ratio) | Integer | circuit breaker strategy, support RT of seconds level/ Error Ratio of seconds level/ Error Count of minutes level strategy
+degradeRuleMinRequestAmount | 5 | Integer | circuit breaker min request amount
+degradeRuleSlowRatioThreshold | 1.0d | Double | slow ratio threshold of degrading
+degradeRuleStatIntervals | 1 | Integer | status intervals of degrade
+degradeRuleTimeWindow | | Integer | time of degrading(unit: second)
+flowRuleControlBehavior | 0(direact reject) | Integer | effect(reject directly/ queue/ slow start up), it do not support flow control by invocation relation.
+flowRuleControlBehavior-direct rejection by default
+flowRuleControlBehavior-warm up
+flowRuleControlBehavior-constant speed queuing
+flowRuleControlBehavior-preheating uniformly queued
+flowRuleMaxQueueingTimeMs | 500ms | Integer | Maximum queuing time (valid in "preheating uniformly queued", "constant speed queuing" mode)
+flowRuleWarmUpPeriodSec | 10 | Integer | Cold start warm-up time (seconds) (valid in "preheating uniformly queued" "warm up" mode)
+flowRuleCount | | Integer | sentinel flow control count
+flowRuleEnable | 1(enabled) | Integer | whether enable sentinel flow control function.
+flowRuleGrade | 1(QPS) | Integer | type of current limit threshold(QPS or Thread Count)。
+fallbackUri | | String | degraded uri after circuit breaking.
+[[H2]] 2.5 Examples
+[[H3]] 2.5.1 Using sentinel for flow control
+[[H4]] 2.5.1.1 Plugin configuration
+For more information on selectors and rules configuration, see Selector And Rule Config , only some of the fields are covered here.
+In shenyu-admin--> BasicConfig --> Plugin --> sentinel set to enable.
+[[H4]] 2.5.1.2 Selector configuration
+[[H4]] 2.5.1.3 Rule configuration
+just use qps flow control strategy, and qps is 10, reject strategy is directly reject.
+the code is as follows:
+@RestController
+@RequestMapping("/order")
+@ShenyuSpringMvcClient("/order")
+public class OrderController {
+/**
+* Save order dto.
+*
+* @param orderDTO the order dto
+* @return the order dto
+*/
+@PostMapping("/save")
+@ShenyuSpringMvcClient("/save")
+public OrderDTO save(@RequestBody final OrderDTO orderDTO) {
+orderDTO.setName("hello world save order");
+return orderDTO;
+}
+}
+[[H4]] 2.5.1.4 request by Apache Jmeter
+Jmeter thead group config
+Jmeter http request config
+[[H4]] 2.5.1.5 Check result
+[[H3]] 2.5.2 Using sentinel for request circuit breaker
+[[H4]] 2.5.2.1 Plugin configuration
+In shenyu-admin--> BasicConfig --> Plugin --> sentinel set to enable.
+[[H4]] 2.5.2.2 Selector configuration
+[[H4]] 2.5.2.3 Rule configuration
+when degrade strategy is exception number, degradeRuleSlowRatioThreshold is not effective. When the minimum number of requests per unit of time is 5, and the request happens exception great than 3, it will trigger the circuit breaker.
+when degrade strategy is slow call ratio, degradeRuleSlowRatioThreshold is effective, degradeRuleCount means RT(e.g. 200).
+the code is as follows:
+@RestController
+@RequestMapping("/order")
+@ShenyuSpringMvcClient("/order")
+public class OrderController {
+/**
+* Save order dto.
+*
+* @param orderDTO the order dto
+* @return the order dto
+*/
+@PostMapping("/save")
+@ShenyuSpringMvcClient("/save")
+public OrderDTO save(@RequestBody final OrderDTO orderDTO) {
+Random random = new Random();
+int num = random.nextInt(100);
+if (num > 40) {
+throw new RuntimeException("num great than 20");
+}
+orderDTO.setName("hello world save order");
+return orderDTO;
+}
+}
+[[H4]] 2.5.2.4 request by Apache Jmeter
+Jmeter thead group config
+Jmeter http request config
+[[H4]] 2.5.2.5 Check result
+[[H1]] 3. How to disable plugin
+In shenyu-admin --> BasicConfig --> Plugin --> sentinel set Status disable.
+Edit this page
+Previous
+Resilience4j Plugin
+Next
+BasicAuth Plugin
+1.1 Plugin Name
+1.2 Appropriate Scenario
+1.3 Plugin functionality
+1.4 Plugin code
+1.5 Added Since Which shenyu version
+2.1 Plugin-use procedure chart
+2.2 Import pom
+2.3 Enable plugin
+2.4 Config plugin
+2.4.1 Plugin configuration
+2.4.2 Selector configuration
+2.4.3 Rule configuration
+2.5 Examples
+2.5.1 Using sentinel for flow control
+2.5.2 Using sentinel for request circuit breaker
