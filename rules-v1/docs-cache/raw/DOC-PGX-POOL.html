@@ -1,0 +1,3361 @@
+
+
+<!DOCTYPE html>
+<html lang="en" data-layout="responsive" data-local="">
+  <head>
+    
+    <script>
+      window.addEventListener('error', window.__err=function f(e){f.p=f.p||[];f.p.push(e)});
+    </script>
+    <script>
+      (function() {
+        const theme = document.cookie.match(/prefers-color-scheme=(light|dark|auto)/)?.[1]
+        if (theme) {
+          document.querySelector('html').setAttribute('data-theme', theme);
+        }
+      }())
+    </script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="Description" content="Package pgxpool is a concurrency-safe connection pool for pgx.">
+    
+    <meta class="js-gtmID" data-gtmid="GTM-W8MVQXG">
+    <link rel="shortcut icon" href="/static/shared/icon/favicon.ico">
+    
+  
+    <link rel="canonical" href="https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool">
+  
+
+    <link href="/static/frontend/frontend.min.css?version=prod-frontend-00251-xnk" rel="stylesheet">
+    
+    <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="Go Packages">
+    
+    
+  <title>pgxpool package - github.com/jackc/pgx/v5/pgxpool - Go Packages</title>
+
+    
+  <link href="/static/frontend/unit/unit.min.css?version=prod-frontend-00251-xnk" rel="stylesheet">
+  
+  <link href="/static/frontend/unit/main/main.min.css?version=prod-frontend-00251-xnk" rel="stylesheet">
+
+
+  </head>
+  <body>
+    
+    <script>
+      function loadScript(src, mod = true) {
+        let s = document.createElement('script');
+        s.src = src;
+        if (mod) {
+          s.type = 'module';
+          s.async = true;
+          s.defer = true
+        }
+        document.head.appendChild(s);
+      }
+      loadScript("/third_party/dialog-polyfill/dialog-polyfill.js", false)
+      loadScript("/static/frontend/frontend.js");
+    </script>
+    
+  <header class="go-Header go-Header--full js-siteHeader">
+    <div class="go-Header-inner go-Header-inner--dark">
+      <nav class="go-Header-nav">
+        <a href="https://go.dev/" class="js-headerLogo" data-gtmc="nav link"
+            data-test-id="go-header-logo-link" role="heading" aria-level="1">
+          <img class="go-Header-logo" src="/static/shared/logo/go-white.svg" alt="Go">
+        </a>
+         <div class="skip-navigation-wrapper">
+            <a class="skip-to-content-link" aria-label="Skip to main content" href="#main-content"> Skip to Main Content </a>
+          </div>
+        <div class="go-Header-rightContent">
+          
+<div class="go-SearchForm js-searchForm">
+  <form
+    class="go-InputGroup go-ShortcutKey go-SearchForm-form"
+    action="/search"
+    data-shortcut="/"
+    data-shortcut-alt="search"
+    data-gtmc="search form"
+    aria-label="Search for a package"
+    role="search"
+  >
+    <input name="q" class="go-Input js-searchFocus" aria-label="Search for a package" type="search"
+        autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"
+        placeholder="Search packages or symbols"
+        value="" />
+    <input name="m" value="" hidden>
+    <button class="go-Button go-Button--inverted" aria-label="Submit search">
+      <img
+        class="go-Icon"
+        height="24"
+        width="24"
+        src="/static/shared/icon/search_gm_grey_24dp.svg"
+        alt=""
+      />
+    </button>
+  </form>
+  <button class="go-SearchForm-expandSearch js-expandSearch" data-gtmc="nav button"
+      aria-label="Open search" data-test-id="expand-search">
+    <img class="go-Icon go-Icon--inverted" height="24" width="24"
+        src="/static/shared/icon/search_gm_grey_24dp.svg" alt="">
+
+  </button>
+</div>
+
+          <ul class="go-Header-menu">
+            <li class="go-Header-menuItem">
+              <a class="js-desktop-menu-hover" href="#" data-gtmc="nav link">
+                Why Go
+                <img class="go-Icon" height="24" width="24" src="/static/shared/icon/arrow_drop_down_gm_grey_24dp.svg" alt="submenu dropdown icon">
+              </a>
+              <ul class="go-Header-submenu go-Header-submenu--why js-desktop-submenu-hover" aria-label="submenu">
+                  <li class="go-Header-submenuItem">
+                    <div>
+                      <a href="https://go.dev/solutions/case-studies">
+                        <span>Case Studies</span>
+                      </a>
+                    </div>
+                    <p>Common problems companies solve with Go</p>
+                  </li>
+                  <li class="go-Header-submenuItem">
+                    <div>
+                      <a href="https://go.dev/solutions/use-cases">
+                        <span>Use Cases</span>
+                      </a>
+                    </div>
+                    <p>Stories about how and why companies use Go</p>
+                  </li>
+                  <li class="go-Header-submenuItem">
+                    <div>
+                      <a href="https://go.dev/security/">
+                        <span>Security</span>
+                      </a>
+                    </div>
+                    <p>How Go can help keep you secure by default</p>
+                  </li>
+              </ul>
+            </li>
+            <li class="go-Header-menuItem">
+              <a href="https://go.dev/learn/" data-gtmc="nav link">Learn</a>
+            </li>
+            <li class="go-Header-menuItem">
+              <a class="js-desktop-menu-hover" href="#" data-gtmc="nav link">
+                Docs
+                <img class="go-Icon" height="24" width="24" src="/static/shared/icon/arrow_drop_down_gm_grey_24dp.svg" alt="submenu dropdown icon">
+              </a>
+              <ul class="go-Header-submenu go-Header-submenu--docs js-desktop-submenu-hover" aria-label="submenu">
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/doc/effective_go">
+                      <span>Effective Go</span>
+                    </a>
+                  </div>
+                  <p>Tips for writing clear, performant, and idiomatic Go code</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/doc/">
+                      <span>Go User Manual</span>
+                    </a>
+                  </div>
+                  <p>A complete introduction to building software with Go</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://pkg.go.dev/std">
+                      <span>Standard library</span>
+                    </a>
+                  </div>
+                  <p>Reference documentation for Go's standard library</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/doc/devel/release">
+                      <span>Release Notes</span>
+                    </a>
+                  </div>
+                  <p>Learn what's new in each Go release</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="/api">
+                      <span>API</span>
+                    </a>
+                  </div>
+                  <p>Reference documentation for the pkg.go.dev API</p>
+                </li>
+              </ul>
+            </li>
+            <li class="go-Header-menuItem go-Header-menuItem--active">
+              <a href="/" data-gtmc="nav link">Packages</a>
+            </li>
+            <li class="go-Header-menuItem">
+              <a class="js-desktop-menu-hover" href="#" data-gtmc="nav link">
+                Community
+                <img class="go-Icon" height="24" width="24" src="/static/shared/icon/arrow_drop_down_gm_grey_24dp.svg" alt="submenu dropdown icon">
+              </a>
+              <ul class="go-Header-submenu go-Header-submenu--community js-desktop-submenu-hover" aria-label="submenu">
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/talks/">
+                      <span>Recorded Talks</span>
+                    </a>
+                  </div>
+                  <p>Videos from prior events</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://www.meetup.com/pro/go">
+                      <span>Meetups</span>
+                      <i class="material-icons">
+                        <img class="go-Icon" height="24" width="24"
+                            src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </div>
+                  <p>Meet other local Go developers</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://github.com/golang/go/wiki/Conferences">
+                      <span>Conferences</span>
+                      <i class="material-icons">
+                        <img class="go-Icon" height="24" width="24"
+                            src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </div>
+                  <p>Learn and network with Go developers from around the world</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/blog">
+                      <span>Go blog</span>
+                    </a>
+                  </div>
+                  <p>The Go project's official blog.</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/help">
+                      <span>Go project</span>
+                    </a>
+                  </div>
+                  <p>Get help and stay informed from Go</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    Get connected
+                  </div>
+                  <p></p>
+                  <div class="go-Header-socialIcons">
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with google-groups (Opens in new window)"
+                        title="Get connected with google-groups (Opens in new window)"
+                        href="https://groups.google.com/g/golang-nuts">
+                        <img src="/static/shared/logo/social/google-groups.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with github (Opens in new window)"
+                        title="Get connected with github (Opens in new window)"
+                        href="https://github.com/golang">
+                        <img src="/static/shared/logo/social/github.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with twitter (Opens in new window)"
+                        title="Get connected with twitter (Opens in new window)"
+                        href="https://twitter.com/golang">
+                        <img src="/static/shared/logo/social/twitter.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with reddit (Opens in new window)"
+                        title="Get connected with reddit (Opens in new window)"
+                        href="https://www.reddit.com/r/golang/">
+                        <img src="/static/shared/logo/social/reddit.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with slack (Opens in new window)"
+                        title="Get connected with slack (Opens in new window)"
+                        href="https://invite.slack.golangbridge.org/">
+                        <img src="/static/shared/logo/social/slack.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with stack-overflow (Opens in new window)"
+                        title=""
+                        href="https://stackoverflow.com/collectives/go">
+                        <img src="/static/shared/logo/social/stack-overflow.svg" />
+                      </a>
+                  </div>
+                </li>
+              </ul>
+            </li>
+          </ul>
+          <button class="go-Header-navOpen js-headerMenuButton go-Header-navOpen--white" data-gtmc="nav button" aria-label="Open navigation">
+          </button>
+        </div>
+      </nav>
+    </div>
+  </header>
+  <aside class="go-NavigationDrawer js-header">
+    <nav class="go-NavigationDrawer-nav">
+      <div class="go-NavigationDrawer-header">
+        <a href="https://go.dev/">
+          <img class="go-NavigationDrawer-logo" src="/static/shared/logo/go-blue.svg" alt="Go.">
+        </a>
+      </div>
+      <ul class="go-NavigationDrawer-list">
+          <li class="go-NavigationDrawer-listItem js-mobile-subnav-trigger go-NavigationDrawer-hasSubnav">
+            <a href="#">
+              <span>Why Go</span>
+              <i class="material-icons">
+                <img class="go-Icon" height="24" width="24"
+                  src="/static/shared/icon/navigate_next_gm_grey_24dp.svg" alt="">
+              </i>
+            </a>
+
+            <div class="go-NavigationDrawer go-NavigationDrawer-submenuItem">
+              <div class="go-NavigationDrawer-nav">
+                <div class="go-NavigationDrawer-header">
+                  <a href="#">
+                    <i class="material-icons">
+                      <img class="go-Icon" height="24" width="24"
+                        src="/static/shared/icon/navigate_before_gm_grey_24dp.svg" alt="">
+                      </i>
+                      Why Go
+                  </a>
+                </div>
+                <ul class="go-NavigationDrawer-list">
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/solutions/case-studies">
+                      Case Studies
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/solutions/use-cases">
+                      Use Cases
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/security/">
+                      Security
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+          <li class="go-NavigationDrawer-listItem">
+            <a href="https://go.dev/learn/">Learn</a>
+          </li>
+          <li class="go-NavigationDrawer-listItem js-mobile-subnav-trigger go-NavigationDrawer-hasSubnav">
+            <a href="#">
+              <span>Docs</span>
+              <i class="material-icons">
+                <img class="go-Icon" height="24" width="24"
+                  src="/static/shared/icon/navigate_next_gm_grey_24dp.svg" alt="">
+              </i>
+            </a>
+
+            <div class="go-NavigationDrawer go-NavigationDrawer-submenuItem">
+              <div class="go-NavigationDrawer-nav">
+                <div class="go-NavigationDrawer-header">
+                  <a href="#"><i class="material-icons">
+                    <img class="go-Icon" height="24" width="24"
+                      src="/static/shared/icon/navigate_before_gm_grey_24dp.svg" alt="">
+                    </i>
+                    Docs
+                  </a>
+                </div>
+                <ul class="go-NavigationDrawer-list">
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/doc/effective_go">
+                      Effective Go
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/doc/">
+                      Go User Manual
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://pkg.go.dev/std">
+                      Standard library
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/doc/devel/release">
+                      Release Notes
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="/api">
+                      API
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+          <li class="go-NavigationDrawer-listItem go-NavigationDrawer-listItem--active">
+            <a href="/">Packages</a>
+          </li>
+          <li class="go-NavigationDrawer-listItem js-mobile-subnav-trigger go-NavigationDrawer-hasSubnav">
+            <a href="#">
+              <span>Community</span>
+              <i class="material-icons">
+                <img class="go-Icon" height="24" width="24"
+                  src="/static/shared/icon/navigate_next_gm_grey_24dp.svg" alt="">
+              </i>
+            </a>
+            <div class="go-NavigationDrawer go-NavigationDrawer-submenuItem">
+              <div class="go-NavigationDrawer-nav">
+                <div class="go-NavigationDrawer-header">
+                  <a href="#">
+                    <i class="material-icons">
+                      <img class="go-Icon" height="24" width="24"
+                        src="/static/shared/icon/navigate_before_gm_grey_24dp.svg" alt="">
+                    </i>
+                    Community
+                  </a>
+                </div>
+                <ul class="go-NavigationDrawer-list">
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/talks/">
+                      Recorded Talks
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://www.meetup.com/pro/go">
+                      Meetups
+                      <i class="material-icons">
+                      <img class="go-Icon" height="24" width="24"
+                          src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://github.com/golang/go/wiki/Conferences">
+                      Conferences
+                      <i class="material-icons">
+                        <img class="go-Icon" height="24" width="24" src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/blog">
+                      Go blog
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/help">
+                      Go project
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <div>Get connected</div>
+                    <div class="go-Header-socialIcons">
+                        <a class="go-Header-socialIcon" href="https://groups.google.com/g/golang-nuts"><img src="/static/shared/logo/social/google-groups.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://github.com/golang"><img src="/static/shared/logo/social/github.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://twitter.com/golang"><img src="/static/shared/logo/social/twitter.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://www.reddit.com/r/golang/"><img src="/static/shared/logo/social/reddit.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://invite.slack.golangbridge.org/"><img src="/static/shared/logo/social/slack.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://stackoverflow.com/collectives/go"><img src="/static/shared/logo/social/stack-overflow.svg" /></a>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+      </ul>
+    </nav>
+  </aside>
+  <div class="go-NavigationDrawer-scrim js-scrim" role="presentation"></div>
+
+    
+  <main class="go-Main" id="main-content">
+    <div class="go-Main-banner" role="alert"></div>
+    <header class="go-Main-header js-mainHeader">
+  
+  
+  <nav class="go-Main-headerBreadcrumb go-Breadcrumb" aria-label="Breadcrumb" data-test-id="UnitHeader-breadcrumb">
+    <ol>
+      
+        
+          <li data-test-id="UnitHeader-breadcrumbItem">
+            <a href="/" data-gtmc="breadcrumb link">Discover Packages</a>
+          </li>
+        
+          <li data-test-id="UnitHeader-breadcrumbItem">
+            <a href="/github.com/jackc/pgx/v5" data-gtmc="breadcrumb link">github.com/jackc/pgx/v5</a>
+          </li>
+        
+        <li>
+          <a href="/github.com/jackc/pgx/v5@v5.11.0/pgxpool" data-gtmc="breadcrumb link" aria-current="location"
+              data-test-id="UnitHeader-breadcrumbCurrent">
+            pgxpool
+          </a>
+          
+            <button
+              class="go-Button go-Button--inline go-Clipboard js-clipboard"
+              title="Copy path to clipboard.&#10;&#10;github.com/jackc/pgx/v5/pgxpool"
+              aria-label="Copy Path to Clipboard"
+              data-to-copy="github.com/jackc/pgx/v5/pgxpool"
+              data-gtmc="breadcrumbs button"
+            >
+              <img
+                class="go-Icon go-Icon--accented"
+                height="24"
+                width="24"
+                src="/static/shared/icon/content_copy_gm_grey_24dp.svg"
+                alt=""
+              >
+            </button>
+          
+        
+      </li>
+    </ol>
+  </nav>
+
+  <div class="go-Main-headerContent">
+    
+  <div class="go-Main-headerTitle js-stickyHeader">
+    <a class="go-Main-headerLogo" href="https://go.dev/" aria-hidden="true" tabindex="-1" data-gtmc="header link" aria-label="Link to Go Homepage">
+      <img height="78" width="207" src="/static/shared/logo/go-blue.svg" alt="Go">
+    </a>
+    <h1 class="UnitHeader-titleHeading" data-test-id="UnitHeader-title">pgxpool</h1>
+    
+      <span class="go-Chip go-Chip--inverted">package</span>
+    
+    
+      
+        <button
+          class="go-Button go-Button--inline go-Clipboard js-clipboard"
+          title="Copy path to clipboard.&#10;&#10;github.com/jackc/pgx/v5/pgxpool"
+          aria-label="Copy Path to Clipboard"
+          data-to-copy="github.com/jackc/pgx/v5/pgxpool"
+          data-gtmc="title button"
+          tabindex="-1"
+        >
+          <img
+            class="go-Icon go-Icon--accented"
+            height="24"
+            width="24"
+            src="/static/shared/icon/content_copy_gm_grey_24dp.svg"
+            alt=""
+          />
+        </button>
+      
+    
+  </div>
+
+    
+      
+  <div class="go-Main-headerDetails">
+    
+      
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-version">
+    <a href="?tab=versions" aria-label="Version: v5.11.0" 
+    data-gtmc="header link" aria-describedby="version-description">
+      <span class="go-textSubtle" aria-hidden="true">Version: </span>
+        v5.11.0
+    </a>
+    <div class="screen-reader-only" id="version-description" hidden>
+      Opens a new window with list of versions in this module.
+    </div>
+    
+    <span class="DetailsHeader-badge--latest" data-test-id="UnitHeader-minorVersionBanner">
+      <span class="go-Chip DetailsHeader-span--latest">Latest</span>
+      <span class="go-Chip DetailsHeader-span--notAtLatest">
+        Latest
+        
+  <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+    <summary>
+      <img class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/alert_gm_grey_24dp.svg" alt="Warning">
+    </summary>
+    <p>This package is not in the latest version of its module.</p>
+  </details>
+
+      </span>
+      <a href="/github.com/jackc/pgx/v5/pgxpool" aria-label="Go to Latest Version" data-gtmc="header link">
+        <span class="go-Chip go-Chip--alert DetailsHeader-span--goToLatest">Go to latest</span>
+      </a>
+    </span>
+  </span>
+
+      
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-commitTime">
+    Published: Sep  7, 2026
+  </span>
+
+      
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-licenses">
+    License: <a href="/github.com/jackc/pgx/v5/pgxpool?tab=licenses" data-test-id="UnitHeader-license" 
+        data-gtmc="header link" aria-describedby="license-description">MIT</a>
+      
+    
+  </span>
+  <div class="screen-reader-only" id="license-description" hidden>
+    Opens a new window with license information.
+  </div>
+
+      
+        
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-imports">
+    <a href="/github.com/jackc/pgx/v5/pgxpool?tab=imports" aria-label="Imports: 12"
+        data-gtmc="header link" aria-describedby="imports-description">
+      <span class="go-textSubtle">Imports: </span>12
+    </a>
+  </span>
+  <div class="screen-reader-only" id="imports-description" hidden>
+    Opens a new window with list of imports.
+  </div>
+
+        
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-importedby">
+    <a href="/github.com/jackc/pgx/v5/pgxpool?tab=importedby" aria-label="Imported By: 8,512"
+        data-gtmc="header link" aria-describedby="importedby-description">
+       <span class="go-textSubtle">Imported by: </span>8,512
+    </a>
+  </span>
+  <div class="screen-reader-only" id="importedby-description" hidden>
+    Opens a new window with list of known importers.
+  </div>
+
+      
+    
+  </div>
+  
+  <div class="UnitHeader-overflowContainer">
+    <svg class="UnitHeader-overflowImage" xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+      <path d="M0 0h24v24H0z" fill="none"/>
+      <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+    </svg>
+    <select class="UnitHeader-overflowSelect js-selectNav" tabindex="-1">
+      <option value="/">Main</option>
+      <option value="/github.com/jackc/pgx/v5/pgxpool?tab=versions">
+        Versions
+      </option>
+      <option value="/github.com/jackc/pgx/v5/pgxpool?tab=licenses">
+        Licenses
+      </option>
+      
+        <option value="/github.com/jackc/pgx/v5/pgxpool?tab=imports">
+          Imports
+        </option>
+        <option value="/github.com/jackc/pgx/v5/pgxpool?tab=importedby">
+          Imported By
+        </option>
+      
+    </select>
+  </div>
+
+
+    
+  </div>
+
+</header>
+    
+      <aside class="go-Main-aside  js-mainAside">
+  
+  <div class="UnitMeta">
+    <h2 class="go-textLabel">Details</h2>
+    
+  <ul class="UnitMeta-details">
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Valid <a href="https://github.com/jackc/pgx/tree/v5.11.0/go.mod" target="_blank" rel="noopener">go.mod</a> file
+          <img class="go-Icon" role="button" tabindex="0" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" aria-label="Toggle go.mod validity tooltip" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">
+          The Go module system was introduced in Go 1.11 and is the official dependency management
+          solution for Go.
+        </p>
+      </details>
+    </li>
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Redistributable license
+          <img class="go-Icon" role="button" tabindex="0" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" aria-label="Toggle redistributable help tooltip" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">
+          Redistributable licenses place minimal restrictions on how software can be used,
+          modified, and redistributed.
+        </p>
+      </details>
+    </li>
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Tagged version
+          <img class="go-Icon" role="button" tabindex="0" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" aria-label="Toggle tagged version tooltip" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">Modules with tagged versions give importers more predictable builds.</p>
+      </details>
+    </li>
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Stable version
+          <img class="go-Icon" role="button" tabindex="0" aria-label="Toggle stable version tooltip" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">When a project reaches major version v1 it is considered stable.</p>
+      </details>
+    </li>
+    <li class="UnitMeta-detailsLearn">
+      <a href="/about#best-practices" data-gtmc="meta link">Learn more about best practices</a>
+    </li>
+  </ul>
+
+    <h2 class="go-textLabel">Repository</h2>
+    <div class="UnitMeta-repo">
+      
+        <a href="https://github.com/jackc/pgx" title="https://github.com/jackc/pgx" target="_blank" rel="noopener">
+          github.com/jackc/pgx
+        </a>
+      
+    </div>
+    
+      <h2 class="go-textLabel" data-test-id="links-heading">Links</h2>
+      <ul class="UnitMeta-links">
+        
+        
+          <li>
+            <a href="https://deps.dev/go/github.com%2Fjackc%2Fpgx%2Fv5/v5.11.0" title="View this module on Open Source Insights"
+              target="_blank" rel="noopener" data-test-id="meta-link-depsdev">
+              <img class="link-Icon" src="/static/shared/icon/depsdev-logo.svg"
+                alt="Open Source Insights Logo" />
+              Open Source Insights
+            </a>
+          </li>
+        
+        
+        
+  
+
+        
+  
+
+        
+  
+
+      </ul>
+    
+  </div>
+
+</aside>
+    
+    <nav class="go-Main-nav go-Main-nav--sticky js-mainNav" aria-label="Outline">
+  <div class="go-Main-navDesktop">
+    
+  <div class="UnitOutline-jumpTo">
+    <button class="UnitOutline-jumpToInput go-ShortcutKey js-jumpToInput"
+        aria-controls="jump-to-modal"
+        aria-label="Open Jump to Identifier"
+        data-shortcut="f"
+        data-shortcut-alt="find"
+        data-test-id="jump-to-button" data-gtmc="outline button">
+      Jump to ...
+    </button>
+  </div>
+  <ul class="go-Tree js-tree" role="tree" aria-label="Outline">
+    
+    
+      <li>
+        <a href="#section-documentation" data-gtmc="outline link">
+          Documentation
+        </a>
+        
+<ul>
+  
+    <li>
+      <a href="#pkg-overview" data-gtmc="doc outline link">Overview</a>
+    </li>
+  <li class="DocNav-overview">
+      <a href="#pkg-index" data-gtmc="doc outline link">
+        Index
+      </a>
+    </li>
+    <li class="DocNav-constants">
+      <a href="#pkg-constants" data-gtmc="doc outline link">
+        Constants
+      </a>
+    </li>
+    <li class="DocNav-variables">
+      <a href="#pkg-variables" data-gtmc="doc outline link">
+        Variables
+      </a>
+    </li>
+    <li class="DocNav-functions">
+      <a href="#pkg-functions" data-gtmc="doc outline link">
+        Functions
+      </a>
+      
+    </li>
+    <li class="DocNav-types">
+      <a href="#pkg-types" data-gtmc="doc outline link">
+        Types
+      </a>
+      <ul>
+        
+          
+          <li>
+            <a href="#AcquireTracer" title="type AcquireTracer" data-gtmc="doc outline link">
+              type AcquireTracer
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#Config" title="type Config" data-gtmc="doc outline link">
+              type Config
+            </a>
+            
+              <ul>
+                
+                  <li>
+                    <a href="#ParseConfig" title="ParseConfig(connString)"
+                        data-gtmc="doc outline link">
+                      ParseConfig(connString)
+                    </a>
+                  </li>
+                
+                
+                  <li>
+                    <a href="#Config.ConnString" title="(c) ConnString()"
+                        data-gtmc="doc outline link">
+                      (c) ConnString()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Config.Copy" title="(c) Copy()"
+                        data-gtmc="doc outline link">
+                      (c) Copy()
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#Conn" title="type Conn" data-gtmc="doc outline link">
+              type Conn
+            </a>
+            
+              <ul>
+                
+                
+                  <li>
+                    <a href="#Conn.Begin" title="(c) Begin(ctx)"
+                        data-gtmc="doc outline link">
+                      (c) Begin(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.BeginTx" title="(c) BeginTx(ctx, txOptions)"
+                        data-gtmc="doc outline link">
+                      (c) BeginTx(ctx, txOptions)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.Conn" title="(c) Conn()"
+                        data-gtmc="doc outline link">
+                      (c) Conn()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.CopyFrom" title="(c) CopyFrom(ctx, tableName, columnNames, rowSrc)"
+                        data-gtmc="doc outline link">
+                      (c) CopyFrom(ctx, tableName, columnNames, rowSrc)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.Exec" title="(c) Exec(ctx, sql, arguments)"
+                        data-gtmc="doc outline link">
+                      (c) Exec(ctx, sql, arguments)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.Hijack" title="(c) Hijack()"
+                        data-gtmc="doc outline link">
+                      (c) Hijack()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.Ping" title="(c) Ping(ctx)"
+                        data-gtmc="doc outline link">
+                      (c) Ping(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.Query" title="(c) Query(ctx, sql, args)"
+                        data-gtmc="doc outline link">
+                      (c) Query(ctx, sql, args)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.QueryRow" title="(c) QueryRow(ctx, sql, args)"
+                        data-gtmc="doc outline link">
+                      (c) QueryRow(ctx, sql, args)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.Release" title="(c) Release()"
+                        data-gtmc="doc outline link">
+                      (c) Release()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Conn.SendBatch" title="(c) SendBatch(ctx, b)"
+                        data-gtmc="doc outline link">
+                      (c) SendBatch(ctx, b)
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#Pool" title="type Pool" data-gtmc="doc outline link">
+              type Pool
+            </a>
+            
+              <ul>
+                
+                  <li>
+                    <a href="#New" title="New(ctx, connString)"
+                        data-gtmc="doc outline link">
+                      New(ctx, connString)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#NewWithConfig" title="NewWithConfig(ctx, config)"
+                        data-gtmc="doc outline link">
+                      NewWithConfig(ctx, config)
+                    </a>
+                  </li>
+                
+                
+                  <li>
+                    <a href="#Pool.Acquire" title="(p) Acquire(ctx)"
+                        data-gtmc="doc outline link">
+                      (p) Acquire(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.AcquireAllIdle" title="(p) AcquireAllIdle(ctx)"
+                        data-gtmc="doc outline link">
+                      (p) AcquireAllIdle(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.AcquireFunc" title="(p) AcquireFunc(ctx, f)"
+                        data-gtmc="doc outline link">
+                      (p) AcquireFunc(ctx, f)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Begin" title="(p) Begin(ctx)"
+                        data-gtmc="doc outline link">
+                      (p) Begin(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.BeginTx" title="(p) BeginTx(ctx, txOptions)"
+                        data-gtmc="doc outline link">
+                      (p) BeginTx(ctx, txOptions)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Close" title="(p) Close()"
+                        data-gtmc="doc outline link">
+                      (p) Close()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Config" title="(p) Config()"
+                        data-gtmc="doc outline link">
+                      (p) Config()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.CopyFrom" title="(p) CopyFrom(ctx, tableName, columnNames, rowSrc)"
+                        data-gtmc="doc outline link">
+                      (p) CopyFrom(ctx, tableName, columnNames, rowSrc)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Exec" title="(p) Exec(ctx, sql, arguments)"
+                        data-gtmc="doc outline link">
+                      (p) Exec(ctx, sql, arguments)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Ping" title="(p) Ping(ctx)"
+                        data-gtmc="doc outline link">
+                      (p) Ping(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Query" title="(p) Query(ctx, sql, args)"
+                        data-gtmc="doc outline link">
+                      (p) Query(ctx, sql, args)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.QueryRow" title="(p) QueryRow(ctx, sql, args)"
+                        data-gtmc="doc outline link">
+                      (p) QueryRow(ctx, sql, args)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Reset" title="(p) Reset()"
+                        data-gtmc="doc outline link">
+                      (p) Reset()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.SendBatch" title="(p) SendBatch(ctx, b)"
+                        data-gtmc="doc outline link">
+                      (p) SendBatch(ctx, b)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Pool.Stat" title="(p) Stat()"
+                        data-gtmc="doc outline link">
+                      (p) Stat()
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#ReleaseTracer" title="type ReleaseTracer" data-gtmc="doc outline link">
+              type ReleaseTracer
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#ShouldPingParams" title="type ShouldPingParams" data-gtmc="doc outline link">
+              type ShouldPingParams
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#Stat" title="type Stat" data-gtmc="doc outline link">
+              type Stat
+            </a>
+            
+              <ul>
+                
+                
+                  <li>
+                    <a href="#Stat.AcquireCount" title="(s) AcquireCount()"
+                        data-gtmc="doc outline link">
+                      (s) AcquireCount()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.AcquireDuration" title="(s) AcquireDuration()"
+                        data-gtmc="doc outline link">
+                      (s) AcquireDuration()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.AcquiredConns" title="(s) AcquiredConns()"
+                        data-gtmc="doc outline link">
+                      (s) AcquiredConns()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.CanceledAcquireCount" title="(s) CanceledAcquireCount()"
+                        data-gtmc="doc outline link">
+                      (s) CanceledAcquireCount()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.ConstructingConns" title="(s) ConstructingConns()"
+                        data-gtmc="doc outline link">
+                      (s) ConstructingConns()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.EmptyAcquireCount" title="(s) EmptyAcquireCount()"
+                        data-gtmc="doc outline link">
+                      (s) EmptyAcquireCount()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.EmptyAcquireWaitTime" title="(s) EmptyAcquireWaitTime()"
+                        data-gtmc="doc outline link">
+                      (s) EmptyAcquireWaitTime()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.IdleConns" title="(s) IdleConns()"
+                        data-gtmc="doc outline link">
+                      (s) IdleConns()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.MaxConns" title="(s) MaxConns()"
+                        data-gtmc="doc outline link">
+                      (s) MaxConns()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.MaxIdleDestroyCount" title="(s) MaxIdleDestroyCount()"
+                        data-gtmc="doc outline link">
+                      (s) MaxIdleDestroyCount()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.MaxLifetimeDestroyCount" title="(s) MaxLifetimeDestroyCount()"
+                        data-gtmc="doc outline link">
+                      (s) MaxLifetimeDestroyCount()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.NewConnsCount" title="(s) NewConnsCount()"
+                        data-gtmc="doc outline link">
+                      (s) NewConnsCount()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Stat.TotalConns" title="(s) TotalConns()"
+                        data-gtmc="doc outline link">
+                      (s) TotalConns()
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#TraceAcquireEndData" title="type TraceAcquireEndData" data-gtmc="doc outline link">
+              type TraceAcquireEndData
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#TraceAcquireStartData" title="type TraceAcquireStartData" data-gtmc="doc outline link">
+              type TraceAcquireStartData
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#TraceReleaseData" title="type TraceReleaseData" data-gtmc="doc outline link">
+              type TraceReleaseData
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#Tx" title="type Tx" data-gtmc="doc outline link">
+              type Tx
+            </a>
+            
+              <ul>
+                
+                
+                  <li>
+                    <a href="#Tx.Begin" title="(tx) Begin(ctx)"
+                        data-gtmc="doc outline link">
+                      (tx) Begin(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.Commit" title="(tx) Commit(ctx)"
+                        data-gtmc="doc outline link">
+                      (tx) Commit(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.Conn" title="(tx) Conn()"
+                        data-gtmc="doc outline link">
+                      (tx) Conn()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.CopyFrom" title="(tx) CopyFrom(ctx, tableName, columnNames, rowSrc)"
+                        data-gtmc="doc outline link">
+                      (tx) CopyFrom(ctx, tableName, columnNames, rowSrc)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.Exec" title="(tx) Exec(ctx, sql, arguments)"
+                        data-gtmc="doc outline link">
+                      (tx) Exec(ctx, sql, arguments)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.LargeObjects" title="(tx) LargeObjects()"
+                        data-gtmc="doc outline link">
+                      (tx) LargeObjects()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.Prepare" title="(tx) Prepare(ctx, name, sql)"
+                        data-gtmc="doc outline link">
+                      (tx) Prepare(ctx, name, sql)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.Query" title="(tx) Query(ctx, sql, args)"
+                        data-gtmc="doc outline link">
+                      (tx) Query(ctx, sql, args)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.QueryRow" title="(tx) QueryRow(ctx, sql, args)"
+                        data-gtmc="doc outline link">
+                      (tx) QueryRow(ctx, sql, args)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.Rollback" title="(tx) Rollback(ctx)"
+                        data-gtmc="doc outline link">
+                      (tx) Rollback(ctx)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#Tx.SendBatch" title="(tx) SendBatch(ctx, b)"
+                        data-gtmc="doc outline link">
+                      (tx) SendBatch(ctx, b)
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+         
+      </ul>
+    </li>
+  
+  
+</ul>
+
+      </li>
+    
+    
+      <li>
+        <a href="#section-sourcefiles" data-gtmc="outline link">
+          Source Files
+        </a>
+      </li>
+    
+    
+  </ul>
+
+  </div>
+  <div class="go-Main-navMobile js-mainNavMobile">
+    <label class="go-Label">
+      <select class="go-Select">
+        
+          <option selected disabled>Documentation</option>
+        
+      </select>
+    </label>
+  </div>
+</nav>
+    <article class="go-Main-article js-mainContent">
+  <div class="UnitDetails" data-test-id="UnitDetails" style="display: block;">
+    <div class="UnitDetails-content js-unitDetailsContent" data-test-id="UnitDetails-content">
+      
+      
+        
+          
+  <div class="UnitDoc">
+    <h2 class="UnitDoc-title" id="section-documentation">
+      <img class="go-Icon" height="24" width="24" src="/static/shared/icon/code_gm_grey_24dp.svg" alt="">
+      Documentation
+      <a class="UnitDoc-idLink" href="#section-documentation" title="Go to Documentation" aria-label="Go to Documentation">¶</a>
+    </h2>
+    
+  
+    
+  
+
+    <div class="Documentation js-documentation">
+      
+        
+
+<div class="Documentation-content js-docContent"> <section class="Documentation-overview">
+    <h3 tabindex="-1" id="pkg-overview" class="Documentation-overviewHeader">Overview <a href="#pkg-overview" title="Go to Overview" aria-label="Go to Overview">¶</a></h3>
+
+<div role="navigation" aria-label="Table of Contents">
+  <ul class="Documentation-toc">
+      <li class="Documentation-tocItem"><a href="#hdr-Creating_a_Pool">Creating a Pool</a></li>
+  </ul>
+</div>
+<p>Package pgxpool is a concurrency-safe connection pool for pgx.
+</p><p>pgxpool implements a nearly identical interface to pgx connections.
+</p><h4 id="hdr-Creating_a_Pool">Creating a Pool <a class="Documentation-idLink" href="#hdr-Creating_a_Pool" title="Go to Creating a Pool" aria-label="Go to Creating a Pool">¶</a></h4><p>The primary way of creating a pool is with <a href="#New">pgxpool.New</a>:
+</p><pre>pool, err := pgxpool.New(context.Background(), os.Getenv(&#34;DATABASE_URL&#34;))
+</pre><p>The database connection string can be in URL or keyword/value format. PostgreSQL settings, pgx settings, and pool settings can be
+specified here. In addition, a config struct can be created by <a href="#ParseConfig">ParseConfig</a>.
+</p><pre>config, err := pgxpool.ParseConfig(os.Getenv(&#34;DATABASE_URL&#34;))
+if err != nil {
+    // ...
+}
+config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+    // do something with every new connection
+}
+
+pool, err := pgxpool.NewWithConfig(context.Background(), config)
+</pre><p>A pool returns without waiting for any connections to be established. Acquire a connection immediately after creating
+the pool to check if a connection can successfully be established.
+</p>
+</section><section class="Documentation-index">
+    <h3 id="pkg-index" class="Documentation-indexHeader">Index <a href="#pkg-index" title="Go to Index" aria-label="Go to Index">¶</a></h3>
+
+<ul class="Documentation-indexList">
+<li class="Documentation-indexType">
+          <a href="#AcquireTracer">type AcquireTracer</a></li>
+<li class="Documentation-indexType">
+          <a href="#Config">type Config</a></li>
+<li><ul class="Documentation-indexTypeFunctions">
+<li>
+            <a href="#ParseConfig">func ParseConfig(connString string) (*Config, error)</a></li>
+</ul></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#Config.ConnString">func (c *Config) ConnString() string</a></li>
+<li>
+            <a href="#Config.Copy">func (c *Config) Copy() *Config</a></li>
+</ul></li>
+<li class="Documentation-indexType">
+          <a href="#Conn">type Conn</a></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#Conn.Begin">func (c *Conn) Begin(ctx context.Context) (pgx.Tx, error)</a></li>
+<li>
+            <a href="#Conn.BeginTx">func (c *Conn) BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)</a></li>
+<li>
+            <a href="#Conn.Conn">func (c *Conn) Conn() *pgx.Conn</a></li>
+<li>
+            <a href="#Conn.CopyFrom">func (c *Conn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, ...) (int64, error)</a></li>
+<li>
+            <a href="#Conn.Exec">func (c *Conn) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)</a></li>
+<li>
+            <a href="#Conn.Hijack">func (c *Conn) Hijack() *pgx.Conn</a></li>
+<li>
+            <a href="#Conn.Ping">func (c *Conn) Ping(ctx context.Context) error</a></li>
+<li>
+            <a href="#Conn.Query">func (c *Conn) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)</a></li>
+<li>
+            <a href="#Conn.QueryRow">func (c *Conn) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row</a></li>
+<li>
+            <a href="#Conn.Release">func (c *Conn) Release()</a></li>
+<li>
+            <a href="#Conn.SendBatch">func (c *Conn) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults</a></li>
+</ul></li>
+<li class="Documentation-indexType">
+          <a href="#Pool">type Pool</a></li>
+<li><ul class="Documentation-indexTypeFunctions">
+<li>
+            <a href="#New">func New(ctx context.Context, connString string) (*Pool, error)</a></li>
+<li>
+            <a href="#NewWithConfig">func NewWithConfig(ctx context.Context, config *Config) (*Pool, error)</a></li>
+</ul></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#Pool.Acquire">func (p *Pool) Acquire(ctx context.Context) (c *Conn, err error)</a></li>
+<li>
+            <a href="#Pool.AcquireAllIdle">func (p *Pool) AcquireAllIdle(ctx context.Context) []*Conn</a></li>
+<li>
+            <a href="#Pool.AcquireFunc">func (p *Pool) AcquireFunc(ctx context.Context, f func(*Conn) error) error</a></li>
+<li>
+            <a href="#Pool.Begin">func (p *Pool) Begin(ctx context.Context) (pgx.Tx, error)</a></li>
+<li>
+            <a href="#Pool.BeginTx">func (p *Pool) BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)</a></li>
+<li>
+            <a href="#Pool.Close">func (p *Pool) Close()</a></li>
+<li>
+            <a href="#Pool.Config">func (p *Pool) Config() *Config</a></li>
+<li>
+            <a href="#Pool.CopyFrom">func (p *Pool) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, ...) (int64, error)</a></li>
+<li>
+            <a href="#Pool.Exec">func (p *Pool) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)</a></li>
+<li>
+            <a href="#Pool.Ping">func (p *Pool) Ping(ctx context.Context) error</a></li>
+<li>
+            <a href="#Pool.Query">func (p *Pool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)</a></li>
+<li>
+            <a href="#Pool.QueryRow">func (p *Pool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row</a></li>
+<li>
+            <a href="#Pool.Reset">func (p *Pool) Reset()</a></li>
+<li>
+            <a href="#Pool.SendBatch">func (p *Pool) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults</a></li>
+<li>
+            <a href="#Pool.Stat">func (p *Pool) Stat() *Stat</a></li>
+</ul></li>
+<li class="Documentation-indexType">
+          <a href="#ReleaseTracer">type ReleaseTracer</a></li>
+<li class="Documentation-indexType">
+          <a href="#ShouldPingParams">type ShouldPingParams</a></li>
+<li class="Documentation-indexType">
+          <a href="#Stat">type Stat</a></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#Stat.AcquireCount">func (s *Stat) AcquireCount() int64</a></li>
+<li>
+            <a href="#Stat.AcquireDuration">func (s *Stat) AcquireDuration() time.Duration</a></li>
+<li>
+            <a href="#Stat.AcquiredConns">func (s *Stat) AcquiredConns() int32</a></li>
+<li>
+            <a href="#Stat.CanceledAcquireCount">func (s *Stat) CanceledAcquireCount() int64</a></li>
+<li>
+            <a href="#Stat.ConstructingConns">func (s *Stat) ConstructingConns() int32</a></li>
+<li>
+            <a href="#Stat.EmptyAcquireCount">func (s *Stat) EmptyAcquireCount() int64</a></li>
+<li>
+            <a href="#Stat.EmptyAcquireWaitTime">func (s *Stat) EmptyAcquireWaitTime() time.Duration</a></li>
+<li>
+            <a href="#Stat.IdleConns">func (s *Stat) IdleConns() int32</a></li>
+<li>
+            <a href="#Stat.MaxConns">func (s *Stat) MaxConns() int32</a></li>
+<li>
+            <a href="#Stat.MaxIdleDestroyCount">func (s *Stat) MaxIdleDestroyCount() int64</a></li>
+<li>
+            <a href="#Stat.MaxLifetimeDestroyCount">func (s *Stat) MaxLifetimeDestroyCount() int64</a></li>
+<li>
+            <a href="#Stat.NewConnsCount">func (s *Stat) NewConnsCount() int64</a></li>
+<li>
+            <a href="#Stat.TotalConns">func (s *Stat) TotalConns() int32</a></li>
+</ul></li>
+<li class="Documentation-indexType">
+          <a href="#TraceAcquireEndData">type TraceAcquireEndData</a></li>
+<li class="Documentation-indexType">
+          <a href="#TraceAcquireStartData">type TraceAcquireStartData</a></li>
+<li class="Documentation-indexType">
+          <a href="#TraceReleaseData">type TraceReleaseData</a></li>
+<li class="Documentation-indexType">
+          <a href="#Tx">type Tx</a></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#Tx.Begin">func (tx *Tx) Begin(ctx context.Context) (pgx.Tx, error)</a></li>
+<li>
+            <a href="#Tx.Commit">func (tx *Tx) Commit(ctx context.Context) error</a></li>
+<li>
+            <a href="#Tx.Conn">func (tx *Tx) Conn() *pgx.Conn</a></li>
+<li>
+            <a href="#Tx.CopyFrom">func (tx *Tx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, ...) (int64, error)</a></li>
+<li>
+            <a href="#Tx.Exec">func (tx *Tx) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)</a></li>
+<li>
+            <a href="#Tx.LargeObjects">func (tx *Tx) LargeObjects() pgx.LargeObjects</a></li>
+<li>
+            <a href="#Tx.Prepare">func (tx *Tx) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error)</a></li>
+<li>
+            <a href="#Tx.Query">func (tx *Tx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)</a></li>
+<li>
+            <a href="#Tx.QueryRow">func (tx *Tx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row</a></li>
+<li>
+            <a href="#Tx.Rollback">func (tx *Tx) Rollback(ctx context.Context) error</a></li>
+<li>
+            <a href="#Tx.SendBatch">func (tx *Tx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults</a></li>
+</ul></li>
+</ul>
+</section><h3 tabindex="-1" id="pkg-constants" class="Documentation-constantsHeader">Constants <a href="#pkg-constants" title="Go to Constants" aria-label="Go to Constants">¶</a></h3>
+
+  <section class="Documentation-constants"><p class="Documentation-empty">This section is empty.</p></section>
+
+  <h3 tabindex="-1" id="pkg-variables" class="Documentation-variablesHeader">Variables <a href="#pkg-variables" title="Go to Variables" aria-label="Go to Variables">¶</a></h3>
+
+  <section class="Documentation-variables"><p class="Documentation-empty">This section is empty.</p></section>
+
+  <h3 tabindex="-1" id="pkg-functions" class="Documentation-functionsHeader">Functions <a href="#pkg-functions" title="Go to Functions" aria-label="Go to Functions">¶</a></h3>
+
+  <section class="Documentation-functions"><p class="Documentation-empty">This section is empty.</p></section>
+
+  <h3 tabindex="-1" id="pkg-types" class="Documentation-typesHeader">Types <a href="#pkg-types" title="Go to Types" aria-label="Go to Types">¶</a></h3>
+
+  <section class="Documentation-types"><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="AcquireTracer" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tracer.go#L10">AcquireTracer</a> <a class="Documentation-idLink" href="#AcquireTracer" title="Go to AcquireTracer" aria-label="Go to AcquireTracer">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v5.6.0</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type AcquireTracer interface {
+<span id="AcquireTracer.TraceAcquireStart" data-kind="method">	<span class="comment">// TraceAcquireStart is called at the beginning of Acquire.</span>
+</span>	<span class="comment">// The returned context is used for the rest of the call and will be passed to the TraceAcquireEnd.</span>
+	TraceAcquireStart(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, pool *<a href="#Pool">Pool</a>, data <a href="#TraceAcquireStartData">TraceAcquireStartData</a>) <a href="/context">context</a>.<a href="/context#Context">Context</a>
+<span id="AcquireTracer.TraceAcquireEnd" data-kind="method">	<span class="comment">// TraceAcquireEnd is called when a connection has been acquired.</span>
+</span>	TraceAcquireEnd(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, pool *<a href="#Pool">Pool</a>, data <a href="#TraceAcquireEndData">TraceAcquireEndData</a>)
+}</pre>
+    </div>
+  <p>AcquireTracer traces Acquire.
+</p>
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="Config" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L121">Config</a> <a class="Documentation-idLink" href="#Config" title="Go to Config" aria-label="Go to Config">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type Config struct {
+<span id="Config.ConnConfig" data-kind="field">	ConnConfig *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#ConnConfig">ConnConfig</a>
+</span>
+<span id="Config.BeforeConnect" data-kind="field">	<span class="comment">// BeforeConnect is called before a new connection is made. It is passed a copy of the underlying [pgx.ConnConfig] and</span>
+</span>	<span class="comment">// will not impact any existing open connections.</span>
+	BeforeConnect func(<a href="/context">context</a>.<a href="/context#Context">Context</a>, *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#ConnConfig">ConnConfig</a>) <a href="/builtin#error">error</a>
+
+<span id="Config.AfterConnect" data-kind="field">	<span class="comment">// AfterConnect is called after a connection is established, but before it is added to the pool.</span>
+</span>	AfterConnect func(<a href="/context">context</a>.<a href="/context#Context">Context</a>, *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>) <a href="/builtin#error">error</a>
+
+<span id="Config.BeforeAcquire" data-kind="field">	<span class="comment">// BeforeAcquire is called before a connection is acquired from the pool. It must return true to allow the</span>
+</span>	<span class="comment">// acquisition or false to indicate that the connection should be destroyed and a different connection should be</span>
+	<span class="comment">// acquired.</span>
+	<span class="comment">//</span>
+	<span class="comment">// Deprecated: Use PrepareConn instead. If both PrepareConn and BeforeAcquire are set, PrepareConn will take</span>
+	<span class="comment">// precedence, ignoring BeforeAcquire.</span>
+	BeforeAcquire func(<a href="/context">context</a>.<a href="/context#Context">Context</a>, *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>) <a href="/builtin#bool">bool</a>
+
+<span id="Config.PrepareConn" data-kind="field">	<span class="comment">// PrepareConn is called before a connection is acquired from the pool. If this function returns true, the connection</span>
+</span>	<span class="comment">// is considered valid, otherwise the connection is destroyed. If the function returns a non-nil error, the instigating</span>
+	<span class="comment">// query will fail with the returned error.</span>
+	<span class="comment">//</span>
+	<span class="comment">// Specifically, this means that:</span>
+	<span class="comment">//</span>
+	<span class="comment">// 	- If it returns true and a nil error, the query proceeds as normal.</span>
+	<span class="comment">// 	- If it returns true and an error, the connection will be returned to the pool, and the instigating query will fail with the returned error.</span>
+	<span class="comment">// 	- If it returns false, and an error, the connection will be destroyed, and the query will fail with the returned error.</span>
+	<span class="comment">// 	- If it returns false and a nil error, the connection will be destroyed, and the instigating query will be retried on a new connection.</span>
+	PrepareConn func(<a href="/context">context</a>.<a href="/context#Context">Context</a>, *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>) (<a href="/builtin#bool">bool</a>, <a href="/builtin#error">error</a>)
+
+<span id="Config.AfterRelease" data-kind="field">	<span class="comment">// AfterRelease is called after a connection is released, but before it is returned to the pool. It must return true to</span>
+</span>	<span class="comment">// return the connection to the pool or false to destroy the connection.</span>
+	AfterRelease func(*<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>) <a href="/builtin#bool">bool</a>
+
+<span id="Config.BeforeClose" data-kind="field">	<span class="comment">// BeforeClose is called right before a connection is closed and removed from the pool.</span>
+</span>	BeforeClose func(*<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>)
+
+<span id="Config.ShouldPing" data-kind="field">	<span class="comment">// ShouldPing is called after a connection is acquired from the pool. If it returns true, the connection is pinged to check for liveness.</span>
+</span>	<span class="comment">// If this func is not set, the default behavior is to ping connections that have been idle for at least 1 second.</span>
+	ShouldPing func(<a href="/context">context</a>.<a href="/context#Context">Context</a>, <a href="#ShouldPingParams">ShouldPingParams</a>) <a href="/builtin#bool">bool</a>
+
+<span id="Config.MaxConnLifetime" data-kind="field">	<span class="comment">// MaxConnLifetime is the duration since creation after which a connection will be automatically closed.</span>
+</span>	MaxConnLifetime <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+
+<span id="Config.MaxConnLifetimeJitter" data-kind="field">	<span class="comment">// MaxConnLifetimeJitter is the duration after MaxConnLifetime to randomly decide to close a connection.</span>
+</span>	<span class="comment">// This helps prevent all connections from being closed at the exact same time, starving the pool.</span>
+	MaxConnLifetimeJitter <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+
+<span id="Config.MaxConnIdleTime" data-kind="field">	<span class="comment">// MaxConnIdleTime is the duration after which an idle connection will be automatically closed by the health check.</span>
+</span>	MaxConnIdleTime <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+
+<span id="Config.PingTimeout" data-kind="field">	<span class="comment">// PingTimeout is the maximum amount of time to wait for a connection to pong before considering it as unhealthy and</span>
+</span>	<span class="comment">// destroying it. If zero, the default is no timeout.</span>
+	PingTimeout <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+
+<span id="Config.MaxConns" data-kind="field">	<span class="comment">// MaxConns is the maximum size of the pool. The default is the greater of 4 or runtime.NumCPU().</span>
+</span>	MaxConns <a href="/builtin#int32">int32</a>
+
+<span id="Config.MinConns" data-kind="field">	<span class="comment">// MinConns is the minimum size of the pool. After connection closes, the pool might dip below MinConns. A low</span>
+</span>	<span class="comment">// number of MinConns might mean the pool is empty after MaxConnLifetime until the health check has a chance</span>
+	<span class="comment">// to create new connections.</span>
+	MinConns <a href="/builtin#int32">int32</a>
+
+<span id="Config.MinIdleConns" data-kind="field">	<span class="comment">// MinIdleConns is the minimum number of idle connections in the pool. You can increase this to ensure that</span>
+</span>	<span class="comment">// there are always idle connections available. This can help reduce tail latencies during request processing,</span>
+	<span class="comment">// as you can avoid the latency of establishing a new connection while handling requests. It is superior</span>
+	<span class="comment">// to MinConns for this purpose.</span>
+	<span class="comment">// Similar to MinConns, the pool might temporarily dip below MinIdleConns after connection closes.</span>
+	MinIdleConns <a href="/builtin#int32">int32</a>
+
+<span id="Config.HealthCheckPeriod" data-kind="field">	<span class="comment">// HealthCheckPeriod is the duration between checks of the health of idle connections.</span>
+</span>	HealthCheckPeriod <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+	<span class="comment">// contains filtered or unexported fields</span>
+}</pre>
+    </div>
+  <p>Config is the configuration struct for creating a pool. It must be created by <a href="#ParseConfig">ParseConfig</a> and then it can be
+modified.
+</p>
+<div class="Documentation-typeFunc">
+    
+  
+  
+    <h4 tabindex="-1" id="ParseConfig" data-kind="function" class="Documentation-typeFuncHeader">
+      <span>func <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L362">ParseConfig</a> <a class="Documentation-idLink" href="#ParseConfig" title="Go to ParseConfig" aria-label="Go to ParseConfig">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func ParseConfig(connString <a href="/builtin#string">string</a>) (*<a href="#Config">Config</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>ParseConfig builds a Config from connString. It parses connString with the same behavior as <a href="/github.com/jackc/pgx/v5@v5.11.0#ParseConfig">pgx.ParseConfig</a> with the
+addition of the following variables:
+</p><ul class="Documentation-bulletList">
+  <li>pool_max_conns: integer greater than 0 (default is the greater of 4 or runtime.NumCPU())</li>
+  <li>pool_min_conns: integer 0 or greater (default 0)</li>
+  <li>pool_min_idle_conns: integer 0 or greater (default 0)</li>
+  <li>pool_max_conn_lifetime: duration string (default 1 hour)</li>
+  <li>pool_max_conn_idle_time: duration string (default 30 minutes)</li>
+  <li>pool_health_check_period: duration string (default 1 minute)</li>
+  <li>pool_max_conn_lifetime_jitter: duration string (default 0)</li>
+  <li>pool_ping_timeout: duration string (default 0, meaning no timeout)</li>
+</ul><p>See Config for definitions of these arguments.
+</p><pre># Example Keyword/Value
+user=jack password=secret host=pg.example.com port=5432 dbname=mydb sslmode=verify-full pool_max_conns=10 pool_max_conn_lifetime=1h30m
+
+# Example URL
+postgres://jack:secret@pg.example.com:5432/mydb?sslmode=verify-full&amp;pool_max_conns=10&amp;pool_max_conn_lifetime=1h30m
+</pre>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Config.ConnString" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Config) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L208">ConnString</a> <a class="Documentation-idLink" href="#Config.ConnString" title="Go to Config.ConnString" aria-label="Go to Config.ConnString">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Config">Config</a>) ConnString() <a href="/builtin#string">string</a></pre>
+    </div>
+  <p>ConnString returns the connection string as parsed by pgxpool.ParseConfig into pgxpool.Config.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Config.Copy" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Config) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L200">Copy</a> <a class="Documentation-idLink" href="#Config.Copy" title="Go to Config.Copy" aria-label="Go to Config.Copy">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Config">Config</a>) Copy() *<a href="#Config">Config</a></pre>
+    </div>
+  <p>Copy returns a deep copy of the config that is safe to use and modify.
+The only exception is the tls.Config:
+according to the tls.Config docs it must not be modified after creation.
+</p>
+
+  
+
+  </div>
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="Conn" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L12">Conn</a> <a class="Documentation-idLink" href="#Conn" title="Go to Conn" aria-label="Go to Conn">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type Conn struct {
+	<span class="comment">// contains filtered or unexported fields</span>
+}</pre>
+    </div>
+  <p>Conn is an acquired *pgx.Conn from a Pool.
+</p>
+<div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.Begin" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L106">Begin</a> <a class="Documentation-idLink" href="#Conn.Begin" title="Go to Conn.Begin" aria-label="Go to Conn.Begin">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) Begin(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Tx">Tx</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Begin starts a transaction block from the *Conn without explicitly setting a transaction mode (see BeginTx with TxOptions if transaction mode is required).
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.BeginTx" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L111">BeginTx</a> <a class="Documentation-idLink" href="#Conn.BeginTx" title="Go to Conn.BeginTx" aria-label="Go to Conn.BeginTx">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) BeginTx(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, txOptions <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#TxOptions">TxOptions</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Tx">Tx</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>BeginTx starts a transaction block from the *Conn with txOptions determining the transaction mode.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.Conn" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L119">Conn</a> <a class="Documentation-idLink" href="#Conn.Conn" title="Go to Conn.Conn" aria-label="Go to Conn.Conn">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) Conn() *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a></pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.CopyFrom" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L101">CopyFrom</a> <a class="Documentation-idLink" href="#Conn.CopyFrom" title="Go to Conn.CopyFrom" aria-label="Go to Conn.CopyFrom">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) CopyFrom(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, tableName <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Identifier">Identifier</a>, columnNames []<a href="/builtin#string">string</a>, rowSrc <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#CopyFromSource">CopyFromSource</a>) (<a href="/builtin#int64">int64</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.Exec" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L85">Exec</a> <a class="Documentation-idLink" href="#Conn.Exec" title="Go to Conn.Exec" aria-label="Go to Conn.Exec">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) Exec(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, arguments ...<a href="/builtin#any">any</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn">pgconn</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn#CommandTag">CommandTag</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.Hijack" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L71">Hijack</a> <a class="Documentation-idLink" href="#Conn.Hijack" title="Go to Conn.Hijack" aria-label="Go to Conn.Hijack">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) Hijack() *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a></pre>
+    </div>
+  <p>Hijack assumes ownership of the connection from the pool. Caller is responsible for closing the connection. Hijack
+will panic if called on an already released or hijacked connection.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.Ping" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L115">Ping</a> <a class="Documentation-idLink" href="#Conn.Ping" title="Go to Conn.Ping" aria-label="Go to Conn.Ping">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) Ping(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) <a href="/builtin#error">error</a></pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.Query" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L89">Query</a> <a class="Documentation-idLink" href="#Conn.Query" title="Go to Conn.Query" aria-label="Go to Conn.Query">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) Query(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, args ...<a href="/builtin#any">any</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">Rows</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.QueryRow" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L93">QueryRow</a> <a class="Documentation-idLink" href="#Conn.QueryRow" title="Go to Conn.QueryRow" aria-label="Go to Conn.QueryRow">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) QueryRow(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, args ...<a href="/builtin#any">any</a>) <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Row">Row</a></pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.Release" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L19">Release</a> <a class="Documentation-idLink" href="#Conn.Release" title="Go to Conn.Release" aria-label="Go to Conn.Release">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) Release()</pre>
+    </div>
+  <p>Release returns c to the pool it was acquired from. Once Release has been called, other methods must not be called.
+However, it is safe to call Release multiple times. Subsequent calls after the first will be ignored.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Conn.SendBatch" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Conn) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go#L97">SendBatch</a> <a class="Documentation-idLink" href="#Conn.SendBatch" title="Go to Conn.SendBatch" aria-label="Go to Conn.SendBatch">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (c *<a href="#Conn">Conn</a>) SendBatch(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, b *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Batch">Batch</a>) <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#BatchResults">BatchResults</a></pre>
+    </div>
+  
+
+  
+
+  </div>
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="Pool" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L79">Pool</a> <a class="Documentation-idLink" href="#Pool" title="Go to Pool" aria-label="Go to Pool">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type Pool struct {
+	<span class="comment">// contains filtered or unexported fields</span>
+}</pre>
+    </div>
+  <p>Pool allows for connection reuse.
+</p>
+<div class="Documentation-typeFunc">
+    
+  
+  
+    <h4 tabindex="-1" id="New" data-kind="function" class="Documentation-typeFuncHeader">
+      <span>func <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L211">New</a> <a class="Documentation-idLink" href="#New" title="Go to New" aria-label="Go to New">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func New(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, connString <a href="/builtin#string">string</a>) (*<a href="#Pool">Pool</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>New creates a new Pool. See <a href="#ParseConfig">ParseConfig</a> for information on connString format.
+</p>
+
+  
+
+  </div><div class="Documentation-typeFunc">
+    
+  
+  
+    <h4 tabindex="-1" id="NewWithConfig" data-kind="function" class="Documentation-typeFuncHeader">
+      <span>func <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L221">NewWithConfig</a> <a class="Documentation-idLink" href="#NewWithConfig" title="Go to NewWithConfig" aria-label="Go to NewWithConfig">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func NewWithConfig(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, config *<a href="#Config">Config</a>) (*<a href="#Pool">Pool</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>NewWithConfig creates a new <a href="#Pool">Pool</a>. config must have been created by <a href="#ParseConfig">ParseConfig</a>.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Acquire" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L615">Acquire</a> <a class="Documentation-idLink" href="#Pool.Acquire" title="Go to Pool.Acquire" aria-label="Go to Pool.Acquire">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Acquire(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) (c *<a href="#Conn">Conn</a>, err <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Acquire returns a connection (<a href="#Conn">Conn</a>) from the <a href="#Pool">Pool</a>.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.AcquireAllIdle" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L700">AcquireAllIdle</a> <a class="Documentation-idLink" href="#Pool.AcquireAllIdle" title="Go to Pool.AcquireAllIdle" aria-label="Go to Pool.AcquireAllIdle">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) AcquireAllIdle(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) []*<a href="#Conn">Conn</a></pre>
+    </div>
+  <p>AcquireAllIdle atomically acquires all currently idle connections. Its intended use is for health check and
+keep-alive functionality. It does not update pool statistics.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.AcquireFunc" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L688">AcquireFunc</a> <a class="Documentation-idLink" href="#Pool.AcquireFunc" title="Go to Pool.AcquireFunc" aria-label="Go to Pool.AcquireFunc">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) AcquireFunc(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, f func(*<a href="#Conn">Conn</a>) <a href="/builtin#error">error</a>) <a href="/builtin#error">error</a></pre>
+    </div>
+  <p>AcquireFunc acquires a <a href="#Conn">Conn</a> and calls f with that <a href="#Conn">Conn</a>. ctx will only affect the <a href="#Pool.Acquire">Pool.Acquire</a>. It has no effect on the
+call of f. The return value is either an error acquiring the <a href="#Conn">Conn</a> or the return value of f. The <a href="#Conn">Conn</a> is
+automatically released after the call of f.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Begin" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L815">Begin</a> <a class="Documentation-idLink" href="#Pool.Begin" title="Go to Pool.Begin" aria-label="Go to Pool.Begin">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Begin(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Tx">Tx</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Begin acquires a connection from the <a href="#Pool">Pool</a> and starts a transaction. Unlike <a href="/database/sql">database/sql</a>, the context only affects the begin command. i.e. there is no
+auto-rollback on context cancellation. Begin initiates a transaction block without explicitly setting a transaction mode for the block (see <a href="#Pool.BeginTx">Pool.BeginTx</a> with <a href="/github.com/jackc/pgx/v5@v5.11.0#TxOptions">pgx.TxOptions</a> if transaction mode is required).
+<a href="#Tx">*Tx</a> is returned, which implements the <a href="/github.com/jackc/pgx/v5@v5.11.0#Tx">pgx.Tx</a> interface.
+<a href="#Tx.Commit">Tx.Commit</a> or <a href="#Tx.Rollback">Tx.Rollback</a> must be called on the returned transaction to finalize the transaction block.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.BeginTx" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L823">BeginTx</a> <a class="Documentation-idLink" href="#Pool.BeginTx" title="Go to Pool.BeginTx" aria-label="Go to Pool.BeginTx">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) BeginTx(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, txOptions <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#TxOptions">TxOptions</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Tx">Tx</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>BeginTx acquires a connection from the <a href="#Pool">Pool</a> and starts a transaction with <a href="/github.com/jackc/pgx/v5@v5.11.0#TxOptions">pgx.TxOptions</a> determining the transaction mode.
+Unlike <a href="/database/sql">database/sql</a>, the context only affects the begin command. i.e. there is no auto-rollback on context cancellation.
+<a href="#Tx">*Tx</a> is returned, which implements the <a href="/github.com/jackc/pgx/v5@v5.11.0#Tx">pgx.Tx</a> interface.
+<a href="#Tx.Commit">Tx.Commit</a> or <a href="#Tx.Rollback">Tx.Rollback</a> must be called on the returned transaction to finalize the transaction block.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Close" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L470">Close</a> <a class="Documentation-idLink" href="#Pool.Close" title="Go to Pool.Close" aria-label="Go to Pool.Close">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Close()</pre>
+    </div>
+  <p>Close closes all connections in the pool and rejects future <a href="#Pool.Acquire">Pool.Acquire</a> calls. Blocks until all connections are returned
+to pool and closed.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Config" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L728">Config</a> <a class="Documentation-idLink" href="#Pool.Config" title="Go to Pool.Config" aria-label="Go to Pool.Config">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Config() *<a href="#Config">Config</a></pre>
+    </div>
+  <p>Config returns a copy of config that was used to initialize this <a href="#Pool">Pool</a>.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.CopyFrom" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L838">CopyFrom</a> <a class="Documentation-idLink" href="#Pool.CopyFrom" title="Go to Pool.CopyFrom" aria-label="Go to Pool.CopyFrom">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) CopyFrom(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, tableName <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Identifier">Identifier</a>, columnNames []<a href="/builtin#string">string</a>, rowSrc <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#CopyFromSource">CopyFromSource</a>) (<a href="/builtin#int64">int64</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Exec" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L744">Exec</a> <a class="Documentation-idLink" href="#Pool.Exec" title="Go to Pool.Exec" aria-label="Go to Pool.Exec">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Exec(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, arguments ...<a href="/builtin#any">any</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn">pgconn</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn#CommandTag">CommandTag</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Exec acquires a connection from the <a href="#Pool">Pool</a> and executes the given SQL.
+SQL can be either a prepared statement name or an SQL string.
+Arguments should be referenced positionally from the SQL string as $1, $2, etc.
+The acquired connection is returned to the pool when the <a href="#Pool.Exec">Pool.Exec</a> function returns.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Ping" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L850">Ping</a> <a class="Documentation-idLink" href="#Pool.Ping" title="Go to Pool.Ping" aria-label="Go to Pool.Ping">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Ping(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) <a href="/builtin#error">error</a></pre>
+    </div>
+  <p>Ping acquires a connection from the <a href="#Pool">Pool</a> and executes an empty sql statement against it.
+If the sql returns without error, the database <a href="#Pool.Ping">Pool.Ping</a> is considered successful, otherwise, the error is returned.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Query" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L764">Query</a> <a class="Documentation-idLink" href="#Pool.Query" title="Go to Pool.Query" aria-label="Go to Pool.Query">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Query(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, args ...<a href="/builtin#any">any</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">Rows</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Query acquires a connection and executes a query that returns <a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">pgx.Rows</a>.
+Arguments should be referenced positionally from the SQL string as $1, $2, etc.
+See <a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">pgx.Rows</a> documentation to close the returned <a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">pgx.Rows</a> and return the acquired connection to the <a href="#Pool">Pool</a>.
+</p><p>If there is an error, the returned <a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">pgx.Rows</a> will be returned in an error state.
+If preferred, ignore the error returned from <a href="#Pool.Query">Pool.Query</a> and handle errors using the returned <a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">pgx.Rows</a>.
+</p><p>For extra control over how the query is executed, the types <a href="/github.com/jackc/pgx/v5@v5.11.0#QueryExecMode">pgx.QueryExecMode</a>, <a href="/github.com/jackc/pgx/v5@v5.11.0#QueryResultFormats">pgx.QueryResultFormats</a>, and
+<a href="/github.com/jackc/pgx/v5@v5.11.0#QueryResultFormatsByOID">pgx.QueryResultFormatsByOID</a> may be used as the first args to control exactly how the query is executed. This is rarely
+needed. See the documentation for those types for details.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.QueryRow" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L791">QueryRow</a> <a class="Documentation-idLink" href="#Pool.QueryRow" title="Go to Pool.QueryRow" aria-label="Go to Pool.QueryRow">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) QueryRow(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, args ...<a href="/builtin#any">any</a>) <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Row">Row</a></pre>
+    </div>
+  <p>QueryRow acquires a connection and executes a query that is expected
+to return at most one row (<a href="/github.com/jackc/pgx/v5@v5.11.0#Row">pgx.Row</a>). Errors are deferred until <a href="/github.com/jackc/pgx/v5@v5.11.0#Row">pgx.Row</a>&#39;s
+Scan method is called. If the query selects no rows, <a href="/github.com/jackc/pgx/v5@v5.11.0#Row">pgx.Row</a>&#39;s Scan will
+return <a href="/github.com/jackc/pgx/v5@v5.11.0#ErrNoRows">pgx.ErrNoRows</a>. Otherwise, <a href="/github.com/jackc/pgx/v5@v5.11.0#Row">pgx.Row</a>&#39;s Scan scans the first selected row
+and discards the rest. The acquired connection is returned to the <a href="#Pool">Pool</a> when
+<a href="/github.com/jackc/pgx/v5@v5.11.0#Row">pgx.Row</a>&#39;s Scan method is called.
+</p><p>Arguments should be referenced positionally from the SQL string as $1, $2, etc.
+</p><p>For extra control over how the query is executed, the types <a href="/github.com/jackc/pgx/v5@v5.11.0#QueryExecMode">pgx.QueryExecMode</a>, <a href="/github.com/jackc/pgx/v5@v5.11.0#QueryResultFormats">pgx.QueryResultFormats</a>, and
+<a href="/github.com/jackc/pgx/v5@v5.11.0#QueryResultFormatsByOID">pgx.QueryResultFormatsByOID</a> may be used as the first args to control exactly how the query is executed. This is rarely
+needed. See the documentation for those types for details.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Reset" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L723">Reset</a> <a class="Documentation-idLink" href="#Pool.Reset" title="Go to Pool.Reset" aria-label="Go to Pool.Reset">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Reset()</pre>
+    </div>
+  <p>Reset closes all connections, but leaves the pool open. It is intended for use when an error is detected that would
+disrupt all connections (such as a network interruption or a server state change).
+</p><p>It is safe to reset a pool while connections are checked out. Those connections will be closed when they are returned
+to the pool.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.SendBatch" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L801">SendBatch</a> <a class="Documentation-idLink" href="#Pool.SendBatch" title="Go to Pool.SendBatch" aria-label="Go to Pool.SendBatch">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) SendBatch(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, b *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Batch">Batch</a>) <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#BatchResults">BatchResults</a></pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Pool.Stat" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Pool) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L731">Stat</a> <a class="Documentation-idLink" href="#Pool.Stat" title="Go to Pool.Stat" aria-label="Go to Pool.Stat">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (p *<a href="#Pool">Pool</a>) Stat() *<a href="#Stat">Stat</a></pre>
+    </div>
+  <p>Stat returns a pgxpool.Stat struct with a snapshot of Pool statistics.
+</p>
+
+  
+
+  </div>
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="ReleaseTracer" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tracer.go#L26">ReleaseTracer</a> <a class="Documentation-idLink" href="#ReleaseTracer" title="Go to ReleaseTracer" aria-label="Go to ReleaseTracer">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v5.6.0</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type ReleaseTracer interface {
+<span id="ReleaseTracer.TraceRelease" data-kind="method">	<span class="comment">// TraceRelease is called at the beginning of Release.</span>
+</span>	TraceRelease(pool *<a href="#Pool">Pool</a>, data <a href="#TraceReleaseData">TraceReleaseData</a>)
+}</pre>
+    </div>
+  <p>ReleaseTracer traces Release.
+</p>
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="ShouldPingParams" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go#L114">ShouldPingParams</a> <a class="Documentation-idLink" href="#ShouldPingParams" title="Go to ShouldPingParams" aria-label="Go to ShouldPingParams">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v5.7.6</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type ShouldPingParams struct {
+<span id="ShouldPingParams.Conn" data-kind="field">	Conn         *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>
+</span><span id="ShouldPingParams.IdleDuration" data-kind="field">	IdleDuration <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+</span>}</pre>
+    </div>
+  <p>ShouldPingParams are the parameters passed to ShouldPing.
+</p>
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="Stat" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L10">Stat</a> <a class="Documentation-idLink" href="#Stat" title="Go to Stat" aria-label="Go to Stat">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type Stat struct {
+	<span class="comment">// contains filtered or unexported fields</span>
+}</pre>
+    </div>
+  <p>Stat is a snapshot of Pool statistics.
+</p>
+<div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.AcquireCount" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L18">AcquireCount</a> <a class="Documentation-idLink" href="#Stat.AcquireCount" title="Go to Stat.AcquireCount" aria-label="Go to Stat.AcquireCount">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) AcquireCount() <a href="/builtin#int64">int64</a></pre>
+    </div>
+  <p>AcquireCount returns the cumulative count of successful acquires from the pool.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.AcquireDuration" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L24">AcquireDuration</a> <a class="Documentation-idLink" href="#Stat.AcquireDuration" title="Go to Stat.AcquireDuration" aria-label="Go to Stat.AcquireDuration">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) AcquireDuration() <a href="/time">time</a>.<a href="/time#Duration">Duration</a></pre>
+    </div>
+  <p>AcquireDuration returns the total duration of all successful acquires from
+the pool.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.AcquiredConns" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L29">AcquiredConns</a> <a class="Documentation-idLink" href="#Stat.AcquiredConns" title="Go to Stat.AcquiredConns" aria-label="Go to Stat.AcquiredConns">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) AcquiredConns() <a href="/builtin#int32">int32</a></pre>
+    </div>
+  <p>AcquiredConns returns the number of currently acquired connections in the pool.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.CanceledAcquireCount" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L35">CanceledAcquireCount</a> <a class="Documentation-idLink" href="#Stat.CanceledAcquireCount" title="Go to Stat.CanceledAcquireCount" aria-label="Go to Stat.CanceledAcquireCount">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) CanceledAcquireCount() <a href="/builtin#int64">int64</a></pre>
+    </div>
+  <p>CanceledAcquireCount returns the cumulative count of acquires from the pool
+that were canceled by a context.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.ConstructingConns" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L41">ConstructingConns</a> <a class="Documentation-idLink" href="#Stat.ConstructingConns" title="Go to Stat.ConstructingConns" aria-label="Go to Stat.ConstructingConns">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) ConstructingConns() <a href="/builtin#int32">int32</a></pre>
+    </div>
+  <p>ConstructingConns returns the number of conns with construction in progress in
+the pool.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.EmptyAcquireCount" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L48">EmptyAcquireCount</a> <a class="Documentation-idLink" href="#Stat.EmptyAcquireCount" title="Go to Stat.EmptyAcquireCount" aria-label="Go to Stat.EmptyAcquireCount">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) EmptyAcquireCount() <a href="/builtin#int64">int64</a></pre>
+    </div>
+  <p>EmptyAcquireCount returns the cumulative count of successful acquires from the pool
+that waited for a resource to be released or constructed because the pool was
+empty.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.EmptyAcquireWaitTime" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L89">EmptyAcquireWaitTime</a> <a class="Documentation-idLink" href="#Stat.EmptyAcquireWaitTime" title="Go to Stat.EmptyAcquireWaitTime" aria-label="Go to Stat.EmptyAcquireWaitTime">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v5.7.3</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) EmptyAcquireWaitTime() <a href="/time">time</a>.<a href="/time#Duration">Duration</a></pre>
+    </div>
+  <p>EmptyAcquireWaitTime returns the cumulative time waited for successful acquires
+from the pool for a resource to be released or constructed because the pool was
+empty.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.IdleConns" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L53">IdleConns</a> <a class="Documentation-idLink" href="#Stat.IdleConns" title="Go to Stat.IdleConns" aria-label="Go to Stat.IdleConns">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) IdleConns() <a href="/builtin#int32">int32</a></pre>
+    </div>
+  <p>IdleConns returns the number of currently idle conns in the pool.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.MaxConns" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L58">MaxConns</a> <a class="Documentation-idLink" href="#Stat.MaxConns" title="Go to Stat.MaxConns" aria-label="Go to Stat.MaxConns">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) MaxConns() <a href="/builtin#int32">int32</a></pre>
+    </div>
+  <p>MaxConns returns the maximum size of the pool.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.MaxIdleDestroyCount" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L82">MaxIdleDestroyCount</a> <a class="Documentation-idLink" href="#Stat.MaxIdleDestroyCount" title="Go to Stat.MaxIdleDestroyCount" aria-label="Go to Stat.MaxIdleDestroyCount">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) MaxIdleDestroyCount() <a href="/builtin#int64">int64</a></pre>
+    </div>
+  <p>MaxIdleDestroyCount returns the cumulative count of connections destroyed because
+they exceeded MaxConnIdleTime.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.MaxLifetimeDestroyCount" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L76">MaxLifetimeDestroyCount</a> <a class="Documentation-idLink" href="#Stat.MaxLifetimeDestroyCount" title="Go to Stat.MaxLifetimeDestroyCount" aria-label="Go to Stat.MaxLifetimeDestroyCount">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) MaxLifetimeDestroyCount() <a href="/builtin#int64">int64</a></pre>
+    </div>
+  <p>MaxLifetimeDestroyCount returns the cumulative count of connections destroyed
+because they exceeded MaxConnLifetime.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.NewConnsCount" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L70">NewConnsCount</a> <a class="Documentation-idLink" href="#Stat.NewConnsCount" title="Go to Stat.NewConnsCount" aria-label="Go to Stat.NewConnsCount">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) NewConnsCount() <a href="/builtin#int64">int64</a></pre>
+    </div>
+  <p>NewConnsCount returns the cumulative count of new connections opened.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Stat.TotalConns" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Stat) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go#L65">TotalConns</a> <a class="Documentation-idLink" href="#Stat.TotalConns" title="Go to Stat.TotalConns" aria-label="Go to Stat.TotalConns">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s *<a href="#Stat">Stat</a>) TotalConns() <a href="/builtin#int32">int32</a></pre>
+    </div>
+  <p>TotalConns returns the total number of resources currently in the pool.
+The value is the sum of ConstructingConns, AcquiredConns, and
+IdleConns.
+</p>
+
+  
+
+  </div>
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="TraceAcquireEndData" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tracer.go#L20">TraceAcquireEndData</a> <a class="Documentation-idLink" href="#TraceAcquireEndData" title="Go to TraceAcquireEndData" aria-label="Go to TraceAcquireEndData">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v5.6.0</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type TraceAcquireEndData struct {
+<span id="TraceAcquireEndData.Conn" data-kind="field">	Conn *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>
+</span><span id="TraceAcquireEndData.Err" data-kind="field">	Err  <a href="/builtin#error">error</a>
+</span>}</pre>
+    </div>
+  
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="TraceAcquireStartData" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tracer.go#L18">TraceAcquireStartData</a> <a class="Documentation-idLink" href="#TraceAcquireStartData" title="Go to TraceAcquireStartData" aria-label="Go to TraceAcquireStartData">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v5.6.0</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type TraceAcquireStartData struct{}</pre>
+    </div>
+  
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="TraceReleaseData" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tracer.go#L31">TraceReleaseData</a> <a class="Documentation-idLink" href="#TraceReleaseData" title="Go to TraceReleaseData" aria-label="Go to TraceReleaseData">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v5.6.0</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type TraceReleaseData struct {
+<span id="TraceReleaseData.Conn" data-kind="field">	Conn *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a>
+</span>}</pre>
+    </div>
+  
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="Tx" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L11">Tx</a> <a class="Documentation-idLink" href="#Tx" title="Go to Tx" aria-label="Go to Tx">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type Tx struct {
+	<span class="comment">// contains filtered or unexported fields</span>
+}</pre>
+    </div>
+  <p>Tx represents a database transaction acquired from a Pool.
+</p>
+<div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.Begin" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L17">Begin</a> <a class="Documentation-idLink" href="#Tx.Begin" title="Go to Tx.Begin" aria-label="Go to Tx.Begin">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) Begin(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Tx">Tx</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Begin starts a pseudo nested transaction implemented with a savepoint.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.Commit" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L25">Commit</a> <a class="Documentation-idLink" href="#Tx.Commit" title="Go to Tx.Commit" aria-label="Go to Tx.Commit">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) Commit(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) <a href="/builtin#error">error</a></pre>
+    </div>
+  <p>Commit commits the transaction and returns the associated connection back to the Pool. Commit will return an error
+where errors.Is(ErrTxClosed) is true if the Tx is already closed, but is otherwise safe to call multiple times. If
+the commit fails with a rollback status (e.g. the transaction was already in a broken state) then ErrTxCommitRollback
+will be returned.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.Conn" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L81">Conn</a> <a class="Documentation-idLink" href="#Tx.Conn" title="Go to Tx.Conn" aria-label="Go to Tx.Conn">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) Conn() *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Conn">Conn</a></pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.CopyFrom" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L46">CopyFrom</a> <a class="Documentation-idLink" href="#Tx.CopyFrom" title="Go to Tx.CopyFrom" aria-label="Go to Tx.CopyFrom">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) CopyFrom(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, tableName <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Identifier">Identifier</a>, columnNames []<a href="/builtin#string">string</a>, rowSrc <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#CopyFromSource">CopyFromSource</a>) (<a href="/builtin#int64">int64</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.Exec" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L69">Exec</a> <a class="Documentation-idLink" href="#Tx.Exec" title="Go to Tx.Exec" aria-label="Go to Tx.Exec">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) Exec(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, arguments ...<a href="/builtin#any">any</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn">pgconn</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn#CommandTag">CommandTag</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.LargeObjects" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L54">LargeObjects</a> <a class="Documentation-idLink" href="#Tx.LargeObjects" title="Go to Tx.LargeObjects" aria-label="Go to Tx.LargeObjects">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) LargeObjects() <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#LargeObjects">LargeObjects</a></pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.Prepare" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L65">Prepare</a> <a class="Documentation-idLink" href="#Tx.Prepare" title="Go to Tx.Prepare" aria-label="Go to Tx.Prepare">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) Prepare(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, name, sql <a href="/builtin#string">string</a>) (*<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn">pgconn</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0/pgconn#StatementDescription">StatementDescription</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Prepare creates a prepared statement with name and sql. If the name is empty,
+an anonymous prepared statement will be used. sql can contain placeholders
+for bound parameters. These placeholders are referenced positionally as $1, $2, etc.
+</p><p>Prepare is idempotent; i.e. it is safe to call Prepare multiple times with the same
+name and sql arguments. This allows a code path to Prepare and Query/Exec without
+needing to first check whether the statement has already been prepared.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.Query" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L73">Query</a> <a class="Documentation-idLink" href="#Tx.Query" title="Go to Tx.Query" aria-label="Go to Tx.Query">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) Query(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, args ...<a href="/builtin#any">any</a>) (<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Rows">Rows</a>, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.QueryRow" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L77">QueryRow</a> <a class="Documentation-idLink" href="#Tx.QueryRow" title="Go to Tx.QueryRow" aria-label="Go to Tx.QueryRow">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) QueryRow(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, sql <a href="/builtin#string">string</a>, args ...<a href="/builtin#any">any</a>) <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Row">Row</a></pre>
+    </div>
+  
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.Rollback" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L37">Rollback</a> <a class="Documentation-idLink" href="#Tx.Rollback" title="Go to Tx.Rollback" aria-label="Go to Tx.Rollback">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) Rollback(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>) <a href="/builtin#error">error</a></pre>
+    </div>
+  <p>Rollback rolls back the transaction and returns the associated connection back to the Pool. Rollback will return
+where an error where errors.Is(ErrTxClosed) is true if the Tx is already closed, but is otherwise safe to call
+multiple times. Hence, defer tx.Rollback() is safe even if tx.Commit() will be called first in a non-error condition.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="Tx.SendBatch" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*Tx) <a class="Documentation-source" href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go#L50">SendBatch</a> <a class="Documentation-idLink" href="#Tx.SendBatch" title="Go to Tx.SendBatch" aria-label="Go to Tx.SendBatch">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tx *<a href="#Tx">Tx</a>) SendBatch(ctx <a href="/context">context</a>.<a href="/context#Context">Context</a>, b *<a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#Batch">Batch</a>) <a href="/github.com/jackc/pgx/v5@v5.11.0">pgx</a>.<a href="/github.com/jackc/pgx/v5@v5.11.0#BatchResults">BatchResults</a></pre>
+    </div>
+  
+
+  
+
+  </div>
+  
+
+    </div></section></div> 
+
+
+
+
+
+
+
+      
+    </div>
+  </div>
+
+        
+      
+      
+        
+  <div class="UnitFiles js-unitFiles">
+    <h2 class="UnitFiles-title" id="section-sourcefiles">
+      <img class="go-Icon" height="24" width="24" src="/static/shared/icon/insert_drive_file_gm_grey_24dp.svg" alt="">
+      Source Files
+      <a class="UnitFiles-idLink" href="#section-sourcefiles" title="Go to Source Files" aria-label="Go to Source Files">¶</a>
+    </h2><div class="UnitFiles-titleLink">
+      <a href="https://github.com/jackc/pgx/tree/v5.11.0/pgxpool" target="_blank" rel="noopener">View all Source files</a>
+    </div><div>
+      <ul class="UnitFiles-fileList"><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/batch_results.go" target="_blank" rel="noopener" title="batch_results.go">batch_results.go</a></li><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/conn.go" target="_blank" rel="noopener" title="conn.go">conn.go</a></li><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/doc.go" target="_blank" rel="noopener" title="doc.go">doc.go</a></li><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/pool.go" target="_blank" rel="noopener" title="pool.go">pool.go</a></li><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/rows.go" target="_blank" rel="noopener" title="rows.go">rows.go</a></li><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/stat.go" target="_blank" rel="noopener" title="stat.go">stat.go</a></li><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tracer.go" target="_blank" rel="noopener" title="tracer.go">tracer.go</a></li><li><a href="https://github.com/jackc/pgx/blob/v5.11.0/pgxpool/tx.go" target="_blank" rel="noopener" title="tx.go">tx.go</a></li></ul>
+    </div>
+  </div>
+
+      
+      
+    </div>
+  </div>
+  <div id="showInternal-description" hidden> Click to show internal directories. </div>
+  <div id="hideInternal-description" hidden> Click to hide internal directories. </div>
+</article>
+    <footer class="go-Main-footer"></footer>
+  </main>
+
+    
+  <footer class="go-Footer">
+    
+    <div class="go-Footer-links">
+      <div class="go-Footer-linkColumn">
+        <a href="https://go.dev/solutions" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Why Go
+        </a>
+        <a href="https://go.dev/solutions/use-cases" class="go-Footer-link"
+            data-gtmc="footer link">
+          Use Cases
+        </a>
+        <a href="https://go.dev/solutions/case-studies" class="go-Footer-link"
+            data-gtmc="footer link">
+          Case Studies
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://learn.go.dev/" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Get Started
+        </a>
+        <a href="https://play.golang.org" class="go-Footer-link" data-gtmc="footer link">
+          Playground
+        </a>
+        <a href="https://tour.golang.org" class="go-Footer-link" data-gtmc="footer link">
+          Tour
+        </a>
+        <a href="https://stackoverflow.com/questions/tagged/go?tab=Newest" class="go-Footer-link"
+            data-gtmc="footer link">
+          Stack Overflow
+        </a>
+        <a href="https://go.dev/help" class="go-Footer-link"
+            data-gtmc="footer link">
+          Help
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://pkg.go.dev" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Packages
+        </a>
+        <a href="/std" class="go-Footer-link" data-gtmc="footer link">
+          Standard Library
+        </a>
+        <a href="/golang.org/x" class="go-Footer-link" data-gtmc="footer link">
+          Sub-repositories
+        </a>
+        <a href="https://pkg.go.dev/about" class="go-Footer-link" data-gtmc="footer link">
+          About Go Packages
+        </a>
+         <a href="/api" class="go-Footer-link" data-gtmc="footer link">
+          pkg.go.dev API
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://go.dev/project" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          About
+        </a>
+        <a href="https://go.dev/dl/" class="go-Footer-link" data-gtmc="footer link">Download</a>
+        <a href="https://go.dev/blog" class="go-Footer-link" data-gtmc="footer link">Blog</a>
+        <a href="https://github.com/golang/go/issues" class="go-Footer-link" data-gtmc="footer link">
+          Issue Tracker
+        </a>
+        <a href="https://go.dev/doc/devel/release.html" class="go-Footer-link"
+            data-gtmc="footer link">
+          Release Notes
+        </a>
+        <a href="https://go.dev/brand" class="go-Footer-link" data-gtmc="footer link">
+          Brand Guidelines
+        </a>
+        <a href="https://go.dev/conduct" class="go-Footer-link" data-gtmc="footer link">
+          Code of Conduct
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://www.twitter.com/golang" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Connect
+        </a>
+        <a href="https://www.twitter.com/golang" class="go-Footer-link" data-gtmc="footer link">
+          Twitter
+        </a>
+        <a href="https://github.com/golang" class="go-Footer-link" data-gtmc="footer link">GitHub</a>
+        <a href="https://invite.slack.golangbridge.org/" class="go-Footer-link"
+            data-gtmc="footer link">
+          Slack
+        </a>
+        <a href="https://reddit.com/r/golang" class="go-Footer-link" data-gtmc="footer link">
+          r/golang
+        </a>
+        <a href="https://www.meetup.com/pro/go" class="go-Footer-link" data-gtmc="footer link">
+          Meetup
+        </a>
+        <a href="https://golangweekly.com/" class="go-Footer-link" data-gtmc="footer link">
+          Golang Weekly
+        </a>
+      </div>
+    </div>
+    <div class="go-Footer-bottom">
+      <img class="go-Footer-gopher"  width="1431" height="901"
+          src="/static/shared/gopher/pilot-bust-1431x901.svg" alt="Gopher in flight goggles">
+      <ul class="go-Footer-listRow">
+        <li class="go-Footer-listItem">
+          <a href="https://go.dev/copyright" data-gtmc="footer link">Copyright</a>
+        </li>
+        <li class="go-Footer-listItem">
+          <a href="https://go.dev/tos" data-gtmc="footer link">Terms of Service</a>
+        </li>
+        <li class="go-Footer-listItem">
+          <a href="http://www.google.com/intl/en/policies/privacy/" data-gtmc="footer link"
+              target="_blank" rel="noopener">
+            Privacy Policy
+          </a>
+        </li>
+        <li class="go-Footer-listItem">
+          <a href="https://go.dev/s/pkgsite-feedback" target="_blank" rel="noopener"
+              data-gtmc="footer link">
+            Report an Issue
+          </a>
+        </li>
+        <li class="go-Footer-listItem">
+          <button class="go-Button go-Button--text go-Footer-toggleTheme js-toggleTheme" aria-label="Theme Toggle">
+            <img data-value="auto" class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/brightness_6_gm_grey_24dp.svg" alt="System theme">
+            <img data-value="dark" class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/brightness_2_gm_grey_24dp.svg" alt="Dark theme">
+            <img data-value="light" class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/light_mode_gm_grey_24dp.svg" alt="Light theme">
+            <p> Theme Toggle </p>
+          </button>
+        </li>
+        <li class="go-Footer-listItem">
+          <button class="go-Button go-Button--text go-Footer-keyboard js-openShortcuts" aria-label="Shorcuts Modal">
+            <img class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/keyboard_grey_24dp.svg" alt="">
+            <p> Shortcuts Modal </p>
+          </button>
+        </li>
+      </ul>
+      <a class="go-Footer-googleLogo" href="https://google.com" target="_blank"rel="noopener"
+          data-gtmc="footer link">
+        <img class="go-Footer-googleLogoImg" height="24" width="72"
+            src="/static/shared/logo/google-white.svg" alt="Google logo">
+      </a>
+    </div>
+  </footer>
+
+    
+  <dialog id="jump-to-modal" class="JumpDialog go-Modal go-Modal--md js-modal">
+    <form method="dialog" data-gmtc="jump to form" aria-label="Jump to Identifier">
+      <div class="Dialog-title go-Modal-header">
+        <h2>Jump to</h2>
+        <button
+          class="go-Button go-Button--inline"
+          type="button"
+          data-modal-close
+          data-gtmc="modal button"
+          aria-label="Close"
+        >
+          <img
+            class="go-Icon"
+            height="24"
+            width="24"
+            src="/static/shared/icon/close_gm_grey_24dp.svg"
+            alt=""
+          />
+        </button>
+      </div>
+      <div class="JumpDialog-filter">
+        <input class="JumpDialog-input go-Input" autocomplete="off" type="text">
+      </div>
+      <div class="JumpDialog-body go-Modal-body">
+        <div class="JumpDialog-list"></div>
+      </div>
+      <div class="go-Modal-actions">
+        <button class="go-Button" data-test-id="close-dialog">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="ShortcutsDialog go-Modal go-Modal--sm js-modal">
+    <form method="dialog">
+      <div class="go-Modal-header">
+        <h2>Keyboard shortcuts</h2>
+        <button
+          class="go-Button go-Button--inline"
+          type="button"
+          data-modal-close
+          data-gtmc="modal button"
+          aria-label="Close"
+        >
+          <img
+            class="go-Icon"
+            height="24"
+            width="24"
+            src="/static/shared/icon/close_gm_grey_24dp.svg"
+            alt=""
+          />
+        </button>
+      </div>
+      <div class="go-Modal-body">
+        <table>
+          <tbody>
+            <tr><td class="ShortcutsDialog-key">
+              <strong>?</strong></td><td> : This menu</td>
+            </tr>
+            <tr><td class="ShortcutsDialog-key">
+              <strong>/</strong></td><td> : Search site</td>
+            </tr>
+            <tr><td class="ShortcutsDialog-key">
+              <strong>f</strong> or <strong>F</strong></td><td> : Jump to</td>
+            </tr>
+            <tr>
+              <td class="ShortcutsDialog-key"><strong>y</strong> or <strong>Y</strong></td>
+              <td> : Canonical URL</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="go-Modal-actions">
+        <button class="go-Button" data-test-id="close-dialog">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+    
+      <section class="Cookie-notice js-cookieNotice">
+        <div>go.dev uses cookies from Google to deliver and enhance the quality of its services and to
+        analyze traffic. <a target=_blank href="https://policies.google.com/technologies/cookies">Learn more.</a></div>
+        <div><button class="go-Button">Okay</button></div>
+      </section>
+    
+    
+      <script>
+        // this will throw if the querySelector can’t find the element
+        const gtmId = document.querySelector('.js-gtmID').dataset.gtmid;
+        if (!gtmId) {
+          throw new Error('Google Tag Manager ID not found');
+        }
+        loadScript(`https://www.googletagmanager.com/gtm.js?id=${gtmId}`);
+      </script>
+      <noscript>
+        <iframe src="https://www.googletagmanager.com/ns.html?id=GTM-W8MVQXG"
+                height="0" width="0" style="display:none;visibility:hidden">
+        </iframe>
+      </noscript>
+    
+    
+  
+  <div class="js-canonicalURLPath" data-canonical-url-path="/github.com/jackc/pgx/v5@v5.11.0/pgxpool" hidden></div>
+  <div class="js-playgroundVars" data-modulepath="github.com/jackc/pgx/v5" data-version="v5.11.0" hidden></div>
+  <script>
+    loadScript('/static/frontend/unit/main/main.js')
+  </script>
+
+  <script>
+    loadScript('/static/frontend/unit/unit.js')
+  </script>
+
+  </body>
+</html>

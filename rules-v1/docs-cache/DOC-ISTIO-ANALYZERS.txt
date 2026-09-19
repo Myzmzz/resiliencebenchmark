@@ -1,0 +1,517 @@
+# doc_id: DOC-ISTIO-ANALYZERS
+# url: https://istio.io/latest/docs/reference/config/analysis/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Overview
+What is Istio?
+Why choose Istio?
+Sidecar or ambient?
+Quickstart
+Concepts
+Traffic Management
+Security
+Observability
+Extensibility
+Sidecar Mode
+Getting Started
+Platform Setup
+Alibaba Cloud
+Amazon EKS
+Azure
+Docker Desktop
+Google Kubernetes Engine
+Huawei Cloud
+IBM Cloud
+k3d
+kind
+Kops
+Kubernetes Gardener
+KubeSphere Container Platform
+MicroK8s
+Minikube
+OpenShift
+Oracle Cloud Infrastructure
+Tencent Cloud
+Install
+Install with Istioctl
+Install with Helm
+Install Multicluster
+Before you begin
+Install Multi-Primary
+Install Primary-Remote
+Install Multi-Primary on different networks
+Install Primary-Remote on different networks
+Verify the installation
+Install Istio with an External Control Plane
+Install Multiple Istio Control Planes in a Single Cluster
+Virtual Machine Installation
+Upgrade
+Canary Upgrades
+In-place Upgrades
+Upgrade with Helm
+More Guides
+Download the Istio release
+Installation Configuration Profiles
+Compatibility Versions
+Installing Gateways
+Installing the Sidecar
+Customizing the installation configuration
+Advanced Helm Chart Customization
+Install Istio in Dual-Stack mode
+Install Istio with Pod Security Admission
+Install the Istio CNI node agent
+NetworkPolicy
+Getting Started without the Gateway API
+Ambient Mode
+Overview
+Getting Started
+Deploy a sample application
+Secure and visualize the application
+Enforce authorization policies
+Manage traffic
+Clean up
+Install
+Platform-Specific Prerequisites
+Install with Helm
+Install with istioctl
+Install Multicluster
+Before you begin
+Install ambient multi-primary on different networks
+Verify the ambient installation
+Configure failover behavior in multicluster ambient installation
+Kiali Dashboard for Ambient Multi-network
+Upgrade
+Upgrade with Helm
+Migrate from Sidecar to Ambient
+Before you begin
+Install ambient components
+Migrate policies
+Enable ambient mode
+User Guides
+Add workloads to the mesh
+Verify mutual TLS is enabled
+Ambient and Kubernetes NetworkPolicy
+Use Layer 4 security policy
+Configure waypoint proxies
+Traffic Distribution
+ServiceEntry visibility
+Use agentgateway
+Use Layer 7 features
+Extend waypoints with WebAssembly plugins *
+Extend waypoints with Lua scripts *
+Troubleshoot connectivity issues with ztunnel
+Troubleshoot issues with waypoints
+Architecture
+Ambient and the Istio control plane
+Ambient data plane
+HBONE
+Ztunnel traffic redirection
+Tasks
+Traffic Management
+Request Routing
+Fault Injection
+Traffic Shifting
+TCP Traffic Shifting
+Request Timeouts
+Circuit Breaking
+Mirroring
+Locality Load Balancing
+Before you begin
+Locality failover
+Locality weighted distribution
+Cleanup
+Ingress
+Ingress Gateways
+Secure Gateways
+Ingress Gateway without TLS Termination
+Ingress Sidecar TLS Termination
+Kubernetes Ingress
+Kubernetes Gateway API
+Kubernetes Gateway API Inference Extension
+Egress
+Accessing External Services
+Egress TLS Origination
+Egress Gateways
+Egress Gateways with TLS Origination
+Egress using Wildcard Hosts
+Kubernetes Services for Egress Traffic
+Using an External HTTPS Proxy
+Security
+Certificate Management
+Plug in CA Certificates
+Custom CA Integration using Kubernetes CSR *
+Authentication
+Authentication Policy
+JWT claim based routing *
+Copy JWT Claims to HTTP Headers *
+Mutual TLS Migration
+Authorization
+HTTP Traffic
+TCP Traffic
+JWT Token
+External Authorization
+Explicit Deny
+Ingress Access Control
+Trust Domain Migration
+Dry Run *
+TLS Configuration
+Istio Workload Minimum TLS Version Configuration
+Policy Enforcement
+Enabling Rate Limits using Envoy
+Observability
+Telemetry API
+Metrics
+Customizing Istio Metrics with Telemetry API
+Collecting Metrics for TCP Services
+Customizing Istio Metrics
+Classifying Metrics Based on Request or Response
+Querying Metrics from Prometheus
+Visualizing Metrics with Grafana
+Securing Prometheus Scraping for Istio Sidecar and Gateway
+Logs
+Configure access logs with Telemetry API
+Envoy Access Logs
+OpenTelemetry
+Distributed Tracing
+Overview
+Configure tracing with Telemetry API
+Configure tracing using MeshConfig and pod annotations
+Configure trace sampling
+OpenTelemetry
+Jaeger
+Zipkin
+Apache SkyWalking
+Visualizing Your Mesh
+Remotely Accessing Telemetry Addons
+Extensibility
+Executing WebAssembly Modules *
+Executing Lua Scripts *
+Examples
+Bookinfo Application
+Bookinfo with a Virtual Machine
+Learn Microservices using Kubernetes and Istio
+Prerequisites
+Set up a Kubernetes Cluster
+Set up a Local Computer
+Run a Microservice Locally
+Run ratings in Docker
+Run Bookinfo with Kubernetes
+Test in production
+Add a new version of reviews
+Enable Istio on productpage
+Enable Istio on all the microservices
+Configure Istio Ingress Gateway
+Monitoring with Istio
+Operations
+Deployment
+Platform Requirements
+Architecture
+Security Model
+Deployment Models
+Virtual Machine Architecture
+Ambient Multicluster Performance
+Performance and Scalability
+Application Requirements
+Configuration
+Mesh Configuration
+Dynamic Admission Webhooks Overview
+Health Checking of Istio Services
+Configuration Scoping
+Traffic Management
+Protocol Selection
+Managing In-Mesh Certificates
+TLS Configuration
+Traffic Routing
+DNS
+Configuring Gateway Network Topology *
+DNS Proxying
+Multi-cluster Traffic Management
+Security
+Security policy examples
+Harden Docker Container Images
+Observability
+Envoy Statistics
+Monitoring Multicluster Istio with Prometheus
+Extensibility
+Pull Policy for WebAssembly Modules *
+Best Practices
+Deployment Best Practices
+Traffic Management Best Practices
+Security Best Practices
+Image Signing and Validation
+Observability Best Practices
+Common Problems
+Traffic Management Problems
+Security Problems
+Observability Problems
+Sidecar Injection Problems
+Configuration Validation Problems
+Upgrade Problems
+Diagnostic Tools
+Using the Istioctl Command-line Tool
+Debugging Envoy and Istiod
+Understand your Mesh with Istioctl Describe
+Diagnose your Configuration with Istioctl Analyze
+Verifying Istio Sidecar Injection with Istioctl Check-Inject
+Istiod Introspection
+Component Logging
+Debugging Virtual Machines
+Troubleshooting Multicluster
+Troubleshooting the Istio CNI plugin
+Integrations
+cert-manager
+Grafana
+Integration Guide
+Debug Endpoints
+Jaeger
+Kiali
+Prometheus
+SPIRE
+Apache SkyWalking
+Zipkin
+Third Party Load Balancers
+Releases
+Feature Status
+Reporting Bugs
+Security Vulnerabilities
+Supported Releases
+Contribute Documentation
+Work with GitHub
+Add New Documentation
+Remove Retired Documentation
+Build and serve the website locally
+Front matter
+Documentation Review Process
+Add Code Blocks
+Use Shortcodes
+Follow Formatting Standards
+Style Guide
+Terminology Standards
+Diagram Creation Guidelines
+Website Content Changes
+Reference
+Configuration
+Analysis Messages
+Global Mesh Options
+IstioOperator Options
+Proxy Extensions
+Traffic Extension
+Wasm Plugin
+Traffic Management
+Destination Rule
+Envoy Filter
+Gateway
+ProxyConfig
+Service Entry
+Sidecar
+Virtual Service
+Workload Entry
+Workload Group
+Security
+PeerAuthentication
+RequestAuthentication
+Authorization Policy
+Authorization Policy Conditions
+Authorization Policy Normalization
+Telemetry
+Common Types
+Workload Selector
+Istio Standard Metrics
+Resource Annotations
+Resource Labels
+Configuration Analysis Messages
+AlphaAnnotation
+Analyzer Message Format
+ConflictingMeshGatewayVirtualServiceHosts
+ConflictingSidecarWorkloadSelectors
+ConflictingTelemetryWorkloadSelectors
+DeploymentAssociatedToMultipleServices
+DeploymentConflictingPorts
+Deprecated
+DeprecatedAnnotation
+EnvoyFilterUsesAddOperationIncorrectly
+EnvoyFilterUsesRelativeOperation
+EnvoyFilterUsesRelativeOperationWithProxyVersion
+EnvoyFilterUsesRemoveOperationIncorrectly
+EnvoyFilterUsesReplaceOperationIncorrectly
+ExternalControlPlaneAddressIsNotAHostname
+ExternalNameServiceTypeInvalidPortName
+GatewayPortNotDefinedOnService
+IneffectivePolicy
+IneffectiveSelector
+InternalError
+InvalidAnnotation
+InvalidApplicationUID
+InvalidExternalControlPlaneConfig
+InvalidGatewayCredential
+InvalidTelemetryProvider
+LocalhostListener
+MisplacedAnnotation
+MultipleSidecarsWithoutWorkloadSelectors
+MultipleTelemetriesWithoutWorkloadSelectors
+NamespaceMultipleInjectionLabels
+NamespaceNotInjected
+NoMatchingWorkloadsFound
+NoServerCertificateVerificationDestinationLevel
+NoServerCertificateVerificationPortLevel
+PodMissingProxy
+PodsIstioProxyImageMismatchInNamespace
+PortNameIsNotUnderNamingConvention
+ReferencedResourceNotFound
+SchemaValidationError
+ServiceEntryAddressesRequired
+UnknownAnnotation
+VirtualServiceDestinationPortSelectorRequired
+VirtualServiceHostNotFoundInGateway
+VirtualServiceIneffectiveMatch
+VirtualServiceUnreachableRule
+Commands
+install-cni
+istioctl
+pilot-agent
+pilot-discovery
+Glossary
+Contents
+Documentation
+Reference
+Configuration
+Configuration Analysis Messages
+[[H1]] Configuration Analysis Messages
+istioctl provides rich analysis of Istio configuration state in order to identity invalid or suboptimal configurations. Here’s is a list of the distinct possible error or warning messages produced by this analysis.
+[[H5]] IST0001: InternalError
+There was an internal error in the toolchain. This is almost always a bug in the implementation.
+[[H5]] IST0002: Deprecated
+A feature that the configuration is depending on is now deprecated.
+[[H5]] IST0101: ReferencedResourceNotFound
+A resource being referenced does not exist.
+[[H5]] IST0102: NamespaceNotInjected
+A namespace is not enabled for Istio injection.
+[[H5]] IST0103: PodMissingProxy
+A pod is missing the Istio proxy.
+[[H5]] IST0106: SchemaValidationError
+The resource has a schema validation error.
+[[H5]] IST0107: MisplacedAnnotation
+An Istio annotation is applied to the wrong kind of resource.
+[[H5]] IST0108: UnknownAnnotation
+An Istio annotation is not recognized for any kind of resource
+[[H5]] IST0109: ConflictingMeshGatewayVirtualServiceHosts
+Conflicting hosts on VirtualServices associated with mesh gateway
+[[H5]] IST0110: ConflictingSidecarWorkloadSelectors
+A Sidecar resource selects the same workloads as another Sidecar resource
+[[H5]] IST0111: MultipleSidecarsWithoutWorkloadSelectors
+More than one sidecar resource in a namespace has no workload selector
+[[H5]] IST0112: VirtualServiceDestinationPortSelectorRequired
+A VirtualService routes to a service with more than one port exposed, but does not specify which to use.
+[[H5]] IST0116: DeploymentAssociatedToMultipleServices
+The resulting pods of a service mesh deployment can't be associated with multiple services using the same port but different protocols.
+[[H5]] IST0118: PortNameIsNotUnderNamingConvention
+Port name is not under naming convention. Protocol detection is applied to the port.
+[[H5]] IST0123: NamespaceMultipleInjectionLabels
+A namespace has more than one type of injection labels
+[[H5]] IST0125: InvalidAnnotation
+An Istio annotation that is not valid
+[[H5]] IST0126: UnknownMeshNetworksServiceRegistry
+A service registry in Mesh Networks is unknown
+[[H5]] IST0127: NoMatchingWorkloadsFound
+There aren't workloads matching the resource labels
+[[H5]] IST0128: NoServerCertificateVerificationDestinationLevel
+No caCertificates are set in DestinationRule, this results in no verification of presented server certificate.
+[[H5]] IST0129: NoServerCertificateVerificationPortLevel
+No caCertificates are set in DestinationRule, this results in no verification of presented server certificate for traffic to a given port.
+[[H5]] IST0130: VirtualServiceUnreachableRule
+A VirtualService rule will never be used because a previous rule uses the same match.
+[[H5]] IST0131: VirtualServiceIneffectiveMatch
+A VirtualService rule match duplicates a match in a previous rule.
+[[H5]] IST0132: VirtualServiceHostNotFoundInGateway
+Host defined in VirtualService not found in Gateway.
+[[H5]] IST0133: SchemaWarning
+The resource has a schema validation warning.
+[[H5]] IST0134: ServiceEntryAddressesRequired
+Virtual IP addresses are required for ports serving TCP (or unset) protocol when PILOT_ENABLE_IP_AUTOALLOCATE is not set on a proxy
+[[H5]] IST0135: DeprecatedAnnotation
+A resource is using a deprecated Istio annotation.
+[[H5]] IST0136: AlphaAnnotation
+An Istio annotation may not be suitable for production.
+[[H5]] IST0137: DeploymentConflictingPorts
+Two services selecting the same workload with the same targetPort MUST refer to the same port.
+[[H5]] IST0138: GatewayDuplicateCertificate
+Duplicate certificate in multiple gateways may cause 404s if clients re-use HTTP2 connections.
+[[H5]] IST0139: InvalidWebhook
+Webhook is invalid or references a control plane service that does not exist.
+[[H5]] IST0140: IngressRouteRulesNotAffected
+Route rules have no effect on ingress gateway requests
+[[H5]] IST0141: InsufficientPermissions
+Required permissions to install Istio are missing.
+[[H5]] IST0142: UnsupportedKubernetesVersion
+The Kubernetes version is not supported
+[[H5]] IST0143: LocalhostListener
+A port exposed in a Service is bound to a localhost address
+[[H5]] IST0144: InvalidApplicationUID
+Application pods should not run as user ID (UID) 1337
+[[H5]] IST0145: ConflictingGateways
+Gateway should not have the same selector, port and matched hosts of server
+[[H5]] IST0146: ImageAutoWithoutInjectionWarning
+Deployments with `image: auto` should be targeted for injection.
+[[H5]] IST0147: ImageAutoWithoutInjectionError
+Pods with `image: auto` should be targeted for injection.
+[[H5]] IST0148: NamespaceInjectionEnabledByDefault
+user namespace should be injectable if Istio is installed with enableNamespacesByDefault enabled and neither injection label is set.
+[[H5]] IST0149: JwtClaimBasedRoutingWithoutRequestAuthN
+Virtual service using JWT claim based routing without request authentication.
+[[H5]] IST0150: ExternalNameServiceTypeInvalidPortName
+Proxy may prevent tcp named ports and unmatched traffic for ports serving TCP protocol from being forwarded correctly for ExternalName services.
+[[H5]] IST0151: EnvoyFilterUsesRelativeOperation
+This EnvoyFilter does not have a priority and has a relative patch operation set which can cause the EnvoyFilter not to be applied. Using the INSERT_FIRST or ADD option or setting the priority may help in ensuring the EnvoyFilter is applied correctly.
+[[H5]] IST0152: EnvoyFilterUsesReplaceOperationIncorrectly
+The REPLACE operation is only valid for HTTP_FILTER and NETWORK_FILTER.
+[[H5]] IST0153: EnvoyFilterUsesAddOperationIncorrectly
+The ADD operation will be ignored when applyTo is set to ROUTE_CONFIGURATION, or HTTP_ROUTE.
+[[H5]] IST0154: EnvoyFilterUsesRemoveOperationIncorrectly
+The REMOVE operation will be ignored when applyTo is set to ROUTE_CONFIGURATION, or HTTP_ROUTE.
+[[H5]] IST0155: EnvoyFilterUsesRelativeOperationWithProxyVersion
+This EnvoyFilter does not have a priority and has a relative patch operation (NSTERT_BEFORE/AFTER, REPLACE, MERGE, DELETE) and proxyVersion set which can cause the EnvoyFilter not to be applied during an upgrade. Using the INSERT_FIRST or ADD option or setting the priority may help in ensuring the EnvoyFilter is applied correctly.
+[[H5]] IST0156: UnsupportedGatewayAPIVersion
+The Gateway API CRD version is not supported
+[[H5]] IST0172: FutureUnsupportedGatewayAPIVersion
+The Gateway API CRD version will not be supported in the future
+[[H5]] IST0157: InvalidTelemetryProvider
+The Telemetry with empty providers will be ignored
+[[H5]] IST0158: PodsIstioProxyImageMismatchInNamespace
+The Istio proxy image of the pods running in the namespace do not match the image defined in the injection configuration.
+[[H5]] IST0159: ConflictingTelemetryWorkloadSelectors
+A Telemetry resource selects the same workloads as another Telemetry resource
+[[H5]] IST0160: MultipleTelemetriesWithoutWorkloadSelectors
+More than one telemetry resource in a namespace has no workload selector
+[[H5]] IST0161: InvalidGatewayCredential
+The credential provided for the Gateway resource is invalid
+[[H5]] IST0162: GatewayPortNotDefinedOnService
+Gateway port not exposed by service
+[[H5]] IST0163: InvalidExternalControlPlaneConfig
+Address for the ingress gateway on the external control plane is not valid
+[[H5]] IST0164: ExternalControlPlaneAddressIsNotAHostname
+Address for the ingress gateway on the external control plane is an IP address and not a hostname
+[[H5]] IST0165: ReferencedInternalGateway
+VirtualServices should not reference internal Gateways.
+[[H5]] IST0166: IneffectiveSelector
+Selector has no effect when applied to Kubernetes Gateways.
+[[H5]] IST0167: IneffectivePolicy
+The policy applied has no impact.
+[[H5]] IST0168: UnknownUpgradeCompatibility
+We cannot automatically detect whether a change is fully compatible or not
+[[H5]] IST0169: UpdateIncompatibility
+The provided configuration object may be incompatible due to an upgrade
+[[H5]] IST0170: MultiClusterInconsistentService
+The services live in different clusters under multi-cluster deployment model are inconsistent
+[[H5]] IST0171: NegativeConditionStatus
+A condition with a negative status is present
+[[H5]] IST0173: DestinationRuleSubsetNotSelectPods
+Subsets defined in destination does not select any pods.
+[[H5]] IST0174: UnknownDestinationRuleHost
+Host defined in destination rule does not match any services in the mesh.
+[[H5]] IST0175: JwksUriFetchUnrestricted
+RequestAuthentication resources exist but BLOCKED_CIDRS_IN_JWKS_URIS is not configured on istiod.
+[[H5]] IST0176: GatewayAPICRDVersionBelowMinimum
+A Gateway API CRD is installed at a version below the minimum required by this Istio version. Resources of this kind will not be processed.
+[[H5]] IST0177: ConflictingServiceEntryProtocol
+Multiple ServiceEntries define the same host and port with conflicting protocols.
+[[H2]] Links

@@ -1,0 +1,455 @@
+# doc_id: DOC-NATS-CONSUMERS
+# url: https://docs.nats.io/nats-concepts/jetstream/consumers
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Develop
+JetStream
+Pull consumers in depth
+On this page
+[[H1]] Pull consumers in depth
+The shipping consumer delivers the next message to a worker when the worker asks. That ask is a pull. The page that created the consumer treated a pull as a single "give me one message."
+A worker often wants more than one message at a time. It might want a handful, process them, and come back. It might want a continuous flow where new messages arrive as soon as they reach the stream. This page covers both patterns and the fields that bound them.
+The shipping consumer doesn't change. It stays a pull consumer with explicit ack. What changes is how your code drives it.
+[[H2]] Two ways to pull
+There are two pull patterns, and every client library names them the same way.
+Fetch asks for a batch of up to N messages. The call returns when the batch is full or when a timeout expires, whichever comes first. You get a finite set of messages, you process them, and the call is done. To keep going, you fetch again.
+Consume sets up a continuous flow. You pass it a function. The library sends pull requests in the background and adds new ones as messages arrive. It calls your function for each message. It runs until you stop it instead of returning after a batch.
+Use fetch when your code wants control over each round, such as a cron job that drains what's queued or a request handler that takes a few messages. Use consume when you want a long-running worker that processes messages as fast as they arrive. Most services use consume.
+[[H2]] Fetch a batch
+A fetch names a batch size and a timeout. Here's a worker asking for up to ten messages and waiting up to two seconds for them:
+CLI
+JavaScript/TypeScript
+Go
+Python
+Java
+Rust
+C#/.NET
+C
+#!/bin/bash
+# Fetch a batch of up to 10 messages from the shipping pull consumer,
+# waiting up to 2 seconds for them. nats consumer next is a single
+# fetch; --count is the batch size, --wait is the timeout.
+nats consumer next ORDERS shipping --count 10 --wait 2s
+// Bind to the durable "shipping" consumer.
+const js = jetstream(nc);
+const c = await js.consumers.get("ORDERS", "shipping");
+// Fetch a batch of up to 10 orders, waiting up to 2 seconds for them. The call
+// returns when the batch is full or the wait elapses, whichever comes first.
+// Process and ack each, then fetch again to keep going.
+const msgs = await c.fetch({ max_messages: 10, expires: 2000 });
+for await (const m of msgs) {
+console.log(`shipping ${m.string()}`);
+m.ack();
+}
+// Bind to the durable "shipping" consumer.
+cons, err := js.Consumer(ctx, "ORDERS", "shipping")
+if err != nil {
+panic(err)
+}
+// Fetch a batch of up to 10 orders, waiting up to 2 seconds for them. The
+// call returns when the batch is full or the wait elapses, whichever comes
+// first. Process and ack each one, then fetch again to keep going.
+msgs, err := cons.Fetch(10, jetstream.FetchMaxWait(2*time.Second))
+if err != nil {
+panic(err)
+}
+for msg := range msgs.Messages() {
+fmt.Printf("shipping %s\n", string(msg.Data()))
+msg.Ack()
+}
+if msgs.Error() != nil {
+panic(msgs.Error())
+}
+# Bind to the durable "shipping" consumer.
+psub = await js.pull_subscribe_bind("shipping", stream="ORDERS")
+# Fetch a batch of up to 10 orders, waiting up to 2 seconds for them. The
+# call returns the messages it has when the batch is full or the timeout
+# passes. Process and ack each, then fetch again to keep going.
+msgs = await psub.fetch(batch=10, timeout=2)
+for msg in msgs:
+print(f"shipping {msg.data.decode()}")
+await msg.ack()
+// Fetch a batch of up to 10 orders, waiting up to 2 seconds for
+// them. The fetch ends when the batch is full or the wait elapses,
+// whichever comes first. Process and ack each, then fetch again.
+try (FetchConsumer fc = cc.fetch(
+FetchConsumeOptions.builder().maxMessages(10).expiresIn(2000).build())) {
+Message m;
+while ((m = fc.nextMessage()) != null) {
+System.out.println("shipping " + new String(m.getData(), StandardCharsets.UTF_8));
+m.ack();
+}
+}
+// Bind to the durable "shipping" consumer.
+let stream = js.get_stream("ORDERS").await?;
+let consumer: PullConsumer = stream.get_consumer("shipping").await?;
+// Fetch a batch of up to 10 orders, waiting up to 2 seconds for them. The
+// call returns when the batch is full or the wait elapses, whichever comes
+// first. Process and ack each, then fetch again to keep going.
+let mut messages = consumer
+.fetch()
+.max_messages(10)
+.expires(Duration::from_secs(2))
+.messages()
+.await?;
+while let Some(msg) = messages.next().await {
+let msg = msg?;
+println!("shipping {}", std::str::from_utf8(&msg.payload)?);
+msg.ack().await?;
+}
+// Bind to the durable "shipping" consumer.
+var consumer = await js.GetConsumerAsync("ORDERS", "shipping");
+// Fetch a batch of up to 10 orders, waiting up to 2 seconds for them. The
+// call returns the messages it has when the batch is full or the wait
+// elapses. Process and ack each, then fetch again to keep going.
+await foreach (var msg in consumer.FetchAsync<Order>(
+opts: new NatsJSFetchOpts { MaxMsgs = 10, Expires = TimeSpan.FromSeconds(2) }))
+{
+output.WriteLine($"shipping {msg.Data}");
+await msg.AckAsync();
+shipped++;
+}
+// Bind to the durable "shipping" consumer.
+jsSubOptions so;
+jsSubOptions_Init(&so);
+so.Stream = "ORDERS";
+so.Consumer = "shipping";
+s = js_PullSubscribe(&sub, js, NULL, NULL, NULL, &so, &jerr);
+if (s == NATS_OK)
+{
+// Fetch a batch of up to 10 orders, waiting up to 2 seconds for
+// them. The call returns when the batch is full or the wait
+// elapses, whichever comes first. Process and ack each one, then
+// fetch again to keep going.
+natsMsgList list = {NULL, 0};
+s = natsSubscription_Fetch(&list, sub, 10, 2000, &jerr);
+if ((s == NATS_OK) || (s == NATS_TIMEOUT))
+{
+for (int i = 0; i < list.Count; i++)
+{
+printf("shipping %s\n", natsMsg_GetData(list.Msgs[i]));
+natsMsg_Ack(list.Msgs[i], NULL);
+}
+natsMsgList_Destroy(&list);
+s = NATS_OK;
+}
+}
+Two outcomes are normal.
+If ten messages are queued, the call returns all ten immediately. The worker processes and acks them, then fetches again.
+If only three messages are queued, the call returns those three and then waits up to two seconds for a fourth. When the two seconds pass, it returns the three it has. The timeout is the ceiling, so a fetch always returns within it.
+The CLI has no single batch fetch. nats consumer next --count N retrieves N messages by issuing N single-message pulls in a row, each bounded by --timeout, so it approximates a fetch loop rather than one batch request:
+CLI
+#!/bin/bash
+# A CLI fetch. --count retrieves up to 5 messages by issuing 5 single
+# pulls in a row, not one batch request. Run this again to walk the
+# stream a batch at a time.
+nats consumer next ORDERS shipping --count 5
+Run it twice and you walk the stream a batch at a time. The consumer's cursor advances as messages are acked, the same way it did one message at a time on the consumer page.
+[[H2]] Consume a continuous flow
+A long-running worker shouldn't loop on fetch by hand. The consume pattern does the looping for you. It keeps pull requests open so a new message is delivered as soon as it's stored in the stream:
+CLI
+JavaScript/TypeScript
+Go
+Python
+Java
+Rust
+C#/.NET
+C
+#!/bin/bash
+# Consume a continuous flow from the CLI. nats consumer next exits after
+# --timeout of quiet, so wrap it in a loop to keep going as new messages
+# land. --ack acknowledges each message as it is received. Ctrl-C stops
+# the loop.
+while true; do
+nats consumer next ORDERS shipping --count 100 --ack --timeout 5s || sleep 1
+done
+// Bind to the durable "shipping" consumer.
+const js = jetstream(nc);
+const c = await js.consumers.get("ORDERS", "shipping");
+// consume() sets up a continuous flow: the library keeps pull requests open and
+// yields each order as soon as it lands in the stream. It runs until you stop
+// it, no fetch loop to write by hand.
+const messages = await c.consume();
+for await (const m of messages) {
+console.log(`shipping ${m.string()}`);
+m.ack();
+}
+// Bind to the durable "shipping" consumer.
+cons, err := js.Consumer(ctx, "ORDERS", "shipping")
+if err != nil {
+panic(err)
+}
+// Consume sets up a continuous flow: the library keeps pull requests open
+// in the background and runs the handler for each order as soon as it lands
+// in the stream. No fetch loop to write by hand; it runs until you stop it.
+consCtx, err := cons.Consume(func(msg jetstream.Msg) {
+fmt.Printf("shipping %s\n", string(msg.Data()))
+msg.Ack()
+})
+if err != nil {
+panic(err)
+}
+defer consCtx.Stop()
+// Keep consuming until interrupted (Ctrl-C).
+sig := make(chan os.Signal, 1)
+signal.Notify(sig, os.Interrupt)
+<-sig
+# Bind to the durable "shipping" consumer.
+psub = await js.pull_subscribe_bind("shipping", stream="ORDERS")
+# nats.py drives a pull consumer with fetch, so a continuous flow is a fetch
+# loop: pull a batch, process it, come back. fetch times out when nothing is
+# waiting; keep looping so new orders are picked up as soon as they land.
+while True:
+try:
+msgs = await psub.fetch(batch=10, timeout=5)
+except nats.errors.TimeoutError:
+continue
+for msg in msgs:
+print(f"shipping {msg.data.decode()}")
+await msg.ack()
+// consume() sets up a continuous flow: the library keeps pull
+// requests open and runs the handler for each order as soon as it
+// lands in the stream. It runs until you stop it.
+try (MessageConsumer mc = cc.consume(msg -> {
+System.out.println("shipping " + new String(msg.getData(), StandardCharsets.UTF_8));
+msg.ack();
+})) {
+// Keep consuming until the process is stopped.
+Thread.sleep(Long.MAX_VALUE);
+}
+// Bind to the durable "shipping" consumer.
+let stream = js.get_stream("ORDERS").await?;
+let consumer: PullConsumer = stream.get_consumer("shipping").await?;
+// messages() sets up a continuous flow: the library keeps pull requests
+// open and yields each order as soon as it lands in the stream. It runs
+// until you stop it, no fetch loop to write by hand.
+let mut messages = consumer.messages().await?;
+while let Some(msg) = messages.next().await {
+let msg = msg?;
+println!("shipping {}", std::str::from_utf8(&msg.payload)?);
+msg.ack().await?;
+}
+// Bind to the durable "shipping" consumer.
+var consumer = await js.GetConsumerAsync("ORDERS", "shipping");
+// ConsumeAsync sets up a continuous flow: it keeps pull requests open and
+// yields each order as soon as it lands in the stream. It runs until you
+// stop it, no fetch loop to write by hand.
+await foreach (var msg in consumer.ConsumeAsync<Order>())
+{
+output.WriteLine($"shipping {msg.Data}");
+await msg.AckAsync();
+// A real consumer runs forever; stop once the backlog is clear so the
+// example returns.
+if (++shipped == 2)
+{
+break;
+}
+}
+// The handler runs for each order as soon as it lands in the stream.
+static void
+onOrder(natsConnection *nc, natsSubscription *sub, natsMsg *msg, void *closure)
+{
+printf("shipping %s\n", natsMsg_GetData(msg));
+natsMsg_Ack(msg, NULL);
+natsMsg_Destroy(msg);
+}
+// Bind to the durable "shipping" consumer. The library keeps pull
+// requests open in the background and dispatches messages to the
+// handler. No fetch loop to write by hand; it runs until you stop it.
+jsSubOptions so;
+jsSubOptions_Init(&so);
+so.Stream = "ORDERS";
+so.Consumer = "shipping";
+so.ManualAck = true;
+s = js_PullSubscribeAsync(&sub, js, NULL, NULL,
+onOrder, NULL, NULL, &so, &jerr);
+Your function runs once per message and acks on success. The library handles the pull requests, sends new ones as the old ones empty, and keeps going until you stop it. Most order-processing workers use this pattern.
+[[H2]] The two fields that bound a pull
+Both patterns issue the same underlying pull request, and two fields on that request decide how much a single pull returns:
+batch: the maximum number of messages this pull may return. A bigger batch means fewer round trips and higher throughput. A smaller batch means lower latency per message and less work lost if the worker dies mid-batch.
+expires: how long the server holds the pull open waiting for messages before it returns what it has. This is the timeout from the fetch above. It bounds latency on a quiet stream.
+Client libraries set defaults for both, and the consume pattern keeps a batch and an expiry in flight for you, so a plain consume loop behaves well without tuning.
+For the full set of pull request fields, see Reference → Get next message. This page uses only batch and expires.
+[[H2]] Pitfalls
+A couple of defaults trip people up once shipping carries real order traffic.
+An empty fetch is normal. When no orders are queued, a fetch returns nothing once expires elapses. The server replies with a 408 Request Timeout status (a no-wait fetch with no messages gets 404 No Messages instead), and every client reports that as an empty batch (the CLI exits non-zero). A worker that treats an empty fetch as a failure fails on a quiet stream. An empty result means nothing is available right now, so keep looping: wait and fetch again.
+CLI
+JavaScript/TypeScript
+Go
+Python
+Java
+Rust
+C#/.NET
+C
+#!/bin/bash
+# A fetch on a drained consumer returns nothing. nats consumer next exits
+# non-zero when the pull times out with no messages waiting. Treat that as
+# "nothing right now," not a failure: sleep and fetch again.
+if nats consumer next ORDERS shipping --count 10 --timeout 2s; then
+echo "processed a batch"
+else
+echo "no orders waiting, will retry"
+sleep 1
+fi
+// Bind to the durable "shipping" consumer.
+const js = jetstream(nc);
+const c = await js.consumers.get("ORDERS", "shipping");
+// A fetch on a drained consumer ends empty once the wait elapses, not with an
+// error. Treat "nothing right now" as normal: if no orders came back, wait and
+// fetch again instead of failing.
+const msgs = await c.fetch({ max_messages: 10, expires: 2000 });
+let count = 0;
+for await (const m of msgs) {
+console.log(`shipping ${m.string()}`);
+m.ack();
+count++;
+}
+if (count === 0) {
+console.log("no orders waiting, will retry");
+}
+// Bind to the durable "shipping" consumer.
+cons, err := js.Consumer(ctx, "ORDERS", "shipping")
+if err != nil {
+panic(err)
+}
+// A fetch on a drained consumer returns an empty batch once the wait
+// elapses, not an error. Treat "nothing right now" as normal: if no orders
+// came back, wait and fetch again instead of failing.
+msgs, err := cons.Fetch(10, jetstream.FetchMaxWait(2*time.Second))
+if err != nil {
+panic(err)
+}
+count := 0
+for msg := range msgs.Messages() {
+fmt.Printf("shipping %s\n", string(msg.Data()))
+msg.Ack()
+count++
+}
+if msgs.Error() != nil {
+panic(msgs.Error())
+}
+if count == 0 {
+fmt.Println("no orders waiting, will retry")
+time.Sleep(time.Second)
+}
+# Bind to the durable "shipping" consumer.
+psub = await js.pull_subscribe_bind("shipping", stream="ORDERS")
+# On a drained consumer, fetch raises TimeoutError once the timeout passes.
+# Treat that as "nothing right now," not a failure: catch it, wait, and
+# fetch again instead of crashing.
+try:
+msgs = await psub.fetch(batch=10, timeout=2)
+except nats.errors.TimeoutError:
+print("no orders waiting, will retry")
+msgs = []
+for msg in msgs:
+print(f"shipping {msg.data.decode()}")
+await msg.ack()
+// On a drained consumer the fetch ends with no messages once the
+// expiry passes, and nextMessage() returns null right away. Treat
+// that as "nothing right now," not a failure: note it and fetch
+// again instead of erroring.
+try (FetchConsumer fc = cc.fetch(
+FetchConsumeOptions.builder().maxMessages(10).expiresIn(2000).build())) {
+Message m = fc.nextMessage();
+if (m == null) {
+System.out.println("no orders waiting, will retry");
+}
+while (m != null) {
+System.out.println("shipping " + new String(m.getData(), StandardCharsets.UTF_8));
+m.ack();
+m = fc.nextMessage();
+}
+}
+// Bind to the durable "shipping" consumer.
+let stream = js.get_stream("ORDERS").await?;
+let consumer: PullConsumer = stream.get_consumer("shipping").await?;
+// A fetch on a drained consumer ends empty once the wait elapses, not with
+// an error. Treat "nothing right now" as normal: if no orders came back,
+// wait and fetch again instead of failing.
+let mut messages = consumer
+.fetch()
+.max_messages(10)
+.expires(Duration::from_secs(2))
+.messages()
+.await?;
+let mut count = 0;
+while let Some(msg) = messages.next().await {
+let msg = msg?;
+println!("shipping {}", std::str::from_utf8(&msg.payload)?);
+msg.ack().await?;
+count += 1;
+}
+if count == 0 {
+println!("no orders waiting, will retry");
+}
+// Bind to the durable "shipping" consumer.
+var consumer = await js.GetConsumerAsync("ORDERS", "shipping");
+// On a drained consumer the fetch ends with no messages once the expiry
+// passes, not with an error. Treat "nothing right now" as normal: if no
+// orders came back, wait and fetch again instead of failing.
+await foreach (var msg in consumer.FetchAsync<string>(
+opts: new NatsJSFetchOpts { MaxMsgs = 10, Expires = TimeSpan.FromSeconds(2) }))
+{
+output.WriteLine($"shipping {msg.Data}");
+await msg.AckAsync();
+shipped++;
+}
+if (shipped == 0)
+{
+output.WriteLine("no orders waiting, will retry");
+}
+// Bind to the durable "shipping" consumer.
+jsSubOptions so;
+jsSubOptions_Init(&so);
+so.Stream = "ORDERS";
+so.Consumer = "shipping";
+s = js_PullSubscribe(&sub, js, NULL, NULL, NULL, &so, &jerr);
+if (s == NATS_OK)
+{
+// A fetch on a drained consumer comes back empty with
+// NATS_TIMEOUT once the wait elapses. Treat "nothing right now"
+// as normal: if no orders came back, wait and fetch again
+// instead of failing.
+natsMsgList list = {NULL, 0};
+s = natsSubscription_Fetch(&list, sub, 10, 2000, &jerr);
+if ((s == NATS_OK) || (s == NATS_TIMEOUT))
+{
+for (int i = 0; i < list.Count; i++)
+{
+printf("shipping %s\n", natsMsg_GetData(list.Msgs[i]));
+natsMsg_Ack(list.Msgs[i], NULL);
+}
+if (list.Count == 0)
+{
+printf("no orders waiting, will retry\n");
+nats_Sleep(1000);
+}
+natsMsgList_Destroy(&list);
+s = NATS_OK;
+}
+}
+A raw fetch with no expiry can stall. A pull request with expires set to zero never times out: the server holds it until the batch fills. Client libraries protect you from that with a default of about 30 seconds, so a fetch from client code returns control on a quiet stream even when you don't set expires. Set it yourself when you want a specific ceiling instead of relying on the default. The CLI bounds each pull with --timeout.
+MaxAckPending set too low limits throughput. This is the limit on un-acked messages the consumer hands out before it waits for acks. If you set it well below your batch size (a limit of ten against a batch of 100), the server delivers ten orders, then stops until your worker acks, no matter how large a batch you ask for. Keep it at or above your batch size. The default is 1000; lower it only when you know the in-flight count you want. The worker pool shares this single limit across every worker, so it matters even more there: see the worker pool page.
+A batch set too large uses more memory than expected. batch counts messages, not bytes, so a large batch against large orders can pull more into memory in one round than you expect. Most clients let you bound a pull by total size instead — a max_bytes option on fetch or consume — so you can cap memory directly; whichever limit is hit first ends the pull.
+[[H2]] Where you are
+You still have one stream, ORDERS, and one pull consumer, shipping. What changed is how you drive it. You can fetch a bounded batch when your code wants each round, or consume a continuous flow when you want a long-running worker. In both cases you bound a single pull with batch and expires.
+[[H2]] What's next
+The next page puts several workers on the shipping consumer at once and shows the server splitting the stream between them: a pool of workers sharing one cursor. That's also where MaxAckPending, the limit on un-acked messages across the whole consumer, starts to matter, since the pool shares one limit between every worker.
+[[H2]] See also
+Reference → Get next message — every field of a pull request, including no_wait and the min_pending controls this page left out.
+The worker pool page — sharing one pull consumer across many workers.
+Copy as MarkdownView as MarkdownOpen in Claude
+Edit this page
+Previous
+Ack responses and redelivery
+Next
+Scaling a consumer
+Two ways to pull
+Fetch a batch
+Consume a continuous flow
+The two fields that bound a pull
+Pitfalls
+Where you are
+What's next
+See also

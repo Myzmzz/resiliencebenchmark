@@ -1,0 +1,118 @@
+# doc_id: DOC-MSIO-CIRCUITBREAKER
+# url: https://microservices.io/patterns/reliability/circuit-breaker.html
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H4]] Microservice Architecture
+Patterns
+Articles
+Presentations
+Adopt
+Refactoring
+Testing
+Modernization Help
+About
+[[H1]] Pattern: Circuit Breaker
+pattern service design resilience inter-service communication
+[[H2]] Context
+You have applied the Microservice architecture. Services sometimes collaborate when handling requests. When one service synchronously invokes another there is always the possibility that the other service is unavailable or is exhibiting such high latency it is essentially unusable. Precious resources such as threads might be consumed in the caller while waiting for the other service to respond. This might lead to resource exhaustion, which would make the calling service unable to handle other requests. The failure of one service can potentially cascade to other services throughout the application.
+[[H2]] Problem
+How to prevent a network or service failure from cascading to other services?
+[[H2]] Forces
+[[H2]] Solution
+A service client should invoke a remote service via a proxy that functions in a similar fashion to an electrical circuit breaker. When the number of consecutive failures crosses a threshold, the circuit breaker trips, and for the duration of a timeout period all attempts to invoke the remote service will fail immediately. After the timeout expires the circuit breaker allows a limited number of test requests to pass through. If those requests succeed the circuit breaker resumes normal operation. Otherwise, if there is a failure the timeout period begins again.
+[[H2]] Example
+RegistrationServiceProxy from the Microservices Example application is an example of a component, which is written in Scala, that uses a circuit breaker to handle failures when invoking a remote service.
+@Component
+class RegistrationServiceProxy @Autowired()(restTemplate: RestTemplate) extends RegistrationService {
+@Value("${user_registration_url}")
+var userRegistrationUrl: String = _
+@HystrixCommand(commandProperties=Array(new HystrixProperty(name="execution.isolation.thread.timeoutInMilliseconds", value="800")))
+override def registerUser(emailAddress: String, password: String): Either[RegistrationError, String] = {
+try {
+val response = restTemplate.postForEntity(userRegistrationUrl,
+RegistrationBackendRequest(emailAddress, password),
+classOf[RegistrationBackendResponse])
+response.getStatusCode match {
+case HttpStatus.OK =>
+Right(response.getBody.id)
+}
+} catch {
+case e: HttpClientErrorException if e.getStatusCode == HttpStatus.CONFLICT =>
+Left(DuplicateRegistrationError)
+}
+}
+}
+The @HystrixCommand arranges for calls to registerUser() to be executed using a circuit breaker.
+The circuit breaker functionality is enabled using the @EnableCircuitBreaker annotation on the UserRegistrationConfiguration class.
+@EnableCircuitBreaker
+class UserRegistrationConfiguration {
+[[H2]] Resulting Context
+This pattern has the following benefits:
+Services handle the failure of the services that they invoke
+This pattern has the following issues:
+It is challenging to choose timeout values without creating false positives or introducing excessive latency.
+[[H2]] Related patterns
+The Microservice Chassis might implement this pattern
+An API Gateway will use this pattern to invoke services
+A Server-side discovery router might use this pattern to invoke services
+[[H2]] See also
+Netflix Hystrix is an example of a library that implements this pattern
+pattern service design resilience inter-service communication
+Modernization Help
+Copyright © 2026 Chris Richardson • All rights reserved
+[[H4]] About Microservices.io
+Microservices.io is created by Chris Richardson, software architect, creator of the original CloudFoundry.com, and author of Microservices Patterns. Chris helps organizations modernize their architecture to enable fast flow and GenAI-powered software delivery.
+[[H4]] Need help modernizing your architecture?
+Avoid the trap of creating a modern legacy system — a new architecture with the same old problems.
+Contact me to discuss your modernization goals.
+Get Help
+[[H4]] Microservices Patterns, 2nd edition
+I am very excited to announce that the MEAP for the second edition of my book, Microservices Patterns is now available!
+Learn more
+Writing better problem reports: 6 essential details
+-->
+[[H4]] ASK CHRIS
+?
+Got a question about microservices?
+Fill in this form. If I can, I'll write a blog post that answers your question.
+[[H4]] NEED HELP?
+I help organizations improve agility and competitiveness through better software architecture.
+Learn more about my consulting engagements, and training workshops.
+[[H4]] PREMIUM CONTENT
+Premium content now available for paid subscribers at premium.microservices.io.
+[[H4]] MICROSERVICES WORKSHOPS
+Chris teaches comprehensive workshops for architects and developers that will enable your organization use microservices effectively.
+Avoid the pitfalls of adopting microservices and learn essential topics, such as service decomposition and design and how to refactor a monolith to microservices.
+Learn more
+[[H4]] Remote consulting session
+Got a specific microservice architecture-related question? For example:
+Wondering whether your organization should adopt microservices?
+Want to know how to migrate your monolith to microservices?
+Facing a tricky microservice architecture design problem?
+Consider signing up for a two hour, highly focussed, consulting session.
+[[H4]] ASSESS your architecture
+Assess your application's microservice architecture and identify what needs to be improved. Engage Chris to conduct an architect review.
+[[H4]] LEARN about microservices
+Chris offers numerous other resources for learning the microservice architecture.
+[[H4]] Get the book: Microservices Patterns
+Read Chris Richardson's book:
+[[H4]] Example microservices applications
+Want to see an example? Check out Chris Richardson's example applications. See code
+[[H4]] Virtual bootcamp: Distributed data patterns in a microservice architecture
+My virtual bootcamp, distributed data patterns in a microservice architecture, is now open for enrollment!
+It covers the key distributed data management patterns including Saga, API Composition, and CQRS.
+It consists of video lectures, code labs, and a weekly ask-me-anything video conference repeated in multiple timezones.
+The regular price is $395/person but use coupon OFFEFKCW to sign up for $95 (valid until Sept 30th, 2025). There are deeper discounts for buying multiple seats.
+Learn more
+[[H4]] Learn how to create a service template and microservice chassis
+Take a look at my Manning LiveProject that teaches you how to develop a service template and microservice chassis.
+Signup for the newsletter
+For Email Marketing you can trust.
+[[H4]] BUILD microservices
+Ready to start using the microservice architecture?
+[[H4]] Consulting services
+Engage Chris to create a microservices adoption roadmap and help you define your microservice architecture,
+[[H4]] The Eventuate platform
+Use the Eventuate.io platform to tackle distributed data management challenges in your microservices architecture.
+Eventuate is Chris's latest startup. It makes it easy to use the Saga pattern to manage transactions and the CQRS pattern to implement queries.
+Join the microservices google group

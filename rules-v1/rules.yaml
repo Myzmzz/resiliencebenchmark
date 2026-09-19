@@ -1,0 +1,3572 @@
+# 用途：韧性规则登记表。每条规则是一句与组件无关的陈述 + 它在各组件里的具体样子 + 可核对的检查条件
+#       + 参数关系（故障要多大才碰得到边界）+ 缺陷类别。由第 4 步产生。
+# 约定：sources[].quote 一律逐字照抄自 docs-cache/<doc_id>.txt，由 validate.py 逐条回查。
+#       parameter_relation.defaults 只写文档明确给出的默认值，写成 {value, doc_id} 并注明出处。
+rules:
+
+# ============================================================ 组 1 限制等待
+- rule_id: R-TIMEOUT-001
+  mechanism_group: 限制等待
+  mechanism: 超时与截止时间
+  statement: Every synchronous outbound call must have an explicitly set deadline or timeout; relying on the library default of "no deadline" is a defect.
+  gloss_zh: 每一个同步出站调用都必须显式设置截止时间或超时，不能依赖"默认不设"。
+  sources:
+  - doc_id: DOC-GRPC-DEADLINES
+    quote: |-
+      By default, gRPC does not set a deadline which means it is possible for a client to end up waiting for a response effectively forever. To avoid this you should always explicitly set a realistic deadline in your clients.
+    location: Deadlines > Deadlines on the Client
+  - doc_id: DOC-AWS-TIMEOUTS
+    quote: |-
+      A best practice in Amazon is to set a timeout on any remote call, and generally on any call across processes even on the same box. This includes both a connection timeout and a request timeout.
+    location: Timeouts, retries and backoff with jitter > Timeouts
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      It’s usually wise to set a deadline. Setting either no deadline or an extremely high deadline may cause short-term problems that have long since passed to continue to consume server resources until the server restarts.
+    location: Latency and Deadlines > Picking a deadline
+  instantiations:
+  - component: gRPC
+    how: 调用点用 context.WithTimeout / WithDeadline（Go）、CallOptions.withDeadlineAfter（Java）；不设即无限等
+    config_or_code: code
+  - component: Envoy
+    how: route.timeout（有 15s 默认值，见 defaults）；此外还有 stream_idle_timeout 等分层超时
+    config_or_code: config
+  - component: Istio
+    how: VirtualService http.timeout；默认不启用
+    config_or_code: config
+  - component: Resilience4j
+    how: TimeLimiterConfig.timeoutDuration
+    config_or_code: config
+  - component: Go net/http
+    how: http.Client.Timeout 或 http.NewRequestWithContext 带 deadline 的 context
+    config_or_code: code
+  - component: Python requests
+    how: requests.get(..., timeout=(connect, read))；不传 timeout 即无限等
+    config_or_code: code
+  - component: Dubbo
+    how: dubbo:reference / dubbo:method 的 timeout 属性
+    config_or_code: config
+  - component: .NET HttpClient
+    how: HttpClient.Timeout 或 CancellationToken；SocketsHttpHandler.ConnectTimeout 单独控制建连
+    config_or_code: code
+  - component: Python httpx
+    how: httpx.Timeout(connect/read/write/pool)，默认 5 秒网络静默即超时
+    config_or_code: code
+  - component: Node.js http
+    how: request 的 timeout 选项与 server.requestTimeout / headersTimeout
+    config_or_code: code
+  - component: HAProxy
+    how: timeout connect / timeout server / timeout client 三段分别设置
+    config_or_code: config
+  - component: MySQL Connector/J
+    how: connectTimeout 与 socketTimeout 两个连接属性
+    config_or_code: config
+  - component: MongoDB driver
+    how: 连接串的 connectTimeoutMS / socketTimeoutMS / serverSelectionTimeoutMS
+    config_or_code: config
+  - component: Failsafe
+    how: Timeout.of(Duration)
+    config_or_code: code
+  - component: Polly
+    how: TimeoutStrategyOptions；超时抛 TimeoutRejectedException
+    config_or_code: config
+  applies_when: 调用方对被调方有同步依赖（HTTP/RPC/数据库/缓存皆算）
+  checks:
+    static:
+    - id: S1
+      what: 每个同步出站调用点是否设置了截止时间或超时参数（含连接超时与请求超时两项）
+      checkability: static-code
+    - id: S2
+      what: 网关/网格层路由是否显式配置了 timeout，而不是落在"禁用"或框架默认
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 被调方注入延迟后，调用方的等待时长是否在设定值处截断
+      signals: [出站调用 span 时长分布, DEADLINE_EXCEEDED / 504 / read timeout 错误码, 调用方线程或连接占用数]
+  parameter_relation:
+    symbols: {T: 调用方设定的超时, b: 该调用的基线耗时, d: 注入的额外延迟}
+    activation: d > T - b 时应观察到在 T 处截断；等待随 d 线性增长而不截断即违反
+    defaults:
+      Envoy route.timeout: {value: 15s, doc_id: DOC-ENVOY-TIMEOUTS}
+      Istio VirtualService http.timeout: {value: disabled by default, doc_id: DOC-ISTIO-TIMEOUTS}
+      gRPC client deadline: {value: no deadline by default, doc_id: DOC-GRPC-DEADLINES}
+      Dubbo consumer timeout: {value: 1000 (ms), doc_id: DOC-DUBBO-XML-CONSUMER}
+  violation_manifestation: 等待时长随注入延迟单调增长，不在任何值处截断；调用方线程/连接被长期占住
+  defect_class: 1
+  fault_types: [dependency-delay, dependency-unavailable, packet-loss]
+  mitigation_family: 在每个同步调用点显式设置连接超时与请求超时
+  notes: 连接超时与请求超时是两件事，只设其一仍算违反；AWS 那条原文明确点了 both。
+
+- rule_id: R-TIMEOUT-002
+  mechanism_group: 限制等待
+  mechanism: 超时与截止时间
+  statement: An outbound deadline must not exceed the caller's own remaining inbound budget.
+  gloss_zh: 出站超时不能大于调用方自己入站请求剩下的预算——否则上游早已放弃，下游还在干活。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      A common theme in many cascading outages is that servers spend resources handling requests that will exceed their deadlines on the client. As a result, resources are spent while no progress is made: you don’t get credit for late assignments with RPCs.
+    location: Latency and Deadlines > Missing deadlines
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Having deadlines several orders of magnitude longer than the mean request latency is usually bad.
+    location: Latency and Deadlines > Bimodal latency
+  instantiations:
+  - component: gRPC
+    how: 服务端从入站 context 取剩余时间，出站调用复用同一 context（Go/Java 默认继承）
+    config_or_code: code
+  - component: Envoy
+    how: 入口 route.timeout 与出口 cluster 侧超时的层级关系，需人工核对
+    config_or_code: config
+  - component: Go context
+    how: 出站用 context.WithTimeout(ctxFromRequest, d)，d 不得大于 ctx 剩余
+    config_or_code: code
+  - component: Spring Boot
+    how: RestClient/WebClient 的 responseTimeout 与 server.tomcat 的请求处理预算需对齐
+    config_or_code: config
+  applies_when: 一次入站请求会扇出至少一个同步出站调用
+  checks:
+    static:
+    - id: S1
+      what: 出站超时值是否 ≤ 入站预算（需要系统自己的 SLO/预算才能判断）
+      checkability: needs-requirement
+    - id: S2
+      what: 出站调用是否复用了入站请求的 context/deadline，而不是新建一个独立超时
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 注入下游延迟后，上游已返回错误但下游服务仍在处理同一请求
+      signals: [上下游 span 的结束时间差, 上游 504 后下游仍在执行的 span, 下游 CPU/线程占用]
+  parameter_relation:
+    symbols: {B: 入站预算, e: 本服务已消耗时间, T: 出站超时}
+    activation: T > B - e 时，注入 d ∈ (B-e, T) 的下游延迟会让上游先放弃而下游仍在跑
+    defaults: {}
+  violation_manifestation: 上游已返回超时错误，下游仍继续处理同一请求直到自己的超时；资源做无用功
+  defect_class: 2
+  fault_types: [dependency-delay]
+  mitigation_family: 按入站剩余预算推导出站超时，而不是各自写死常量
+  notes: 这条只有拿到系统自己的入站预算/SLO 才能判定，属需求相对型。
+
+- rule_id: R-DEADLINE-PROP-001
+  mechanism_group: 限制等待
+  mechanism: 截止时间沿调用链传递
+  statement: A server acting as a client must propagate the inbound deadline to its outbound calls instead of inventing a fresh one.
+  gloss_zh: 服务端再去调别人时要把入站截止时间带下去，不能自己另发明一个。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Rather than inventing a deadline when sending RPCs to backends, servers should employ deadline propagation.
+    location: Latency and Deadlines > Deadline propagation
+  - doc_id: DOC-GRPC-DEADLINES
+    quote: |-
+      Your server might need to call another server to produce a response. In these cases where your server also acts as a client you would want to honor the deadline set by the original client.
+    location: Deadlines > Deadline Propagation
+  - doc_id: DOC-GO-CONTEXT
+    quote: |-
+      Incoming requests to a server should create a Context, and outgoing calls to servers should accept a Context. The chain of function calls between them must propagate the Context, optionally replacing it with a derived Context created using WithCancel, WithDeadline, WithTimeout, or WithValue.
+    location: context package > Overview
+  instantiations:
+  - component: gRPC
+    how: Java/Go 默认自动传递入站 deadline，C++ 需显式开启；跨线程池提交任务时容易丢
+    config_or_code: code
+  - component: Go context
+    how: handler 把 r.Context() 一路传到出站调用，中途不能换成 context.Background()
+    config_or_code: code
+  - component: Java concurrency
+    how: 提交到 ExecutorService 的任务不会自动带上调用方剩余时间，需显式传递
+    config_or_code: code
+  - component: Istio
+    how: 网格只做本跳超时，不做跨跳预算传递，需应用自己传
+    config_or_code: config
+  applies_when: 调用链深度 ≥ 2 且各跳都是同步调用
+  checks:
+    static:
+    - id: S1
+      what: 出站调用用的 context 是否派生自入站 context（Go 里查 context.Background()/TODO() 是否出现在请求路径上）
+      checkability: static-code
+    - id: S2
+      what: 异步提交（线程池、消息回调）处是否显式把剩余预算带过去
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 在链路最深一跳注入延迟，看最外层 deadline 到期时中间各跳是否同时停止
+      signals: [各跳 span 的结束时间是否对齐, 链路末端在最外层超时后仍产生的日志]
+  parameter_relation:
+    symbols: {B: 最外层预算, k: 链路跳数, T_i: 第 i 跳自己写死的超时}
+    activation: 存在某跳 T_i > B 时，注入延迟 d ∈ (B, T_i) 会让该跳在最外层放弃后继续工作
+    defaults:
+      gRPC Java/Go deadline propagation: {value: enabled by default, doc_id: DOC-GRPC-DEADLINES}
+  violation_manifestation: 最外层已返回 DEADLINE_EXCEEDED，链路深处的 span 仍在继续并持续消耗资源
+  defect_class: 1
+  fault_types: [dependency-delay]
+  mitigation_family: 全链路传递同一绝对截止时间，每跳按剩余时间推导本跳超时
+  notes: gRPC 传的是换算后的相对 timeout 而非绝对时刻，规避时钟漂移。
+
+- rule_id: R-DEADLINE-CHECK-001
+  mechanism_group: 限制等待
+  mechanism: 截止时间沿调用链传递
+  statement: A server must check the remaining deadline before each expensive stage and abandon work whose deadline has already passed.
+  gloss_zh: 服务端在每个费时阶段之前先看一眼还剩多少时间，已经超时的请求就别做了。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      If handling a request is performed over multiple stages (e.g., there are a few callbacks and RPC calls), the server should check the deadline left at each stage before attempting to perform any more work on the request.
+    location: Latency and Deadlines > Missing deadlines
+  - doc_id: DOC-GRPC-DEADLINES
+    quote: |-
+      Please note that the server application is responsible for stopping any activity it has spawned to service the RPC. If your application is running a long-running process you should periodically check if the RPC that initiated it has been cancelled and if so, stop the processing.
+    location: Deadlines > Deadlines on the Server
+  instantiations:
+  - component: gRPC
+    how: 服务端在长任务循环里查 ctx.Err() / Context.isCancelled()
+    config_or_code: code
+  - component: Go context
+    how: "select { case <-ctx.Done(): ... } 或在阶段入口判断 ctx.Err()"
+    config_or_code: code
+  - component: Java concurrency
+    how: 在任务内部轮询 Thread.interrupted() 或自带的 deadline 对象
+    config_or_code: code
+  applies_when: 单次请求内部有多个阶段，或存在排队后才开始处理的情况
+  checks:
+    static:
+    - id: S1
+      what: 请求处理路径上是否存在对剩余时间/取消状态的检查点，且位于费时阶段之前
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 客户端提前放弃后，服务端是否还在为该请求消耗 CPU
+      signals: [客户端取消后服务端仍产生的 span/日志, 服务端队列等待时长, CPU 使用率]
+  parameter_relation:
+    symbols: {B: 客户端预算, q: 服务端排队时长, p: 处理时长}
+    activation: 注入负载使 q > B 时，服务端应在出队即丢弃；仍继续处理即违反
+    defaults: {}
+  violation_manifestation: 过载时服务端把全部容量花在已经没人要的请求上，吞吐量塌到接近 0
+  defect_class: 1
+  fault_types: [traffic-surge, dependency-delay, cpu-pressure]
+  mitigation_family: 出队即校验截止时间，超时请求直接丢弃
+
+- rule_id: R-CANCEL-001
+  mechanism_group: 限制等待
+  mechanism: 取消传播
+  statement: When a caller gives up, the cancellation must propagate down the whole call tree, not only to the immediate callee.
+  gloss_zh: 调用方放弃之后，取消要一路传到调用树底下，不是只通知下一跳。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Propagating cancellations reduces unneeded or doomed work by advising servers in an RPC call stack that their efforts are no longer necessary.
+    location: Latency and Deadlines > Cancellation propagation
+  - doc_id: DOC-GO-CONTEXT
+    quote: |-
+      When a Context is canceled, all Contexts derived from it are also canceled.
+    location: context package > Overview
+  instantiations:
+  - component: gRPC
+    how: 客户端 cancel 会向服务端发 CANCELLED；服务端需把 ctx 继续传给自己的出站调用
+    config_or_code: code
+  - component: Go context
+    how: 派生 context 形成树；必须调用 CancelFunc，否则子 context 泄漏
+    config_or_code: code
+  - component: Node.js
+    how: AbortController/AbortSignal 传给下游 fetch/undici 请求
+    config_or_code: code
+  - component: .NET
+    how: CancellationToken 沿调用链传递
+    config_or_code: code
+  - component: Python asyncio
+    how: task.cancel() 会向下抛 CancelledError，但须保证不被吞掉
+    config_or_code: code
+  applies_when: 存在扇出调用、对冲请求，或客户端可能主动断开
+  checks:
+    static:
+    - id: S1
+      what: 出站调用是否接受并传递取消信号（context/CancellationToken/AbortSignal）
+      checkability: static-code
+    - id: S2
+      what: 是否存在吞掉取消异常（catch CancelledError/InterruptedException 后继续执行）的代码
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 客户端断开后，链路各跳是否在短时间内停止工作
+      signals: [客户端断开后下游仍在执行的 span 数, 下游 CPU 占用, 连接数]
+  parameter_relation:
+    symbols: {k: 链路跳数, t_c: 客户端断开时刻}
+    activation: 在 t_c 之后注入观察窗口，任何一跳仍在工作即违反；深度越大泄漏越明显
+    defaults: {}
+  violation_manifestation: 客户端早已断开，后台仍有成比例的"孤儿"请求在跑，压满线程池
+  defect_class: 1
+  fault_types: [dependency-delay, traffic-surge]
+  mitigation_family: 全链路传递取消信号，并在阻塞点响应它
+
+- rule_id: R-HEDGE-001
+  mechanism_group: 限制等待
+  mechanism: 请求对冲（hedging）
+  statement: Hedged requests must be bounded in number and paired with cancellation of the losing copies; otherwise hedging multiplies load exactly when the system is slow.
+  gloss_zh: 对冲请求必须有条数上限，而且先回来的那个要把其他副本取消掉——不然系统一慢，负载就翻倍。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      To reduce latency, some systems use "hedged requests" [Dea13] to send RPCs to a primary server, then some time later, send the same request to other instances of the same service in case the primary is slow in responding; once the client has received a response from any server, it sends messages to the other servers to cancel the now-superfluous requests.
+    location: Latency and Deadlines > Cancellation propagation
+  - doc_id: DOC-GRPC-HEDGING
+    quote: |-
+      1. `maxAttempts` MUST be specified and MUST be a JSON integer value greater than 1. Values greater than 5 are treated as 5 without being considered a validation error.
+    location: gRFC A6 Client Retries > Configuration Language > Hedging Policy
+  - doc_id: DOC-GRPC-HEDGING
+    quote: |-
+      As with retries, gRPC call deadlines apply to the entire chain of hedged requests. Once a deadline has passed, the operation fails regardless of in-flight RPCS, and regardless of the hedging configuration.
+    location: gRFC A6 Client Retries > Hedging Policy
+  instantiations:
+  - component: gRPC
+    how: service config 的 hedgingPolicy（maxAttempts / hedgingDelay / nonFatalStatusCodes）
+    config_or_code: config
+  - component: Envoy
+    how: route 的 hedge_policy（hedge_on_per_try_timeout）
+    config_or_code: config
+  applies_when: 对同一只读、幂等方法开启了对冲
+  checks:
+    static:
+    - id: S1
+      what: 是否设置了 maxAttempts 上限，且对冲只开在幂等方法上
+      checkability: static-config
+    - id: S2
+      what: 对冲是否与重试同时开启（gRPC 里两者互斥）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 注入下游延迟后，下游收到的 QPS 相对基线的放大倍数是否被 maxAttempts 限住
+      signals: [下游入站 QPS / 上游出站 QPS 之比, 下游取消请求数]
+  parameter_relation:
+    symbols: {n: maxAttempts, h: hedgingDelay, d: 注入延迟, b: 基线耗时}
+    activation: d > h 时对冲被触发；下游 QPS 放大倍数上界为 n，实测超过 n 即违反
+    defaults: {}
+  violation_manifestation: 下游一慢，上游发出的请求量成倍上涨，把慢变成挂
+  defect_class: 3
+  fault_types: [dependency-delay]
+  mitigation_family: 给对冲设条数上限并取消落选副本，只对幂等方法开启
+  notes: 组合型——对冲本身合规、下游变慢本身合规，合起来放大故障。
+
+# ============================================================ 组 2 处理瞬时失败
+- rule_id: R-RETRY-001
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试与退避抖动
+  statement: Retries must be scheduled with exponential backoff plus randomized jitter, never at a fixed or zero interval.
+  gloss_zh: 重试必须指数退避并加随机抖动，不能定间隔、更不能立刻重试。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Always use randomized exponential backoff when scheduling retries.
+    location: Retries > When issuing automatic retries
+  - doc_id: DOC-AWS-TIMEOUTS
+    quote: |-
+      When failures are caused by overload or contention, backing off often doesn't help as much as it seems like it should. This is because of correlation. If all the failed calls back off to the same time, they cause contention or overload again when they are retried. Our solution is jitter.
+    location: Timeouts, retries and backoff with jitter > Jitter
+  - doc_id: DOC-GRPC-RETRY
+    quote: |-
+      Jitter of plus or minus 20% is applied to the backoff delay to avoid hammering servers at the same time from a large number of clients.
+    location: Retry > Exponential backoff
+  instantiations:
+  - component: gRPC
+    how: service config retryPolicy 的 initialBackoff / maxBackoff / backoffMultiplier；抖动由实现自带 ±20%
+    config_or_code: config
+  - component: Envoy
+    how: retry_policy.retry_back_off（base_interval / max_interval），默认带指数退避与抖动
+    config_or_code: config
+  - component: Resilience4j
+    how: RetryConfig.intervalFunction = IntervalFunction.ofExponentialRandomBackoff(...)
+    config_or_code: config
+  - component: Polly
+    how: RetryStrategyOptions.BackoffType = DelayBackoffType.Exponential 且 UseJitter = true
+    config_or_code: config
+  - component: Spring Retry
+    how: ExponentialBackOffPolicy / ExponentialRandomBackOffPolicy
+    config_or_code: config
+  - component: RabbitMQ
+    how: 消费失败重投需自行加延迟队列，broker 本身不退避
+    config_or_code: config
+  - component: Failsafe
+    how: RetryPolicy 的 withBackoff(...) 搭配 withJitter(...)
+    config_or_code: code
+  - component: ioredis
+    how: retryStrategy(times) 返回下次重连延迟，默认实现随次数递增
+    config_or_code: code
+  applies_when: 对失败的远程调用做了自动重试
+  checks:
+    static:
+    - id: S1
+      what: 重试策略是否配置了指数退避（倍数 > 1）
+      checkability: static-config
+    - id: S2
+      what: 退避是否带随机抖动（固定间隔或纯指数无抖动都算违反）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 依赖失败期间，重试到达时刻是否分散，还是在同一毫秒窗口内成簇
+      signals: [下游入站请求时间戳直方图, 重试间隔分布, 下游 QPS 尖峰]
+  parameter_relation:
+    symbols: {n: 最大尝试次数, i0: 初始退避, m: 退避倍数, N: 并发客户端数}
+    activation: 依赖返回错误持续 t 秒时，无抖动情况下第 k 次重试会在 t ≈ i0*(m^k-1)/(m-1) 处形成 N 个请求的同步尖峰
+    defaults:
+      gRPC retry jitter: {value: plus or minus 20%, doc_id: DOC-GRPC-RETRY}
+  violation_manifestation: 依赖恢复瞬间或失败期间，下游 QPS 出现周期性同步尖峰而非平滑分布
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-error, dependency-delay, traffic-surge]
+  mitigation_family: 指数退避 + 随机抖动 + 退避上限
+
+- rule_id: R-RETRY-002
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试与退避抖动
+  statement: The number of retry attempts per request must be bounded; unbounded or indefinite retry is a defect.
+  gloss_zh: 每个请求的重试次数必须有上限，不能无限重试。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Limit retries per request. Don’t retry a given request indefinitely.
+    location: Retries > When issuing automatic retries
+  - doc_id: DOC-AWS-TIMEOUTS
+    quote: |-
+      In almost all cases, our solution is to limit the number of times that the client retries, and handle the resulting failure earlier in the service-oriented architecture.
+    location: Timeouts, retries and backoff with jitter > Backoff
+  - doc_id: DOC-ISTIO-VS
+    quote: |-
+      Number of retries to be allowed for a given request. The interval between retries will be determined automatically (25ms+). When request timeout of the HTTP route or per_try_timeout is configured, the actual number of retries attempted also depends on the specified request timeout and per_try_timeout values. MUST be >= 0. If 0, retries will be disabled. The maximum possible number of requests made will be 1 + attempts.
+    location: VirtualService > HTTPRetry > attempts
+  instantiations:
+  - component: gRPC
+    how: retryPolicy.maxAttempts（含首次；A6 规定 > 1，超过 5 按 5 处理）
+    config_or_code: config
+  - component: Envoy
+    how: retry_policy.num_retries，默认 1
+    config_or_code: config
+  - component: Istio
+    how: HTTPRetry.attempts；总请求数 = 1 + attempts
+    config_or_code: config
+  - component: Resilience4j
+    how: RetryConfig.maxAttempts
+    config_or_code: config
+  - component: Dubbo
+    how: retries 属性（默认 2，即最多 3 次调用）
+    config_or_code: config
+  - component: Failsafe
+    how: RetryPolicy.withMaxRetries(n)，另可用 withMaxDuration 限总时长
+    config_or_code: code
+  - component: Linkerd
+    how: HTTPRoute/GRPCRoute 上的 retry.linkerd.io/limit 注解，配合 retry.linkerd.io/timeout
+    config_or_code: config
+  applies_when: 存在自动重试
+  checks:
+    static:
+    - id: S1
+      what: 重试配置里是否有明确的最大尝试次数
+      checkability: static-config
+    - id: S2
+      what: 手写的 while/for 重试循环是否有退出条件且不会在错误上原地打转
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 依赖持续不可用时，单个入站请求引发的出站尝试次数是否收敛到上限
+      signals: [每入站请求的出站尝试计数, 下游入站 QPS / 上游入站 QPS 之比]
+  parameter_relation:
+    symbols: {n: 最大尝试次数, A: 放大倍数}
+    activation: 依赖 100% 失败时 A 应收敛到 n；A 随故障持续时间增长即违反
+    defaults:
+      Envoy num_retries: {value: 1, doc_id: DOC-ENVOY-ROUTE-PROTO}
+      Dubbo consumer retries: {value: "2", doc_id: DOC-DUBBO-XML-CONSUMER}
+  violation_manifestation: 依赖不可用期间下游入站 QPS 持续攀升而非稳定在有限倍数
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-error]
+  mitigation_family: 给每个请求设最大尝试次数，超出即向上报错
+
+- rule_id: R-RETRY-003
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试与退避抖动
+  statement: Retries must be applied at only one layer of a call chain; retrying at multiple layers multiplies attempts.
+  gloss_zh: 一条调用链上只能有一层重试；每层都重试，尝试次数是相乘的。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      In particular, avoid amplifying retries by issuing retries at multiple levels: a single request at the highest layer may produce a number of attempts as large as the product of the number of attempts at each layer to the lowest layer.
+    location: Retries > When issuing automatic retries
+  - doc_id: DOC-AZ-PATTERN-RETRY
+    quote: |-
+      Implement retry logic only where the full context of a failing operation is understood. For example, if a task that contains a retry policy invokes another task that also contains a retry policy, this extra layer of retries can add long delays to the processing.
+    location: Retry pattern > Issues and considerations
+  instantiations:
+  - component: Istio
+    how: 网格默认给 HTTP 路由带重试，若应用层也重试即成两层
+    config_or_code: config
+  - component: Envoy
+    how: route retry_policy 与应用内 SDK 重试叠加
+    config_or_code: config
+  - component: Resilience4j
+    how: Retry 装饰器与底层 HTTP 客户端自带重试叠加
+    config_or_code: both
+  - component: Spring Boot
+    how: RestClient/WebClient 重试 + Spring Retry 注解 + 网格重试三层叠加
+    config_or_code: both
+  - component: Dubbo
+    how: 集群容错 failover 的 retries 与业务层 catch-重试叠加
+    config_or_code: both
+  applies_when: 调用链上有多个可配置重试的层（网格/网关/SDK/业务代码）
+  checks:
+    static:
+    - id: S1
+      what: 逐层清点同一条调用路径上启用了重试的层数，是否 > 1
+      checkability: static-cross-object
+    - id: S2
+      what: 若确实多层，内层是否被显式配置为不重试（fail fast）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 最底层依赖失败时，它收到的尝试次数是否等于各层次数之积
+      signals: [最底层入站请求计数, 各层出站尝试计数, 层数]
+  parameter_relation:
+    symbols: {n_i: 第 i 层的尝试次数, k: 层数}
+    activation: 最底层实际尝试数 = ∏ n_i；观察值显著大于任一单层 n_i 即违反
+    defaults: {}
+  violation_manifestation: 底层数据库/依赖在一次用户操作下收到几十次请求，过载被重试锁死
+  defect_class: 3
+  fault_types: [dependency-unavailable, dependency-error, traffic-surge]
+  mitigation_family: 只在最了解上下文的一层重试，其余层 fail fast
+  notes: 典型组合型——每层各自都符合"重试要有上限"，合起来却是乘积。
+
+- rule_id: R-RETRY-004
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试预算
+  statement: A process must cap the aggregate share of retries it emits (a retry budget), independent of any per-request attempt limit.
+  gloss_zh: 除了单请求的次数上限，进程整体还要有一个"重试总量预算"，超了就直接失败不再重试。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Consider having a server-wide retry budget. For example, only allow 60 retries per minute in a process, and if the retry budget is exceeded, don’t retry; just fail the request.
+    location: Retries > When issuing automatic retries
+  - doc_id: DOC-GRPC-HEDGING
+    quote: |-
+      gRPC prevents server overload due to retries and hedged RPCs by disabling these policies when the client’s ratio of failures to successes passes a certain threshold.
+    location: gRFC A6 Client Retries > Throttling Retry Attempts and Hedged RPCs
+  - doc_id: DOC-GRPC-RETRY
+    quote: |-
+      For each server, the gRPC client tracks a token_count (initially set to maxTokens). Failed RPCs decrement the count by 1, successful RPCs increment it by tokenRatio. If the token_count falls below half of maxTokens, retries are paused until the count recovers.
+    location: Retry > Retry throttling
+  instantiations:
+  - component: gRPC
+    how: service config 的 retryThrottling（maxTokens / tokenRatio），按 server name 统计
+    config_or_code: config
+  - component: Envoy
+    how: cluster circuit_breakers.max_retries 限制并发重试数（与预算等价的一种近似）
+    config_or_code: config
+  - component: Sentinel
+    how: 无专门的重试预算；用调用端流控规则限制出站总量可近似达到同样效果
+    config_or_code: config
+  applies_when: 客户端对某个依赖开启了自动重试
+  checks:
+    static:
+    - id: S1
+      what: 是否配置了重试节流/预算（gRPC retryThrottling、Linkerd retry budget、Envoy max_retries）
+      checkability: static-config
+    - id: S2
+      what: 预算值相对该依赖的正常错误率是否留有余量（需要系统自己的错误率基线）
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 依赖持续失败时，重试流量占总出站流量的比例是否被压在预算之内
+      signals: [重试请求数 / 总出站请求数, 重试被节流丢弃的计数]
+  parameter_relation:
+    symbols: {r: 预算比例, f: 依赖失败率, n: 单请求尝试上限}
+    activation: f 上升到 1 时，无预算的放大倍数为 n；有预算时应收敛到 1 + r
+    defaults: {}
+  violation_manifestation: 依赖大面积失败时重试流量把依赖彻底压死，恢复后仍被重试洪峰再次打挂
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-error]
+  mitigation_family: 按失败/成功比例节流重试，预算耗尽即直接失败
+
+- rule_id: R-RETRY-005
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试与退避抖动
+  statement: Only transient, retriable failures may be retried; permanent errors and malformed requests must not be.
+  gloss_zh: 只重试瞬时的、可重试的失败；永久错误和参数错误重试多少次都不会成功。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Use clear response codes and consider how different failure modes should be handled. For example, separate retriable and nonretriable error conditions. Don’t retry permanent errors or malformed requests in a client, because neither will ever succeed.
+    location: Retries > When issuing automatic retries
+  - doc_id: DOC-AZ-TRANSIENT
+    quote: |-
+      Retry tasks only when the faults are transient, which the nature of the error typically indicates, and when the operation might succeed when retried. For HTTP-based services, status code 429 (Too Many Requests) and 5xx server errors are typical retry candidates. Most 4xx client errors, like 400, 401, 403, and 404, indicate problems that a retry doesn't resolve.
+    location: Transient fault handling > Retry strategy guidelines
+  - doc_id: DOC-GRPC-HEDGING
+    quote: |-
+      The only RPCs that are counted as failures for the throttling policy are RPCs that fail with a status code that qualifies as a [retryable](#retryable-status-codes) or [non-fatal status code](#hedging-policy), or that receive a pushback response indicating not to retry.
+    location: gRFC A6 Client Retries > Throttling Retry Attempts and Hedged RPCs
+  instantiations:
+  - component: gRPC
+    how: retryPolicy.retryableStatusCodes 白名单；不应包含 INVALID_ARGUMENT 等
+    config_or_code: config
+  - component: Envoy
+    how: retry_on（5xx / gateway-error / reset / connect-failure …），不应含 4xx
+    config_or_code: config
+  - component: Istio
+    how: HTTPRetry.retryOn
+    config_or_code: config
+  - component: Polly
+    how: ShouldHandle 谓词按异常/状态码筛选
+    config_or_code: code
+  - component: Resilience4j
+    how: RetryConfig.retryExceptions / ignoreExceptions
+    config_or_code: config
+  applies_when: 存在自动重试
+  checks:
+    static:
+    - id: S1
+      what: 可重试条件是否是白名单（明确列出可重试状态码/异常），而不是"所有异常都重试"
+      checkability: static-config
+    - id: S2
+      what: 白名单里是否混入了 4xx/参数错误/鉴权失败这类永不会成功的条件
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 注入返回确定性错误（如 400/INVALID_ARGUMENT）时，是否仍发生重试
+      signals: [按状态码分组的重试计数, 下游收到的重复请求数]
+  parameter_relation:
+    symbols: {}
+    activation: 注入不可重试错误码后仍观察到 > 1 次尝试即违反；注入可重试错误码应观察到重试
+    defaults: {}
+  violation_manifestation: 一个必然失败的请求被反复重试到用尽预算，既拖慢自己又压住下游
+  defect_class: 1
+  fault_types: [dependency-error]
+  mitigation_family: 用白名单区分可重试与不可重试错误
+
+- rule_id: R-RETRY-006
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试与退避抖动
+  statement: The whole retry sequence, including backoff waits, must fit inside the request's overall deadline; per-attempt timeouts must be derived from it.
+  gloss_zh: 整串重试连同退避等待必须装在总截止时间里，每次尝试的超时要由总预算推出来。
+  sources:
+  - doc_id: DOC-GRPC-HEDGING
+    quote: |-
+      As with retries, gRPC call deadlines apply to the entire chain of hedged requests. Once a deadline has passed, the operation fails regardless of in-flight RPCS, and regardless of the hedging configuration.
+    location: gRFC A6 Client Retries > Hedging Policy
+  - doc_id: DOC-ISTIO-VS
+    quote: |-
+      When request timeout of the HTTP route or per_try_timeout is configured, the actual number of retries attempted also depends on the specified request timeout and per_try_timeout values.
+    location: VirtualService > HTTPRetry > attempts
+  - doc_id: DOC-ENVOY-ROUTE-PROTO
+    quote: |-
+      (UInt32Value) Specifies the allowed number of retries. This parameter is optional and defaults to 1.
+    location: route_components.proto > RetryPolicy > num_retries
+  instantiations:
+  - component: Envoy
+    how: per_try_timeout 与 route.timeout 的关系；per_try_timeout × (1+num_retries) 不应超过 route.timeout
+    config_or_code: config
+  - component: Istio
+    how: HTTPRetry.perTryTimeout 与 http.timeout
+    config_or_code: config
+  - component: gRPC
+    how: deadline 覆盖整串重试；maxAttempts 到不了就先 DEADLINE_EXCEEDED
+    config_or_code: config
+  - component: Dubbo
+    how: timeout 是单次调用超时，retries 次失败总耗时约为 (1+retries)×timeout，容易超出上游预算
+    config_or_code: config
+  applies_when: 同时配置了重试与超时
+  checks:
+    static:
+    - id: S1
+      what: (1 + 最大重试次数) × 单次超时 + 累计退避 是否 ≤ 总截止时间
+      checkability: static-config
+    - id: S2
+      what: 框架的 timeout 语义是"单次"还是"整串"，是否被误当成另一种
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 注入下游延迟后，上游实际等待时长是否 ≈ 总截止时间而不是次数 × 单次超时
+      signals: [上游端到端耗时 p99, 下游收到的尝试次数, 超时错误码类型]
+  parameter_relation:
+    symbols: {D: 总截止时间, t: 单次超时, n: 尝试次数, b: 累计退避}
+    activation: n×t + b > D 时，注入延迟 d > t 会让实际尝试次数少于 n（被 D 截断）；若实测等待达到 n×t 则说明 D 未生效
+    defaults:
+      Envoy num_retries: {value: 1, doc_id: DOC-ENVOY-ROUTE-PROTO}
+  violation_manifestation: 上游等待时长膨胀到"次数 × 单次超时"，远超它自己声明的预算
+  defect_class: 3
+  fault_types: [dependency-delay]
+  mitigation_family: 用总截止时间约束整串重试，单次超时由总预算除以次数推导
+  notes: Dubbo 这类"timeout 是单次语义"的框架最容易踩：配 timeout=1s、retries=2，实际最坏等 3s。
+
+- rule_id: R-IDEM-001
+  mechanism_group: 处理瞬时失败
+  mechanism: 幂等键
+  statement: Any operation with side effects that may be retried must be made idempotent via a caller-supplied request identifier, and recording that identifier must be atomic with the side effect.
+  gloss_zh: 会被重试的写操作必须靠调用方带来的请求 ID 做幂等，而且"记下这个 ID"和"产生副作用"必须在同一个原子操作里。
+  sources:
+  - doc_id: DOC-AWS-RETRY-IDEMPOTENT
+    quote: |-
+      At Amazon, our preferred approach is to incorporate a unique caller-provided client request identifier into our API contract. Requests from the same caller with the same client request identifier can be considered duplicate requests and can be dealt with accordingly.
+    location: Making retries safe with idempotent APIs > Reducing client complexity with idempotent API design
+  - doc_id: DOC-AWS-RETRY-IDEMPOTENT
+    quote: |-
+      An important consideration is that the process that combines recording the idempotent token and all mutating operations related to servicing the request must meet the properties for an atomic, consistent, isolated, and durable (ACID) operation.
+    location: Making retries safe with idempotent APIs > Reducing client complexity with idempotent API design
+  - doc_id: DOC-AZ-PATTERN-RETRY
+    quote: |-
+      Consider whether the operation is idempotent. If so, it's inherently safe to retry. Otherwise, retries could cause the operation to be executed more than once, with unintended side effects.
+    location: Retry pattern > Issues and considerations
+  instantiations:
+  - component: Kafka
+    how: producer enable.idempotence，broker 侧按 producer id + 序号去重
+    config_or_code: config
+  - component: RocketMQ
+    how: 业务侧用消息 key / 业务主键做去重，broker 不保证精确一次
+    config_or_code: code
+  - component: Spring Boot
+    how: 写接口接受 Idempotency-Key 头，与业务写在同一事务里落表
+    config_or_code: code
+  - component: gRPC
+    how: 只有幂等方法才应放进 retryableStatusCodes
+    config_or_code: both
+  applies_when: 会被自动重试的调用带有写副作用
+  checks:
+    static:
+    - id: S1
+      what: 写接口是否接受调用方提供的幂等键，并对重复键返回等价响应
+      checkability: static-code
+    - id: S2
+      what: 幂等键的落库与业务副作用是否在同一事务内
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 同一幂等键重复提交 N 次后，副作用是否只发生一次
+      signals: [业务记录条数, 幂等表命中计数, 重复请求的响应是否语义等价]
+  parameter_relation:
+    symbols: {N: 重复提交次数}
+    activation: 注入"响应丢失"类故障触发重试后，副作用条数 > 1 即违反
+    defaults: {}
+  violation_manifestation: 一次超时重试造成重复扣款/重复下单；或幂等表写成功但业务回滚，留下永远无法重做的键
+  defect_class: 1
+  fault_types: [dependency-delay, dependency-unavailable, packet-loss, instance-kill]
+  mitigation_family: 调用方生成幂等键，服务端在同一事务里记录键与副作用
+
+- rule_id: R-IDEM-002
+  mechanism_group: 状态与一致性
+  mechanism: 幂等消费
+  statement: A consumer of an at-least-once message broker must detect and discard duplicate deliveries by recording processed message IDs.
+  gloss_zh: 至少一次投递的消息队列，消费者必须自己记下已处理的消息 ID 来丢掉重复投递。
+  sources:
+  - doc_id: DOC-MSIO-IDEMPOTENT
+    quote: |-
+      At-least once delivery guarantees that a message broker will deliver a message to a consumer even if errors occur. One side-effect, however, is that the consumer can be invoked repeatedly for the same message. Consequently, a consumer must be idempotent: the outcome of processing the same message repeatedly must be the same as processing the message once.
+    location: Idempotent Consumer > Context
+  - doc_id: DOC-MSIO-IDEMPOTENT
+    quote: |-
+      Make a consumer idempotent by having it record the IDs of processed messages in the database. When processing a message, a consumer can detect and discard duplicates by querying the database.
+    location: Idempotent Consumer > Solution
+  instantiations:
+  - component: Kafka
+    how: 消费端按 topic-partition-offset 或业务键去重；auto commit 会造成重复消费窗口
+    config_or_code: code
+  - component: RabbitMQ
+    how: 手动 ack + 已处理消息表；nack requeue 会重投同一消息
+    config_or_code: code
+  - component: RocketMQ
+    how: 重试次数上限在消费者组元数据里配置，超过即进死信；业务仍必须按消息 key 去重
+    config_or_code: code
+  - component: Pulsar
+    how: negative ack / ackTimeout 触发重投，消费端需去重
+    config_or_code: code
+  applies_when: 消费的消息通道是至少一次语义
+  checks:
+    static:
+    - id: S1
+      what: 消费逻辑里是否有按消息 ID/业务键的去重表或唯一约束
+      checkability: static-code
+    - id: S2
+      what: 去重记录与业务写是否在同一事务
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 杀掉消费者实例造成消息重投后，业务副作用是否只发生一次
+      signals: [同一消息 ID 的处理次数, 业务记录条数, 重复键冲突计数]
+  parameter_relation:
+    symbols: {}
+    activation: 在 ack 之前杀实例，消息必被重投；此时副作用条数 > 1 即违反
+    defaults: {}
+  violation_manifestation: 实例重启后消息重投，账目被重复记一遍
+  defect_class: 1
+  fault_types: [instance-kill, dependency-delay, network-partition]
+  mitigation_family: 消费端记录已处理消息 ID，与业务写同事务
+
+- rule_id: R-DLQ-001
+  mechanism_group: 处理瞬时失败
+  mechanism: 死信队列
+  statement: A message that keeps failing must be diverted to a dead-letter destination after a bounded number of attempts instead of being requeued forever.
+  gloss_zh: 一直处理失败的消息要在有限次数后进死信，不能无限重投堵住队列。
+  sources:
+  - doc_id: DOC-RABBITMQ-DLX
+    quote: |-
+      Messages from a queue can be "dead-lettered", which means these messages are republished to an exchange when any of the following four events occur.
+    location: Dead Letter Exchanges > Overview
+  - doc_id: DOC-PULSAR-MESSAGING
+    quote: |-
+      Dead letter topic allows you to continue message consumption even when some messages are not consumed successfully. The messages that have failed to be consumed are stored in a specific topic, which is called the dead letter topic.
+    location: Messaging > Dead letter topic
+  - doc_id: DOC-ROCKETMQ-RETRY
+    quote: |-
+      If the message fails to be consumed even after the maximum number of retries is reached, the message is no longer retried and is sent to the dead-letter queue.
+    location: Consumption retry policy > DLQ
+  instantiations:
+  - component: RabbitMQ
+    how: 队列参数 x-dead-letter-exchange / x-dead-letter-routing-key；靠 reject 且 requeue=false 触发
+    config_or_code: config
+  - component: RocketMQ
+    how: 消费重试达上限后进 %DLQ%<consumerGroup>
+    config_or_code: config
+  - component: Pulsar
+    how: DeadLetterPolicy.maxRedeliverCount + deadLetterTopic
+    config_or_code: config
+  - component: Kafka
+    how: 无原生 DLQ，需消费端自行投递到死信 topic
+    config_or_code: code
+  applies_when: 消费侧存在失败重投
+  checks:
+    static:
+    - id: S1
+      what: 队列/订阅是否配置了死信目的地与最大重投次数
+      checkability: static-config
+    - id: S2
+      what: 消费失败时是否用了 requeue=true 的无限重投路径
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 注入一条永远处理失败的消息，它是否在有限次后进入死信而不是卡住队列
+      signals: [该消息的重投次数, 死信队列深度, 队列积压深度, 消费吞吐]
+  parameter_relation:
+    symbols: {k: 最大重投次数}
+    activation: 注入永久失败消息后，重投次数应收敛到 k；不收敛即违反
+    defaults: {}
+  violation_manifestation: 一条毒消息被无限重投，占满消费者并把正常消息饿死
+  defect_class: 1
+  fault_types: [dependency-error, dependency-unavailable]
+  mitigation_family: 配置死信目的地与最大重投次数，毒消息及时下车
+
+- rule_id: R-DLQ-002
+  mechanism_group: 处理瞬时失败
+  mechanism: 死信队列
+  statement: The redelivery counter that gates the dead-letter threshold must be durable; an in-memory counter can reset and let a poison message loop forever.
+  gloss_zh: 决定"重投几次进死信"的计数器必须是持久的——只存内存的计数器会被重置，毒消息就永远进不了死信。
+  sources:
+  - doc_id: DOC-PULSAR-MESSAGING
+    quote: |-
+      Messages in the retry letter topic have their retry count persisted as a message property, while the redelivery counter used by negativeAcknowledge is kept only in memory and can be reset unexpectedly.
+    location: Messaging > Negative acknowledgment vs retry letter topic
+  - doc_id: DOC-PULSAR-MESSAGING
+    quote: |-
+      As a result, DeadLetterPolicy.maxRedeliverCount may never be reached and failing messages can be redelivered indefinitely without reaching the dead letter topic.
+    location: Messaging > Negative acknowledgment
+  instantiations:
+  - component: Pulsar
+    how: negativeAcknowledge 的计数只在内存；要靠 reconsumeLater + enableRetry(true) 才能保证 maxRedeliverCount 生效
+    config_or_code: code
+  - component: RabbitMQ
+    how: x-death 头记录重投次数，随消息持久化；靠客户端自行判定上限
+    config_or_code: config
+  - component: RocketMQ
+    how: 重试次数存在消息属性里，随 broker 持久化
+    config_or_code: config
+  applies_when: 依赖"重投 N 次后进死信"这条路径
+  checks:
+    static:
+    - id: S1
+      what: 重投计数是随消息持久化的，还是只活在消费者进程内存里
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 在毒消息重投过程中反复重启消费者，看它最终是否仍能进入死信
+      signals: [该消息累计重投次数, 死信队列是否收到它, 消费者重启次数]
+  parameter_relation:
+    symbols: {k: maxRedeliverCount, R: 消费者重启次数}
+    activation: 计数器非持久时，每次重启把计数清零；只要重启间隔 < k 次重投所需时间，消息永不进死信
+    defaults: {}
+  violation_manifestation: 消费者反复重启的场景下毒消息永远在队列里打转，死信队列始终为空
+  defect_class: 4
+  fault_types: [instance-kill, dependency-error]
+  mitigation_family: 用持久化的重投计数（消息属性/重试主题）来判定死信阈值
+  notes: 实现错误型——机制在、阈值也配了，但计数行为不对。
+
+# ============================================================ 组 3 阻断传播
+- rule_id: R-CB-001
+  mechanism_group: 阻断传播
+  mechanism: 熔断
+  statement: A circuit breaker must trip on a failure-rate threshold evaluated over a minimum number of recorded calls, not on a raw count of failures.
+  gloss_zh: 熔断要按"统计窗口内的失败比例 + 最小请求数"来跳闸，不能只数失败次数。
+  sources:
+  - doc_id: DOC-R4J-CB
+    quote: |-
+      The state of the CircuitBreaker changes from CLOSED to OPEN when the failure rate is equal or greater than a configurable threshold.
+    location: CircuitBreaker > Failure rate and slow call rate thresholds
+  - doc_id: DOC-R4J-CB
+    quote: |-
+      The failure rate and slow call rate can only be calculated, if a minimum number of calls were recorded. For example, if the minimum number of required calls is 10, then at least 10 calls must be recorded, before the failure rate can be calculated.
+    location: CircuitBreaker > Failure rate and slow call rate thresholds
+  - doc_id: DOC-AZ-PATTERN-CB
+    quote: |-
+      If the number of recent failures exceeds a specified threshold within a given time period, the proxy is placed into the Open state and starts a time-out timer.
+    location: Circuit Breaker pattern > Closed
+  - doc_id: DOC-SENTINEL-CB
+    quote: |-
+      异常比例 (ERROR_RATIO)：当单位统计时长（statIntervalMs）内请求数目大于设置的最小请求数目，并且异常的比例大于阈值，则接下来的熔断时长内请求会自动被熔断。
+    location: 熔断降级 > 熔断策略
+  instantiations:
+  - component: Resilience4j
+    how: failureRateThreshold + minimumNumberOfCalls + slidingWindowSize
+    config_or_code: config
+  - component: Sentinel
+    how: 异常比例策略的 threshold + minRequestAmount + statIntervalMs
+    config_or_code: config
+  - component: Polly
+    how: CircuitBreakerStrategyOptions 的 FailureRatio + MinimumThroughput + SamplingDuration
+    config_or_code: config
+  - component: Envoy
+    how: outlier detection 的 success_rate 系列（连续错误数属另一种判据）
+    config_or_code: config
+  - component: gobreaker
+    how: ReadyToTrip 回调里自行实现比例判据，默认实现是连续失败计数
+    config_or_code: code
+  - component: Failsafe
+    how: CircuitBreaker 的 withFailureThreshold(failures, executions) 与 withSuccessThreshold
+    config_or_code: code
+  applies_when: 对某个远程依赖启用了熔断
+  checks:
+    static:
+    - id: S1
+      what: 是否同时配置了失败率阈值与最小请求数（只有其中之一都算不完整）
+      checkability: static-config
+    - id: S2
+      what: 统计窗口大小是否与依赖的正常 QPS 匹配（低 QPS 下窗口太大会永远攒不满）
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 让依赖失败率越过阈值后，熔断器是否在窗口内跳闸
+      signals: [熔断器状态变迁事件, 被拒绝调用计数, 出站请求量下降幅度]
+    - id: T2
+      what: 低流量下少量失败是否会误触发熔断
+      signals: [触发时窗口内的记录调用数, 熔断器状态]
+  parameter_relation:
+    symbols: {p: 失败率阈值, m: 最小请求数, W: 统计窗口, q: 实际 QPS, f: 注入失败率}
+    activation: 需同时满足 q×W ≥ m 且 f ≥ p 才应跳闸；f ≥ p 但不跳闸即违反，f < p 却跳闸也是违反
+    defaults:
+      Resilience4j Bulkhead maxConcurrentCalls: {value: "25", doc_id: DOC-R4J-BULKHEAD}
+  violation_manifestation: 依赖大面积失败但熔断器始终 CLOSED；或低流量下一两次失败就跳闸
+  defect_class: 1
+  fault_types: [dependency-error, dependency-unavailable, dependency-delay]
+  mitigation_family: 按失败率阈值 + 最小请求数 + 滑动窗口配置熔断
+
+- rule_id: R-CB-002
+  mechanism_group: 检测与恢复
+  mechanism: 故障后自愈（依赖恢复后能否回来）
+  statement: An open circuit must transition to a half-open probe state after a wait duration and close again on success, so recovery does not need human action.
+  gloss_zh: 熔断打开后要能自己进半开探测、依赖恢复就自动合上，不能靠人去重启。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-CB
+    quote: |-
+      Half-Open: A limited number of requests from the application are allowed to pass through and invoke the operation. If these requests are successful, the circuit breaker assumes that the fault that caused the failure is fixed, and the circuit breaker switches to the Closed state.
+    location: Circuit Breaker pattern > Half-Open
+  - doc_id: DOC-AZ-PATTERN-CB
+    quote: |-
+      The Half-Open state helps prevent a recovering service from suddenly being flooded with requests.
+    location: Circuit Breaker pattern > Half-Open
+  - doc_id: DOC-R4J-CB
+    quote: |-
+      After a wait time duration has elapsed, the CircuitBreaker state changes from OPEN to HALF_OPEN and permits a configurable number of calls to see if the backend is still unavailable or has become available again.
+    location: CircuitBreaker > Failure rate and slow call rate thresholds
+  instantiations:
+  - component: Resilience4j
+    how: waitDurationInOpenState + permittedNumberOfCallsInHalfOpenState + automaticTransitionFromOpenToHalfOpenEnabled
+    config_or_code: config
+  - component: Sentinel
+    how: 熔断时长结束后进入 HALF-OPEN，放一个请求探测
+    config_or_code: config
+  - component: Envoy
+    how: outlier detection 的 base_ejection_time 到期后自动解除剔除
+    config_or_code: config
+  - component: Polly
+    how: BreakDuration 到期后进入半开
+    config_or_code: config
+  applies_when: 启用了熔断或异常实例剔除
+  checks:
+    static:
+    - id: S1
+      what: 是否配置了 open 状态的等待时长与半开允许的探测调用数
+      checkability: static-config
+    - id: S2
+      what: 熔断器是否被设成 FORCED_OPEN / 手动复位模式
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 依赖恢复后，无人工干预的情况下调用量是否自动回到基线
+      signals: [熔断器状态变迁时间线, 依赖恢复时刻到调用量恢复时刻的间隔, 成功率曲线]
+  parameter_relation:
+    symbols: {W_open: open 等待时长, n_half: 半开探测数, t_r: 依赖恢复时刻}
+    activation: 依赖在 t_r 恢复后，调用量应在约 W_open 内回升；超过数倍 W_open 仍不回升即违反
+    defaults: {}
+  violation_manifestation: 依赖已经好了，调用方还在熔断，必须重启实例才恢复
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-delay, dependency-error]
+  mitigation_family: 配置 open 等待时长与半开探测，让熔断自动复位
+  notes: 这条对应任务里"故障后自愈（依赖恢复后能否回来）"这个机制，是最容易只测注入、不测恢复的一条。
+
+- rule_id: R-CB-003
+  mechanism_group: 阻断传播
+  mechanism: 熔断
+  statement: A circuit breaker must also trip on slow calls, not only on errors, because a dependency that is slow but still returning 200 never raises the failure rate.
+  gloss_zh: 熔断还得看慢调用比例——依赖只是慢、但还在返回成功，失败率永远不会涨，熔断就永远不跳。
+  sources:
+  - doc_id: DOC-R4J-CB
+    quote: |-
+      The CircuitBreaker also changes from CLOSED to OPEN when the percentage of slow calls is equal or greater than a configurable threshold. For example when more than 50% of the recorded calls took longer than 5 seconds. This helps to reduce the load on an external system before it is actually unresponsive.
+    location: CircuitBreaker > Failure rate and slow call rate thresholds
+  - doc_id: DOC-SENTINEL-CB
+    quote: |-
+      慢调用比例 (SLOW_REQUEST_RATIO)：选择以慢调用比例作为阈值，需要设置允许的慢调用 RT（即最大的响应时间），请求的响应时间大于该值则统计为慢调用。
+    location: 熔断降级 > 熔断策略
+  instantiations:
+  - component: Resilience4j
+    how: slowCallRateThreshold + slowCallDurationThreshold
+    config_or_code: config
+  - component: Sentinel
+    how: SLOW_REQUEST_RATIO 策略的慢调用 RT 与比例阈值
+    config_or_code: config
+  - component: Envoy
+    how: 无原生慢调用判据；靠 per_try_timeout 把慢转成错误后再由 consecutive_5xx 剔除
+    config_or_code: config
+  applies_when: 依赖存在"变慢但不报错"的失效方式（绝大多数同步依赖都有）
+  checks:
+    static:
+    - id: S1
+      what: 熔断配置里是否有慢调用判据（阈值时长 + 比例）
+      checkability: static-config
+    - id: S2
+      what: 若只有失败率判据，是否通过超时把慢转成失败（超时值是否小于慢调用容忍值）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 注入"变慢但全部成功"的延迟后，熔断器是否跳闸
+      signals: [熔断器状态, 慢调用比例指标, 调用方线程池占用, 响应时间 p99]
+  parameter_relation:
+    symbols: {S: 慢调用时长阈值, r: 慢调用比例阈值, d: 注入延迟, b: 基线耗时}
+    activation: d + b > S 且受影响调用占比 > r 时应跳闸；不跳闸即违反
+    defaults: {}
+  violation_manifestation: 依赖只慢不错，熔断器全程 CLOSED，调用方线程池被慢调用占满
+  defect_class: 1
+  fault_types: [dependency-delay]
+  mitigation_family: 给熔断加慢调用判据，或用短超时把慢转成失败
+
+- rule_id: R-BULK-001
+  mechanism_group: 阻断传播
+  mechanism: 舱壁隔离（线程池/连接池/信号量）
+  statement: Resources used to call one dependency must be partitioned from those used to call others, so one slow dependency cannot exhaust the shared pool.
+  gloss_zh: 调不同依赖要用各自独立的资源池，一个依赖变慢不能把公用池子占光。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-BULKHEAD
+    quote: |-
+      A consumer can also partition resources to ensure that resources used to call one service don't affect the resources used to call another service. For example, a consumer that calls multiple services might be assigned a connection pool for each service. If a service begins to fail, it only affects the connection pool assigned for that service.
+    location: Bulkhead pattern > Solution
+  - doc_id: DOC-AZ-PATTERN-BULKHEAD
+    quote: |-
+      When the consumer sends a request to a misconfigured or unresponsive service, the resources that the client's request uses might remain unavailable for an extended period. As requests to the service continue, those resources might be exhausted.
+    location: Bulkhead pattern > Context and problem
+  - doc_id: DOC-SENTINEL-CB
+    quote: |-
+      如果依赖的服务出现了不稳定的情况，请求的响应时间变长，那么调用服务的方法的响应时间也会变长，线程会产生堆积，最终可能耗尽业务自身的线程池，服务本身也变得不可用。
+    location: 熔断降级 > 开篇
+  instantiations:
+  - component: Resilience4j
+    how: 每依赖一个 Bulkhead 实例（SemaphoreBulkhead 或 FixedThreadPoolBulkhead）
+    config_or_code: config
+  - component: Envoy
+    how: circuit_breakers 的阈值是按 cluster 生效的，天然做到了每上游一组配额
+    config_or_code: config
+  - component: Istio
+    how: DestinationRule connectionPool 按 host 配置
+    config_or_code: config
+  - component: HikariCP
+    how: 每个数据源一个独立 pool，不要多库共用一个池
+    config_or_code: config
+  - component: Go net/http
+    how: 每个下游一个 http.Client/Transport，MaxConnsPerHost 分开限
+    config_or_code: code
+  applies_when: 一个进程同步调用两个及以上外部依赖
+  checks:
+    static:
+    - id: S1
+      what: 各依赖的调用是否走各自独立的线程池/连接池/信号量，而不是共用一个默认池
+      checkability: static-code
+    - id: S2
+      what: 各池的上限之和是否在进程资源承受范围内
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 只让依赖 A 变慢，依赖 B 的成功率与延迟是否不受影响
+      signals: [依赖 B 的成功率与 p99, 共享池占用率, 线程池排队长度]
+  parameter_relation:
+    symbols: {P: 共享池容量, c_A: A 的并发, d: 注入 A 的延迟, b: 基线耗时}
+    activation: 共享池下，A 占用 ≈ QPS_A ×(b+d)，当其达到 P 时 B 开始失败；独立池则 B 始终不受影响
+    defaults:
+      Resilience4j Bulkhead maxConcurrentCalls: {value: "25", doc_id: DOC-R4J-BULKHEAD}
+      Resilience4j Bulkhead maxWaitDuration: {value: "0", doc_id: DOC-R4J-BULKHEAD}
+  violation_manifestation: 注入依赖 A 延迟，与 A 无关的依赖 B 的调用也开始超时——故障跨依赖传播
+  defect_class: 1
+  fault_types: [dependency-delay, dependency-unavailable]
+  mitigation_family: 每依赖独立资源池，并给每个池设并发上限
+
+- rule_id: R-BULK-002
+  mechanism_group: 阻断传播
+  mechanism: 舱壁隔离（线程池/连接池/信号量）
+  statement: Concurrency toward each upstream must be capped, and the cap must be an intentional value rather than the framework's permissive default.
+  gloss_zh: 对每个上游的并发要设上限，而且这个值得是想过的，不是框架给的宽松默认值。
+  sources:
+  - doc_id: DOC-ENVOY-CB
+    quote: |-
+      Circuit breakers are enabled by default and have modest default values, e.g. 1024 connections per cluster. To disable circuit breakers, set the thresholds to the highest allowed values.
+    location: Circuit breaking > Overview
+  - doc_id: DOC-ENVOY-CB
+    quote: |-
+      Cluster maximum requests: The maximum number of requests that can be outstanding to all hosts in a cluster at any given time.
+    location: Circuit breaking > Overview
+  instantiations:
+  - component: Envoy
+    how: cluster circuit_breakers 的 max_connections / max_pending_requests / max_requests / max_retries
+    config_or_code: config
+  - component: Istio
+    how: DestinationRule connectionPool.tcp.maxConnections 与 http.http2MaxRequests / http1MaxPendingRequests
+    config_or_code: config
+  - component: Resilience4j
+    how: Bulkhead.maxConcurrentCalls（默认 25）与 maxWaitDuration（默认 0）
+    config_or_code: config
+  - component: Sentinel
+    how: 并发线程数限流（threadCount 阈值类型）
+    config_or_code: config
+  - component: Dubbo
+    how: consumer 侧 actives、provider 侧 executes 限并发
+    config_or_code: config
+  applies_when: 存在到某个上游的并发调用
+  checks:
+    static:
+    - id: S1
+      what: 是否显式设置了并发/连接/挂起请求上限，而不是沿用默认或设成最大值
+      checkability: static-config
+    - id: S2
+      what: 上限值是否与本进程的线程/内存预算一致
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 注入上游延迟后，在途请求数是否被压在上限处，超出的是否立即失败而不是排队
+      signals: [upstream_rq_active / 在途请求数, 溢出计数器, 调用方线程占用]
+  parameter_relation:
+    symbols: {C: 并发上限, q: 入站 QPS, b: 基线耗时, d: 注入延迟}
+    activation: q×(b+d) > C 时应观察到溢出拒绝；在途数持续超过 C 即上限未生效
+    defaults:
+      Envoy max_connections per cluster: {value: "1024", doc_id: DOC-ENVOY-CB}
+      Resilience4j Bulkhead maxConcurrentCalls: {value: "25", doc_id: DOC-R4J-BULKHEAD}
+  violation_manifestation: 上游变慢后在途请求无限堆积，调用方内存与线程被吃光
+  defect_class: 2
+  fault_types: [dependency-delay, traffic-surge]
+  mitigation_family: 按容量推导每上游并发上限，溢出即快速失败
+
+- rule_id: R-OUTLIER-001
+  mechanism_group: 阻断传播
+  mechanism: 异常实例剔除（outlier detection、被动健康检查）
+  statement: A load balancer must passively eject upstream hosts that keep failing, and must bring them back automatically after an ejection period.
+  gloss_zh: 负载均衡要能把持续失败的实例被动摘掉，并在剔除期满后自动放回来。
+  sources:
+  - doc_id: DOC-ENVOY-OUTLIER
+    quote: |-
+      If an upstream host returns some number of errors which are treated as consecutive 5xx type errors, it will be ejected. The number of consecutive 5xx required for ejection is controlled by the outlier_detection.consecutive_5xx value.
+    location: Outlier detection > Consecutive 5xx
+  - doc_id: DOC-ENVOY-OUTLIER
+    quote: |-
+      An ejected host will automatically be brought back into service after the ejection time has been satisfied. Generally, outlier detection is used alongside active health checking for a comprehensive health checking solution.
+    location: Outlier detection > Ejection algorithm
+  - doc_id: DOC-NGINX-UPSTREAM
+    quote: |-
+      sets the number of unsuccessful attempts to communicate with the server that should happen in the duration set by the fail_timeout parameter to consider the server unavailable for a duration also set by the fail_timeout parameter. By default, the number of unsuccessful attempts is set to 1.
+    location: ngx_http_upstream_module > server > max_fails
+  instantiations:
+  - component: Envoy
+    how: cluster outlier_detection 的 consecutive_5xx / interval / base_ejection_time
+    config_or_code: config
+  - component: Istio
+    how: DestinationRule outlierDetection 的 consecutive5xxErrors / interval / baseEjectionTime
+    config_or_code: config
+  - component: NGINX
+    how: upstream server 的 max_fails（默认 1）与 fail_timeout
+    config_or_code: config
+  - component: Linkerd
+    how: 通过 Service 注解开启 failure accrual（consecutive failures + backoff）
+    config_or_code: config
+  - component: Dubbo
+    how: 集群容错 failover 会换实例重试，但无持续性剔除，需配合注册中心健康
+    config_or_code: config
+  applies_when: 同一上游服务有多个实例，且实例可能单独变坏
+  checks:
+    static:
+    - id: S1
+      what: 是否配置了被动剔除（连续错误数/错误率阈值、检测间隔、剔除时长）
+      checkability: static-config
+    - id: S2
+      what: 剔除时长到期后是否会自动恢复（而不是永久摘除）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 只让一个实例返回错误，流量是否在若干次失败后不再打到它；该实例恢复后是否自动回来
+      signals: [按实例分组的入站 QPS, 剔除事件计数, 恢复后该实例的 QPS 回升时间]
+  parameter_relation:
+    symbols: {k: 连续错误阈值, I: 检测间隔, E: 基础剔除时长, n: 实例数}
+    activation: 注入单实例故障后，最多 k 次失败 + 一个 I 周期内应被剔除；错误请求数持续 ≈ 总量/n 即未生效
+    defaults:
+      NGINX max_fails: {value: "1", doc_id: DOC-NGINX-UPSTREAM}
+      Istio outlierDetection.maxEjectionPercent: {value: 10%, doc_id: DOC-ISTIO-DR}
+  violation_manifestation: 一个坏实例持续吃掉 1/n 的流量，错误率稳定在 1/n 不下降
+  defect_class: 1
+  fault_types: [instance-kill, dependency-error, dependency-delay]
+  mitigation_family: 配置被动剔除阈值与自动恢复时长，与主动健康检查配合
+
+- rule_id: R-OUTLIER-002
+  mechanism_group: 阻断传播
+  mechanism: 异常实例剔除（outlier detection、被动健康检查）
+  statement: The share of hosts that may be ejected at once must be capped, so that a widespread fault does not eject the entire upstream pool.
+  gloss_zh: 一次最多能摘掉多大比例的实例必须有上限——全局性故障不能把整个上游都摘光。
+  sources:
+  - doc_id: DOC-ENVOY-OUTLIER
+    quote: |-
+      It checks to make sure the number of ejected hosts is below the allowed threshold (specified via the outlier_detection.max_ejection_percent setting). If the number of ejected hosts is above the threshold, the host is not ejected.
+    location: Outlier detection > Ejection algorithm
+  - doc_id: DOC-ISTIO-DR
+    quote: |-
+      Maximum % of hosts in the load balancing pool for the upstream service that can be ejected. Defaults to 10%.
+    location: DestinationRule > OutlierDetection > maxEjectionPercent
+  - doc_id: DOC-ISTIO-DR
+    quote: |-
+      Outlier detection will be enabled as long as the associated load balancing pool has at least minHealthPercent hosts in healthy mode. When the percentage of healthy hosts in the load balancing pool drops below this threshold, outlier detection will be disabled and the proxy will load balance across all hosts in the pool (healthy and unhealthy).
+    location: DestinationRule > OutlierDetection > minHealthPercent
+  instantiations:
+  - component: Envoy
+    how: outlier_detection.max_ejection_percent；另有 healthy_panic_threshold 在健康主机比例过低时忽略健康状态
+    config_or_code: config
+  - component: Istio
+    how: outlierDetection.maxEjectionPercent（默认 10%）与 minHealthPercent（默认 0%）
+    config_or_code: config
+  applies_when: 启用了被动剔除或主动健康检查驱动的摘除
+  checks:
+    static:
+    - id: S1
+      what: 是否设置了剔除比例上限；若设成 100%，是否有意为之
+      checkability: static-config
+    - id: S2
+      what: 剔除比例上限与副本数是否匹配（例如 3 副本配 10% 意味着一个都摘不掉）
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 让全部实例同时变坏，是否仍保留可用后端，还是被全部摘掉导致 100% 失败
+      signals: [健康后端数, 503 no healthy upstream 计数, 剔除主机数占比]
+  parameter_relation:
+    symbols: {n: 实例数, P: 最大剔除比例, x: 同时变坏的实例数}
+    activation: x > n×P 时应停止继续剔除；观察到健康后端为 0 即违反上限
+    defaults:
+      Istio maxEjectionPercent: {value: 10%, doc_id: DOC-ISTIO-DR}
+      Istio minHealthPercent: {value: 0%, doc_id: DOC-ISTIO-DR}
+  violation_manifestation: 全局性依赖故障下所有实例被摘完，出现 no healthy upstream，本可降级的流量全挂
+  defect_class: 3
+  fault_types: [dependency-error, dependency-delay, instance-kill]
+  mitigation_family: 设剔除比例上限与最低健康比例，保证永远留有后端
+  notes: 组合型——剔除本身合规、故障本身合规，合起来把上游摘空；副本数少时 10% 默认值反而意味着剔除完全不生效。
+
+- rule_id: R-POOL-001
+  mechanism_group: 阻断传播
+  mechanism: 连接池上限与空闲超时
+  statement: Waiting to acquire a connection from a pool must itself be bounded by a timeout.
+  gloss_zh: 从连接池里拿连接这件事本身也要有超时，不能无限等。
+  sources:
+  - doc_id: DOC-HIKARICP
+    quote: |-
+      This property controls the maximum number of milliseconds that a client (that's you) will wait
+      for a connection from the pool. If this time is exceeded without a connection becoming
+      available, a SQLException will be thrown. Lowest acceptable connection timeout is 250 ms.
+    location: HikariCP README > Essentials > connectionTimeout
+  - doc_id: DOC-R4J-BULKHEAD
+    quote: |-
+      maxWaitDuration | 0 | Max amount of time a thread should be blocked for when attempting to enter a saturated bulkhead.
+    location: Bulkhead > Create and configure a Bulkhead
+  instantiations:
+  - component: HikariCP
+    how: connectionTimeout（默认 30000ms）；超时抛 SQLException
+    config_or_code: config
+  - component: Go database/sql
+    how: 无独立获取超时，靠传入 context 的 deadline 控制 DB.Conn/QueryContext
+    config_or_code: code
+  - component: pgx
+    how: pgxpool.Acquire(ctx)，靠 ctx deadline 控制
+    config_or_code: code
+  - component: Jedis
+    how: JedisPool 的 maxWaitMillis
+    config_or_code: config
+  - component: Envoy
+    how: max_pending_requests 达到上限即立即拒绝，等价于"不排队"
+    config_or_code: config
+  applies_when: 通过连接池访问数据库、缓存或下游服务
+  checks:
+    static:
+    - id: S1
+      what: 池的获取等待是否有超时值（或调用点是否带 deadline 的 context）
+      checkability: static-config
+    - id: S2
+      what: 获取超时 + 查询超时之和是否仍在入站预算内
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 注入下游延迟把池占满后，新请求是在获取超时处失败，还是无限排队
+      signals: [获取连接耗时分布, 池等待队列长度, 连接获取超时错误计数]
+  parameter_relation:
+    symbols: {N: 池大小, q: QPS, b: 基线耗时, d: 注入延迟, W: 获取超时}
+    activation: q×(b+d) > N 时池被占满，此后新请求应在 W 处失败；等待时长超过 W 即违反
+    defaults:
+      HikariCP connectionTimeout: {value: 30000 (30 seconds), doc_id: DOC-HIKARICP}
+      Resilience4j Bulkhead maxWaitDuration: {value: "0", doc_id: DOC-R4J-BULKHEAD}
+  violation_manifestation: 数据库变慢后，应用线程全部阻塞在"等连接"上，整个服务无响应
+  defect_class: 1
+  fault_types: [dependency-delay, dependency-unavailable]
+  mitigation_family: 给连接获取设等待上限，并把它计入总预算
+  notes: HikariCP 默认 30s 的获取超时通常远大于上游预算，属典型的需求相对型隐患。
+
+- rule_id: R-POOL-002
+  mechanism_group: 阻断传播
+  mechanism: 连接池上限与空闲超时
+  statement: A pooled connection's maximum lifetime must be shorter than any connection time limit imposed by the database, proxy, or network device in between.
+  gloss_zh: 池里连接的最长寿命必须短于数据库/代理/中间网络设备给的连接时限，否则拿到的是已经被对端悄悄断掉的连接。
+  sources:
+  - doc_id: DOC-HIKARICP
+    quote: |-
+      **We strongly recommend
+      setting this value, and it should be several seconds shorter than any database or infrastructure imposed
+      connection time limit.**
+    location: HikariCP README > Essentials > maxLifetime
+  - doc_id: DOC-ENVOY-TIMEOUTS
+    quote: |-
+      When the idle timeout is reached, the connection will be closed.
+    location: Timeouts > Connection timeouts > idle timeout
+  instantiations:
+  - component: HikariCP
+    how: maxLifetime（默认 1800000ms）需短于 MySQL wait_timeout / 云 LB 空闲断连时间
+    config_or_code: config
+  - component: Envoy
+    how: cluster 的 idle_timeout（默认 1 小时）与上游自身的空闲断连时间
+    config_or_code: config
+  - component: go-redis
+    how: ConnMaxLifetime / ConnMaxIdleTime
+    config_or_code: config
+  - component: PostgreSQL JDBC
+    how: 与连接池的 maxLifetime 配合；驱动本身不回收
+    config_or_code: config
+  - component: .NET HttpClient
+    how: SocketsHttpHandler.PooledConnectionLifetime 限制连接寿命（也用于让 DNS 变更生效）
+    config_or_code: code
+  - component: MySQL Connector/J
+    how: 驱动自身不回收连接，需由池的 maxLifetime 短于服务端 wait_timeout
+    config_or_code: config
+  applies_when: 使用长连接池访问有空闲断连策略的对端（数据库、云 LB、NAT 网关）
+  checks:
+    static:
+    - id: S1
+      what: 池的 maxLifetime / idleTimeout 是否小于对端的空闲断连时间（需要对端配置才能判断）
+      checkability: needs-requirement
+    - id: S2
+      what: 是否启用了连接可用性校验（keepalive / validation query）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 在连接空闲超过对端时限后发起请求，是否出现"连接已被重置"类错误
+      signals: [connection reset / broken pipe 错误计数, 请求失败与空闲时长的相关性, 池回收计数]
+  parameter_relation:
+    symbols: {L: 池的 maxLifetime, D: 对端空闲断连时间, t_idle: 实际空闲时长}
+    activation: L > D 且 t_idle > D 时，下一次取用必然命中已断连接；注入低流量期即可触发
+    defaults:
+      HikariCP maxLifetime: {value: 1800000 (30 minutes), doc_id: DOC-HIKARICP}
+      Envoy cluster idle timeout: {value: 1 hour, doc_id: DOC-ENVOY-TIMEOUTS}
+  violation_manifestation: 低峰期过后第一批请求成片失败，报连接重置，重试一次又好了
+  defect_class: 2
+  fault_types: [dependency-unavailable, network-partition, packet-loss]
+  mitigation_family: 让本端连接寿命短于对端断连时限，并开启连接存活校验
+
+# ============================================================ 组 4 卸载过载
+- rule_id: R-ADMIT-001
+  mechanism_group: 卸载过载
+  mechanism: 准入控制与限流（服务端与客户端）
+  statement: A server must shed excess load before it saturates, rejecting requests it cannot serve within latency targets rather than accepting all of them.
+  gloss_zh: 服务端要在自己被压垮之前主动拒掉多余请求，而不是照单全收然后一起变慢。
+  sources:
+  - doc_id: DOC-AWS-LOADSHED
+    quote: |-
+      When a server approaches overload, it should start rejecting excess requests so that it can focus on the requests it decides to let in. The goal of load shedding is to keep latency low for the requests that the server decides to accept so that the service replies before the client times out.
+    location: Using load shedding to avoid overload > Load shedding
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      One straightforward way to shed load is to do per-task throttling based on CPU, memory, or queue length; limiting queue length as discussed in Queue Management is a form of this strategy. For example, one effective approach is to return an HTTP 503 (service unavailable) to any incoming request when there are more than a given number of client requests in flight.
+    location: Preventing Server Overload > Load Shedding and Graceful Degradation
+  - doc_id: DOC-AZ-PATTERN-THROTTLE
+    quote: |-
+      Shed load proactively, not at the edge of collapse. A throttle that only rejects after a component saturates causes latency to spike before callers see any back-pressure.
+    location: Throttling pattern > Issues and considerations
+  instantiations:
+  - component: Sentinel
+    how: 流控规则（grade = QPS 或线程数）+ 系统自适应保护规则（load/RT/入口 QPS）
+    config_or_code: config
+  - component: Envoy
+    how: 本地/全局 rate limit filter；overload manager 按内存与在途请求数减载
+    config_or_code: config
+  - component: APISIX
+    how: limit-req / limit-count / limit-conn 插件
+    config_or_code: config
+  - component: ingress-nginx
+    how: limit-rps / limit-connections 注解
+    config_or_code: config
+  - component: Polly
+    how: RateLimiter / ConcurrencyLimiter 策略
+    config_or_code: config
+  - component: Kong
+    how: rate-limiting 插件
+    config_or_code: config
+  applies_when: 服务对外暴露接口且入站流量不可控
+  checks:
+    static:
+    - id: S1
+      what: 是否存在服务端准入控制（QPS 限流、并发上限或自适应过载保护）
+      checkability: static-config
+    - id: S2
+      what: 限流阈值是否来自压测得到的容量，而不是拍脑袋
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 把入站 QPS 抬到容量以上，被接受请求的延迟是否仍在目标内、超出部分是否被快速拒绝
+      signals: [被接受请求的 p99 延迟, 拒绝计数与拒绝率, 吞吐量随负载的曲线是否塌陷]
+  parameter_relation:
+    symbols: {C: 服务容量, q: 入站 QPS, L: 延迟目标}
+    activation: q > C 时应出现拒绝且被接受请求延迟仍 ≤ L；若延迟随 q 无上限增长、吞吐反而下降即违反
+    defaults: {}
+  violation_manifestation: 压力上去后吞吐量不是持平而是塌陷，所有请求一起超时（拥塞崩溃）
+  defect_class: 1
+  fault_types: [traffic-surge, cpu-pressure, memory-pressure]
+  mitigation_family: 按容量设准入阈值，过载时快速拒绝而不是排队
+
+- rule_id: R-ADMIT-002
+  mechanism_group: 卸载过载
+  mechanism: 准入控制与限流（服务端与客户端）
+  statement: Clients must throttle themselves adaptively when a backend is rejecting, instead of relying only on the backend to reject.
+  gloss_zh: 后端开始拒绝时，客户端自己也要按比例自适应节流，不能把活儿全丢给后端去拒。
+  sources:
+  - doc_id: DOC-SRE-OVERLOAD
+    quote: |-
+      As the rate at which the application attempts requests to the client grows (relative to the rate at which the backend accepts them), we want to increase the probability of dropping new requests.
+    location: Client-Side Throttling > Client request rejection probability
+  - doc_id: DOC-SRE-OVERLOAD
+    quote: |-
+      We've found adaptive throttling to work well in practice, leading to stable rates of requests overall. Even in large overload situations, backends end up rejecting one request for each request they actually process.
+    location: Client-Side Throttling > Client request rejection probability
+  instantiations:
+  - component: gRPC
+    how: retryThrottling 是同类思路的一种（按失败/成功比例暂停重试）
+    config_or_code: config
+  - component: Sentinel
+    how: 调用端配置流控规则或熔断规则，实现客户端侧自我限制
+    config_or_code: config
+  - component: Resilience4j
+    how: 客户端侧 RateLimiter
+    config_or_code: config
+  applies_when: 一个后端被大量客户端共享，且拒绝请求本身也有成本
+  checks:
+    static:
+    - id: S1
+      what: 客户端侧是否存在按后端接受率自适应调整的节流（不是固定 QPS 上限）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 让后端开始大比例拒绝，客户端发出的请求量是否随之下降
+      signals: [客户端出站 QPS, 后端拒绝率, 客户端本地丢弃计数]
+  parameter_relation:
+    symbols: {K: 接受倍数（SRE 建议 2）, requests: 客户端尝试数, accepts: 后端接受数}
+    activation: requests > K × accepts 时客户端应开始本地丢弃；出站 QPS 不随拒绝率下降即违反
+    defaults: {}
+  violation_manifestation: 后端在拒绝上耗光资源；客户端流量丝毫不减，后端连拒绝都拒绝不动
+  defect_class: 1
+  fault_types: [traffic-surge, dependency-unavailable]
+  mitigation_family: 客户端按后端接受率自适应节流
+
+- rule_id: R-ADMIT-003
+  mechanism_group: 卸载过载
+  mechanism: 准入控制与限流（服务端与客户端）
+  statement: Overload rejections must use a distinguishable status that callers can act on, and a downstream overload signal must be surfaced upward rather than hidden behind a generic error or a silent retry.
+  gloss_zh: 过载拒绝要用能被识别的状态码（429/503 + Retry-After），而且下游的过载信号必须往上传，不能用 500 盖住或自己偷偷重试。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-THROTTLE
+    quote: |-
+      Propagate overload signals from your dependencies instead of absorbing them. A service that throttles its callers must also honor the throttling responses that it receives from its own downstream dependencies. If your service hides a downstream 429 or 503 response by retrying silently or by returning a generic HTTP 500 (Internal Server Error) response, callers can't slow down, retries amplify, and the overload cascades back upstream.
+    location: Throttling pattern > Issues and considerations
+  - doc_id: DOC-AZ-PATTERN-THROTTLE
+    quote: |-
+      Include a Retry-After HTTP header so that the client can pick a retry strategy.
+    location: Throttling pattern > Issues and considerations
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Return a specific status when overloaded so that clients and other layers back off and do not retry.
+    location: Retries > When issuing automatic retries
+  instantiations:
+  - component: Envoy
+    how: 限流拒绝返回 429；本地限流可配置响应头
+    config_or_code: config
+  - component: APISIX
+    how: limit-count 的 rejected_code 与 Retry-After 响应头
+    config_or_code: config
+  - component: Spring Boot
+    how: 异常处理器不应把下游 429/503 统一转成 500
+    config_or_code: code
+  - component: gRPC
+    how: RESOURCE_EXHAUSTED / UNAVAILABLE 的区分，以及是否放进 retryableStatusCodes
+    config_or_code: both
+  applies_when: 服务有限流，或它的下游可能返回过载信号
+  checks:
+    static:
+    - id: S1
+      what: 限流拒绝用的状态码是否可区分（429/503/RESOURCE_EXHAUSTED），是否带 Retry-After
+      checkability: static-config
+    - id: S2
+      what: 异常映射层是否把下游 429/503 压成 500 或吞掉后重试
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 让下游返回 429，观察本服务向上返回的状态码是否保持可识别
+      signals: [本服务出站收到的状态码分布, 本服务入站返回的状态码分布, 上游重试率]
+  parameter_relation:
+    symbols: {}
+    activation: 注入下游 429 后，若上游看到的是 500 或看不到任何变化，即信号被吞
+    defaults: {}
+  violation_manifestation: 上游无从得知下游在过载，继续加压甚至重试，过载沿调用链反向放大
+  defect_class: 1
+  fault_types: [traffic-surge, dependency-error]
+  mitigation_family: 用专门的过载状态码并把它一路透传上去
+
+- rule_id: R-QUEUE-001
+  mechanism_group: 卸载过载
+  mechanism: 排队与背压
+  statement: Request queues must be bounded, and for steady traffic the bound should be small relative to the thread pool so the server rejects early instead of queueing.
+  gloss_zh: 请求队列必须有界；流量平稳的服务队列还要相对线程池设得小，宁可早点拒绝也别排长队。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      For a system with fairly steady traffic over time, it is usually better to have small queue lengths relative to the thread pool size (e.g., 50% or less), which results in the server rejecting requests early when it can’t sustain the rate of incoming requests.
+    location: Preventing Server Overload > Queue Management
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Queued requests consume memory and increase latency.
+    location: Preventing Server Overload > Queue Management
+  - doc_id: DOC-DUBBO-XML-PROVIDER
+    quote: |-
+      线程池队列大小，当线程池满时，排队等待执行的队列大小，建议不要设置，当线程池满时应立即失败，重试其它服务提供机器，而不是排队，除非有特殊需求。
+    location: dubbo:provider 配置项 > queues
+  - doc_id: DOC-SENTINEL-FLOW
+    quote: |-
+      这种隔离方案虽然能够控制线程数量，但无法控制请求排队时间。当请求过多时排队也是无益的，直接拒绝能够迅速降低系统压力。
+    location: 流量控制 > 基于QPS/并发数的流量控制
+  instantiations:
+  - component: Java concurrency
+    how: ThreadPoolExecutor 用有界 ArrayBlockingQueue + 明确的 RejectedExecutionHandler；LinkedBlockingQueue 无参构造是无界的
+    config_or_code: code
+  - component: Envoy
+    how: max_pending_requests 即队列上限，溢出立即拒绝
+    config_or_code: config
+  - component: Dubbo
+    how: provider 线程池 queues 参数，默认 0（不排队）
+    config_or_code: config
+  - component: Sentinel
+    how: 线程数限流只统计当前上下文线程数、超阈值立即拒绝；若改用匀速器（漏桶）流控效果则必须同时限定最大排队时间
+    config_or_code: config
+  - component: NGINX
+    how: listen backlog 与 worker_connections 决定内核层排队深度
+    config_or_code: config
+  applies_when: 服务端在线程池/连接前面有请求队列
+  checks:
+    static:
+    - id: S1
+      what: 队列是否有界（无界队列或无界 backlog 直接算违反）
+      checkability: static-code
+    - id: S2
+      what: 队列长度与线程池大小的比例是否符合流量形态（平稳流量宜 ≤ 50%）
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 过载时新请求是被立刻拒绝，还是在队列里等到超时
+      signals: [队列深度, 排队时长分布, 拒绝计数, 内存占用]
+  parameter_relation:
+    symbols: {Q: 队列长度, N: 线程数, p: 单请求处理时长}
+    activation: 队列排满时请求的总耗时 ≈ (Q/N)×p；该值超过上游预算即等同于"全部超时"
+    defaults:
+      Dubbo provider queues: {value: "0", doc_id: DOC-DUBBO-XML-PROVIDER}
+  violation_manifestation: 过载时内存被排队请求吃光，或所有请求排到超时才失败，有效吞吐为 0
+  defect_class: 1
+  fault_types: [traffic-surge, cpu-pressure, memory-pressure, dependency-delay]
+  mitigation_family: 有界队列 + 明确的拒绝策略，队列长度按预算反推
+
+- rule_id: R-QUEUE-002
+  mechanism_group: 卸载过载
+  mechanism: 排队与背压
+  statement: Requests that have already waited past their usefulness must be dropped rather than served in FIFO order.
+  gloss_zh: 已经排到没意义的请求要直接丢掉，不能还按先进先出老老实实处理完。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Changing the queuing method from the standard first-in, first-out (FIFO) to last-in, first-out (LIFO) or using the controlled delay (CoDel) algorithm [Nic12] or similar approaches can reduce load by removing requests that are unlikely to be worth processing [Mau15].
+    location: Preventing Server Overload > Load Shedding and Graceful Degradation
+  - doc_id: DOC-AWS-LOADSHED
+    quote: |-
+      In some extreme overload scenarios, huge volumes of requests can queue up in Transmission Control Protocol (TCP) buffers, so by the time the server reads the requests from its buffers, the client has already timed out.
+    location: Using load shedding to avoid overload > Watching the clock
+  instantiations:
+  - component: Envoy
+    how: 结合 route timeout 与 max_pending_requests，超时的挂起请求被取消
+    config_or_code: config
+  - component: Java concurrency
+    how: 出队时校验入队时间戳与 deadline，过期直接丢弃
+    config_or_code: code
+  - component: gRPC
+    how: 服务端出队后检查 context 是否已取消/超时
+    config_or_code: code
+  applies_when: 服务端存在排队，且客户端有超时
+  checks:
+    static:
+    - id: S1
+      what: 出队处是否有"已过期就丢弃"的判断
+      checkability: static-code
+    - id: S2
+      what: 队列是否记录了入队时间或请求截止时间
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 过载后有效吞吐（在客户端还愿意接收的时间内完成的请求数）是否保持非零
+      signals: [有效吞吐量, 请求排队时长, 客户端已超时但服务端仍完成的请求比例]
+  parameter_relation:
+    symbols: {B: 客户端预算, w: 排队时长}
+    activation: w > B 的请求应在出队时被丢弃；服务端仍完成这些请求即违反
+    defaults: {}
+  violation_manifestation: 过载期间服务端满负荷工作但有效吞吐为 0——处理的全是客户端已放弃的请求
+  defect_class: 1
+  fault_types: [traffic-surge, cpu-pressure]
+  mitigation_family: 出队即校验截止时间，或改用 LIFO/CoDel 之类的排队策略
+  notes: 与 R-DEADLINE-CHECK-001 是同一件事的两面：一个从服务端阶段检查看，一个从排队策略看。
+
+- rule_id: R-LEVEL-001
+  mechanism_group: 卸载过载
+  mechanism: 负载削峰
+  statement: Work that does not need a synchronous answer should be handed to a queue so that the processing rate is decoupled from the arrival rate.
+  gloss_zh: 不需要同步给答复的活儿应该丢进队列，让处理速度和到达速度脱钩。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-QBLL
+    quote: |-
+      Use a queue that acts as a buffer between a task and the service that it invokes. This approach smooths intermittent heavy loads that might cause the service to fail or the task to time out.
+    location: Queue-Based Load Leveling pattern > Overview
+  - doc_id: DOC-AZ-PATTERN-QBLL
+    quote: |-
+      A service might experience demand peaks that overload it and make the service unable to respond to requests quickly. Flooding a service with many concurrent requests can also cause the service to fail if it can't handle the contention that these requests cause.
+    location: Queue-Based Load Leveling pattern > Context and problem
+  instantiations:
+  - component: Kafka
+    how: 写入 topic 后异步消费，消费者按自身能力拉取
+    config_or_code: code
+  - component: RabbitMQ
+    how: 生产者投递 + 消费者 prefetch 控制拉取速率
+    config_or_code: config
+  - component: RocketMQ
+    how: 同步下单转异步处理，用消息削峰
+    config_or_code: code
+  - component: NATS
+    how: JetStream 消费者的 max_ack_pending 控制在途量
+    config_or_code: config
+  applies_when: 存在突发流量且部分工作可以异步完成
+  checks:
+    static:
+    - id: S1
+      what: 峰值路径上的非必要同步工作是否被改成了异步入队
+      checkability: static-code
+    - id: S2
+      what: 消费侧是否有速率控制（prefetch / max in-flight），否则队列只是把压力挪了位置
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 注入流量尖峰后，下游处理速率是否保持平稳、只有队列深度上涨
+      signals: [队列深度随时间变化, 下游处理速率, 下游错误率]
+  parameter_relation:
+    symbols: {q_peak: 峰值到达率, C: 下游处理能力, D: 峰值持续时长}
+    activation: q_peak > C 时队列深度按 (q_peak - C)×D 增长而下游速率应保持 ≈ C；下游速率随 q_peak 抬升并开始报错即未削峰
+    defaults: {}
+  violation_manifestation: 尖峰直接打到下游，下游错误率跟着峰值走
+  defect_class: 1
+  fault_types: [traffic-surge]
+  mitigation_family: 用队列解耦到达率与处理率，消费侧限速
+
+- rule_id: R-PRIO-001
+  mechanism_group: 卸载过载
+  mechanism: 优先级与降级
+  statement: Under overload a server must drop lower-criticality work first and keep the requests its own availability depends on, such as health checks.
+  gloss_zh: 过载时要先丢低优先级的活儿，同时保住自己活下去所依赖的请求（比如健康检查）。
+  sources:
+  - doc_id: DOC-SRE-OVERLOAD
+    quote: |-
+      When a task is itself overloaded, it will reject requests of lower criticalities sooner.
+    location: Criticality
+  - doc_id: DOC-AWS-LOADSHED
+    quote: |-
+      When a server is overloaded, it has an opportunity to triage incoming requests to decide which ones to accept and which ones to turn away. The most important request that a server will receive is a ping request from a load balancer. If the server doesn't respond to ping requests in time, the load balancer will stop sending new requests to that server for a period of time, and the server will sit idle.
+    location: Using load shedding to avoid overload > Prioritizing requests
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      More sophisticated approaches include identifying clients to be more selective about what work is dropped, or picking requests that are more important and prioritizing.
+    location: Preventing Server Overload > Load Shedding and Graceful Degradation
+  instantiations:
+  - component: Sentinel
+    how: 按资源/来源（origin）分别配流控规则，低优先级资源先限
+    config_or_code: config
+  - component: Envoy
+    how: 路由级 rate limit 按 descriptor 区分调用方；健康检查走独立 listener 或不经限流
+    config_or_code: config
+  - component: Spring Boot Actuator
+    how: 探针端点与业务共用线程池时会被一起压住，需独立 management.server.port
+    config_or_code: config
+  - component: Kubernetes
+    how: 探针请求若和业务共用同一端口与线程池，过载会导致误杀实例
+    config_or_code: manifest
+  applies_when: 服务同时承载不同重要性的流量，或健康检查与业务共用处理资源
+  checks:
+    static:
+    - id: S1
+      what: 限流/丢弃策略是否区分请求重要性
+      checkability: static-config
+    - id: S2
+      what: 健康检查端点是否与业务流量共用线程池/端口，从而会被一起限住
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 过载时高优先级请求的成功率是否明显高于低优先级；探针是否仍能通过
+      signals: [按优先级分组的成功率, 探针失败计数, 实例重启/摘除次数]
+  parameter_relation:
+    symbols: {q: 入站 QPS, C: 容量, P_probe: 探针超时}
+    activation: q 超过 C 后，低优先级成功率应先下降；探针失败并触发重启即属于过载自伤
+    defaults: {}
+  violation_manifestation: 过载时探针一起超时，实例被 kubelet 重启或被 LB 摘除，容量进一步减少，形成正反馈
+  defect_class: 3
+  fault_types: [traffic-surge, cpu-pressure]
+  mitigation_family: 请求分级丢弃，并把健康检查与业务流量隔离
+  notes: 组合型——限流合规、探针配置合规，合起来在过载时自己把自己杀掉。
+
+# ============================================================ 组 5 保住容量
+- rule_id: R-REPL-001
+  mechanism_group: 保住容量
+  mechanism: 副本数
+  statement: A workload that must survive the loss of one instance must run more than one replica.
+  gloss_zh: 要能扛住挂一个实例，副本数就不能是 1。
+  sources:
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when a deployment uses less than three replicas
+    location: KubeLinter checks > minimum-replicas
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Remediation**: Increase the number of replicas in the deployment to at least three to increase the fault tolerance of the deployment.
+    location: KubeLinter checks > minimum-replicas
+  - doc_id: DOC-KUBESCORE-CHECKS
+    quote: |-
+      | deployment-replicas | Deployment | Makes sure that Deployment has multiple replicas. The --min-replicas-deployment flag can be used to specify the required minimum. Default is 2. | default |
+    location: kube-score checks table
+  - doc_id: DOC-POLARIS-RELIABILITY
+    quote: |-
+      deploymentMissingReplicas | warning | Fails when there is only one replica for a deployment.
+    location: Polaris Reliability checks table
+  instantiations:
+  - component: Kubernetes
+    how: Deployment/StatefulSet 的 spec.replicas；被 HPA 管的用 minReplicas
+    config_or_code: manifest
+  - component: Polaris
+    how: deploymentMissingReplicas 检查
+    config_or_code: config
+  - component: kube-linter
+    how: minimum-replicas 检查（阈值参数 minReplicas，默认建议 3）
+    config_or_code: config
+  - component: kube-score
+    how: deployment-replicas 检查（默认要求 ≥ 2）
+    config_or_code: config
+  applies_when: 该工作负载被要求在单实例故障下继续提供服务
+  checks:
+    static:
+    - id: S1
+      what: replicas 或 HPA.minReplicas 是否 ≥ 2（三个规则集分别用 2 和 3 作阈值）
+      checkability: static-manifest
+    - id: S2
+      what: 副本数是否足以在丢掉一个实例后仍满足容量需求
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 杀掉一个实例后服务是否仍可用
+      signals: [杀实例期间的错误率, 就绪副本数, 恢复时长]
+  parameter_relation:
+    symbols: {n: 副本数, k: 同时失效的实例数, C1: 单实例容量, q: 入站 QPS}
+    activation: k ≥ n 时必然全断；(n-k)×C1 < q 时虽未全断但会过载
+    defaults:
+      kube-score deployment-replicas 阈值: {value: "2", doc_id: DOC-KUBESCORE-CHECKS}
+      kube-linter minimum-replicas 阈值: {value: "3", doc_id: DOC-KUBELINTER-CHECKS}
+  violation_manifestation: 杀掉单个实例即 100% 不可用
+  defect_class: 1
+  fault_types: [instance-kill, memory-pressure, cpu-pressure]
+  mitigation_family: 多副本部署，副本数按"丢一个仍够用"反推
+  notes: 三个规则集的阈值不一致（kube-score 2、kube-linter 3、Polaris 只查"是不是 1"），取哪个要人拍板，见 CHANGES.md。
+
+- rule_id: R-PDB-001
+  mechanism_group: 保住容量
+  mechanism: 中断预算
+  statement: A multi-replica workload must be covered by a disruption budget so that voluntary disruptions cannot take down more replicas than the application tolerates.
+  gloss_zh: 多副本的工作负载要有中断预算，免得节点维护之类的主动中断一次端掉太多副本。
+  sources:
+  - doc_id: DOC-K8S-DISRUPTIONS
+    quote: |-
+      As an application owner, you can create a PodDisruptionBudget (PDB) for each application. A PDB limits the number of Pods of a replicated application that are down simultaneously from voluntary disruptions.
+    location: Disruptions > Pod disruption budgets
+  - doc_id: DOC-K8S-DISRUPTIONS
+    quote: |-
+      A PDB specifies the number of replicas that an application can tolerate having, relative to how many it is intended to have.
+    location: Disruptions > How disruption budgets work
+  - doc_id: DOC-KUBESCORE-CHECKS
+    quote: |-
+      | deployment-has-poddisruptionbudget | Deployment | Makes sure that all Deployments are targeted by a PDB | default |
+    location: kube-score checks table
+  - doc_id: DOC-POLARIS-RELIABILITY
+    quote: |-
+      missingPodDisruptionBudget | warning | Fails when PDB is missing.
+    location: Polaris Reliability checks table
+  instantiations:
+  - component: Kubernetes
+    how: PodDisruptionBudget 的 minAvailable 或 maxUnavailable，selector 必须匹配到工作负载
+    config_or_code: manifest
+  - component: kube-score
+    how: deployment-has-poddisruptionbudget / statefulset-has-poddisruptionbudget / poddisruptionbudget-has-policy
+    config_or_code: config
+  - component: Polaris
+    how: missingPodDisruptionBudget
+    config_or_code: config
+  applies_when: 工作负载有多副本且集群会发生节点维护、缩容、重调度
+  checks:
+    static:
+    - id: S1
+      what: 是否存在 selector 能匹配到该工作负载的 PDB，且指定了 minAvailable 或 maxUnavailable
+      checkability: static-cross-object
+    - id: S2
+      what: PDB 的 selector 是否真的选中了目标 Pod（选错标签等于没有）
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 通过 Eviction API 驱逐（drain 节点）时，同时不可用副本数是否被限住
+      signals: [驱逐期间就绪副本数最低值, 驱逐被拒绝的次数, 期间错误率]
+  parameter_relation:
+    symbols: {n: 副本数, m: minAvailable, q: 入站 QPS, C1: 单实例容量}
+    activation: 驱逐时可用副本应始终 ≥ m；若 m 未设或 PDB 未匹配，drain 可一次端掉全部 n 个
+    defaults:
+      PDB unhealthyPodEvictionPolicy: {value: IfHealthyBudget, doc_id: DOC-K8S-PDB-TASK}
+  violation_manifestation: 节点 drain 时整组副本同时被驱逐，服务出现完全中断
+  defect_class: 1
+  fault_types: [instance-kill]
+  mitigation_family: 为每个多副本工作负载配 PDB，并核对 selector
+  notes: PDB 只约束主动中断；节点宕机这类非主动中断不受它限制，见 K8s 文档原文。
+
+- rule_id: R-PDB-002
+  mechanism_group: 保住容量
+  mechanism: 中断预算
+  statement: A disruption budget must leave room for at least one eviction, and must not be set so tight that it blocks all voluntary disruptions.
+  gloss_zh: 中断预算得留出至少能驱逐一个的余地，卡到一个都不让动等于把节点维护堵死。
+  sources:
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when a PodDisruptionBudget sets a minAvailable value that will always prevent disruptions of pods created by related deployment-like objects.
+    location: KubeLinter checks > no-pod-disruptions-allowed (minAvailable)
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when a PodDisruptionBudget has a maxUnavailable value that will always prevent disruptions of pods created by related deployment-like objects.
+    location: KubeLinter checks > no-pod-disruptions-allowed (maxUnavailable)
+  - doc_id: DOC-K8S-DISRUPTIONS
+    quote: |-
+      For example, a Deployment which has a .spec.replicas: 5 is supposed to have 5 pods at any given time. If its PDB allows for there to be 4 at a time, then the Eviction API will allow voluntary disruption of one (but not two) pods at a time.
+    location: Disruptions > How disruption budgets work
+  instantiations:
+  - component: Kubernetes
+    how: minAvailable 必须 < replicas；maxUnavailable 必须 > 0
+    config_or_code: manifest
+  - component: kube-linter
+    how: pdb-min-available / pdb-max-unavailable 两个检查
+    config_or_code: config
+  - component: Polaris
+    how: pdbMinAvailableGreaterThanHPAMinReplicas（与 HPA 下限的交叉检查）
+    config_or_code: config
+  applies_when: 已经配了 PDB
+  checks:
+    static:
+    - id: S1
+      what: minAvailable 是否小于副本数、maxUnavailable 是否大于 0
+      checkability: static-cross-object
+    - id: S2
+      what: PDB.minAvailable 是否大于 HPA.minReplicas（缩容后会永久阻塞驱逐）
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: drain 节点是否能在合理时间内完成，还是被 PDB 永久阻塞
+      signals: [drain 耗时, Eviction API 被拒计数, 节点处于 cordon 状态的时长]
+  parameter_relation:
+    symbols: {n: 副本数, m: minAvailable, u: maxUnavailable, h: HPA minReplicas}
+    activation: m ≥ n 或 u = 0 时驱逐必然永远被拒；m > h 时缩容到 h 之后同样被永久阻塞
+    defaults: {}
+  violation_manifestation: 节点维护永远排不掉 Pod，集群升级卡死；而故障演练里表现为"驱逐无效"
+  defect_class: 3
+  fault_types: [instance-kill]
+  mitigation_family: 让 PDB 的下限与副本数、HPA 下限三者相容
+  notes: 组合型——PDB 合规、HPA 合规，两者一起看才发现驱逐被永久堵死。
+
+- rule_id: R-SPREAD-001
+  mechanism_group: 保住容量
+  mechanism: 拓扑分散与反亲和
+  statement: Replicas of one workload must be spread across failure domains; by default the scheduler packs and gives no such guarantee.
+  gloss_zh: 同一工作负载的副本要跨故障域打散——默认调度器是往紧里塞的，不保证分散。
+  sources:
+  - doc_id: DOC-POLARIS-RELIABILITY
+    quote: |-
+      By default, the Kubernetes scheduler uses a bin-packing algorithm to fit as many pods as possible into a cluster. The scheduler prefers a more evenly distributed general node load to app replicas precisely spread across nodes. Therefore, by default, multi-replica is not guaranteed to be spread across multiple availability zones.
+    location: Polaris Reliability > Background > Topology Spread Constraints
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when deployments with multiple replicas fail to specify inter-pod anti-affinity or topology spread constraints, to ensure that the orchestrator attempts to schedule replicas on different nodes.
+    location: KubeLinter checks > anti-affinity-not-specified
+  - doc_id: DOC-K8S-TOPOSPREAD
+    quote: |-
+      maxSkew describes the degree to which Pods may be unevenly distributed. You must specify this field and the number must be greater than zero.
+    location: Pod Topology Spread Constraints > spread constraint definition
+  instantiations:
+  - component: Kubernetes
+    how: topologySpreadConstraints（maxSkew + topologyKey + whenUnsatisfiable）或 podAntiAffinity
+    config_or_code: manifest
+  - component: kube-linter
+    how: anti-affinity 检查（要求 topologyKey = kubernetes.io/hostname）
+    config_or_code: config
+  - component: Polaris
+    how: topologySpreadConstraint 检查
+    config_or_code: config
+  - component: kube-score
+    how: deployment-has-host-podantiaffinity / pod-topology-spread-constraints
+    config_or_code: config
+  applies_when: 工作负载有多副本，且集群有多个节点或可用区
+  checks:
+    static:
+    - id: S1
+      what: 是否配置了 topologySpreadConstraints 或 podAntiAffinity，topologyKey 是否覆盖节点与可用区
+      checkability: static-manifest
+    - id: S2
+      what: whenUnsatisfiable 是 DoNotSchedule 还是 ScheduleAnyway——后者只是尽力而为
+      checkability: static-manifest
+    runtime:
+    - id: T1
+      what: 实际 Pod 分布是否跨节点/跨区；杀掉一个节点上的全部 Pod 后剩余容量是否够
+      signals: [每节点/每区的副本数, 杀节点后的就绪副本数, 期间错误率]
+  parameter_relation:
+    symbols: {n: 副本数, D: 故障域数, s: 单域内最大副本数}
+    activation: 若 s = n（全挤在一个域），该域故障即 100% 不可用；maxSkew 越大允许的倾斜越严重
+    defaults: {}
+  violation_manifestation: 所有副本落在同一节点或同一可用区，该域一挂服务整体不可用
+  defect_class: 1
+  fault_types: [instance-kill, network-partition]
+  mitigation_family: 按节点与可用区两级配置拓扑分散约束
+
+- rule_id: R-HPA-001
+  mechanism_group: 保住容量
+  mechanism: 自动扩缩
+  statement: An autoscaled workload must have a floor on replicas and a damping window, so scaling neither drops below fault tolerance nor oscillates.
+  gloss_zh: 自动扩缩要有副本数下限和抑制窗口——既不能缩到没有容错能力，也不能来回抖。
+  sources:
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Remediation**: Increase the number of replicas in the HorizontalPodAutoscaler to at least three to increase fault tolerance.
+    location: KubeLinter checks > minimum-three-replicas (HPA)
+  - doc_id: DOC-K8S-HPA
+    quote: |-
+      When managing the scale of a group of replicas using the HorizontalPodAutoscaler, it is possible that the number of replicas keeps fluctuating frequently due to the dynamic nature of the metrics evaluated. This is sometimes referred to as thrashing, or flapping.
+    location: Horizontal Pod Autoscaling > Thrashing
+  - doc_id: DOC-K8S-HPA
+    quote: |-
+      You can configure this value using the --horizontal-pod-autoscaler-downscale-stabilization command line option, which defaults to 5 minutes.
+    location: Horizontal Pod Autoscaling > Algorithm details
+  instantiations:
+  - component: Kubernetes
+    how: HPA 的 minReplicas / maxReplicas 与 behavior.scaleDown.stabilizationWindowSeconds
+    config_or_code: manifest
+  - component: kube-linter
+    how: hpa-minimum-replicas（建议 minReplicas ≥ 3）
+    config_or_code: config
+  - component: kube-score
+    how: horizontalpodautoscaler-replicas；以及 deployment-targeted-by-hpa-does-not-have-replicas-configured
+    config_or_code: config
+  - component: Polaris
+    how: hpaMinAvailability / hpaMaxAvailability
+    config_or_code: config
+  applies_when: 工作负载由 HPA 管理
+  checks:
+    static:
+    - id: S1
+      what: minReplicas 是否 ≥ 容错所需的最低副本数
+      checkability: static-manifest
+    - id: S2
+      what: 被 HPA 管理的 Deployment 是否还硬写了 spec.replicas（会互相打架）
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 负载波动时副本数是否稳定收敛，而不是反复扩缩
+      signals: [副本数随时间曲线, 扩缩事件频率, 期间错误率与冷启动失败数]
+  parameter_relation:
+    symbols: {min: minReplicas, max: maxReplicas, W: 缩容稳定窗口, T: 扩容响应时长}
+    activation: 流量尖峰上升速度快于 T 时，HPA 来不及扩容，容量缺口由现有副本承担；W 过小则出现抖动
+    defaults:
+      HPA downscale stabilization: {value: 5 minutes, doc_id: DOC-K8S-HPA}
+      kube-linter HPA minReplicas 阈值: {value: "3", doc_id: DOC-KUBELINTER-CHECKS}
+  violation_manifestation: 低峰期缩到 1 副本，此时杀一个实例即全断；或副本数持续抖动带来反复冷启动
+  defect_class: 2
+  fault_types: [traffic-surge, instance-kill, cpu-pressure]
+  mitigation_family: 设置与容错需求一致的 minReplicas 并配置缩容稳定窗口
+
+- rule_id: R-PRIO-002
+  mechanism_group: 保住容量
+  mechanism: 优先级与抢占
+  statement: Workloads whose eviction would hurt availability must carry an explicit priority class, otherwise they compete at the default priority and can be preempted by anything.
+  gloss_zh: 一驱逐就影响可用性的工作负载要显式设优先级类，否则它跟别的 Pod 同级，谁都能把它挤掉。
+  sources:
+  - doc_id: DOC-K8S-PRIORITY
+    quote: |-
+      Pods can have priority. Priority indicates the importance of a Pod relative to other Pods. If a Pod cannot be scheduled, the scheduler tries to preempt (evict) lower priority Pods to make scheduling of the pending Pod possible.
+    location: Pod Priority and Preemption > Overview
+  - doc_id: DOC-POLARIS-RELIABILITY
+    quote: |-
+      priorityClassNotSet | warning | Fails when a priorityClassName is not set for a pod.
+    location: Polaris Reliability checks table
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when a deployment-like object does not use a valid priority class name
+    location: KubeLinter checks > priority-class-name
+  instantiations:
+  - component: Kubernetes
+    how: PriorityClass + Pod 模板的 priorityClassName
+    config_or_code: manifest
+  - component: Polaris
+    how: priorityClassNotSet
+    config_or_code: config
+  - component: kube-linter
+    how: priority-class-name（可配置可接受的类名列表）
+    config_or_code: config
+  applies_when: 集群资源会被争抢，存在节点压力驱逐或抢占调度
+  checks:
+    static:
+    - id: S1
+      what: 关键工作负载是否设置了 priorityClassName，且该类的 value 高于批处理类负载
+      checkability: static-manifest
+    runtime:
+    - id: T1
+      what: 制造节点资源压力，看关键 Pod 是否先于非关键 Pod 被驱逐
+      signals: [被驱逐 Pod 的优先级分布, 关键服务的就绪副本数, 驱逐事件顺序]
+  parameter_relation:
+    symbols: {P_crit: 关键负载优先级, P_batch: 批处理负载优先级}
+    activation: P_crit ≤ P_batch 时，节点压力下关键 Pod 可能先被驱逐
+    defaults: {}
+  violation_manifestation: 节点内存压力时关键服务被驱逐，批处理任务反而活着
+  defect_class: 2
+  fault_types: [memory-pressure, cpu-pressure, instance-kill, disk-pressure]
+  mitigation_family: 按业务重要性划分 PriorityClass 并落到 Pod 模板
+
+- rule_id: R-WARM-001
+  mechanism_group: 保住容量
+  mechanism: 冷启动容量与预热
+  statement: A freshly started instance has less capacity than a warm one; traffic must be ramped, or the service provisioned to serve under a cold cache.
+  gloss_zh: 刚起来的实例容量比热实例小，要么慢慢给流量，要么按"缓存全空也扛得住"来备容量。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Processes are often slower at responding to requests immediately after starting than they will be in steady state.
+    location: Slow Startup and Cold Caching
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      If the service is not provisioned to handle requests under a cold cache, it’s at greater risk of outages and should take steps to avoid them.
+    location: Slow Startup and Cold Caching
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      When adding load to a cluster, slowly increase the load. The initially small request rate warms up the cache; once the cache is warm, more traffic can be added.
+    location: Slow Startup and Cold Caching
+  - doc_id: DOC-AWS-TIMEOUTS
+    quote: |-
+      Later, we improved the system by establishing these connections when a process started up, but before receiving traffic. This got us around the timeout issue altogether.
+    location: Timeouts, retries and backoff with jitter > Timeouts
+  instantiations:
+  - component: NGINX
+    how: upstream server 的 slow_start 参数，实例恢复后逐步加权
+    config_or_code: config
+  - component: Envoy
+    how: cluster 的 slow_start_config（渐进加权）
+    config_or_code: config
+  - component: Kubernetes
+    how: startupProbe 把"还没热"的实例挡在流量外；readinessProbe 只在真正能服务时才通过
+    config_or_code: manifest
+  - component: HikariCP
+    how: minimumIdle 预建连接，避免首批请求现场建连
+    config_or_code: config
+  - component: JVM
+    how: JIT 预热期吞吐低于稳态，需要预热请求或 AOT
+    config_or_code: config
+  applies_when: 实例存在启动预热期（连接池、缓存、JIT），且会发生重启或扩容
+  checks:
+    static:
+    - id: S1
+      what: 负载均衡是否对新实例做渐进加权（slow start）
+      checkability: static-config
+    - id: S2
+      what: 连接池是否预建最小空闲连接，而不是首请求现场建连
+      checkability: static-config
+    - id: S3
+      what: 就绪条件是否包含"预热完成"，而不是进程起来就算就绪
+      checkability: static-manifest
+    runtime:
+    - id: T1
+      what: 同时重启大比例实例后，服务是否能扛住原有流量
+      signals: [重启后头 N 秒的错误率与 p99, 新实例的首请求耗时, 缓存命中率恢复曲线]
+  parameter_relation:
+    symbols: {C_warm: 热实例容量, C_cold: 冷实例容量, r: 同时重启比例, q: 入站 QPS}
+    activation: q > (1-r)×n×C_warm + r×n×C_cold 时冷启动阶段会过载；r 越大越容易触发
+    defaults: {}
+  violation_manifestation: 滚动重启或扩容后出现一段错误高峰，过几十秒自己好——容量在冷启动期塌了
+  defect_class: 2
+  fault_types: [instance-kill, traffic-surge, cpu-pressure]
+  mitigation_family: 新实例渐进加权 + 预建连接与缓存 + 按冷缓存容量备量
+  notes: 这是起点清单没有、从 SRE 书第 22 章归纳出来的机制。
+
+# ============================================================ 组 6 检测与恢复
+- rule_id: R-PROBE-001
+  mechanism_group: 检测与恢复
+  mechanism: 存活/就绪/启动探针
+  statement: A workload that receives traffic must expose a readiness signal, so that an instance unable to serve is removed from the routing set without being killed.
+  gloss_zh: 接流量的工作负载必须有就绪信号——暂时服务不了的实例应该被摘掉，而不是被杀掉。
+  sources:
+  - doc_id: DOC-K8S-POD-LIFECYCLE
+    quote: |-
+      Readiness probes determine when a container is ready to accept traffic. This is useful when waiting for an application to perform time-consuming initial tasks, such as establishing network connections, loading files, and warming caches. Readiness probes can also be useful later in the container's lifecycle, for example, when recovering from temporary faults or overloads.
+    location: Pod Lifecycle > Container probes > Readiness probe
+  - doc_id: DOC-K8S-POD-LIFECYCLE
+    quote: |-
+      If the readiness probe returns a failed state, the EndpointSlice controller removes the Pod's IP address from the EndpointSlices of all Services that match the Pod.
+    location: Pod Lifecycle > Container probes > Readiness probe
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when containers fail to specify a readiness probe.
+    location: KubeLinter checks > unset-readiness-probe
+  - doc_id: DOC-POLARIS-RELIABILITY
+    quote: |-
+      readinessProbeMissing | warning | Fails when a readiness probe is not configured for a pod.
+    location: Polaris Reliability checks table
+  instantiations:
+  - component: Kubernetes
+    how: container.readinessProbe（httpGet / tcpSocket / exec / grpc）
+    config_or_code: manifest
+  - component: Spring Boot Actuator
+    how: /actuator/health/readiness 健康分组
+    config_or_code: config
+  - component: gRPC
+    how: grpc.health.v1.Health 服务 + K8s grpc 探针
+    config_or_code: code
+  - component: kube-linter
+    how: unset-readiness-probe
+    config_or_code: config
+  - component: Polaris
+    how: readinessProbeMissing
+    config_or_code: config
+  applies_when: 工作负载被 Service/负载均衡选中并接收流量
+  checks:
+    static:
+    - id: S1
+      what: 是否配置了 readinessProbe
+      checkability: static-manifest
+    - id: S2
+      what: 就绪判据是否覆盖"依赖还没连上""缓存还没热"这类暂时不能服务的状态
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 让实例进入不能服务但进程仍活的状态，流量是否被摘走
+      signals: [EndpointSlice 中的地址数, 该实例的入站 QPS, 整体错误率]
+  parameter_relation:
+    symbols: {p: periodSeconds, f: failureThreshold, t_detect: 摘流延迟}
+    activation: t_detect ≈ p × f；注入故障后在 t_detect 内仍有流量属正常，超出很多即探针未生效
+    defaults: {}
+  violation_manifestation: 实例还没准备好（或已经不能服务）却一直在 Endpoints 里，持续吃掉一份流量并报错
+  defect_class: 1
+  fault_types: [instance-kill, dependency-unavailable, cpu-pressure, memory-pressure]
+  mitigation_family: 配置就绪探针，并让就绪判据真实反映"能不能服务"
+
+- rule_id: R-PROBE-002
+  mechanism_group: 检测与恢复
+  mechanism: 健康端点及其依赖范围
+  statement: A liveness signal must not depend on external dependencies; only a readiness or dependency check may, because a shared dependency failure would otherwise restart or remove the entire fleet at once.
+  gloss_zh: 存活判据不能查外部依赖——依赖一挂就全体重启；依赖检查只能放在就绪/依赖健康检查里，而且要防误杀。
+  sources:
+  - doc_id: DOC-AWS-HEALTHCHECKS
+    quote: |-
+      However, trouble arises when the health check fails for a non-critical reason and when that failure is correlated across servers. If automation removes servers from service when they still could have performed useful work, the automation does more harm than good.
+    location: Implementing health checks > Health check tradeoffs
+  - doc_id: DOC-AWS-HEALTHCHECKS
+    quote: |-
+      Dependency health checks are a thorough inspection of the ability of an application to interact with its adjacent systems. These checks ideally catch problems local to the server, such as expired credentials, that are preventing it from interacting with a dependency. But they can also have false positives when there are problems with the dependency itself. Because of those false positives, we must be careful about how we react to dependency health check failures.
+    location: Implementing health checks > Dependency health checks
+  - doc_id: DOC-K8S-POD-LIFECYCLE
+    quote: |-
+      If a container fails its liveness probe more times than the configured tolerance, the kubelet restarts that container.
+    location: Pod Lifecycle > Container probes > Liveness probe
+  instantiations:
+  - component: Kubernetes
+    how: livenessProbe 只查进程自身（如本地端口可连、事件循环没卡死），不查数据库
+    config_or_code: manifest
+  - component: Spring Boot Actuator
+    how: liveness 分组默认只含 LivenessStateHealthIndicator；把 db/redis 指示器放进 liveness 分组即违反
+    config_or_code: config
+  applies_when: 存在由健康检查驱动的自动重启或自动摘流
+  checks:
+    static:
+    - id: S1
+      what: liveness 判据是否触达了外部依赖（DB/缓存/下游服务）
+      checkability: static-code
+    - id: S2
+      what: Spring Boot 等框架的 liveness 健康分组里是否混入了依赖型健康指示器
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 让共享依赖不可用，观察实例是否被成批重启或成批摘流
+      signals: [容器重启次数, 就绪副本数, 依赖故障与重启事件的时间相关性]
+  parameter_relation:
+    symbols: {n: 副本数, f: failureThreshold, p: periodSeconds}
+    activation: 依赖不可用持续 > p × f 时，若 liveness 依赖它，全部 n 个副本会在同一时间窗被重启
+    defaults: {}
+  violation_manifestation: 数据库抖一下，整组 Pod 一起 CrashLoopBackOff，依赖恢复后还要等重启退避
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-delay, network-partition]
+  mitigation_family: 存活只查自身、就绪才查依赖，并对依赖检查做防误杀处理
+
+- rule_id: R-PROBE-003
+  mechanism_group: 检测与恢复
+  mechanism: 存活/就绪/启动探针
+  statement: Liveness and readiness must not use the identical check, because then any condition that removes traffic also triggers a restart.
+  gloss_zh: 存活和就绪不能用同一个检查——否则凡是该摘流量的情况都会顺带把容器重启了。
+  sources:
+  - doc_id: DOC-KUBESCORE-CHECKS
+    quote: |-
+      | pod-probes-identical | Pod | Makes sure that readiness and liveness probes are not identical | default |
+    location: kube-score checks table
+  - doc_id: DOC-K8S-PROBES-TASK
+    quote: |-
+      The readiness and liveness probes do not depend on each other to succeed.
+    location: Configure Probes > Define readiness probes
+  instantiations:
+  - component: Kubernetes
+    how: livenessProbe 与 readinessProbe 指向不同路径（例如 /healthz vs /ready）
+    config_or_code: manifest
+  - component: kube-score
+    how: pod-probes-identical 检查
+    config_or_code: config
+  - component: Spring Boot Actuator
+    how: /actuator/health/liveness 与 /actuator/health/readiness 两个分组
+    config_or_code: config
+  applies_when: 同时配置了存活与就绪探针
+  checks:
+    static:
+    - id: S1
+      what: 两个探针的目标路径/命令是否完全相同
+      checkability: static-manifest
+    - id: S2
+      what: 若路径相同，该端点的判据是否只反映进程自身状态
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 触发"应摘流但不该重启"的状态，观察容器是否被重启
+      signals: [容器重启次数, 就绪状态变化, 两者的时间相关性]
+  parameter_relation:
+    symbols: {f_live: liveness failureThreshold, f_ready: readiness failureThreshold, p: periodSeconds}
+    activation: 判据相同时，摘流发生在 p×f_ready、重启发生在 p×f_live；依赖抖动持续超过后者即必然重启
+    defaults: {}
+  violation_manifestation: 依赖短暂不可用本该只摘流，结果容器被重启，重启又带来冷启动，恢复更慢
+  defect_class: 4
+  fault_types: [dependency-unavailable, dependency-delay, cpu-pressure]
+  mitigation_family: 存活与就绪用不同判据、不同端点
+
+- rule_id: R-PROBE-004
+  mechanism_group: 检测与恢复
+  mechanism: 存活/就绪/启动探针
+  statement: A container with a long initialization must be protected by a startup probe sized to the worst-case startup time, instead of by loosening the liveness probe.
+  gloss_zh: 启动慢的容器要用启动探针兜住（按最坏启动时间设），不能靠把存活探针放宽来凑合。
+  sources:
+  - doc_id: DOC-K8S-PROBES-TASK
+    quote: |-
+      Sometimes, you have to deal with applications that require additional startup time on their first initialization. In such cases, it can be tricky to set up liveness probe parameters without compromising the fast response to deadlocks that motivated such a probe. The solution is to set up a startup probe with the same command, HTTP or TCP check, with a failureThreshold * periodSeconds long enough to cover the worst case startup time.
+    location: Configure Probes > Protect slow starting containers with startup probes
+  - doc_id: DOC-K8S-PROBES-TASK
+    quote: |-
+      Once the startup probe has succeeded once, the liveness probe takes over to provide a fast response to container deadlocks. If the startup probe never succeeds, the container is killed after 300s and subject to the pod's restartPolicy.
+    location: Configure Probes > Protect slow starting containers with startup probes
+  - doc_id: DOC-K8S-POD-LIFECYCLE
+    quote: |-
+      Startup probes verify whether the application within a container is started. If a startup probe is configured, Kubernetes does not execute liveness or readiness probes until the startup probe succeeds, allowing the application time to finish its initialization.
+    location: Pod Lifecycle > Container probes > Startup probe
+  instantiations:
+  - component: Kubernetes
+    how: startupProbe 的 failureThreshold × periodSeconds ≥ 最坏启动时间
+    config_or_code: manifest
+  - component: Spring Boot Actuator
+    how: 启动期间 readiness 未就绪；配合 startupProbe 避免被 liveness 误杀
+    config_or_code: config
+  - component: JVM
+    how: JIT 预热与类加载让首启动明显慢于稳态，是这条规则的典型触发场景
+    config_or_code: config
+  applies_when: 容器首次初始化耗时明显长于稳态响应时间
+  checks:
+    static:
+    - id: S1
+      what: 是否配置了 startupProbe；其 failureThreshold × periodSeconds 是否覆盖最坏启动时长
+      checkability: static-manifest
+    - id: S2
+      what: 是否改用把 liveness 的 initialDelaySeconds 调得很大来凑合（那会让运行期死锁检测变迟钝）
+      checkability: static-manifest
+    runtime:
+    - id: T1
+      what: 在冷启动（缓存空、依赖慢）条件下重启实例，是否出现启动未完成即被杀的循环
+      signals: [容器重启次数, CrashLoopBackOff 事件, 启动耗时分布]
+  parameter_relation:
+    symbols: {S: 最坏启动时长, f: startupProbe failureThreshold, p: periodSeconds}
+    activation: S > f × p 时容器在启动完成前被杀，进入无限重启；依赖变慢会把 S 推高从而触发
+    defaults: {}
+  violation_manifestation: 依赖变慢时实例永远起不来——起到一半被 liveness 杀掉，反复 CrashLoopBackOff
+  defect_class: 2
+  fault_types: [dependency-delay, cpu-pressure, instance-kill]
+  mitigation_family: 用 startupProbe 覆盖最坏启动时间，liveness 保持灵敏
+
+- rule_id: R-PROBE-005
+  mechanism_group: 检测与恢复
+  mechanism: 存活/就绪/启动探针
+  statement: A probe must target a port and path the container actually serves; a probe pointed at an unexposed port fails permanently.
+  gloss_zh: 探针得打在容器真的在监听的端口和路径上——打到没暴露的端口就是永远失败。
+  sources:
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when containers have a liveness probe to a not exposed port.
+    location: KubeLinter checks > liveness-port
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when containers have a readiness probe to a not exposed port.
+    location: KubeLinter checks > readiness-port
+  - doc_id: DOC-KUBESCORE-CHECKS
+    quote: |-
+      | pod-probes | Pod | Makes sure that all Pods have safe probe configurations | default |
+    location: kube-score checks table
+  instantiations:
+  - component: Kubernetes
+    how: probe.httpGet.port 必须出现在 containerPorts 或确实被进程监听
+    config_or_code: manifest
+  - component: kube-linter
+    how: liveness-port / readiness-port / startup-port 三个检查
+    config_or_code: config
+  - component: Spring Boot Actuator
+    how: management.server.port 与探针端口需一致；改了管理端口而探针没改是常见错配
+    config_or_code: config
+  applies_when: 配置了任何探针
+  checks:
+    static:
+    - id: S1
+      what: 探针端口是否与容器实际监听端口一致（含 management 端口分离的情况）
+      checkability: static-cross-object
+    - id: S2
+      what: 探针路径在应用里是否真实存在
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 实例是否从未进入就绪，或稳定期反复重启
+      signals: [探针失败事件, 容器重启次数, 就绪副本数长期为 0]
+  parameter_relation:
+    symbols: {}
+    activation: 端口/路径错配时探针恒失败，与注入什么故障无关——静态即可判定
+    defaults: {}
+  violation_manifestation: 副本永远不就绪或不断重启，和故障注入无关
+  defect_class: 4
+  fault_types: [instance-kill]
+  mitigation_family: 核对探针端口与路径同容器实际监听一致
+
+- rule_id: R-HEALTH-001
+  mechanism_group: 检测与恢复
+  mechanism: 健康端点及其依赖范围
+  statement: A health endpoint must state which layer it checks; a shallow check that only proves the process is up cannot detect an application that answers incorrectly.
+  gloss_zh: 健康端点要说清楚自己查到哪一层——只证明进程活着的浅检查发现不了"能应答但答错了"。
+  sources:
+  - doc_id: DOC-AWS-HEALTHCHECKS
+    quote: |-
+      Interestingly, in the website example from the beginning of the article, the existing health check was deep enough to ensure that the rendering process was running and responding but not deep enough to ensure it was responding correctly.
+    location: Implementing health checks > What can go wrong on a server
+  - doc_id: DOC-AZ-PATTERN-HEM
+    quote: |-
+      Implement health monitoring by sending requests to an endpoint on your application. The application should perform the necessary checks and then return an indication of its status.
+    location: Health Endpoint Monitoring pattern > Solution
+  - doc_id: DOC-MSIO-HEALTHCHECK
+    quote: |-
+      A service has an health check API endpoint (e.g. HTTP /health) that returns the health of the service. The API endpoint handler performs various checks, such as
+    location: Health Check API > Solution
+  instantiations:
+  - component: Spring Boot Actuator
+    how: /actuator/health 由各 HealthIndicator 组成；可用 health groups 区分深浅
+    config_or_code: config
+  - component: Kubernetes
+    how: 同一个 Pod 上分别配置浅（liveness）与稍深（readiness）的探针
+    config_or_code: manifest
+  - component: gRPC
+    how: grpc.health.v1.Health 支持按 service 名分别上报状态
+    config_or_code: code
+  applies_when: 服务对外暴露健康端点供编排或负载均衡使用
+  checks:
+    static:
+    - id: S1
+      what: 健康端点检查了哪些内容（进程 / 本地依赖 / 远端依赖），是否与它的使用场景匹配
+      checkability: static-code
+    - id: S2
+      what: 是否存在"总是返回 200"的空壳健康端点
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 让应用进入"能应答但业务处理不了"的状态，健康端点是否仍报健康
+      signals: [健康端点状态码, 业务错误率, 两者的背离程度]
+  parameter_relation:
+    symbols: {}
+    activation: 注入"业务功能坏了但 HTTP 栈正常"的故障后，健康端点仍 200 即为浅检查失效
+    defaults: {}
+  violation_manifestation: 实例业务完全不可用但健康检查一路绿灯，流量继续打过来
+  defect_class: 1
+  fault_types: [dependency-unavailable, cpu-pressure, memory-pressure]
+  mitigation_family: 明确健康端点的检查深度，并按用途分层暴露
+
+- rule_id: R-HEALTH-002
+  mechanism_group: 检测与恢复
+  mechanism: 负载均衡的健康剔除
+  statement: When health checks fail across the whole fleet, the router must fail open and keep sending traffic, rather than removing every backend.
+  gloss_zh: 全体健康检查一起失败时，路由层要"失败放行"继续发流量，而不是把所有后端都摘掉。
+  sources:
+  - doc_id: DOC-AWS-HEALTHCHECKS
+    quote: |-
+      In general, this means that the automation surrounding health checks should stop directing traffic to a single bad server but keep allowing traffic if the entire fleet appears to be having trouble.
+    location: Implementing health checks > Health check tradeoffs
+  - doc_id: DOC-AWS-HEALTHCHECKS
+    quote: |-
+      Some load balancers can act as a smart central authority. When an individual server fails a health check, the load balancer stops sending it traffic. But when all servers fail health checks at the same time, the load balancer fails open, allowing traffic to all servers.
+    location: Implementing health checks > Prioritizing health checks
+  - doc_id: DOC-NACOS-PROTECT
+    quote: |-
+      当健康比例小于等于保护阈值时，服务端会进入保护视图，返回更宽的实例集合，并在该保护视图中把 unhealthy 实例表现为 healthy。
+    location: 健康、权重与元数据 > 保护阈值
+  - doc_id: DOC-ISTIO-DR
+    quote: |-
+      When the percentage of healthy hosts in the load balancing pool drops below this threshold, outlier detection will be disabled and the proxy will load balance across all hosts in the pool (healthy and unhealthy).
+    location: DestinationRule > OutlierDetection > minHealthPercent
+  instantiations:
+  - component: Nacos
+    how: 服务的保护阈值（protectThreshold），健康比例低于它即进入保护视图
+    config_or_code: config
+  - component: Istio
+    how: outlierDetection.minHealthPercent（默认 0%，即默认不启用该保护）
+    config_or_code: config
+  - component: Envoy
+    how: 负载均衡的 healthy panic threshold，健康主机比例过低时忽略健康状态
+    config_or_code: config
+  - component: Eureka
+    how: 实例靠周期性续约（eureka.instance.leaseRenewalIntervalInSeconds，默认 30 秒）维持注册；服务端在大面积续约丢失时是否仍摘除实例，需按所用版本的服务端配置单独确认
+    config_or_code: config
+  applies_when: 服务发现或负载均衡会依据健康状态摘除实例
+  checks:
+    static:
+    - id: S1
+      what: 是否配置了保护阈值 / panic threshold / 自我保护，使得全体不健康时不会摘空
+      checkability: static-config
+    - id: S2
+      what: 该阈值与副本数是否匹配（副本很少时阈值可能永远不触发或永远触发）
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 让全部实例的健康检查同时失败，路由层是否仍有可用后端
+      signals: [可路由后端数, no healthy upstream / 服务列表为空 计数, 客户端错误率]
+  parameter_relation:
+    symbols: {n: 实例数, h: 健康实例数, P: 保护阈值}
+    activation: h/n ≤ P 时应进入保护/放行；观察到后端集合变空即违反
+    defaults:
+      Istio minHealthPercent: {value: 0%, doc_id: DOC-ISTIO-DR}
+  violation_manifestation: 共享依赖故障造成全体健康检查失败，服务列表被清空，本来还能处理部分请求的实例也拿不到流量
+  defect_class: 3
+  fault_types: [dependency-unavailable, network-partition]
+  mitigation_family: 配置全体不健康时的放行阈值，避免摘空
+  notes: 组合型——单实例摘除逻辑合规、健康检查合规，遇到相关性故障就把整个后端集合摘空。
+
+- rule_id: R-DISCOVERY-001
+  mechanism_group: 检测与恢复
+  mechanism: 服务发现的健康与会话
+  statement: An instance's registration must be tied to a liveness signal (heartbeat, session, or active check) so a dead instance disappears from discovery without manual action.
+  gloss_zh: 注册信息要挂在某种存活信号上（心跳、会话或主动检查），实例死了要能自动从服务发现里消失。
+  sources:
+  - doc_id: DOC-NACOS-PROTECT
+    quote: |-
+      healthy 表示实例当前是否被 Nacos 健康逻辑认为可用。它可能来自临时实例心跳、持久实例主动健康检查、手动健康更新或节点间同步。
+    location: 健康、权重与元数据 > 字段说明
+  - doc_id: DOC-CONSUL-CHECKS
+    quote: |-
+      Time-to-live (TTL) checks are passive checks that await updates from the service. If the check does not receive a status update before the specified duration, the health check enters a criticalstate.
+    location: Define health checks > Types of checks
+  - doc_id: DOC-ZK-PROGRAMMERS
+    quote: |-
+      ZooKeeper also has the notion of ephemeral nodes. These znodes exists as long as the session that created the znode is active. When the session ends the znode is deleted.
+    location: ZooKeeper Programmer's Guide > ZNodes > Ephemeral Nodes
+  instantiations:
+  - component: Nacos
+    how: 临时实例靠心跳/连接生命周期维持；持久实例靠服务端主动健康检查
+    config_or_code: config
+  - component: Consul
+    how: TTL / script / HTTP / gRPC 检查，失败进入 critical 后不再被发现
+    config_or_code: config
+  - component: ZooKeeper
+    how: 临时节点绑定 session，session 过期即删除
+    config_or_code: code
+  - component: etcd
+    how: 注册键绑定 lease，续租停止即自动过期
+    config_or_code: code
+  - component: Eureka
+    how: 客户端续约 + 服务端剔除，但有自我保护模式会推迟剔除
+    config_or_code: config
+  applies_when: 通过注册中心做服务发现
+  checks:
+    static:
+    - id: S1
+      what: 注册是否绑定到心跳/会话/租约/主动检查，而不是一次性静态注册
+      checkability: static-code
+    - id: S2
+      what: 剔除延迟（心跳间隔 × 容忍次数）相对调用方超时是否可接受
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 强杀一个实例后，它在多长时间内从服务发现结果里消失
+      signals: [服务列表中该实例的存续时长, 调用方打到死实例的错误数, 剔除事件时间]
+  parameter_relation:
+    symbols: {H: 心跳间隔, k: 容忍次数, T_evict: 剔除延迟, q: 调用 QPS}
+    activation: T_evict ≈ H×k；这段时间内约有 q×T_evict/n 个请求会打到死实例，该值不可接受即需调参
+    defaults: {}
+  violation_manifestation: 实例已死但仍在服务列表里，调用方持续把 1/n 的流量打进黑洞
+  defect_class: 2
+  fault_types: [instance-kill, network-partition]
+  mitigation_family: 注册绑定存活信号，并按可接受的剔除延迟调参
+  notes: 剔除延迟必须与客户端熔断/剔除配合——注册中心慢一拍时得靠客户端侧兜住。
+
+- rule_id: R-LB-001
+  mechanism_group: 检测与恢复
+  mechanism: 负载均衡的健康剔除
+  statement: A load balancer should combine active health checking with passive outlier detection, since each alone misses failures the other catches.
+  gloss_zh: 负载均衡要主动健康检查和被动异常剔除一起用——单靠哪一个都有漏网的失效。
+  sources:
+  - doc_id: DOC-ENVOY-HEALTHCHECK
+    quote: |-
+      Active health checking can be configured on a per upstream cluster basis.
+    location: Health checking > Overview
+  - doc_id: DOC-ENVOY-OUTLIER
+    quote: |-
+      Generally, outlier detection is used alongside active health checking for a comprehensive health checking solution.
+    location: Outlier detection > Ejection algorithm
+  - doc_id: DOC-ENVOY-OUTLIER
+    quote: |-
+      If your active health check is not validating data plane traffic then in situations where active health checking passes but the traffic is failing, the endpoint will be unejected prematurely.
+    location: Outlier detection > Ejection algorithm
+  instantiations:
+  - component: Envoy
+    how: cluster 的 health_checks（主动）+ outlier_detection（被动）
+    config_or_code: config
+  - component: Istio
+    how: 主动健康检查交给 K8s 探针，被动剔除由 DestinationRule outlierDetection 负责
+    config_or_code: config
+  - component: NGINX
+    how: 开源版只有被动（max_fails / fail_timeout）；主动检查需商业版或第三方模块
+    config_or_code: config
+  - component: Kong
+    how: upstream 的 active 与 passive healthchecks 两套配置
+    config_or_code: config
+  - component: APISIX
+    how: upstream.checks.active 与 upstream.checks.passive
+    config_or_code: config
+  applies_when: 上游有多个实例且由代理/网关做负载均衡
+  checks:
+    static:
+    - id: S1
+      what: 是否同时配置了主动与被动健康检查
+      checkability: static-config
+    - id: S2
+      what: 主动健康检查的探测路径是否能反映真实数据面（否则会把被动剔除的实例过早放回来）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 制造"主动检查通过但业务请求失败"的实例，它是否被持续剔除还是反复被放回
+      signals: [该实例的剔除/恢复事件序列, 打到它的错误数, 剔除持续时长]
+  parameter_relation:
+    symbols: {I_active: 主动检查间隔, k: unhealthy_threshold, E: 被动剔除时长}
+    activation: 主动检查过浅时，被动剔除后最快在 I_active 内就被 uneject，错误按周期复发
+    defaults: {}
+  violation_manifestation: 坏实例被剔除后又被主动健康检查放回来，错误率呈周期性锯齿
+  defect_class: 3
+  fault_types: [dependency-error, dependency-delay, instance-kill]
+  mitigation_family: 主动 + 被动健康检查配合，且主动检查要能反映真实数据面
+
+- rule_id: R-KEEPALIVE-001
+  mechanism_group: 检测与恢复
+  mechanism: 连接保活与死连接探测（keepalive）
+  statement: Long-lived connections must be probed so that a half-open connection is detected and replaced instead of silently swallowing requests until timeout.
+  gloss_zh: 长连接要有保活探测，半开连接要能被发现并换掉，不然请求会一直卡到超时才失败。
+  sources:
+  - doc_id: DOC-GRPC-KEEPALIVE
+    quote: |-
+      HTTP/2 PING-based keepalives are a way to keep an HTTP/2 connection alive even when there is no data being transferred. This is done by periodically sending a PING frame to the other end of the connection.
+    location: Keepalive > Overview
+  - doc_id: DOC-GRPC-KEEPALIVE
+    quote: |-
+      TCP keepalive is a well-known method of maintaining connections and detecting broken connections.
+    location: Keepalive > Background
+  - doc_id: DOC-GRPC-KEEPALIVE
+    quote: |-
+      It’s not required for service owners to support keepalive. Client authors must coordinate with service owners for whether a particular client-side setting is acceptable.
+    location: Keepalive > How configuring keepalive affects a call
+  instantiations:
+  - component: gRPC
+    how: keepalive_time / keepalive_timeout；服务端 keepalive 策略过严会回 GOAWAY too_many_pings
+    config_or_code: config
+  - component: Envoy
+    how: HTTP/2 connection keepalive（connection_keepalive）与 TCP keepalive
+    config_or_code: config
+  - component: HikariCP
+    how: keepaliveTime 对空闲连接做保活探测
+    config_or_code: config
+  - component: go-redis
+    how: 连接空闲回收 + 读写超时共同兜住死连接
+    config_or_code: config
+  applies_when: 使用长连接（HTTP/2、gRPC、数据库连接池）且中间可能有 NAT/LB 静默断连
+  checks:
+    static:
+    - id: S1
+      what: 是否启用了连接保活探测，探测间隔是否短于中间设备的空闲断连时间
+      checkability: static-config
+    - id: S2
+      what: 客户端 keepalive 间隔是否与服务端允许的最小间隔冲突（否则会被 GOAWAY 断开）
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 用丢包/黑洞的方式让对端静默消失，调用方是在保活探测处快速失败，还是卡到请求超时
+      signals: [故障后首个请求的失败耗时, 连接重建计数, GOAWAY/too_many_pings 计数]
+  parameter_relation:
+    symbols: {K: 保活间隔, K_t: 保活超时, T: 请求超时, N: 中间设备空闲断连时间}
+    activation: 未启用保活时故障检测耗时 = T；启用后应 ≈ K + K_t。K > N 时连接会被中间设备静默断掉
+    defaults: {}
+  violation_manifestation: 对端消失后请求全部卡满超时才失败；或低峰期连接被中间设备断掉，下一次请求必失败一次
+  defect_class: 2
+  fault_types: [network-partition, packet-loss, instance-kill]
+  mitigation_family: 启用保活探测，间隔短于中间设备空闲断连时间且与服务端策略相容
+  notes: 起点清单没有这一项，从 gRPC 的独立 keepalive 文档页归纳出来。
+
+- rule_id: R-RESTART-001
+  mechanism_group: 检测与恢复
+  mechanism: 容器重启策略
+  statement: A long-running workload must use a restart policy that brings the process back after a crash.
+  gloss_zh: 常驻服务的重启策略要能在进程崩溃后把它拉起来。
+  sources:
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when a deployment-like object does not use a restart policy
+    location: KubeLinter checks > no-restart-policy
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Remediation**: Set up the restart policy for your object to 'Always' or 'OnFailure' to increase the fault tolerance.
+    location: KubeLinter checks > no-restart-policy
+  - doc_id: DOC-K8S-POD-LIFECYCLE
+    quote: |-
+      Deployments typically use restartPolicy: Always (the only allowed value) to keep applications running continuously
+    location: Pod Lifecycle > Restart policy
+  instantiations:
+  - component: Kubernetes
+    how: Pod 的 restartPolicy（Deployment 只能是 Always）；退避由 CrashLoopBackOff 控制
+    config_or_code: manifest
+  - component: kube-linter
+    how: no-restart-policy 检查
+    config_or_code: config
+  applies_when: 工作负载是常驻服务而非一次性任务
+  checks:
+    static:
+    - id: S1
+      what: restartPolicy 是否为 Always 或 OnFailure（常驻服务不应为 Never）
+      checkability: static-manifest
+    runtime:
+    - id: T1
+      what: 杀掉容器主进程后，它是否被自动拉起
+      signals: [容器重启次数, 恢复时长, CrashLoopBackOff 退避时长]
+  parameter_relation:
+    symbols: {n: 副本数, t_restart: 重启恢复时长}
+    activation: 注入进程崩溃后应观察到自动重启；重启退避会随连续崩溃次数指数增长，恢复时长随之变长
+    defaults: {}
+  violation_manifestation: 进程崩溃后容器不再拉起，副本数持续减少
+  defect_class: 1
+  fault_types: [instance-kill, memory-pressure]
+  mitigation_family: 常驻服务用 Always/OnFailure 重启策略
+  notes: 起点清单没有，从 kube-linter 明确把 restartPolicy 归为容错项归纳出来。
+
+# ============================================================ 组 7 资源边界
+- rule_id: R-RES-001
+  mechanism_group: 资源边界
+  mechanism: 资源请求与限额
+  statement: Every container must declare resource requests and limits, because the scheduler places by request and the kernel enforces by limit.
+  gloss_zh: 每个容器都要声明 requests 和 limits——调度按 requests 算放得下放不下，内核按 limits 来管住实际用量。
+  sources:
+  - doc_id: DOC-K8S-RESOURCES
+    quote: |-
+      When you specify the resource request for containers in a Pod, the kube-scheduler uses this information to decide which node to place the Pod on. When you specify a resource limit for a container, the kubelet enforces those limits so that the running container is not allowed to use more of that resource than the limit you set.
+    location: Resource Management for Pods and Containers > Overview
+  - doc_id: DOC-K8S-RESOURCES
+    quote: |-
+      If a container exceeds its memory request and the node that it runs on becomes short of memory overall, it is likely that the Pod the container belongs to will be evicted.
+    location: Resource Management for Pods and Containers > Memory requests and limits
+  - doc_id: DOC-KUBELINTER-CHECKS
+    quote: |-
+      **Description**: Indicates when containers do not have memory requests and limits set.
+    location: KubeLinter checks > unset-memory-requirements
+  - doc_id: DOC-KUBESCORE-CHECKS
+    quote: |-
+      | container-resources | Pod | Makes sure that all pods have resource limits and requests set. The --ignore-container-cpu-limit flag can be used to disable the requirement of having a CPU limit | default |
+    location: kube-score checks table
+  instantiations:
+  - component: Kubernetes
+    how: resources.requests / resources.limits（cpu、memory、ephemeral-storage）
+    config_or_code: manifest
+  - component: kube-linter
+    how: unset-cpu-requirements / unset-memory-requirements
+    config_or_code: config
+  - component: kube-score
+    how: container-resources / container-ephemeral-storage-request-and-limit
+    config_or_code: config
+  applies_when: 工作负载与别的负载共享节点
+  checks:
+    static:
+    - id: S1
+      what: cpu / memory 的 requests 与 limits 是否都已设置
+      checkability: static-manifest
+    - id: S2
+      what: requests 是否接近实际稳态用量（过低会导致节点超卖后被驱逐）
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 在同节点制造资源压力，本工作负载是否被驱逐或被 OOM 杀
+      signals: [OOMKilled 次数, 驱逐事件, CPU throttling 时间占比, 容器重启次数]
+  parameter_relation:
+    symbols: {R: request, L: limit, U: 实际用量}
+    activation: U > R 且节点紧张时可能被驱逐；U > L（内存）时会被 OOM 杀；U 接近 L（CPU）时被节流
+    defaults: {}
+  violation_manifestation: 节点资源紧张时本服务被优先驱逐或反复 OOMKilled，而非关键负载活得好好的
+  defect_class: 1
+  fault_types: [memory-pressure, cpu-pressure, disk-pressure, instance-kill]
+  mitigation_family: 按实测用量设置 requests/limits，并核对 QoS 等级
+
+- rule_id: R-RES-002
+  mechanism_group: 资源边界
+  mechanism: 运行时内存设置与容器限额的关系
+  statement: A runtime's heap sizing must be derived from the container memory limit, leaving headroom for non-heap memory, or the container will be OOM-killed before the runtime believes it is out of memory.
+  gloss_zh: 运行时的堆大小要按容器内存限额来定，并给堆外留出余量——否则运行时还觉得没满，容器已经被 OOM 杀了。
+  sources:
+  - doc_id: DOC-JAVA-LAUNCHER
+    quote: |-
+      Linux only: The VM now provides automatic container detection support, which allows the VM to determine the amount of memory and number of processors that are available to a Java process running in docker containers. It uses this information to allocate system resources. The default for this flag is true, and container support is enabled by default.
+    location: java command > Advanced Runtime Options > -XX:-UseContainerSupport
+  - doc_id: DOC-JAVA-LAUNCHER
+    quote: |-
+      The maximum amount of available memory to the JVM process is the minimum of the machine's physical memory and any constraints set by the environment (e.g. container).
+    location: java command > Advanced Runtime Options
+  - doc_id: DOC-K8S-RESOURCES
+    quote: |-
+      memory limits are enforced by the kernel with out of memory (OOM) kills. When a container uses more than its memory limit, the kernel may terminate it.
+    location: Resource Management for Pods and Containers > Resource units
+  instantiations:
+  - component: JVM
+    how: -XX:MaxRAMPercentage 按容器限额取百分比；UseContainerSupport 默认开启，被显式关闭则按宿主机内存算
+    config_or_code: config
+  - component: Node.js
+    how: --max-old-space-size 需按容器限额设置，V8 默认值与容器限额无关
+    config_or_code: config
+  - component: Kubernetes
+    how: resources.limits.memory 是 OOM 判据；emptyDir 作为 memory medium 时也算进这个限额
+    config_or_code: manifest
+  applies_when: 运行时自带堆/内存池且部署在有内存限额的容器里
+  checks:
+    static:
+    - id: S1
+      what: 堆上限是按容器限额推导的（百分比或显式值），还是用了运行时默认
+      checkability: static-config
+    - id: S2
+      what: 堆上限 + 堆外（元空间、线程栈、直接内存、本地库）是否小于容器限额
+      checkability: needs-requirement
+    - id: S3
+      what: 是否显式关闭了容器感知（-XX:-UseContainerSupport）
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 施加内存压力时，进程是抛出运行时 OOM（可观测、可降级），还是直接被内核杀掉
+      signals: [OOMKilled 次数, 运行时 OutOfMemoryError 计数, RSS 与 limit 的比值, GC 频率]
+  parameter_relation:
+    symbols: {L: 容器内存 limit, H: 堆上限, O: 堆外占用}
+    activation: H + O > L 时必然被 OOM 杀；H 远小于 L 则浪费容量并频繁 GC
+    defaults:
+      JVM UseContainerSupport: {value: "true", doc_id: DOC-JAVA-LAUNCHER}
+  violation_manifestation: 容器被内核 OOMKilled 而运行时日志里没有任何内存不足的迹象
+  defect_class: 2
+  fault_types: [memory-pressure, instance-kill]
+  mitigation_family: 按容器限额推导堆上限并为堆外留余量
+
+- rule_id: R-RES-003
+  mechanism_group: 资源边界
+  mechanism: 资源请求与限额
+  statement: Workloads that must survive node pressure need a QoS class that is evicted last, which follows from how requests and limits are set.
+  gloss_zh: 要能扛住节点资源压力的负载，得落在最后才被驱逐的 QoS 等级上——而 QoS 等级是 requests/limits 怎么写决定的。
+  sources:
+  - doc_id: DOC-K8S-QOS
+    quote: |-
+      QoS classes are used by Kubernetes to decide which Pods to evict from a Node experiencing Node Pressure. The possible QoS classes are Guaranteed, Burstable, and BestEffort. When a Node runs out of resources, Kubernetes will first evict BestEffort Pods running on that Node, followed by Burstable and finally Guaranteed Pods.
+    location: Pod Quality of Service Classes > Overview
+  - doc_id: DOC-K8S-QOS
+    quote: |-
+      Pods that are Guaranteed have the strictest resource limits and are least likely to face eviction.
+    location: Pod Quality of Service Classes > Guaranteed
+  - doc_id: DOC-KUBESCORE-CHECKS
+    quote: |-
+      | container-resource-requests-equal-limits | Pod | Makes sure that all pods have the same requests as limits on resources set. | optional |
+    location: kube-score checks table
+  instantiations:
+  - component: Kubernetes
+    how: requests == limits 且两者都设 → Guaranteed；只设 requests → Burstable；都不设 → BestEffort
+    config_or_code: manifest
+  - component: kube-score
+    how: container-resource-requests-equal-limits（可选检查，用于要求 Guaranteed）
+    config_or_code: config
+  applies_when: 节点会出现内存或磁盘压力，且同节点混布了不同重要性的负载
+  checks:
+    static:
+    - id: S1
+      what: 关键负载的 QoS 等级是 Guaranteed 还是 Burstable/BestEffort
+      checkability: static-manifest
+    - id: S2
+      what: 同节点上批处理类负载是否为 BestEffort（这样它们会先被驱逐）
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 制造节点内存压力，驱逐顺序是否先低 QoS 后高 QoS
+      signals: [驱逐事件的 Pod QoS 分布, 关键服务的就绪副本数, 节点 MemoryPressure 状态]
+  parameter_relation:
+    symbols: {}
+    activation: 节点内存压力下驱逐顺序为 BestEffort → Burstable → Guaranteed；关键负载落在前两档即有风险
+    defaults: {}
+  violation_manifestation: 节点内存一紧张，关键服务先被驱逐
+  defect_class: 2
+  fault_types: [memory-pressure, disk-pressure]
+  mitigation_family: 关键负载设成 Guaranteed，非关键负载压到低 QoS
+
+- rule_id: R-FD-001
+  mechanism_group: 资源边界
+  mechanism: 文件描述符与连接数上限
+  statement: The number of connections a process maintains is itself load and must be capped, since connections consume file descriptors, memory, and CPU independent of request volume.
+  gloss_zh: 进程维持的连接数本身就是负载，必须设上限——连接要占文件描述符、内存和 CPU，跟请求量无关。
+  sources:
+  - doc_id: DOC-SRE-OVERLOAD
+    quote: |-
+      The load associated with connections is one last factor worth mentioning. We sometimes only take into account load at the backends that is caused directly by the requests they receive (which is one of the problems with approaches that model load based upon queries per second). However, doing so overlooks the CPU and memory costs of maintaining a large pool of connections or the cost of a fast rate of churn of connections.
+    location: Load from Connections
+  - doc_id: DOC-SRE-OVERLOAD
+    quote: |-
+      Handling bursts of new connection requests is a second (but related) problem.
+    location: Load from Connections
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      If the backend task is unable to handle the increase in load—which is consuming file descriptors, memory, and CPU time on the backend—it can melt down and crash under the sheer load of requests and retries.
+    location: Retries
+  instantiations:
+  - component: Envoy
+    how: cluster circuit_breakers.max_connections；listener 的连接上限
+    config_or_code: config
+  - component: NGINX
+    how: worker_connections 与 worker_rlimit_nofile 决定单 worker 可持有的连接数
+    config_or_code: config
+  - component: HikariCP
+    how: maximumPoolSize 决定到数据库的连接上限，多实例相乘后可能打满数据库连接数
+    config_or_code: config
+  - component: Go net/http
+    how: Transport 的 MaxIdleConns / MaxIdleConnsPerHost / MaxConnsPerHost
+    config_or_code: code
+  applies_when: 服务持有大量长连接，或客户端实例数很多
+  checks:
+    static:
+    - id: S1
+      what: 每客户端实例的连接上限 × 实例数，是否超过服务端/数据库能承受的连接数
+      checkability: needs-requirement
+    - id: S2
+      what: 容器/进程的文件描述符上限是否高于预期连接数
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 扩容客户端实例数或制造连接风暴，服务端是否因连接数而非请求量先垮
+      signals: [服务端连接数, 文件描述符使用率, accept 队列溢出计数, 建连失败数]
+  parameter_relation:
+    symbols: {m: 客户端实例数, c: 每实例连接上限, F: 服务端 fd 上限}
+    activation: m×c 接近或超过 F 时建连开始失败；扩容客户端即可触发，与 QPS 无关
+    defaults: {}
+  violation_manifestation: 客户端一扩容，数据库/服务端连接数打满，已有连接也开始报错
+  defect_class: 3
+  fault_types: [traffic-surge, instance-kill]
+  mitigation_family: 按"实例数 × 每实例连接上限"反推并设上限，同时抬高 fd 限制
+  notes: 组合型——每个客户端的池配置都合规，乘上实例数就超了服务端上限。
+
+# ============================================================ 组 8 状态与一致性
+- rule_id: R-PV-001
+  mechanism_group: 状态与一致性
+  mechanism: 持久卷
+  statement: State that must survive instance replacement has to live on a persistent volume bound to a stable identity, not in the container filesystem.
+  gloss_zh: 实例换了还要留着的状态必须放在绑定稳定身份的持久卷上，不能放容器文件系统里。
+  sources:
+  - doc_id: DOC-K8S-STATEFULSET
+    quote: |-
+      If you want to use storage volumes to provide persistence for your workload, you can use a StatefulSet as part of the solution. Although individual Pods in a StatefulSet are susceptible to failure, the persistent Pod identifiers make it easier to match existing volumes to the new Pods that replace any that have failed.
+    location: StatefulSets > Using StatefulSets
+  - doc_id: DOC-K8S-STATEFULSET
+    quote: |-
+      The volumeClaimTemplates will provide stable storage using PersistentVolumes provisioned by a PersistentVolume Provisioner.
+    location: StatefulSets > Components
+  - doc_id: DOC-K8S-STORAGE-PV
+    quote: |-
+      A PersistentVolume (PV) is a piece of storage in the cluster that has been provisioned by an administrator or dynamically provisioned using Storage Classes. It is a resource in the cluster just like a node is a cluster resource.
+    location: Persistent Volumes > Introduction
+  instantiations:
+  - component: Kubernetes
+    how: StatefulSet + volumeClaimTemplates；Deployment + emptyDir 不满足
+    config_or_code: manifest
+  - component: RabbitMQ
+    how: 队列声明为 durable 且消息 persistent，否则实例重建即丢
+    config_or_code: config
+  - component: Kafka
+    how: broker 的 log.dirs 必须落在持久卷上
+    config_or_code: config
+  applies_when: 实例本地保存了不能丢的状态
+  checks:
+    static:
+    - id: S1
+      what: 需要持久的目录是挂在 PVC 上，还是 emptyDir / 容器层
+      checkability: static-manifest
+    - id: S2
+      what: 工作负载类型是否是 StatefulSet（Deployment 的 Pod 没有稳定身份来重新绑定卷）
+      checkability: static-manifest
+    runtime:
+    - id: T1
+      what: 删除实例后重建，之前写入的数据是否还在
+      signals: [重建后数据完整性校验, PVC 绑定状态, 重建后的一致性错误数]
+  parameter_relation:
+    symbols: {}
+    activation: 注入实例删除后数据丢失即违反；与故障强度无关，一次即可判定
+    defaults: {}
+  violation_manifestation: Pod 一重建数据就没了
+  defect_class: 1
+  fault_types: [instance-kill, disk-pressure]
+  mitigation_family: 状态放 PVC，工作负载用 StatefulSet
+
+- rule_id: R-SAGA-001
+  mechanism_group: 状态与一致性
+  mechanism: 补偿与 Saga
+  statement: A multi-step distributed transaction must define a compensating action for every step that can be undone, and the steps after the point of no return must be retryable and idempotent.
+  gloss_zh: 跨服务的多步事务，每个可撤销的步骤都要有补偿动作；过了不可回头那一步之后的步骤必须可重试且幂等。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-SAGA
+    quote: |-
+      Maintain data consistency in distributed systems by coordinating a sequence of local transactions across multiple services. Each service performs its operation and triggers the next step through events or messages. If a step fails, a series of compensating transactions undoes the changes that the completed steps made.
+    location: Saga pattern > Overview
+  - doc_id: DOC-AZ-PATTERN-SAGA
+    quote: |-
+      Retryable transactions follow the pivot transaction. Retryable transactions are idempotent and help ensure that the saga can reach its final state, even if temporary failures occur.
+    location: Saga pattern > Saga architecture
+  - doc_id: DOC-AZ-PATTERN-COMPENSATE
+    quote: |-
+      Implement a compensating transaction that undoes the effects of completed steps in the original operation. You might think that you can simply restore the system to its original state, but this approach can overwrite changes from other concurrent application instances. Instead, the compensating transaction must intelligently account for concurrent work.
+    location: Compensating Transaction pattern > Solution
+  instantiations:
+  - component: RocketMQ
+    how: 事务消息的半消息 + 本地事务回查
+    config_or_code: code
+  - component: microservices.io
+    how: Saga 模式的编排式/协同式两种实现
+    config_or_code: code
+  - component: Spring Boot
+    how: 每个 saga 步骤有对应补偿方法，且补偿本身幂等
+    config_or_code: code
+  applies_when: 一次业务操作跨越多个服务或多个数据库，无法用单一本地事务
+  checks:
+    static:
+    - id: S1
+      what: 每个可补偿步骤是否都有对应的补偿动作
+      checkability: static-code
+    - id: S2
+      what: 补偿动作本身是否幂等（补偿也会失败重试）
+      checkability: static-code
+    - id: S3
+      what: 不可回头点之后的步骤是否都是可重试且幂等的
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 在中间步骤注入失败，前序步骤的副作用是否被补偿干净
+      signals: [各服务的业务记录一致性, 补偿动作执行计数, 残留的中间态记录数]
+  parameter_relation:
+    symbols: {k: 步骤数, i: 注入失败的步骤下标}
+    activation: 对每个 i ∈ [1,k] 分别注入失败；任一 i 下出现未被补偿的残留即违反
+    defaults: {}
+  violation_manifestation: 第 3 步失败后，第 1、2 步的扣减没有退回，留下脏数据
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-delay, instance-kill, network-partition]
+  mitigation_family: 为每步定义幂等补偿，并明确不可回头点
+
+- rule_id: R-OUTBOX-001
+  mechanism_group: 状态与一致性
+  mechanism: 事务发件箱
+  statement: Updating the database and emitting a message must be atomic; sending the message inside or right after the transaction without an outbox loses messages on crash.
+  gloss_zh: 改库和发消息必须原子——不用发件箱的话，事务中间发或提交后发，一崩就丢消息。
+  sources:
+  - doc_id: DOC-MSIO-OUTBOX
+    quote: |-
+      The command must atomically update the database and send messages in order to avoid data inconsistencies and bugs.
+    location: Transactional outbox > Context
+  - doc_id: DOC-MSIO-OUTBOX
+    quote: |-
+      But without using 2PC, sending a message in the middle of a transaction is not reliable. There’s no guarantee that the transaction will commit. Similarly, if a service sends a message after committing the transaction there’s no guarantee that it won’t crash before sending the message.
+    location: Transactional outbox > Context
+  instantiations:
+  - component: Spring Boot
+    how: 业务写与 outbox 表写在同一本地事务，另有轮询/CDC 进程负责投递
+    config_or_code: code
+  - component: Kafka
+    how: 由 CDC（如 Debezium）读 outbox 表投递，而不是在事务里直接 send
+    config_or_code: code
+  - component: RocketMQ
+    how: 用事务消息替代 outbox（半消息 + 回查）
+    config_or_code: code
+  applies_when: 一次业务写之后必须发出一条消息，且两者不能不一致
+  checks:
+    static:
+    - id: S1
+      what: 消息发送是否在业务事务内直接调用 broker（即无发件箱）
+      checkability: static-code
+    - id: S2
+      what: outbox 记录写入与业务写是否在同一事务
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 在"事务已提交、消息尚未发出"的窗口杀掉实例，消息最终是否仍被投递
+      signals: [业务记录数与消息数之差, outbox 表中未投递记录数, 实例重启后补投计数]
+  parameter_relation:
+    symbols: {w: 提交与发送之间的时间窗}
+    activation: 在 w 内注入实例被杀；无发件箱时消息必丢，有发件箱时应最终补投
+    defaults: {}
+  violation_manifestation: 订单入库了但下游永远收不到消息，数据长期不一致
+  defect_class: 1
+  fault_types: [instance-kill, dependency-unavailable, network-partition]
+  mitigation_family: 业务写与消息写同事务落到发件箱，另起进程投递
+
+# ============================================================ 组 9 有状态组件的容错
+- rule_id: R-QUORUM-001
+  mechanism_group: 有状态组件的容错
+  mechanism: 法定人数
+  statement: A quorum-replicated component must be sized to an odd number of members, and its write acknowledgement setting must require a quorum, otherwise acknowledged writes can be lost.
+  gloss_zh: 靠法定人数的组件要用奇数成员，而且写确认必须要求达到法定人数——否则已确认的写也会丢。
+  sources:
+  - doc_id: DOC-ETCD-FAQ
+    quote: |-
+      An etcd cluster needs a majority of nodes, a quorum, to agree on updates to the cluster state. For a cluster with n members, quorum is (n/2)+1.
+    location: etcd FAQ > Why an odd number of cluster members?
+  - doc_id: DOC-ETCD-FAQ
+    quote: |-
+      It is recommended to have an odd number of members in a cluster. An odd-size cluster tolerates the same number of failures as an even-size cluster but with fewer nodes.
+    location: etcd FAQ > Why an odd number of cluster members?
+  - doc_id: DOC-KAFKA-TOPIC-CFG
+    quote: |-
+      When used together, min.insync.replicas and acks allow you to enforce greater durability guarantees. A typical scenario would be to create a topic with a replication factor of 3, set min.insync.replicas to 2, and produce with acks of "all".
+    location: Topic configs > min.insync.replicas
+  - doc_id: DOC-RABBITMQ-QUORUM
+    quote: |-
+      As for RabbitMQ cluster sizes it is highly recommended for the quorum queue group size to be an odd number.
+    location: Quorum Queues > Cluster sizes
+  instantiations:
+  - component: etcd
+    how: 3 或 5 个成员；偶数不增加容错能力
+    config_or_code: config
+  - component: Kafka
+    how: replication.factor=3 + min.insync.replicas=2 + producer acks=all，三者必须配套
+    config_or_code: config
+  - component: RabbitMQ
+    how: quorum queue 的成员数取奇数，生产端用 publisher confirms
+    config_or_code: config
+  - component: ZooKeeper
+    how: 集群成员数取奇数
+    config_or_code: config
+  applies_when: 使用基于多数派复制的有状态组件
+  checks:
+    static:
+    - id: S1
+      what: 成员数/副本数是否为奇数
+      checkability: static-config
+    - id: S2
+      what: 写确认设置是否要求法定人数（Kafka 的 acks=all + min.insync.replicas ≥ 2）
+      checkability: static-cross-object
+    - id: S3
+      what: min.insync.replicas 与 replication.factor 的差值是否留有一个副本的容错余量
+      checkability: static-cross-object
+    runtime:
+    - id: T1
+      what: 杀掉少数派成员后写入是否仍成功；杀到失去多数派后是否拒绝写而不是静默接受
+      signals: [写成功率, NotEnoughReplicas 类错误计数, 已确认写在恢复后是否仍在]
+  parameter_relation:
+    symbols: {n: 成员数, Q: 法定人数 = floor(n/2)+1, k: 被杀成员数, m: min.insync.replicas}
+    activation: k < n-Q+1 时应仍可写；k ≥ n-Q+1 时应拒绝写。m = replication.factor 时杀一个即完全不可写
+    defaults:
+      Kafka unclean.leader.election.enable: {value: "false", doc_id: DOC-KAFKA-TOPIC-CFG}
+  violation_manifestation: 杀掉一个副本就完全写不进去（m 设得太高）；或失去多数派后仍接受写、恢复后数据丢失
+  defect_class: 3
+  fault_types: [instance-kill, network-partition]
+  mitigation_family: 奇数成员 + 要求法定人数的写确认 + 留一个副本的余量
+  notes: 组合型——replication.factor、min.insync.replicas、acks 三个各自合法的值，组合错了就是"杀一个即不可写"或"确认了还会丢"。
+
+- rule_id: R-FAILOVER-001
+  mechanism_group: 有状态组件的容错
+  mechanism: 主备切换
+  statement: Failover must not promote a replica that is behind, unless losing acknowledged writes is an accepted trade-off stated explicitly.
+  gloss_zh: 主备切换不能把落后的副本提成主，除非"丢已确认的写"是明确接受过的取舍。
+  sources:
+  - doc_id: DOC-KAFKA-TOPIC-CFG
+    quote: |-
+      Indicates whether to enable replicas not in the ISR set to be elected as leader as a last resort, even though doing so may result in data loss.
+    location: Topic configs > unclean.leader.election.enable
+  - doc_id: DOC-RABBITMQ-QUORUM
+    quote: |-
+      Publishers should use publisher confirms as this is how clients can interact with the quorum queue consensus system. Publisher confirms will only be issued once a published message has been successfully replicated to a quorum of members and is considered "safe" within the context of the queue.
+    location: Quorum Queues > Publisher confirms
+  - doc_id: DOC-ETCD-FAQ
+    quote: |-
+      An etcd cluster operates so long as a member quorum can be established. If quorum is lost through transient network failures (e.g., partitions), etcd automatically and safely resumes once the network recovers and restores quorum; Raft enforces cluster consistency.
+    location: etcd FAQ > Recovery
+  instantiations:
+  - component: Kafka
+    how: unclean.leader.election.enable（默认 false，开了就可能丢已确认的写）
+    config_or_code: config
+  - component: RabbitMQ
+    how: quorum queue 只在多数派内选主；classic mirrored queue 的行为不同
+    config_or_code: config
+  - component: etcd
+    how: Raft 只在多数派分区内选主，少数派分区不可写
+    config_or_code: config
+  applies_when: 有状态组件支持自动主备切换
+  checks:
+    static:
+    - id: S1
+      what: 是否允许非同步副本被选为主（Kafka 的 unclean leader election 等）
+      checkability: static-config
+    - id: S2
+      what: 客户端是否使用了能确认"已复制到法定人数"的确认方式
+      checkability: static-config
+    runtime:
+    - id: T1
+      what: 杀掉主并让一个落后副本接管，之前已确认的写是否还在
+      signals: [切换前后已确认写的可读性, 切换耗时, 客户端错误码变化]
+    - id: T2
+      what: 网络分区下少数派一侧是否拒绝写（而不是产生两个主）
+      signals: [两侧写成功率, 分区恢复后的数据冲突数]
+  parameter_relation:
+    symbols: {lag: 备副本落后量, T_failover: 切换时长}
+    activation: 允许非同步副本选主时，注入"主挂 + 备落后 lag"即可丢掉 lag 这部分已确认的写
+    defaults:
+      Kafka unclean.leader.election.enable: {value: "false", doc_id: DOC-KAFKA-TOPIC-CFG}
+  violation_manifestation: 主挂切换后，生产者已经收到成功确认的消息读不到了
+  defect_class: 2
+  fault_types: [instance-kill, network-partition]
+  mitigation_family: 只在同步副本中选主，写确认要求复制到法定人数
+
+- rule_id: R-LEASE-001
+  mechanism_group: 有状态组件的容错
+  mechanism: 领导者选举的会话与租约
+  statement: Leadership must be held through a lease with a finite lifetime that the holder renews, so a crashed or partitioned leader loses it automatically.
+  gloss_zh: 领导权要靠有期限、需要续期的租约来持有——挂掉或被网络隔离的主必须自动失去领导权。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-LEADER
+    quote: |-
+      To avoid a faulted leader instance retaining the lease indefinitely, specify a lifetime for the lease. When this expires, the lease becomes available. However, while an instance holds the lease it can request that the lease is renewed, and it'll be granted the lease for a further period of time.
+    location: Leader Election pattern > Example
+  - doc_id: DOC-AZ-PATTERN-LEADER
+    quote: |-
+      However, the system must ensure that, if the leader terminates or becomes disconnected from the rest of the system, the mutex is released to allow another task instance to become the leader.
+    location: Leader Election pattern > Solution
+  - doc_id: DOC-ZK-PROGRAMMERS
+    quote: |-
+      ZooKeeper also has the notion of ephemeral nodes. These znodes exists as long as the session that created the znode is active. When the session ends the znode is deleted.
+    location: ZooKeeper Programmer's Guide > ZNodes > Ephemeral Nodes
+  instantiations:
+  - component: etcd
+    how: lease + keepalive 续租；lease 过期则键自动删除
+    config_or_code: code
+  - component: ZooKeeper
+    how: 临时节点 + session timeout；session 过期即释放领导权
+    config_or_code: code
+  - component: Kubernetes
+    how: coordination.k8s.io/Lease 对象的 leaseDurationSeconds 与 renewTime
+    config_or_code: manifest
+  - component: Consul
+    how: session 绑定健康检查，检查失败释放会话持有的锁
+    config_or_code: config
+  applies_when: 存在"同一时刻只能有一个实例在做"的工作
+  checks:
+    static:
+    - id: S1
+      what: 领导权是否绑定有期限的租约/会话，而不是一次性抢到就永久持有
+      checkability: static-code
+    - id: S2
+      what: 旧主在失去租约后是否会主动停止工作（而不是等到下次续期失败才发现）
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 网络隔离旧主，观察是否出现"两个主同时在干活"的重叠窗口
+      signals: [声称是 leader 的实例数随时间变化, 重叠窗口时长, 重复处理导致的数据冲突数]
+  parameter_relation:
+    symbols: {L: 租约时长, R: 续期间隔, P: 网络隔离时长}
+    activation: P > L 时旧主应失去领导权；若旧主在失去租约后仍继续工作，重叠窗口 ≈ 它发现失去租约的延迟
+    defaults: {}
+  violation_manifestation: 网络抖动后出现双主，同一批任务被处理两遍
+  defect_class: 1
+  fault_types: [network-partition, instance-kill, cpu-pressure]
+  mitigation_family: 有限期租约 + 主动续期 + 失去租约立即停止工作
+
+# ============================================================ 组 10 降级
+- rule_id: R-FALLBACK-001
+  mechanism_group: 降级
+  mechanism: 回退路径
+  statement: A fallback path must be exercised continuously in production rather than only on failure; a rarely-taken fallback is itself a latent failure.
+  gloss_zh: 回退路径要常态跑在生产里，不能只在出事时才走一次——平时不走的回退本身就是一颗定时炸弹。
+  sources:
+  - doc_id: DOC-AWS-FALLBACK
+    quote: |-
+      Instead, we favor code paths that are exercised in production continuously rather than rarely.
+    location: Avoiding fallback in distributed systems > How Amazon avoids fallback
+  - doc_id: DOC-AWS-FALLBACK
+    quote: |-
+      Not only might the fallback strategy make the problem worse, this will likely occur as a latent bug. It is easy to develop fallback strategies that rarely trigger in production.
+    location: Avoiding fallback in distributed systems > Single-machine fallback
+  - doc_id: DOC-AWS-FALLBACK
+    quote: |-
+      Given these pitfalls we encountered in distributed fallback, we now almost always prefer alternatives to fallback.
+    location: Avoiding fallback in distributed systems > How Amazon avoids fallback
+  instantiations:
+  - component: Resilience4j
+    how: CircuitBreaker 的 fallback 方法；需有覆盖它的测试与生产演练
+    config_or_code: code
+  - component: Polly
+    how: FallbackStrategyOptions
+    config_or_code: code
+  - component: Sentinel
+    how: blockHandler / fallback 方法
+    config_or_code: code
+  - component: Spring Cloud CircuitBreaker
+    how: run(supplier, fallback) 的 fallback 分支
+    config_or_code: code
+  applies_when: 对非关键依赖配置了失败回退分支
+  checks:
+    static:
+    - id: S1
+      what: 回退分支是否有测试覆盖；回退逻辑本身是否还会调用可能失败的远程依赖
+      checkability: static-code
+    - id: S2
+      what: 回退分支是否会放大问题（例如切到更慢、更贵、同样在故障中的资源）
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 注入依赖故障触发回退，回退路径本身是否成功、耗时是否可接受
+      signals: [回退分支执行计数与成功率, 触发回退后的端到端耗时, 回退路径产生的下游调用量]
+  parameter_relation:
+    symbols: {f_rate: 回退触发率, L_fb: 回退路径耗时, L_normal: 正常路径耗时}
+    activation: 注入依赖不可用使 f_rate → 1；此时若 L_fb ≫ L_normal 或回退失败率高，说明回退不可用
+    defaults: {}
+  violation_manifestation: 真出故障时回退路径自己也炸了，或者慢到把上游一起拖垮
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-delay, dependency-error]
+  mitigation_family: 常态演练回退路径，或干脆不做回退而去加固主路径
+  notes: AWS 这篇是"尽量别用 fallback"，Azure 的 Circuit Breaker 模式与 microservices.io 则把 fallback 当常规手段——两边有冲突，取舍见 CHANGES.md 的待拍板清单。
+
+- rule_id: R-FALLBACK-002
+  mechanism_group: 降级
+  mechanism: 回退路径
+  statement: A fallback must not send the request sideways or upwards in the dependency stack; cross-layer or intra-layer fallback turns load into more load under failure.
+  gloss_zh: 回退不能横着找同层、也不能往上找——故障时同层互调只会把压力越滚越大。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      However, suppose the backends cross-communicate amongst each other. For example, the backends might proxy requests to one another to change who owns a user when the storage layer can’t service a request. This intra-layer communication can be problematic for several reasons:
+    location: Always Go Downward in the Stack
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      If the entire system is overloaded, primary to secondary proxying will likely increase and add even more load to the system, due to the additional cost of parsing and waiting on the request to the secondary in the primary.
+    location: Always Go Downward in the Stack
+  - doc_id: DOC-AWS-FALLBACK
+    quote: |-
+      The side-effects of switching to malloc2 might even make the overall problem worse.
+    location: Avoiding fallback in distributed systems > Single-machine fallback
+  instantiations:
+  - component: Dubbo
+    how: 集群容错策略中的 forking / broadcast 会在故障时放大同层调用量
+    config_or_code: config
+  - component: Istio
+    how: 跨集群/跨地域 failover 路由在全局故障时会把流量全部灌到另一侧
+    config_or_code: config
+  - component: Envoy
+    how: priority/locality failover 配置需要设置 overprovisioning 与最低健康比例
+    config_or_code: config
+  applies_when: 存在"主副本失败就转给同层另一实例/另一地域"的回退
+  checks:
+    static:
+    - id: S1
+      what: 回退目标是否位于依赖栈的同层或上层
+      checkability: static-code
+    - id: S2
+      what: 同层转发是否与正常请求共用同一个线程池（会造成分布式死锁）
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 让底层依赖整体变慢，同层转发量是否随之上涨而不是保持平稳
+      signals: [同层互调 QPS, 线程池占用率, 端到端错误率, 是否出现互相等待]
+  parameter_relation:
+    symbols: {q: 入站 QPS, r: 回退触发比例, k: 同层转发跳数}
+    activation: 底层故障使 r → 1 时，同层总调用量放大约 (1+r)^k；观察到放大即违反
+    defaults: {}
+  violation_manifestation: 存储层一慢，同层实例互相转发把彼此的线程池占满，形成分布式死锁
+  defect_class: 3
+  fault_types: [dependency-delay, dependency-unavailable, traffic-surge]
+  mitigation_family: 回退只向依赖栈下方走；必须同层转发时用独立线程池并限量
+
+- rule_id: R-CACHE-001
+  mechanism_group: 降级
+  mechanism: 缓存兜底
+  statement: A cache used as a resilience mechanism must be able to serve stale data when the origin is unavailable, and the service must be provisioned to survive the cache being empty.
+  gloss_zh: 拿缓存兜底，就得能在源不可用时返回旧数据；同时服务还得扛得住缓存全空——否则缓存成了硬依赖。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-CACHEASIDE
+    quote: |-
+      Caching replicates data. In limited ways, it can preserve the availability of frequently accessed data if the origin data store becomes temporarily unavailable.
+    location: Cache-Aside pattern > Reliability
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      It’s important to note the distinction between a latency cache versus a capacity cache: when a latency cache is employed, the service can sustain its expected load with an empty cache, but a service using a capacity cache cannot sustain its expected load under an empty cache.
+    location: Slow Startup and Cold Caching
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Sometimes caches are added to a service to improve performance, but actually wind up being hard dependencies.
+    location: Slow Startup and Cold Caching
+  instantiations:
+  - component: Spring Boot
+    how: 源不可用时返回缓存中的过期值（stale-while-revalidate 语义）而不是直接抛错
+    config_or_code: code
+  - component: go-redis
+    how: 缓存不可用时必须能穿透到源，而不是整体失败
+    config_or_code: code
+  - component: Envoy
+    how: 网关层的响应缓存与 stale 策略
+    config_or_code: config
+  applies_when: 用缓存来提高可用性，或缓存命中率很高以致源无法承受全量流量
+  checks:
+    static:
+    - id: S1
+      what: 源不可用时，代码路径是返回过期缓存还是直接失败
+      checkability: static-code
+    - id: S2
+      what: 缓存不可用时是否能穿透到源（还是把缓存故障直接抛给调用方）
+      checkability: static-code
+    - id: S3
+      what: 源的容量是否足以承受缓存全空时的流量（容量型缓存 vs 延迟型缓存）
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 分别注入"源不可用"与"缓存不可用"，两种情况下服务是否都还能工作
+      signals: [两种注入下的成功率, 源的入站 QPS 变化, 返回数据的新鲜度标记]
+  parameter_relation:
+    symbols: {h: 缓存命中率, q: 入站 QPS, C_origin: 源容量}
+    activation: 缓存清空时源承受 q；q > C_origin 即为容量型缓存，缓存故障会直接打垮源
+    defaults: {}
+  violation_manifestation: 缓存一挂，源被全量流量瞬间打死；或源一挂，明明有缓存却直接返回错误
+  defect_class: 3
+  fault_types: [dependency-unavailable, dependency-delay, traffic-surge]
+  mitigation_family: 明确缓存是延迟型还是容量型，支持返回过期值并按空缓存备容量
+
+- rule_id: R-FLAG-001
+  mechanism_group: 降级
+  mechanism: 功能开关
+  statement: A degraded mode must be switchable without a redeploy, and the switch must be detected and triggered automatically rather than depending on a human.
+  gloss_zh: 降级模式要能不重新发布就切换，而且要能被自动检测并触发，不能全靠人去按。
+  sources:
+  - doc_id: DOC-AZ-WAF-SELFPRES
+    quote: |-
+      Failure detection and automated initiation: Your monitoring and alerting systems should detect degraded and failed components. Use those signals to build a workflow that determines when switching to your graceful degradation mode is necessary.
+    location: Recommendations for self-preservation and self-healing > Implement a graceful degradation mode
+  - doc_id: DOC-AZ-WAF-SELFPRES
+    quote: |-
+      Despite your self-preservation and self-healing mechanisms, you might still encounter situations where one or more components malfunction to the extent that they become unavailable for some amount of time. In these cases, ideally, your workload can maintain enough functionality for business to continue in a degraded state.
+    location: Recommendations for self-preservation and self-healing > Implement a graceful degradation mode
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Which metrics should you use to determine when load shedding or graceful degradation should kick in (e.g,. CPU usage, latency, queue length, number of threads used, whether your service enters degraded mode automatically or if manual intervention is necessary)?
+    location: Preventing Server Overload > Load Shedding and Graceful Degradation
+  instantiations:
+  - component: Nacos
+    how: 配置中心下发开关，客户端监听变更即时生效
+    config_or_code: config
+  - component: Sentinel
+    how: 规则可动态推送；熔断触发即走 fallback，属于自动触发的降级
+    config_or_code: config
+  - component: Spring Cloud Alibaba
+    how: Nacos 配置 + @RefreshScope 实现不重启切换
+    config_or_code: config
+  applies_when: 系统设计了降级模式
+  checks:
+    static:
+    - id: S1
+      what: 降级开关是配置驱动（可热更新）还是编译期常量/需重启
+      checkability: static-config
+    - id: S2
+      what: 是否存在自动触发路径（由指标或熔断状态驱动），而不是只有人工开关
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 注入故障后，降级是否自动生效；生效延迟多久
+      signals: [降级生效时刻与故障注入时刻之差, 降级期间的成功率, 是否需要人工介入]
+  parameter_relation:
+    symbols: {t_detect: 检测延迟, t_apply: 开关生效延迟}
+    activation: 故障发生到降级生效的总延迟为 t_detect + t_apply；该值内的请求全部按未降级处理
+    defaults: {}
+  violation_manifestation: 降级方案写在文档里，真出事时要改代码重新发布才能启用
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-delay, traffic-surge]
+  mitigation_family: 配置驱动的降级开关 + 由指标自动触发
+
+- rule_id: R-DEGRADE-001
+  mechanism_group: 降级
+  mechanism: 错误裁剪
+  statement: Failure of a non-critical dependency must degrade only the feature it serves, not fail the whole response.
+  gloss_zh: 非关键依赖失败只能让它负责的那块功能降级，不能把整个响应干掉。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Graceful degradation takes the concept of load shedding one step further by reducing the amount of work that needs to be performed. In some applications, it’s possible to significantly decrease the amount of work or time needed by decreasing the quality of responses.
+    location: Preventing Server Overload > Load Shedding and Graceful Degradation
+  - doc_id: DOC-AWS-WAF-REL
+    quote: |-
+      Implement graceful degradation to transform applicable hard dependencies into soft dependencies
+    location: Reliability Pillar > REL05-BP updates
+  - doc_id: DOC-AZ-WAF-SELFPRES
+    quote: |-
+      Self-preservation capabilities add resilience to your workload. They reduce the likelihood of a full outage and allow your workload to operate normally, or in a degraded state, when failures occur.
+    location: Recommendations for self-preservation and self-healing > Overview
+  instantiations:
+  - component: Resilience4j
+    how: 每个非关键依赖单独装饰，失败走 fallback 返回空结果而不是抛给上层
+    config_or_code: code
+  - component: Spring Boot
+    how: 聚合接口对非关键字段的异常单独捕获，返回部分结果
+    config_or_code: code
+  - component: Envoy
+    how: 对非关键上游单独设更短超时与更激进的熔断
+    config_or_code: config
+  applies_when: 一次响应聚合了关键与非关键依赖的结果
+  checks:
+    static:
+    - id: S1
+      what: 非关键依赖的调用是否被单独捕获处理，而不是让异常冒泡到整体失败
+      checkability: static-code
+    - id: S2
+      what: 关键与非关键依赖是否被区分标注（缺少这个划分就无从判断）
+      checkability: needs-requirement
+    runtime:
+    - id: T1
+      what: 只注入非关键依赖故障，整体请求成功率是否保持
+      signals: [整体成功率, 响应中缺失字段的比例, 非关键依赖的错误率]
+  parameter_relation:
+    symbols: {w: 非关键依赖在响应中的占比}
+    activation: 注入非关键依赖 100% 失败后，整体成功率应保持接近 1；跌到 0 即硬依赖
+    defaults: {}
+  violation_manifestation: 推荐位/广告位这种可有可无的依赖一挂，整个页面接口返回 500
+  defect_class: 1
+  fault_types: [dependency-unavailable, dependency-delay, dependency-error]
+  mitigation_family: 区分关键与非关键依赖，非关键失败只裁剪对应结果
+
+# ============================================================ 补充：跨组的实现错误型规则
+- rule_id: R-TIMEOUT-003
+  mechanism_group: 限制等待
+  mechanism: 超时与截止时间
+  statement: A timeout wrapper around a blocking call only stops the caller from waiting; the underlying I/O must carry its own timeout, or the worker stays occupied after the timeout fires.
+  gloss_zh: 在阻塞调用外面套一层超时，只是让调用方不等了；底层 I/O 自己没有超时的话，工作线程还占着，等于没削掉负载。
+  sources:
+  - doc_id: DOC-HYSTRIX-HOWITWORKS
+    quote: |-
+      Please note that there's no way to force the latent thread to stop work - the best Hystrix can do on the JVM is to throw it an InterruptedException. If the work wrapped by Hystrix does not respect InterruptedExceptions, the thread in the Hystrix thread pool will continue its work, though the client already received a TimeoutException.
+    location: Hystrix How it Works > Flow Chart (timeout)
+  - doc_id: DOC-HYSTRIX-HOWITWORKS
+    quote: |-
+      Most Java HTTP client libraries do not interpret InterruptedExceptions. So make sure to correctly configure connection and read/write timeouts on the HTTP clients.
+    location: Hystrix How it Works > Flow Chart (timeout)
+  - doc_id: DOC-R4J-TIMELIMITER
+    quote: |-
+      whether cancel should be called on the running future
+    location: TimeLimiter > Create and configure TimeLimiter
+  - doc_id: DOC-GRPC-DEADLINES
+    quote: |-
+      Please note that the server application is responsible for stopping any activity it has spawned to service the RPC.
+    location: Deadlines > Deadlines on the Server
+  instantiations:
+  - component: Resilience4j
+    how: TimeLimiter 的 cancelRunningFuture；底层 HTTP 客户端仍需自己的 connect/read timeout
+    config_or_code: config
+  - component: Hystrix
+    how: 线程池模式下超时只抛 InterruptedException，底层 HTTP 客户端不响应就继续占线程
+    config_or_code: code
+  - component: Java concurrency
+    how: Future.get(timeout) 返回后任务仍在线程池里跑，除非任务自身响应中断
+    config_or_code: code
+  - component: Polly
+    how: Timeout 策略靠 CancellationToken 生效，被包裹的委托必须把 token 传下去
+    config_or_code: code
+  - component: Go context
+    how: context 超时只关闭 Done 通道，底层调用必须自己 select ctx.Done() 或使用 ctx 感知的 API
+    config_or_code: code
+  applies_when: 用容错库的超时/时间限制器包裹了一个阻塞调用
+  checks:
+    static:
+    - id: S1
+      what: 被包裹的底层客户端是否各自配置了连接超时与读写超时
+      checkability: static-config
+    - id: S2
+      what: 被包裹的任务是否响应中断/取消信号（是否把 token/context 传到了最底层）
+      checkability: static-code
+    runtime:
+    - id: T1
+      what: 注入依赖延迟触发超时后，工作线程数/在途连接数是否随之回落
+      signals: [超时后仍占用的线程数, 在途连接数, 线程池队列长度, 超时计数与线程释放数的差]
+  parameter_relation:
+    symbols: {T_wrap: 包装层超时, T_io: 底层 I/O 超时, d: 注入延迟}
+    activation: T_io 未设或 T_io ≫ T_wrap 时，注入 d > T_wrap 会让调用方在 T_wrap 返回而线程一直占到 d
+    defaults: {}
+  violation_manifestation: 超时错误照常返回，但线程池仍被慢调用占满，最终整体不可用——"削了负载却没释放资源"
+  defect_class: 4
+  fault_types: [dependency-delay]
+  mitigation_family: 包装层超时之外，底层 I/O 也要有自己的超时，并把取消信号传到最底层
+  notes: 实现错误型的典型——机制在、参数也配了，但行为不对。

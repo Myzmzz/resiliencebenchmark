@@ -1,0 +1,477 @@
+# doc_id: DOC-DOTNET-HTTPFACTORY
+# url: https://learn.microsoft.com/en-us/dotnet/core/extensions/httpclient-factory
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Table of contents Exit editor mode
+Ask Learn Ask Learn
+Reading mode Table of contents Read in English Add Add to Plans Edit
+Copy Markdown Print
+Note
+Access to this page requires authorization. You can try signing in or changing directories.
+Access to this page requires authorization. You can try changing directories.
+[[H1]] IHttpClientFactory with .NET
+Feedback
+Summarize this article for me
+[[H2]] In this article
+This article explains how to use the IHttpClientFactory interface to create HttpClient types with .NET fundamentals such as dependency injection (DI), logging, and configuration. HttpClient makes HTTP requests and handles HTTP responses from web resources identified by a Uri. The HTTP protocol makes up the vast majority of all internet traffic.
+To use IHttpClientFactory, reference the Microsoft.Extensions.Http NuGet package. The factory creates HttpClient instances with custom configurations and lets .NET workloads use resilient, transient-fault-handling third-party middleware.
+Warning
+If your app requires cookies, it's recommended to avoid using IHttpClientFactory. Pooling the HttpMessageHandler instances results in sharing of CookieContainer objects. Unanticipated CookieContainer sharing might leak cookies between unrelated parts of the application. Moreover, when HandlerLifetime expires, the handler is recycled, meaning that all cookies stored in its CookieContainer are lost. For alternative ways of managing clients, see Guidelines for using HTTP clients.
+Important
+Lifetime management of HttpClient instances created by IHttpClientFactory is completely different from instances created manually. The strategies are to use either short-lived clients created by IHttpClientFactory or long-lived clients with PooledConnectionLifetime set up. For more information, see the HttpClient lifetime management section and Guidelines for using HTTP clients.
+[[H2]] The IHttpClientFactory type
+All of the sample source code provided in this article requires the Microsoft.Extensions.Http and Microsoft.Extensions.Hosting NuGet packages. Furthermore, the code examples demonstrate the usage of HTTP GET requests to retrieve user Todo objects from the free {JSON} Placeholder API.
+When you call any of the AddHttpClient extension methods, you're adding the IHttpClientFactory and related services to the IServiceCollection. The IHttpClientFactory type offers the following benefits:
+Exposes the HttpClient class as a DI-ready type.
+Provides a central location for naming and configuring logical HttpClient instances.
+Codifies the concept of outgoing middleware via delegating handlers in HttpClient.
+Provides extension methods for Polly-based middleware to take advantage of delegating handlers in HttpClient.
+Manages the caching and lifetime of underlying HttpClientHandler instances. Automatic management avoids common Domain Name System (DNS) problems that occur when manually managing HttpClient lifetimes.
+Adds a configurable logging experience (via ILogger) for all requests sent through clients created by the factory.
+[[H2]] Consumption patterns
+There are several ways IHttpClientFactory can be used in an app:
+Basic usage
+Named clients
+Typed clients
+Generated clients
+The best approach depends upon the app's requirements.
+[[H3]] Basic usage
+To register the IHttpClientFactory, call AddHttpClient:
+using Shared;
+using BasicHttp.Example;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddHttpClient();
+builder.Services.AddTransient<TodoService>();
+using IHost host = builder.Build();
+Consuming services can require the IHttpClientFactory as a constructor parameter with DI. The following code uses IHttpClientFactory to create an HttpClient instance:
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Shared;
+namespace BasicHttp.Example;
+public sealed class TodoService(
+IHttpClientFactory httpClientFactory,
+ILogger<TodoService> logger)
+{
+public async Task<Todo[]> GetUserTodosAsync(int userId)
+{
+// Create the client
+HttpClient client = httpClientFactory.CreateClient();
+try
+{
+// Make HTTP GET request
+// Parse JSON response deserialize into Todo types
+Todo[]? todos = await client.GetFromJsonAsync<Todo[]>(
+$"https://jsonplaceholder.typicode.com/todos?userId={userId}",
+new JsonSerializerOptions(JsonSerializerDefaults.Web));
+return todos ?? [];
+}
+catch (Exception ex)
+{
+logger.LogError("Error getting something fun to say: {Error}", ex);
+}
+return [];
+}
+}
+Using IHttpClientFactory like in the preceding example is a good way to refactor an existing app. It has no impact on how HttpClient is used. In places where HttpClient instances are created in an existing app, replace those occurrences with calls to CreateClient.
+[[H3]] Named clients
+Named clients are a good choice when:
+The app requires many distinct uses of HttpClient.
+Many HttpClient instances have different configurations.
+Configuration for a named HttpClient can be specified during registration on the IServiceCollection:
+using Shared;
+using NamedHttp.Example;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+string? httpClientName = builder.Configuration["TodoHttpClientName"];
+ArgumentException.ThrowIfNullOrEmpty(httpClientName);
+builder.Services.AddHttpClient(
+httpClientName,
+client =>
+{
+// Set the base address of the named client.
+client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/");
+// Add a user-agent default request header.
+client.DefaultRequestHeaders.UserAgent.ParseAdd("dotnet-docs");
+});
+In the preceding code, the client is configured with:
+A name that's pulled from the configuration under the "TodoHttpClientName".
+The base address https://jsonplaceholder.typicode.com/.
+A "User-Agent" header.
+You can use configuration to specify HTTP client names, which is helpful to avoid misnaming clients when adding and creating. In this example, the appsettings.json file is used to configure the HTTP client name:
+{
+"TodoHttpClientName": "JsonPlaceholderApi"
+}
+It's easy to extend this configuration and store more details about how you'd like your HTTP client to function. For more information, see Configuration in .NET.
+Note
+The number of distinct registered named clients should not be unbounded, because it could lead to resource exhaustion. For example, don't derive the client name from unbounded input.
+[[H4]] Create client
+Each time CreateClient is called:
+A new instance of HttpClient is created.
+The configuration action is called.
+To create a named client, pass its name into CreateClient:
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Shared;
+namespace NamedHttp.Example;
+public sealed class TodoService
+{
+private readonly IHttpClientFactory _httpClientFactory = null!;
+private readonly IConfiguration _configuration = null!;
+private readonly ILogger<TodoService> _logger = null!;
+public TodoService(
+IHttpClientFactory httpClientFactory,
+IConfiguration configuration,
+ILogger<TodoService> logger) =>
+(_httpClientFactory, _configuration, _logger) =
+(httpClientFactory, configuration, logger);
+public async Task<Todo[]> GetUserTodosAsync(int userId)
+{
+// Create the client
+string? httpClientName = _configuration["TodoHttpClientName"];
+HttpClient client = _httpClientFactory.CreateClient(httpClientName ?? "");
+try
+{
+// Make HTTP GET request
+// Parse JSON response deserialize into Todo type
+Todo[]? todos = await client.GetFromJsonAsync<Todo[]>(
+$"todos?userId={userId}",
+new JsonSerializerOptions(JsonSerializerDefaults.Web));
+return todos ?? [];
+}
+catch (Exception ex)
+{
+_logger.LogError("Error getting something fun to say: {Error}", ex);
+}
+return [];
+}
+}
+In the preceding code, the HTTP request doesn't need to specify a hostname. The code can pass just the path, since the base address configured for the client is used.
+[[H3]] Typed clients
+Typed clients:
+Provide the same capabilities as named clients without the need to use strings as keys.
+Provide IntelliSense and compiler help when consuming clients.
+Provide a single location to configure and interact with a particular HttpClient. For example, a single typed client might be used:
+For a single backend endpoint.
+To encapsulate all logic dealing with the endpoint.
+Work with DI and can be injected where required in the app.
+A typed client accepts an HttpClient parameter in its constructor:
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Shared;
+namespace TypedHttp.Example;
+public sealed class TodoService(
+HttpClient httpClient,
+ILogger<TodoService> logger)
+{
+public async Task<Todo[]> GetUserTodosAsync(int userId)
+{
+try
+{
+// Make HTTP GET request
+// Parse JSON response deserialize into Todo type
+Todo[]? todos = await httpClient.GetFromJsonAsync<Todo[]>(
+$"todos?userId={userId}",
+new JsonSerializerOptions(JsonSerializerDefaults.Web));
+return todos ?? [];
+}
+catch (Exception ex)
+{
+logger.LogError("Error getting something fun to say: {Error}", ex);
+}
+return [];
+}
+}
+In the preceding code:
+The configuration is set when the typed client is added to the service collection.
+The HttpClient is assigned as a class-scoped variable (field), and used with exposed APIs.
+API-specific methods can be created that expose HttpClient functionality. For example, the GetUserTodosAsync method encapsulates code to retrieve user-specific Todo objects.
+The following code calls AddHttpClient to register a typed client class:
+using Shared;
+using TypedHttp.Example;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddHttpClient<TodoService>(
+client =>
+{
+// Set the base address of the typed client.
+client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/");
+// Add a user-agent default request header.
+client.DefaultRequestHeaders.UserAgent.ParseAdd("dotnet-docs");
+});
+The typed client is registered as transient with DI. In the preceding code, AddHttpClient registers TodoService as a transient service. This registration uses a factory method to:
+Create an instance of HttpClient.
+Create an instance of TodoService, passing in the instance of HttpClient to its constructor.
+Important
+Using typed clients in singleton services can be dangerous. For more information, see the Avoid Typed clients in singleton services section.
+Note
+When registering a typed client with the AddHttpClient<TClient> method, the TClient type must have a constructor that accepts an HttpClient as a parameter. Additionally, the TClient type shouldn't be registered with the DI container separately, as this will lead to the later registration overwriting the former.
+[[H3]] Generated clients
+IHttpClientFactory can be used in combination with third-party libraries such as Refit. Refit is a REST library for .NET. It allows for declarative REST API definitions, mapping interface methods to endpoints. An implementation of the interface is generated dynamically by the RestService, using HttpClient to make the external HTTP calls.
+Consider the following record type:
+namespace Shared;
+public record class Todo(
+int UserId,
+int Id,
+string Title,
+bool Completed);
+The following example relies on the Refit.HttpClientFactory NuGet package, and is a simple interface:
+using Refit;
+using Shared;
+namespace GeneratedHttp.Example;
+public interface ITodoService
+{
+[Get("/todos?userId={userId}")]
+Task<Todo[]> GetUserTodosAsync(int userId);
+}
+The preceding C# interface:
+Defines a method named GetUserTodosAsync that returns a Task<Todo[]> instance.
+Declares a Refit.GetAttribute attribute with the path and query string to the external API.
+A typed client can be added, using Refit to generate the implementation:
+using GeneratedHttp.Example;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Refit;
+using Shared;
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddRefitClient<ITodoService>()
+.ConfigureHttpClient(client =>
+{
+// Set the base address of the typed client.
+client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/");
+// Add a user-agent default request header.
+client.DefaultRequestHeaders.UserAgent.ParseAdd("dotnet-docs");
+});
+The defined interface can be consumed where necessary, with the implementation provided by DI and Refit.
+[[H2]] Make POST, PUT, and DELETE requests
+In the preceding examples, all HTTP requests use the GET HTTP verb. HttpClient also supports other HTTP verbs, including:
+POST
+PUT
+DELETE
+PATCH
+For a complete list of supported HTTP verbs, see HttpMethod. For more information on making HTTP requests, see Send a request using HttpClient.
+The following example shows how to make an HTTP POST request:
+public async Task CreateItemAsync(Item item)
+{
+using StringContent json = new(
+JsonSerializer.Serialize(item, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+Encoding.UTF8,
+MediaTypeNames.Application.Json);
+using HttpResponseMessage httpResponse =
+await httpClient.PostAsync("/api/items", json);
+httpResponse.EnsureSuccessStatusCode();
+}
+In the preceding code, the CreateItemAsync method:
+Serializes the Item parameter to JSON using System.Text.Json. This uses an instance of JsonSerializerOptions to configure the serialization process.
+Creates an instance of StringContent to package the serialized JSON for sending in the HTTP request's body.
+Calls PostAsync to send the JSON content to the specified URL. This is a relative URL that gets added to the HttpClient.BaseAddress.
+Calls EnsureSuccessStatusCode to throw an exception if the response status code does not indicate success.
+HttpClient also supports other types of content. For example, MultipartContent and StreamContent. For a complete list of supported content, see HttpContent.
+The following example shows an HTTP PUT request:
+public async Task UpdateItemAsync(Item item)
+{
+using StringContent json = new(
+JsonSerializer.Serialize(item, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+Encoding.UTF8,
+MediaTypeNames.Application.Json);
+using HttpResponseMessage httpResponse =
+await httpClient.PutAsync($"/api/items/{item.Id}", json);
+httpResponse.EnsureSuccessStatusCode();
+}
+The preceding code is very similar to the POST example. The UpdateItemAsync method calls PutAsync instead of PostAsync.
+The following example shows an HTTP DELETE request:
+public async Task DeleteItemAsync(Guid id)
+{
+using HttpResponseMessage httpResponse =
+await httpClient.DeleteAsync($"/api/items/{id}");
+httpResponse.EnsureSuccessStatusCode();
+}
+In the preceding code, the DeleteItemAsync method calls DeleteAsync. Because HTTP DELETE requests typically contain no body, the DeleteAsync method doesn't provide an overload that accepts an instance of HttpContent.
+To learn more about using different HTTP verbs with HttpClient, see HttpClient.
+[[H2]] HttpClient lifetime management
+A new HttpClient instance is returned each time CreateClient is called on the IHttpClientFactory. One HttpClientHandler instance is created per client name. The factory manages the lifetimes of the HttpClientHandler instances.
+IHttpClientFactory caches the HttpClientHandler instances created by the factory to reduce resource consumption. An HttpClientHandler instance may be reused from the cache when creating a new HttpClient instance if its lifetime hasn't expired.
+Caching of handlers is desirable as each handler typically manages its own underlying HTTP connection pool. Creating more handlers than necessary can result in socket exhaustion and connection delays. Some handlers also keep connections open indefinitely, which can prevent the handler from reacting to DNS changes.
+The default handler lifetime is two minutes. To override the default value, call SetHandlerLifetime for each client, on the IHttpClientBuilder when registering IHttpClientFactory in the ServiceCollection:
+services.AddHttpClient("Named.Client")
+.SetHandlerLifetime(TimeSpan.FromMinutes(5));
+Important
+HttpClient instances created by IHttpClientFactory are intended to be short-lived.
+Recycling and recreating HttpMessageHandlers when their lifetime expires is essential for IHttpClientFactory to ensure the handlers react to DNS changes. HttpClient is tied to a specific handler instance upon its creation, so new HttpClient instances should be requested in a timely manner to ensure the client will get the updated handler.
+Disposing of such HttpClient instances created by the factory will not lead to socket exhaustion, as its disposal will not trigger disposal of the HttpMessageHandler. IHttpClientFactory tracks and disposes of resources used to create HttpClient instances, specifically the HttpMessageHandler instances, as soon their lifetime expires and there's no HttpClient using them anymore.
+Keeping a single HttpClient instance alive for a long duration is a common pattern that can be used as an alternative to IHttpClientFactory, however, this pattern requires additional setup, such as PooledConnectionLifetime. You can use either long-lived clients with PooledConnectionLifetime, or short-lived clients created by IHttpClientFactory. For information about which strategy to use in your app, see Guidelines for using HTTP clients.
+[[H2]] Configure the HttpMessageHandler
+It may be necessary to control the configuration of the inner HttpMessageHandler used by a client.
+An IHttpClientBuilder is returned when adding named or typed clients. The ConfigurePrimaryHttpMessageHandler extension method can be called on the IHttpClientBuilder and passed in a delegate. The delegate is used to create and configure the primary HttpMessageHandler used by that client:
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+return new HttpClientHandler
+{
+AllowAutoRedirect = false,
+UseDefaultCredentials = true
+};
+});
+Configuring the HttpClientHandler lets you specify a proxy for the HttpClient instance among various other properties of the handler. For more information, see Proxy per client.
+[[H3]] Additional configuration
+There are several additional configuration options for controlling the IHttpClientBuilder:
+Method | Description
+AddHttpMessageHandler | Adds an additional message handler for a named HttpClient.
+AddTypedClient | Configures the binding between the TClient and the named HttpClient associated with the IHttpClientBuilder.
+ConfigureHttpClient | Adds a delegate that will be used to configure a named HttpClient.
+ConfigurePrimaryHttpMessageHandler | Configures the primary HttpMessageHandler from the dependency injection container for a named HttpClient.
+RedactLoggedHeaders | Sets the collection of HTTP header names for which values should be redacted before logging.
+SetHandlerLifetime | Sets the length of time that a HttpMessageHandler instance can be reused. Each named client can have its own configured handler lifetime value.
+UseSocketsHttpHandler | Configures a new or a previously added SocketsHttpHandler instance from the dependency injection container to be used as a primary handler for a named HttpClient. (.NET 5+ only)
+[[H2]] Using IHttpClientFactory together with SocketsHttpHandler
+The SocketsHttpHandler implementation of HttpMessageHandler was added in .NET Core 2.1, which allows PooledConnectionLifetime to be configured. This setting is used to ensure that the handler reacts to DNS changes, so using SocketsHttpHandler is considered to be an alternative to using IHttpClientFactory. For more information, see Guidelines for using HTTP clients.
+However, SocketsHttpHandler and IHttpClientFactory can be used together to improve configurability. By using both of these APIs, you benefit from configurability on both a low level (for example, using LocalCertificateSelectionCallback for dynamic certificate selection) and a high level (for example, leveraging DI integration and several client configurations).
+To use both APIs:
+Specify SocketsHttpHandler as PrimaryHandler via ConfigurePrimaryHttpMessageHandler, or UseSocketsHttpHandler (.NET 5+ only).
+Set up SocketsHttpHandler.PooledConnectionLifetime based on the interval you expect DNS to be updated; for example, to a value that was previously set in the SetHandlerLifetime extension method.
+(Optional) Since SocketsHttpHandler will handle connection pooling and recycling, handler recycling at the IHttpClientFactory level is no longer needed. You can disable it by setting HandlerLifetime to Timeout.InfiniteTimeSpan.
+services.AddHttpClient(name)
+.UseSocketsHttpHandler((handler, _) =>
+handler.PooledConnectionLifetime = TimeSpan.FromMinutes(2)) // Recreate connection every 2 minutes
+.SetHandlerLifetime(Timeout.InfiniteTimeSpan); // Disable rotation, as it is handled by PooledConnectionLifetime
+In the example above, 2 minutes were chosen arbitrarily for illustration purposes, aligning to a default HandlerLifetime value. You should choose the value based on the expected frequency of DNS or other network changes. For more information, see the DNS behavior section in the HttpClient guidelines, and the Remarks section in the PooledConnectionLifetime API documentation.
+[[H2]] Avoid typed clients in singleton services
+When using the named client approach, IHttpClientFactory is injected into services, and HttpClient instances are created by calling CreateClient every time an HttpClient is needed.
+However, with the typed client approach, typed clients are transient objects usually injected into services. That may cause a problem because a typed client can be injected into a singleton service.
+Important
+Typed clients are expected to be short-lived in the same sense as HttpClient instances created by IHttpClientFactory (for more information, see HttpClient lifetime management). As soon as a typed client instance is created, IHttpClientFactory has no control over it. If a typed client instance is captured in a singleton, it may prevent it from reacting to DNS changes, defeating one of the purposes of IHttpClientFactory.
+If you need to use HttpClient instances in a singleton service, consider the following options:
+Use the named client approach instead, injecting IHttpClientFactory in the singleton service and recreating HttpClient instances when necessary.
+If you require the typed client approach, use SocketsHttpHandler with configured PooledConnectionLifetime as a primary handler. For more information on using SocketsHttpHandler with IHttpClientFactory, see the section Using IHttpClientFactory together with SocketsHttpHandler.
+[[H2]] Message Handler Scopes in IHttpClientFactory
+IHttpClientFactory creates a separate DI scope per each HttpMessageHandler instance. These DI scopes are separate from application DI scopes (for example, ASP.NET incoming request scope, or a user-created manual DI scope), so they will not share scoped service instances. Message Handler scopes are tied to handler lifetime and can outlive application scopes, which can lead to, for example, reusing the same HttpMessageHandler instance with the same injected scoped dependencies between several incoming requests.
+Users are strongly advised not to cache scope-related information (such as data from HttpContext) inside HttpMessageHandler instances and use scoped dependencies with caution to avoid leaking sensitive information.
+If you require access to an app DI scope from your message handler, for authentication as an example, you'd encapsulate scope-aware logic in a separate transient DelegatingHandler, and wrap it around an HttpMessageHandler instance from the IHttpClientFactory cache. To access the handler call IHttpMessageHandlerFactory.CreateHandler for any registered named client. In that case, you'd create an HttpClient instance yourself using the constructed handler.
+The following example shows creating an HttpClient with a scope-aware DelegatingHandler:
+if (scopeAwareHandlerType != null)
+{
+if (!typeof(DelegatingHandler).IsAssignableFrom(scopeAwareHandlerType))
+{
+throw new ArgumentException($"""
+Scope aware HttpHandler {scopeAwareHandlerType.Name} should
+be assignable to DelegatingHandler
+""");
+}
+// Create top-most delegating handler with scoped dependencies
+scopeAwareHandler = (DelegatingHandler)_scopeServiceProvider.GetRequiredService(scopeAwareHandlerType); // should be transient
+if (scopeAwareHandler.InnerHandler != null)
+{
+throw new ArgumentException($"""
+Inner handler of a delegating handler {scopeAwareHandlerType.Name} should be null.
+Scope aware HttpHandler should be registered as Transient.
+""");
+}
+}
+// Get or create HttpMessageHandler from HttpClientFactory
+HttpMessageHandler handler = _httpMessageHandlerFactory.CreateHandler(name);
+if (scopeAwareHandler != null)
+{
+scopeAwareHandler.InnerHandler = handler;
+handler = scopeAwareHandler;
+}
+HttpClient client = new(handler);
+A further workaround can follow with an extension method for registering a scope-aware DelegatingHandler and overriding default IHttpClientFactory registration by a transient service with access to the current app scope:
+public static IHttpClientBuilder AddScopeAwareHttpHandler<THandler>(
+this IHttpClientBuilder builder) where THandler : DelegatingHandler
+{
+builder.Services.TryAddTransient<THandler>();
+if (!builder.Services.Any(sd => sd.ImplementationType == typeof(ScopeAwareHttpClientFactory)))
+{
+// Override default IHttpClientFactory registration
+builder.Services.AddTransient<IHttpClientFactory, ScopeAwareHttpClientFactory>();
+}
+builder.Services.Configure<ScopeAwareHttpClientFactoryOptions>(
+builder.Name, options => options.HttpHandlerType = typeof(THandler));
+return builder;
+}
+For more information, see the full example.
+[[H2]] Avoid depending on "factory-default" Primary Handler
+In this section, the term "factory-default" Primary Handler refers to the Primary Handler that the default IHttpClientFactory implementation (or more precisely, the default HttpMessageHandlerBuilder implementation) assigns if not configured in any way whatsoever.
+Note
+The "factory-default" Primary Handler is an implementation detail and subject to change. ❌ AVOID depending on a specific implementation being used as a "factory-default" (for example, HttpClientHandler).
+There are cases in which you need to know the specific type of a Primary Handler, especially if working on a class library. While preserving the end user's configuration, you might want to update, for example, HttpClientHandler-specific properties like ClientCertificates, UseCookies, and UseProxy. It might be tempting to cast the Primary handler to HttpClientHandler, which happened to work while HttpClientHandler was used as the "factory-default" Primary Handler. But as any code depending on implementation details, such a workaround is fragile and bound to break.
+Instead of relying on the "factory-default" Primary Handler, you can use ConfigureHttpClientDefaults to set up an "app-level" default Primary Handler instance:
+// Contract with the end-user: Only HttpClientHandler is supported.
+// --- "Pre-configure" stage ---
+// The default is fixed as HttpClientHandler to avoid depending on the "factory-default"
+// Primary Handler.
+services.ConfigureHttpClientDefaults(b =>
+b.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler() { UseCookies = false }));
+// --- "End-user" stage ---
+// IHttpClientBuilder builder = services.AddHttpClient("test", /* ... */);
+// ...
+// --- "Post-configure" stage ---
+// The code can rely on the contract, and cast to HttpClientHandler only.
+builder.ConfigurePrimaryHttpMessageHandler((handler, provider) =>
+{
+if (handler is not HttpClientHandler h)
+{
+throw new InvalidOperationException("Only HttpClientHandler is supported");
+}
+h.ClientCertificates.Add(GetClientCert(provider, builder.Name));
+//X509Certificate2 GetClientCert(IServiceProvider p, string name) { ... }
+});
+Alternatively, you can consider checking the Primary Handler type, and configure the specifics like client certificates only in the well-known supporting types (most likely, HttpClientHandler and SocketsHttpHandler):
+// --- "End-user" stage ---
+// IHttpClientBuilder builder = services.AddHttpClient("test", /* ... */);
+// ...
+// --- "Post-configure" stage ---
+// No contract is in place. Trying to configure main handler types supporting client
+// certs, logging and skipping otherwise.
+builder.ConfigurePrimaryHttpMessageHandler((handler, provider) =>
+{
+if (handler is HttpClientHandler h)
+{
+h.ClientCertificates.Add(GetClientCert(provider, builder.Name));
+}
+else if (handler is SocketsHttpHandler s)
+{
+s.SslOptions ??= new System.Net.Security.SslClientAuthenticationOptions();
+s.SslOptions.ClientCertificates ??= new X509CertificateCollection();
+s.SslOptions.ClientCertificates!.Add(GetClientCert(provider, builder.Name));
+}
+else
+{
+// Log warning
+}
+//X509Certificate2 GetClientCert(IServiceProvider p, string name) { ... }
+});
+[[H2]] See also
+Common IHttpClientFactory usage issues
+Dependency injection in .NET
+Logging in .NET
+Configuration in .NET
+IHttpClientFactory
+IHttpMessageHandlerFactory
+HttpClient
+Make HTTP requests with the HttpClient
+Implement HTTP retry with exponential backoff
+Collaborate with us on GitHub
+The source for this content can be found on GitHub, where you can also create and review issues and pull requests. For more information, see our contributor guide.
+.NET
+Open a documentation issue Provide product feedback
+[[H2]] Feedback
+Was this page helpful?
+Yes No
+No
+Need help with this topic?
+Want to try using Ask Learn to clarify or guide you through this topic?
+Ask Learn Ask Learn
+Suggest a fix?
+[[H2]] Additional resources
+Last updated on 2026-08-06

@@ -1,0 +1,904 @@
+<!doctype html>
+<html class="no-js aws-lng-en_US aws-with-target" lang="en-US" data-static-assets="https://a0.awsstatic.com" data-js-version="1.0.592" data-css-version="1.0.506">
+ <head><script src="https://web-static.archive.org/_static/js/athena.js" type="text/javascript"></script>
+<script type="text/javascript">window.addEventListener('DOMContentLoaded',function(){var v=archive_analytics.values;v.service='wb';v.server_name='wwwb-app206.us.archive.org';v.server_ms=444;archive_analytics.send_pageview({});});</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/bundle-playback.js?v=lGQTDXxZ" charset="utf-8"></script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/wombat.js?v=o9P2E1FK" charset="utf-8"></script>
+<script>window.RufflePlayer=window.RufflePlayer||{};window.RufflePlayer.config={"autoplay":"on","unmuteOverlay":"hidden","showSwfDownload":true};</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/ruffle/ruffle.js"></script>
+<script type="text/javascript">
+    __wm.init("https://web.archive.org/web");
+  __wm.wombat("https://aws.amazon.com/builders-library/implementing-health-checks/","20241224144628","https://web.archive.org/","web","https://web-static.archive.org/_static/",
+	      "1735051588");
+</script>
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3" />
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv" />
+<!-- End Wayback Rewrite JS Include -->
+ 
+  <meta http-equiv="Content-Security-Policy" content="" data-report-uri="https://prod-us-west-2.csp-report.marketing.aws.dev/submit"> 
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+  <link rel="preconnect" href="https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/" crossorigin="anonymous"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241224144628/https://d1.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241224144628/https://amazonwebservicesinc.tt.omtrdc.net/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241224144628/https://s0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241224144628/https://t0.m.awsstatic.com/"> 
+  <title>Implementing health checks</title> 
+  <meta name="description" content="Automatically detect and mitigate server failures without unintended consequences from fleet-wide false positives."> 
+  <meta name="robots" content="index, follow"> 
+  <meta property="twitter:title" content="Implementing health checks"> 
+  <meta property="twitter:description" content="Automatically detect and mitigate server failures without unintended consequences from fleet-wide false positives."> 
+  <meta property="og:title" content="Implementing health checks"> 
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"> 
+  <link rel="canonical" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/builders-library/implementing-health-checks/"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ar/builders-library/implementing-health-checks/" hreflang="ar-sa"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/de/builders-library/implementing-health-checks/" hreflang="de-de"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/es/builders-library/implementing-health-checks/" hreflang="es-es"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/fr/builders-library/implementing-health-checks/" hreflang="fr-fr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/id/builders-library/implementing-health-checks/" hreflang="id-id"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/it/builders-library/implementing-health-checks/" hreflang="it-it"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/jp/builders-library/implementing-health-checks/" hreflang="ja-jp"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ko/builders-library/implementing-health-checks/" hreflang="ko-kr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/pt/builders-library/implementing-health-checks/" hreflang="pt-br"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ru/builders-library/implementing-health-checks/" hreflang="ru-ru"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/th/builders-library/implementing-health-checks/" hreflang="th-th"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/tr/builders-library/implementing-health-checks/" hreflang="tr-tr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/vi/builders-library/implementing-health-checks/" hreflang="vi-vn"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/cn/builders-library/implementing-health-checks/" hreflang="zh-cn"> 
+  <link rel="alternate" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/tw/builders-library/implementing-health-checks/" hreflang="zh-tw"> 
+  <script src="https://web.archive.org/web/20241224144628js_/https://a0.awsstatic.com/libra/1.0.592/csp/csp-report.js" async="true"></script> 
+  <meta property="twitter:card" content="summary"> 
+  <meta property="twitter:image" content="https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_179x109.png"> 
+  <meta property="twitter:site" content="@awscloud"> 
+  <meta property="fb:pages" content="153063591397681"> 
+  <meta name="baidu-site-verification" content="pjxJUyWxae"> 
+  <meta name="360-site-verification" content="cbe5c6f0249e273e71fffd6d6580ce09"> 
+  <meta name="shenma-site-verification" content="79b94bb338f010af876605819a332e19_1617844070"> 
+  <meta name="sogou_site_verification" content="Ow8cCy3Hgq"> 
+  <link rel="icon" type="image/ico" href="https://web.archive.org/web/20241224144628im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="shortcut icon" type="image/ico" href="https://web.archive.org/web/20241224144628im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="apple-touch-icon" sizes="57x57" href="https://web.archive.org/web/20241224144628im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="72x72" href="https://web.archive.org/web/20241224144628im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <link rel="apple-touch-icon" sizes="114x114" href="https://web.archive.org/web/20241224144628im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="144x144" href="https://web.archive.org/web/20241224144628im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <meta property="og:type" content="company"> 
+  <meta property="og:url" content="https://web.archive.org/web/20241224144628/https://aws.amazon.com/builders-library/implementing-health-checks/"> 
+  <meta property="og:image" content="https://web.archive.org/web/20241224144628im_/https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_1200x630.png"> 
+  <meta property="og:site_name" content="Amazon Web Services, Inc."> 
+  <meta name="facebook-domain-verification" content="ucogvbvio3zpukhjxw4pcprci7qylr"> 
+  <meta name="google-site-verification" content="XHghG81ulgiW-3EylGcF48sG28tBW5EH0bNUhgo_DrU"> 
+  <meta name="msvalidate.01" content="6F92E52A288E266E30C2797ECB5FCCF3"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20241224144628cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-base.css"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20241224144628cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-components.css"> 
+  <script type="esms-options">{"noLoadEventRetriggers": true, "nonce":"Lh1Faol0Y+tEsTE1uAyt0NVW0isjNL3ah45ebiWeMEs="}</script> 
+  <script async src="https://web.archive.org/web/20241224144628js_/https://a0.awsstatic.com/eb-csr/1.0.116/polyfills/es-module-shims/es-module-shims.js"></script> 
+  <script type="importmap">{"imports":{"react":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/react/react.js","react/jsx-runtime":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/react/jsx-runtime.js","react-dom":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/react/react-dom.js","react-dom/server":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/react/server-browser.js","react-dom-server-browser":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/react/react-dom-server-browser.js","sanitize-html":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/sanitize-html/index.js","video.js":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/video.js","videojs-event-tracking":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/videojs-event-tracking.js","videojs-hotkeys":"https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/videojs-hotkeys.js"}}</script> 
+  <script type="application/json" id="aws-page-settings">
+  {
+    "supportedLanguages": ["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],
+    "defaultLanguage": "en",
+    "logDataSet": "LIVE:PROD",
+    "logInstance": "PUB",
+    "csdsEndpoint": "https://web.archive.org/web/20241224144628/https://d2c.aws.amazon.com/",
+    "framework": "v2",
+    "g11nLibPath": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/g11n-lib/2.0.107",
+    "i18nStringPath": "https://web.archive.org/web/20241224144628/https://i18n-string.us-west-2.prod.pricing.aws.a2z.com",
+    "libraCSSPath": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/libra-css/css/1.0.506",
+    "libraCSSImagePath": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/libra-css/images",
+    "isLoggingEnabled": true,
+    "currentLanguage": "en-US",
+    "currentStage": "Prod",
+    "isBJS": false,
+    "isMarketplace": false,
+    "isRTL": false,
+    "requireBaseUrl": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com",
+    "requirePackages":[
+      {
+          "name": "libra",
+          "location": "libra/1.0.592"
+      }
+    ],
+    "requirePaths": {
+      "directories": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/libra/1.0.592/directories",
+      "libra-cardsui": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/libra/1.0.592/libra-cardsui",
+      "librastandardlib": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/libra/1.0.592/librastandardlib",
+      "aws-blog": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/aws-blog/1.0.80/js",
+      "plc": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/plc/js/1.0.138/plc",
+      "scripts": "libra/1.0.592/v1-polyfills/scripts",
+      "libra-search": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/libra-search/1.0.19/js",
+      "pricing-calculator": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/pricing-calculator/js/1.0.2",
+      "pricing-savings-plan": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/pricing-savings-plan/js/1.0.23"
+    },
+    "staticAssetPath": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com",
+    "jsAssetPath": "https://web.archive.org/web/20241224144628/https://a0.awsstatic.com/libra/1.0.592",
+    "awstvVideoAssetOrigin": "https://web.archive.org/web/20241224144628/https://tv.awsstatic.com",
+    "awstvVideoAPIOrigin": "//web.archive.org/web/20241224144628/https://aws.amazon.com"
+  }
+</script> 
+  <script src="https://web.archive.org/web/20241224144628js_/https://a0.awsstatic.com/libra/1.0.592/libra-head.js"></script> 
+  <script src="https://web.archive.org/web/20241224144628js_/https://a0.awsstatic.com/s_code/js/3.0/awshome_s_code.js"></script> 
+  <script src="https://web.archive.org/web/20241224144628js_/https://d2c.aws.amazon.com/client/loader/v1/d2c-load.js"></script> 
+  <script async src="https://web.archive.org/web/20241224144628js_/https://a0.awsstatic.com/da/js/1.0.51/aws-da.js"></script> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20241224144628cs_/https://a0.awsstatic.com/eb-csr/1.0.116/orchestrate.css"> 
+  <script type="module" async="true" src="https://web.archive.org/web/20241224144628jm_/https://a0.awsstatic.com/eb-csr/1.0.116/orchestrate.js"></script> 
+  <script type="application/json" id="target-mediator">{"pageLanguage":"en","supportedLanguages":["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],"offerOrigin":"https://web.archive.org/web/20241224144628/https://s0.awsstatic.com"}</script> 
+  <script data-js-script="target-mediator" src="https://web.archive.org/web/20241224144628js_/https://a0.awsstatic.com/target/1.0.123/aws-target-mediator.js" async="true"></script> 
+ </head> 
+ <body class="awsm"><!-- BEGIN WAYBACK TOOLBAR INSERT -->
+<script>__wm.rw(0);</script>
+<div id="wm-ipp-base" lang="en" style="display:none;direction:ltr;" toolbar-mode="auto">
+<div id="wm-ipp" style="position:fixed;left:0;top:0;right:0;">
+<div id="donato" style="position:relative;width:100%;height:0;">
+  <div id="donato-base">
+    <iframe id="donato-if" src="https://archive.org/includes/donate.php?as_page=1&amp;platform=wb&amp;referer=https%3A//web.archive.org/web/20241224144628/https%3A//aws.amazon.com/builders-library/implementing-health-checks/"
+	    scrolling="no" frameborder="0" style="width:100%; height:100%">
+    </iframe>
+  </div>
+</div><div id="wm-ipp-inside">
+  <div id="wm-toolbar" style="position:relative;display:flex;flex-flow:row nowrap;justify-content:space-between;" nav="async">
+    <div id="wm-logo" style="/*width:110px;*/padding-top:12px;">
+      <a href="/web/" title="Wayback Machine home page"><img src="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png" srcset="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-100.png, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-150.png 1.5x, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png 2x" alt="Wayback Machine" style="width:100px" border="0" /></a>
+    </div>
+    <div class="c" style="display:flex;flex-flow:column nowrap;justify-content:space-between;flex:1;">
+      <form class="u" style="display:flex;flex-direction:row;flex-wrap:nowrap;" target="_top" method="get" action="/web/submit" name="wmtb" id="wmtb"><input type="text" name="url" id="wmtbURL" value="https://aws.amazon.com/builders-library/implementing-health-checks/" onfocus="this.focus();this.select();" style="flex:1;"/><input type="hidden" name="type" value="replay" /><input type="hidden" name="date" value="20241224144628" /><input type="submit" value="Go" />
+      </form>
+      <div style="display:flex;flex-flow:row nowrap;align-items:flex-end;">
+                <div class="s" id="wm-nav-captures" style="flex:1;">
+                    <a class="t" href="/web/20241224144628*/https://aws.amazon.com/builders-library/implementing-health-checks/" title="See a list of every capture for this URL">40 captures</a>
+          <div class="r" title="Timespan for captures of this URL">26 Sep 2020 - 02 Jul 2026</div>
+          </div>
+        <div class="k">
+          <a href="" id="wm-graph-anchor">
+            <div id="wm-ipp-sparkline" title="Explore captures for this URL" style="position: relative">
+              <canvas id="wm-sparkline-canvas" width="775" height="27" border="0"></canvas>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="n">
+      <table>
+        <tbody>
+          <!-- NEXT/PREV MONTH NAV AND MONTH INDICATOR -->
+          <tr class="m">
+            <td class="b" nowrap="nowrap">Nov</td>
+            <td class="c" id="displayMonthEl" title="You are here: 14:46:28 Dec 24, 2024">DEC</td>
+            <td class="f" nowrap="nowrap">Jan</td>
+          </tr>
+          <!-- NEXT/PREV CAPTURE NAV AND DAY OF MONTH INDICATOR -->
+          <tr class="d">
+            <td class="b" nowrap="nowrap"><span class="ta"></span></td>
+            <td class="c" id="displayDayEl" style="width:34px;font-size:22px;white-space:nowrap;" title="You are here: 14:46:28 Dec 24, 2024">24</td>
+            <td class="f" nowrap="nowrap"><span class="ta"></span></td>
+          </tr>
+          <!-- NEXT/PREV YEAR NAV AND YEAR INDICATOR -->
+          <tr class="y">
+            <td class="b" nowrap="nowrap">2023</td>
+            <td class="c" id="displayYearEl" title="You are here: 14:46:28 Dec 24, 2024">2024</td>
+            <td class="f" nowrap="nowrap">2025</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="r" style="display:flex;flex-flow:column nowrap;align-items:flex-end;justify-content:space-between;">
+      <div id="wm-btns" style="text-align:right;height:23px;">
+                <span class="xxs">
+          <div id="wm-save-snapshot-success">success</div>
+          <div id="wm-save-snapshot-fail">fail</div>
+          <a id="wm-save-snapshot-open" href="#" title="Share via My Web Archive" >
+            <span class="iconochive-web"></span>
+          </a>
+          <a href="https://archive.org/account/login.php" title="Sign In" id="wm-sign-in">
+            <span class="iconochive-person"></span>
+          </a>
+          <span id="wm-save-snapshot-in-progress" class="iconochive-web"></span>
+        </span>
+                <a class="xxs" href="https://help.archive.org/help/category/the-wayback-machine/" title="Get some help using the Wayback Machine" style="top:-6px;"><span class="iconochive-question" style="color:rgb(87,186,244);font-size:160%;"></span></a>
+        <a id="wm-tb-close" href="#close" style="top:-2px;" title="Close the toolbar"><span class="iconochive-remove-circle" style="color:#888888;font-size:240%;"></span></a>
+      </div>
+      <div id="wm-share" class="xxs">
+        <a href="/web/20241224144628/http://web.archive.org/screenshot/https://aws.amazon.com/builders-library/implementing-health-checks/"
+           id="wm-screenshot"
+           title="screenshot">
+          <span class="wm-icon-screen-shot"></span>
+        </a>
+        <a href="#" id="wm-video" title="video">
+          <span class="iconochive-movies"></span>
+        </a>
+        <a id="wm-share-facebook" href="#" data-url="https://web.archive.org/web/20241224144628/https://aws.amazon.com/builders-library/implementing-health-checks/" title="Share on Facebook" style="margin-right:5px;" target="_blank"><span class="iconochive-facebook" style="color:#3b5998;font-size:160%;"></span></a>
+        <a id="wm-share-twitter" href="#" data-url="https://web.archive.org/web/20241224144628/https://aws.amazon.com/builders-library/implementing-health-checks/" title="Share on Twitter" style="margin-right:5px;" target="_blank"><span class="iconochive-twitter" style="color:#1dcaff;font-size:160%;"></span></a>
+      </div>
+      <div style="padding-right:2px;text-align:right;white-space:nowrap;">
+        <a id="wm-expand" class="wm-btn wm-closed" href="#expand"><span id="wm-expand-icon" class="iconochive-down-solid"></span> <span class="xxs" style="font-size:80%;">About this capture</span></a>
+      </div>
+    </div>
+  </div>
+    <div id="wm-capinfo" style="border-top:1px solid #777;display:none; overflow: hidden">
+        <div id="wm-capinfo-notice" source="api"></div>
+                <div id="wm-capinfo-collected-by" source="api" trigger="hover" token="MfAgM7hwy2vXzWlUxp_GueKOuttdw9GlWVelbEORr-gspsIJJ5TBVpgcdZgXQC6AJ1Y"></div>
+    <div id="wm-capinfo-timestamps">
+    <div style="background-color:#666;color:#fff;font-weight:bold;text-align:center;padding:2px 0;" title="Timestamps for the elements of this page">TIMESTAMPS</div>
+    <div>
+      <div id="wm-capresources" style="margin:0 5px 5px 5px;max-height:250px;overflow-y:scroll !important"></div>
+      <div id="wm-capresources-loading" style="text-align:left;margin:0 20px 5px 5px;display:none"><img src="https://web-static.archive.org/_static/images/loading.gif" alt="loading" /></div>
+    </div>
+    </div>
+  </div></div></div></div><div id="wm-ipp-print">The Wayback Machine - https://web.archive.org/web/20241224144628/https://aws.amazon.com/builders-library/implementing-health-checks/</div>
+<script type="text/javascript">//<![CDATA[
+__wm.bt(775,27,25,2,"web","https://aws.amazon.com/builders-library/implementing-health-checks/","20241224144628",1996,"https://web-static.archive.org/_static/",["https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3","https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv"], false);
+  __wm.rw(1);
+//]]></script>
+<!-- END WAYBACK TOOLBAR INSERT -->
+  
+  <script id="awsc-panorama-bundle" type="text/javascript" src="https://web.archive.org/web/20241224144628js_/https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{&quot;appEntity&quot;:&quot;aws-marketing&quot;,&quot;region&quot;:&quot;us-west-1&quot;,&quot;service&quot;:&quot;global-site&quot;,&quot;trackerConstants&quot;:{&quot;cookieDomain&quot;:&quot;aws.amazon.com&quot;}}" async="true"></script> 
+  <a id="aws-page-skip-to-main" class="lb-sr-only lb-sr-only-focusable lb-bold lb-skip-el" href="#aws-page-content-main"> Skip to main content</a> 
+  <header id="aws-page-header" class="awsm m-page-header lb-with-mobile-subrow" role="banner"> 
+   <div id="m-nav" class="m-nav" role="navigation" aria-label="Global Navigation"> 
+    <div class="m-nav-header lb-clearfix" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/desktop/index.html"> 
+     <div class="m-nav-logo"> 
+      <div class="lb-bg-logo aws-amazon_web_services_smile-header-desktop-en"> 
+       <a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+      </div> 
+     </div> 
+     <nav class="m-nav-secondary-links" style="min-width: 620px" aria-label="Secondary Global Navigation"> 
+      <a href="/web/20241224144628/https://aws.amazon.com/about-aws/?nc2=h_header">About AWS</a> 
+      <a href="/web/20241224144628/https://aws.amazon.com/contact-us/?nc2=h_header">Contact Us</a> 
+      <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt lb-has-trigger-indicator" href="#" data-mbox-ignore="true" data-lb-popover-trigger="popover-support-selector" role="button" aria-expanded="false" aria-label="Explore support options" id="popover-popover-support-selector-trigger" aria-controls="popover-support-selector" aria-haspopup="true"> Support &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a id="m-nav-language-selector" class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-language-selector" data-language="en" aria-label="Set site language" role="button" aria-controls="popover-language-selector" aria-expanded="false" aria-haspopup="true"> English &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-my-account" aria-label="Access account options" role="button" aria-controls="popover-my-account" aria-expanded="false" aria-haspopup="true"> My Account &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <div class="m-nav-cta-btn"> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_nav_cta"> 
+        <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="sign-up-sign-in-all" data-da-so-url="nav"> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-pad lb-box" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-sign-in" data-da-so-url="all"> 
+          <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt" style="padding-top:8px; padding-right:13px;" href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/console/home?nc2=h_ct&amp;src=header-signin"> Sign In</a> 
+         </div> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-v-margin lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-signup" data-da-so-url="all"> 
+          <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241224144628/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_ct&amp;src=header_signup" data-trk-params="{&quot;trkOverrideWithQs&quot;:true}" role="button"> <span> Create an AWS Account</span> </a> 
+         </div> 
+        </div> 
+       </div> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_desktop_nav_cta_test"> 
+       </div> 
+      </div> 
+     </nav> 
+     <div class="m-nav-primary-group"> 
+      <nav class="m-nav-primary-links" aria-label="Primary Global Navigation"> 
+       <i class="m-nav-angle-left-icon" aria-hidden="true"></i> 
+       <ul> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20241224144628/https://reinvent.awsevents.com/?nc=nav-l1&amp;trk=0e487c8f-c3e3-4b03-9550-a51ebdba56b6" class="m-nav-featured" data-panel="m-nav-panel-reinvent24">re:Invent</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/products/?nc2=h_ql_prod" data-panel="m-nav-panel-products">Products</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/solutions/?nc2=h_ql_sol" data-panel="m-nav-panel-solutions">Solutions</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/pricing/?nc2=h_ql_pr" data-panel="m-nav-panel-pricing">Pricing</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/documentation-overview/?nc2=h_ql_doc_do" data-panel="m-nav-panel-documentation">Documentation</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/getting-started/?nc2=h_ql_le" data-panel="m-nav-panel-learn">Learn</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/partners/?nc2=h_ql_pn" data-panel="m-nav-panel-partner">Partner Network</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/marketplace/?nc2=h_ql_mp" data-panel="m-nav-panel-marketplace">AWS Marketplace</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/customer-enablement/?nc2=h_ql_ce" data-panel="m-nav-panel-customer">Customer Enablement</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/events/?nc2=h_ql_ev" data-panel="m-nav-panel-events">Events</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241224144628/https://aws.amazon.com/contact-us/?nc2=h_ql_exm" data-panel="m-nav-panel-more">Explore More </a></span></li> 
+       </ul> 
+       <div class="m-nav-icon-group"> 
+        <i class="m-nav-angle-right-icon" aria-hidden="true"></i> 
+        <button class="m-nav-search-icon" tabindex="0" aria-expanded="false" aria-label="Search"> 
+         <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-magnify"> 
+          <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+          <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+         </svg> </button> 
+       </div> 
+      </nav> 
+      <div id="m-nav-desktop-search" class="m-nav-search"> 
+       <form action="https://web.archive.org/web/20241224144628/https://aws.amazon.com/search/" role="search"> 
+        <div class="m-typeahead" data-directory-id="typeahead-suggestions" data-lb-comp="typeahead"> 
+         <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+        </div> 
+       </form> 
+       <i class="m-nav-close-icon" role="button" aria-label="Close"></i> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-language-selector" id="popover-language-selector" aria-modal="false" aria-labelledby="popover-popover-language-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="ar-SA" translate="no" data-language="ar"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+        <li lang="id-ID" translate="no" data-language="id"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+        <li lang="de-DE" translate="no" data-language="de"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+        <li lang="en-US" translate="no" data-language="en"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+        <li lang="es-ES" translate="no" data-language="es"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+        <li lang="fr-FR" translate="no" data-language="fr"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+        <li lang="it-IT" translate="no" data-language="it"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+        <li lang="pt-BR" translate="no" data-language="pt"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       </ul> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="vi-VN" translate="no" data-language="vi"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+        <li lang="tr-TR" translate="no" data-language="tr"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+        <li lang="ru-RU" translate="no" data-language="ru"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+        <li lang="th-TH" translate="no" data-language="th"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+        <li lang="ja-JP" translate="no" data-language="jp"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+        <li lang="ko-KR" translate="no" data-language="ko"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+        <li lang="zh-CN" translate="no" data-language="cn"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+        <li lang="zh-TW" translate="no" data-language="tw"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-my-account" id="popover-my-account" aria-modal="false" aria-labelledby="popover-popover-my-account-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="/web/20241224144628/https://aws.amazon.com/profile/?nc2=h_m_mc">My Profile</a></li> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="https://web.archive.org/web/20241224144628/https://auth.aws.amazon.com/sign-out/?nc2=h_m_mc">Sign out of AWS Builder ID</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/?nc2=h_m_mc">AWS Management Console</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/billing/home#/account?nc2=h_m_ma">Account Settings</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/billing/home?nc2=h_m_bc">Billing &amp; Cost Management</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/iam/home?nc2=h_m_sc#security_credential">Security Credentials</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://phd.aws.amazon.com/?nc2=h_m_sc">AWS Personal Health Dashboard</a></li> 
+     </ul> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-support-selector" id="popover-support-selector" aria-modal="false" aria-labelledby="popover-popover-support-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/support/home/?nc2=h_ql_cu">Support Center</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://iq.aws.amazon.com/?utm=mkt.nav">Expert Help</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://repost.aws/knowledge-center/?nc2=h_m_ma">Knowledge Center</a></li> 
+      <li><a href="/web/20241224144628/https://aws.amazon.com/premiumsupport/?nc2=h_m_bc">AWS Support Overview</a></li> 
+      <li><a href="https://web.archive.org/web/20241224144628/https://repost.aws/">AWS re:Post</a></li> 
+     </ul> 
+    </div> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/suggestions" data-hbs-context="{&quot;pricingText&quot;:&quot;Pricing&quot;,&quot;documentationText&quot;:&quot;Documentation&quot;,&quot;calculatorText&quot;:&quot;Calculator&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/products-head" data-hbs-context="{&quot;productsText&quot;:&quot;Products&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/keypages-head" data-hbs-context="{&quot;relatedPagesText&quot;:&quot;Related Pages&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/tutorials-head" data-hbs-context="{&quot;tutorialsText&quot;:&quot;Tutorials&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/blogs-head" data-hbs-context="{&quot;blogsText&quot;:&quot;Blogs&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/see-all" data-hbs-context="{&quot;resultsText&quot;:&quot;See more results for&quot;}"></script> 
+   </div> 
+   <div id="m-nav-mobile" class="m-nav-mobile" role="navigation" aria-label="Global Navigation for Mobile"> 
+    <div id="m-nav-mobile-header" class="m-nav-mobile-header m-nav-mobile-with-sub-row" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/mobile/index.html"> 
+     <div class="lb-bg-logo aws-amazon_web_services_smile-header-mobile-en"> 
+      <a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+     </div> 
+     <div class="m-nav-mobile-button-group"> 
+      <button class="m-nav-mobile-button icon-search" tabindex="0" aria-expanded="false" aria-label="Search"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <button class="m-nav-mobile-button icon-reorder" tabindex="0" aria-expanded="false" aria-label="Menu"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M15 3H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 8H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 13H1" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_mobile_nav_cta_test"> 
+      </div> 
+     </div> 
+     <div id="m-nav-mobile-sub-row" class="m-nav-mobile-sub-row"> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="get-started-for-free-cta" data-da-so-url="all"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241224144628/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_mobile" role="button"> <span> Get Started for Free</span> </a> 
+      </div> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="contact-us"> 
+       <a class="lb-btn-p" href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/contact-us/?nc2=h_mobile" role="button"> <span> Contact Us</span> </a> 
+      </div> 
+     </div> 
+    </div> 
+    <div id="m-nav-mobile-search" class="m-nav-mobile-search"> 
+     <form action="https://web.archive.org/web/20241224144628/https://aws.amazon.com/search" role="search"> 
+      <div class="m-typeahead"> 
+       <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+      </div> 
+     </form> 
+    </div> 
+    <nav id="m-nav-trimdown" aria-label="Condensed Global Navigation for Mobile"> 
+     <ul class="m-nav-mobile-menu-group"> 
+      <li> <a href="https://web.archive.org/web/20241224144628/https://reinvent.awsevents.com/?nc=nav-m&amp;trk=0e487c8f-c3e3-4b03-9550-a51ebdba56b6"> <span class="m-nav-link-title">re:Invent</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/products/?nc2=h_mo"> <span class="m-nav-link-title">Products</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/solutions/?nc2=h_mo"> <span class="m-nav-link-title">Solutions</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/pricing/?nc2=h_mo"> <span class="m-nav-link-title">Pricing</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/what-is-aws/?nc2=h_mo"> <span class="m-nav-link-title">Introduction to AWS</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/getting-started/?nc2=h_mo"> <span class="m-nav-link-title">Getting Started</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/documentation-overview/?nc2=h_mo"> <span class="m-nav-link-title">Documentation</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/training/?nc2=h_mo"> <span class="m-nav-link-title">Training and Certification</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/developer/?nc2=h_mo"> <span class="m-nav-link-title">Developer Center</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/solutions/case-studies/?nc2=h_mo"> <span class="m-nav-link-title">Customer Success</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/partners/?nc2=h_mo"> <span class="m-nav-link-title">Partner Network</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/marketplace/?nc2=h_mo"> <span class="m-nav-link-title">AWS Marketplace</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/support/home?nc2=h_ql_cu"> <span class="m-nav-link-title">Support</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241224144628/https://repost.aws/"> <span class="m-nav-link-title">AWS re:Post</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/console/home"> <span class="m-nav-link-title">Log into Console</span> </a> </li> 
+      <li> <a href="/web/20241224144628/https://aws.amazon.com/console/mobile/"> <span class="m-nav-link-title">Download the Mobile App</span> </a> </li> 
+     </ul> 
+    </nav> 
+   </div> 
+   <div class="lb-sticky-subnav" data-lb-comp="sticky-subnav" data-lb-page-path="/builders-library/implementing-health-checks/"> 
+    <div class="lb-row lb-row-max-large lb-snap"> 
+     <div class="lb-tiny-24 lb-sticky-subnav-content"> 
+      <div class="lb-sticky-subnav-title"> 
+       <a class="lb-txt" href="/web/20241224144628/https://aws.amazon.com/builders-library/"> The Amazon Builders' Library</a> 
+      </div> 
+      <div class="lb-sticky-subnav-links"> 
+       <a class="lb-txt-bold lb-txt" href="/web/20241224144628/https://aws.amazon.com/builders-library/"> Overview</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20241224144628/https://aws.amazon.com/builders-library/authors/"> Authors</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20241224144628/https://aws.amazon.com/builders-library/faqs/"> FAQs</a> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </header> 
+  <div id="aws-page-content" class="lb-page-with-sidebar-left lb-page-content lb-page-with-sticky-subnav" style="padding-top:0px; padding-bottom:0px;" data-page-alert-target="true"> 
+   <div> 
+    <div class="lb-bg-left-bottom-cover lb-none-v-margin lb-grid" style="padding-top:50px; background-image:url('https://web.archive.org/web/20241224144628im_/https://d1.awsstatic.com/legal/builders-library/WEB_Library-header.d958a0d6de10906ba0ed43e35bfd1669a3c84031.jpg');"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-16"> 
+       <div class="lb-breadcrumbs lb-breadcrumbs-dropTitle lb-breadcrumbs-dark"> 
+        <ul> 
+         <li> <a href="/web/20241224144628/https://aws.amazon.com/builders-library/"><span>Amazon Builders' Library</span></a> </li> 
+        </ul> 
+        <h1>Implementing health checks</h1> 
+       </div> 
+       <div class="lb-txt-uppercase lb-txt-white lb-txt-16 lb-txt" style="margin-bottom:20px;">
+         Software Delivery and Operations | LEVEL 400 
+       </div> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-8"> 
+       <div class="lb-tiny-iblock lb-tiny-pad lb-box" style="background-color:#eaeded;"> 
+        <div class="lb-none-v-margin lb-rtxt" style="margin-top:10px;"> 
+         <p style="text-align: center;"><b>Would you like to be notified of&nbsp;new content?</b></p> 
+        </div> 
+        <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-14"> 
+          <div class="lb-btn"> 
+           <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241224144628/https://pages.awscloud.com/amazon-builders-library.html" target="_blank" rel="noopener noreferrer" role="button"> <span> Send me updates</span> </a> 
+          </div> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <main id="aws-page-content-main" role="main" tabindex="-1"> 
+    <div class="lb-sticky-sidebar lb-sticky-sidebar-modern" data-lb-comp="sticky-sidebar"> 
+     <div data-lb-comp="floating-wrapper" class="lb-floating-wrapper"> 
+      <div class="lb-floating-wrapper-content"> 
+       <div class="lb-wrapper-content"> 
+        <div class="lb-toggle-wrapper"> 
+         <button class="lb-toggle" aria-label="Collapse sidebar" data-aria-label-toggle="Expand sidebar" aria-expanded="true"></button> 
+        </div> 
+        <div class="lb-sidebar-content"> 
+         <div> 
+          <div class="lb-sidebar-header">
+            Article Content 
+          </div> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Introduction"> Introduction</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Small_failures_with_outsized_impact"> Small failures with outsized impact</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Health_check_tradeoffs"> Health check tradeoffs</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Ways_to_measure_health"> Ways to measure health</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Reacting_safely_to_health_check_failures"> Reacting safely to health check failures</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Balancing_dependency_health_checks_with_the_scope_of_impact"> Containing the scope of impact</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Real_things_that_have_gone_wrong_with_health_checks"> Real-world examples</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Conclusion"> Conclusion</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Hands-on_lab"> Hands-on lab</a> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-grid"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-24"> 
+       <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-txt-none lb-txt" href="/web/20241224144628/https://aws.amazon.com/builders-library/authors/david-yanacek/"> By David Yanacek</a> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-16"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-tiny-align-left lb-small-align-left lb-mid-align-left lb-large-align-left lb-xlarge-align-left lb-txt-none lb-tiny-hide lb-small-show lb-mid-show lb-large-show lb-xlarge-show lb-txt" href="https://web.archive.org/web/20241224144628/https://d1.awsstatic.com/builderslibrary/pdfs/implementing-health-checks.pdf" target="_blank" rel="noopener noreferrer"> <i class="icon-file-pdf-o lb-before"></i>&nbsp;PDF</a> 
+         <a class="lb-tiny-align-left lb-small-align-left lb-mid-align-left lb-large-align-left lb-xlarge-align-left lb-txt-none lb-tiny-hide lb-small-show lb-mid-show lb-large-show lb-xlarge-show lb-txt" href="https://web.archive.org/web/20241224144628/https://www.amazon.com/dp/B082LQ37RJ" target="_blank" rel="noopener noreferrer"> <i class="icon-file-pdf-o lb-before"></i>&nbsp;Kindle</a> 
+        </div> 
+       </div> 
+       <div id="Introduction"></div> 
+       <div class="lb-rtxt"> 
+        <p><a name="Introduction"></a>Services can be designed with all kinds of reliability and resiliency built in, but in order to be reliable in practice, they must also deal with predictable failures when they occur. At Amazon, we build services to be horizontally scalable and redundant, because hardware is designed to fail eventually. Any hard drive has a maximum expected lifetime, and any piece of software is susceptible to crash at some point. It may seem like a server’s health is binary: it either works, or it doesn’t work at all and gets out of the way. Unfortunately this isn’t the case. We find that rather than just shutting down, failing servers can cause unpredictable and sometimes disproportionate harm to a system. Health checks detect and respond to these kinds of issues automatically.</p> 
+        <p>This article describes how we use health checks to detect and deal with single-server failures, the things that happen when health checks are not used, and how systems that overreact to health check failures can turn small problems into complete outages. We also provide insight from our experience at Amazon about balancing the tradeoffs between various kinds of health check implementations.<br> </p> 
+       </div> 
+       <h2 id="Small_failures_with_outsized_impact" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Small failures with outsized impact</h2> 
+       <div class="lb-rtxt"> 
+        <div>
+          When I was a new software developer at Amazon, I worked on the website rendering fleet behind Amazon.com. While working on a change to add some instrumentation and get visibility into how well the software was running, I unfortunately wrote a bug. The bug triggered rarely, but when it did, it caused a given web server to render blank error pages on every request. Only restarting the web server process fixed the issue. We detected the bug and rolled back the change quickly, added plenty of tests, and improved processes to catch conditions like this in the future. But while the bug was in production, a few servers in a large fleet ended up in this broken state. 
+        </div> 
+        <div>
+          &nbsp; 
+        </div> 
+        <div>
+          One thing that made the bug especially tricky to find was that the server didn’t realize it was unhealthy. Also, the server lost the ability to report its health into monitoring systems, so it was not taken out of service automatically, and it didn’t trigger its regular alarms. Making matters worse, the server became very fast and began producing blank error pages much faster than its peer “healthy servers” were rendering happy webpages. The load-balancing technology we used at the time favored fast servers over slow ones, so it directed a disproportionate amount of traffic to the unhealthy servers, which increased the impact even further. 
+        </div> 
+        <div> 
+         <br> Other alarms triggered, since monitoring involves measuring error rates and latency from multiple points in the system. While these kinds of monitoring systems and operational processes can serve as a backstop to contain the problem, the right health checks can significantly minimize the impact of this whole class of errors by detecting and acting on failures quickly. 
+         <br> 
+        </div> 
+       </div> 
+       <h2 id="Health_check_tradeoffs" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Health check tradeoffs</h2> 
+       <div class="lb-rtxt"> 
+        <p>Health checks are a way of asking a service on a particular server whether or not it is capable of performing work successfully. Load balancers ask each server this question periodically to determine which servers it is safe to direct traffic to. A service that polls messages from a queue might ask itself whether it is healthy before it decides to poll more work from the queue. Monitoring agents—running on each server or on an external monitoring fleet—might ask servers whether they're healthy so that they can raise an alarm or automatically deal with servers that are failing.</p> 
+        <p>As we saw in my website bug example, when an unhealthy server stays in service, it can disproportionately decrease the availability of the service as a whole. With a fleet of ten servers, one bad server means that the availability of the fleet would be 90% or less. Making matters worse, some load-balancing algorithms, such as “least requests,” give more work to the fastest server. When a server fails, it often begins failing requests quickly, creating a “black hole” in the service fleet by attracting more requests than healthy servers. In some cases, we add extra protection to prevent black holes by slowing down failed requests to match the average latency of successful requests. However, there are other scenarios, such as with queue pollers, where this issue is more difficult to work around. For example, if a queue poller is polling messages as fast as it can receive them, a failed server will become a black hole as well. With such a diverse set of environments for distributing work, the way we think about protecting a partially-failed server varies from system to system.</p> 
+        <p>We find that servers fail independently for any number of reasons, including disks that become unwritable and cause requests to fail immediately, clocks that skew abruptly and cause calls to dependencies to fail authentication, servers that fail to retrieve updated crypto material and cause decryption and encryption to fail, critical support processes that crash because of their own bugs, memory leaks, and deadlocks that freeze processing.</p> 
+        <p>Servers also fail for correlated reasons that cause many or all servers in a fleet fail together. Correlated reasons include outage of a shared dependency and large-scale network issues. The ideal health check will test every aspect of server and application health, perhaps even verifying that non-critical supporting processes are running. However, trouble arises when the health check fails for a non-critical reason and when that failure is correlated across servers. If automation removes servers from service when they still could have performed useful work, the automation does more harm than good.</p> 
+        <p>The difficulty with health checks is this tension between, on the one hand, the benefits of thorough health checks and quickly mitigating single-server failures and, on the other hand, the harm done by a false positive failure across the entire fleet. Thus, one of the challenges of building a good health check is to guard carefully against false positives. In general, this means that the automation surrounding health checks should stop directing traffic to a single bad server but keep allowing traffic if the entire fleet appears to be having trouble.<br> </p> 
+       </div> 
+       <h2 id="Ways_to_measure_health" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Ways to measure health</h2> 
+       <div class="lb-rtxt"> 
+        <p>There are many things that can break on a server, and there are many places in our systems where we measure server health. Some health checks can definitively report that a particular server is independently broken, while others are fuzzier and report false positives in the case of correlated failures. Some health checks are difficult to implement. Others are implemented at setup with services like Amazon Elastic Compute Cloud (Amazon EC2) and Elastic Load Balancing. Each type of health check has its strengths.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Liveness checks 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Liveness checks test the basic connectivity to a service and the presence of a server process. They are often performed by a load balancer or external monitoring agent, and they are unaware of the details about how an application works. Liveness checks tend to be included with the service and do not require an application author to implement anything. Some examples of liveness checks that we use at Amazon include the following:</p> 
+        <p style="margin-left: 40px;">• Tests that confirm that a server is listening on its expected port and accepting new TCP connections.<br> • Tests that perform a basic HTTP requests and make sure that the server responds with a 200 status code.<br> • Status Checks for Amazon EC2 that test for basic things that are necessary for any system to operate, such as network reachability.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Local health checks 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Local health checks go further than liveness checks to verify that the application is likely to be able to function. These health checks test resources that are not shared with the server’s peers. Therefore, they are unlikely to fail on many servers in the fleet simultaneously. These health checks test for the following:</p> 
+        <p style="margin-left: 40px;">• Inability to write to or read from disk—It may be tempting to believe that a stateless service doesn't require a writable disk. However, at Amazon our services tend to use their disks for things like monitoring, logging, and publishing asynchronous metering data.<br> • Critical processes crashing or breaking—Some services take requests using an on-server proxy (similar to NGINX) and perform their business logic in another server process. A liveness check might only test whether the proxy process is running. A local health check process might pass through from the proxy to the application to check that both are running and answering requests correctly. Interestingly, in the website example from the beginning of the article, the existing health check was deep enough to ensure that the rendering process was running and responding but not deep enough to ensure it was responding correctly.<br> • Missing support processes—Hosts that are missing their monitoring daemons might leave operators "flying blind" and unaware of the health of their services. Other support processes push metering and billing usage records or receive credential updates. Servers with broken support processes put functionality at risk in subtle, difficult-to-detect ways.</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Dependency health checks 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Dependency health checks are a thorough inspection of the ability of an application to interact with its adjacent systems. These checks ideally catch problems local to the server, such as expired credentials, that are preventing it from interacting with a dependency. But they can also have false positives when there are problems with the dependency itself. Because of those false positives, we must be careful about how we react to dependency health check failures. Dependency health checks might test for the following:</p> 
+        <p style="margin-left: 40px;">• Bad configuration or stale metadata—If a process asynchronously looks for updates to metadata or configuration but the update mechanism is broken on a server, the server can become significantly out of sync with its peers and misbehave in an unpredictable and untested way. However, when a server doesn’t see an update for a while, it doesn’t know whether the update mechanism is broken or the central update system stopped publishing updates to all servers.<br> • Inability to communicate with peer servers or dependencies—Strange network behavior has been known to affect the ability of a subset of servers in a fleet to talk to dependencies without affecting the ability for traffic to be sent to that server. Software issues, such as deadlocks or bugs in connection pools, can also hinder network communication.<br> • Other unusual software bugs that require a process bounce—Deadlocks, memory leaks, or state corruption bugs can make a server spew errors.&nbsp;</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Anomaly detection 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Anomaly detection looks across all servers in a fleet to determine if any server is behaving oddly compared to its peers. By aggregating monitoring data per server, we can continuously compare error rates, latency data, or other attributes to find anomalous servers and automatically remove them from service. Anomaly detection can find divergence in the fleet that a server cannot detect about itself, such as the following:</p> 
+        <p style="margin-left: 40px;">• Clock skew—Especially when servers are under high load, their clocks have been known to skew abruptly and drastically. Security measures, such as those used to evaluate signed requests to AWS, require that the time on a client's clock is within five minutes of the actual time. If it is not, requests fail to AWS services.<br> • Old code—If a server is disconnected from the network or powered off for a long time and then comes back on line, it could be running dangerously outdated code that is incompatible with the rest of the fleet.<br> • Any unanticipated failure mode—Sometimes servers fail in such a way that they return errors that they identify error as the client’s instead of theirs (HTTP 400 instead of 500). Servers may slow down instead of failing, or they may respond faster than their peers, which is a sign that they’re returning false responses to their callers. Anomaly detection is an incredible catchall for unanticipated failure modes.</p> 
+        <p>There are few things that must hold true for anomaly detection to work in practice:</p> 
+        <p style="margin-left: 40px;">• Servers should be doing approximately the same thing—In cases where we explicitly route different types of traffic to different types of servers, the servers might not behave similarly enough to detect outliers. However, in cases where we use load balancers to direct traffic to servers, they are likely responding in similar ways.<br> • Fleets should be relatively homogeneous—In fleets that include different instance types, some instances might be slower than others, which can falsely trigger passive bad server detection. To work around this scenario, we collate metrics by instance type.<br> • The errors or difference in behavior must be reported—Because we rely on the servers themselves to report errors, what happens when their monitoring systems are also broken? Fortunately the client of a service is a great place to add instrumentation. Load balancers like Application Load Balancer publish access logs that show which backend server was contacted on every request, the response time, and whether the request succeeded or failed.&nbsp;</p> 
+       </div> 
+       <h2 id="Reacting_safely_to_health_check_failures" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Reacting safely to health check failures</h2> 
+       <div class="lb-rtxt"> 
+        <p>When a server determines that it is unhealthy, there are two kinds of actions it can take. In the most extreme case, it can decide locally that it shouldn't be given any work and take itself out of service by failing a load balancer health check or by stopping polling a queue. Another way the server could react is to inform a central authority that it has a problem and let the central system decide how to handle the issue. The central system can safely address the problem without letting the automation take down the whole fleet.</p> 
+        <p>There are multiple ways to implement and respond to health checks. This section describes a few patterns that we use at Amazon.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Fail open 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Some load balancers can act as a smart central authority. When an individual server fails a health check, the load balancer stops sending it traffic. But when all servers fail health checks at the same time, the load balancer fails open, allowing traffic to all servers. We can use load balancers to support the safe implementation of a dependency health check, perhaps including one that queries its database and checks to ensure that its non-critical support processes are running.</p> 
+        <p>For example, the AWS Network Load Balancer fails open if no servers are reporting as healthy. It also fails out of unhealthy Availability Zones if all servers in an Availability Zone reports unhealthy. (For more information about using Network Load Balancers for health checks, see the <a href="https://web.archive.org/web/20241224144628/https://docs.aws.amazon.com/elasticloadbalancing/latest/network/target-group-health-checks.html" target="_blank">Elastic Load Balancing</a> documentation.) Our Application Load Balancer also supports fail open, as does Amazon Route 53. (For more information about configuring health checks with Route 53, see the <a href="https://web.archive.org/web/20241224144628/https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/health-checks-how-route-53-chooses-records.html" target="_blank">Route 53</a> documentation.)</p> 
+        <p>When we rely on fail-open behavior, we make sure to test the failure modes of the dependency heath check. For example, consider a service where the servers connect to a shared data store. If that data store becomes slow or responds with a low error rate, the servers might occasionally fail their dependency health checks. This condition causes servers to flap in and out of service but does not trigger the fail-open threshold. Reasoning out and testing partial failures of dependencies with these health checks is important to avoid a situation where a failure could cause deep health checks to make matters worse.</p> 
+        <p>While fail open is a helpful behavior, at Amazon we tend to be skeptical of things that we can’t fully reason about or test in all situations. We haven’t yet come up with general proofs that fail open will trigger as we expect for all types of overload, partial failures, or gray failures in a system or in that system’s dependencies. Because of this limitation, teams at Amazon tend to restrict their fast-acting load balancer health checks to local health checks and rely on centralized systems to carefully react to deeper dependency health checks. This isn’t to say we don’t use fail-open behavior or prove that it works in particular cases. But when logic can act on a large number of servers quickly, we are extremely cautious about that logic.</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Health checks without a circuit breaker 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Allowing servers to react to their own problems may seem like the quickest and simplest path to recovery. However, it is also the riskiest path if the server is wrong about its health or doesn't see the whole picture of what's happening across the fleet. When all servers across the fleet make the same wrong decision simultaneously, it can cause cascading failures throughout adjacent services. This risk presents us with a trade-off. If there is a gap in health checking and monitoring, a server could reduce the availability of a service until the issue is detected. However, this scenario avoids a complete service outage due to unexpected health check behavior across a whole fleet.</p> 
+        <p>These are the best practices we follow for implementing health checks when we don't have a circuit breaker built-in:</p> 
+        <p style="margin-left: 40px;">• Configure the work producer (load balancer, queue polling thread) to perform liveness and local health checks. Servers are taken out of service automatically by the load balancer only if they have some problem that is definitively local to that server, such as a bad disk.<br> • Configure other external monitoring systems to perform dependency health checks and anomaly detection. These systems could attempt to terminate instances automatically or alarm or engage an operator.</p> 
+        <p>When we build systems to react automatically to dependency health check failures, we must build in the right amount of thresholding to prevent the automated system from taking drastic action unexpectedly. Teams at Amazon that operate stateful servers like Amazon DynamoDB, Amazon S3, and Amazon Relational Database Service (Amazon RDS) have important durability requirements around server replacement. They have also built cautious rate limiting and control feedback loops so that the automation stops and engages humans when thresholds are crossed. When we build such automation, we must be sure that we notice when a server fails a dependency health check. For some metrics, we rely on the servers to self-report their individual status to a central monitoring system. To compensate for cases when the server is so broken that it is unable to report its health, we also actively reach out to them to check their health.&nbsp;</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Prioritize your health 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Especially in overload conditions, it is important for servers to prioritize their health checks over their regular work. In this situation, failing or responding slowly to health checks can make a bad brownout situation even worse.&nbsp; </p> 
+        <p>When a server fails a load balancer health check, it is asking that load balancer to take it out of service immediately and for a non-trivial amount of time. When a single server fails, that's not a problem, but in a traffic surge to the service, the last thing we want is to shrink the size of the service. Taking servers out of service during an overload can cause a downward spiral. Forcing the remaining servers take even more traffic makes them more likely to become overloaded, also fail a health check, and shrink the fleet even more.</p> 
+        <p>The problem is not that overloaded servers return errors when they're overloaded. It's that servers don't respond to the load balancer ping request in time. After all, load balancer health checks are configured with timeouts, just like any other remote service call. Browned out servers are slow to respond for a number of reasons, including high CPU contention, long garbage collector cycles, or simply running out of worker threads. Services need to be configured to set resources aside to respond to health checks in a timely way instead of taking on too many additional requests.</p> 
+        <p>Fortunately, there are some straightforward configuration best practices that we follow to help prevent this kind of downward spiral. Tools like iptables, and even some load balancers, support the notion of “max connections.” In this case, the OS (or load balancer) limits the number of connections to the server so that the server process is not flooded with concurrent requests that would have slowed it down.</p> 
+        <p>When a service is fronted by a proxy or a load balancer that supports max connections, it seems logical to make the number of worker threads on the HTTP server match the max connections in the proxy. However, this configuration would set up the service for a downward spiral during a brownout. Proxy health checks need connections too, and so it is important to make a server's worker pool large enough to accommodate extra health check requests. Idle workers are cheap, so we tend to configure extra ones: anywhere from a handful of extra workers to double the configured proxy max connections.</p> 
+        <p>Another strategy we use to prioritize health checks is for servers to implement their own maximum concurrent requests enforcement. In this case, load balancer health checks are always allowed, but normal requests are rejected if the server is already working on some threshold. Implementations around Amazon range from a simple semaphore in Java to the more complex analysis of trends in CPU utilization.</p> 
+        <p>Another way to help ensure that services respond in time to a health check ping request is to perform the dependency health check logic in a background thread and update an isHealthy flag that the ping logic checks. In this case, servers respond promptly to health checks, and the dependency health checking produces a predictable load on the external system it interacts with. When teams do this, they are extra cautious about detecting a failure of the health check thread. If that background thread exits, the server does not detect a future server failure (or recovery!).</p> 
+       </div> 
+       <h2 id="Balancing_dependency_health_checks_with_the_scope_of_impact" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Balancing dependency health checks with the scope of impact</h2> 
+       <div class="lb-rtxt"> 
+        <p>Dependency health checks are appealing because they act as a thorough test of a server’s health. Unfortunately they can be dangerous because a dependency can cause a cascading failure throughout a system. </p> 
+        <p>We can draw some insight about handling health check dependencies by looking at our service-oriented architecture at Amazon. Each service at Amazon is designed to do a small number of things; there is no monolith that does everything. There are many reasons we like to build services this way, including faster innovation with small teams and reduced scope of impact if there is a problem with one service. This architectural design can apply to health checks too.</p> 
+        <p>When one service calls another service, it’s taking a dependency on that service. If a service only calls the dependency sometimes, we might consider the dependency to be a “soft dependency,” since the service can still do some types of work even if it can’t talk to the dependency. Without fail-open protection, implementing a health check that tests a dependency turns that dependency into a “hard dependency.” If the dependency is down, the service also goes down, creating a cascading failure with increased scope of impact.</p> 
+        <p>Even though we separate functionality into different services, each service likely serves multiple APIs. Sometimes, APIs on the service have their own dependencies. If one API is impacted, we prefer for the service to continue serving the other APIs. For example, a service can be both a control plane (such as occasionally-called CRUD APIs on long-living resources) and a data plane (high throughput business-super-critical APIs). We would want the data plane APIs to continue to operate even if the control plane APIs are having trouble talking to their dependencies.</p> 
+        <p>Similarly, even a single API may behave differently depending on the input or state of the data. A common pattern is a Read API that queries a database but caches responses locally for some time. If the database is down, the service can still serve cached reads until the database is back online. Failing health checks if only one code path is unhealthy increases the scope of impact of a problem talking to a dependency.</p> 
+        <p>This discussion of which dependency to health check raises an interesting question about the trade-offs between microservices and relatively monolithic services. There is rarely a clear-cut rule for how many deployable units or endpoints to break a service into, but the questions of “which dependencies to health check” and “does a failure then increase the scope of impact” are interesting lenses to use to determine how micro or macro to make a service.&nbsp;</p> 
+       </div> 
+       <h2 id="Real_things_that_have_gone_wrong_with_health_checks" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Real things that have gone wrong with health checks</h2> 
+       <div class="lb-rtxt"> 
+        <p>All of this may make sense in theory, but what happens to systems in practice when they don’t get health checks right? We looked for patterns in stories from AWS customers and from around Amazon to help illustrate the bigger picture. We also looked into compensating factors – the sorts of “belt and suspenders” that teams implement to prevent a weakness in a health check from causing a widespread issue.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Deployments 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>One pattern of health check problems involves deployments. Deployment systems like AWS CodeDeploy push new code to one subset of the fleet at a time, waiting for one deployment wave to complete before moving on to the next. This process relies on servers reporting back to the deployment system once they’re up and running with the new code. If they don’t report back, the deployment system sees that there is something wrong with the new code and rolls back the deployment.</p> 
+        <p>The most basic service startup deployment script would simply fork the server process and immediately respond “deployment done” to the deployment system. However this is dangerous because so many things can go wrong with the new code: the new code could crash right after launching, get hung up and fail to start listening on a server socket, fail to load configuration needed to process requests successfully, or encounter a bug. When a deployment system isn’t configured to test against a dependency health check, it doesn’t realize that it is pushing a bad deployment. It marches along breaking one server after another.</p> 
+        <p>Fortunately, in practice Amazon teams implement multiple mitigating systems to prevent this scenario from taking out their whole fleet. One such mitigation is to configure alarms that trigger whenever the overall fleet size is too small or running at high load, or when there is high latency or error rate. If any of these alarms trigger, the deployment system halts the deployment and rolls back. </p> 
+        <p>Another type of mitigation is to use phased deployments. Instead of deploying the whole fleet in a single deployment, the service can be configured to deploy a subset, perhaps an Availability Zone, before pausing and running a full suite of integration tests against that zone. This deployment-per-Availability Zone alignment is convenient because services are already designed to be able to keep operating if there are problems with a single Availability Zone. </p> 
+        <p>And of course before deploying to production, Amazon teams push those changes through test environments and run automated integration tests that would catch this type of failure. However, subtle and unavoidable differences between production and test environments may exist, so it is important to combine many layers of deployment safety to catch all kinds of problems before causing impact in production. While health checks are important to protect services against bad deployments, we make sure to not stop there. We think about the “belt and suspenders” approaches that serve as backstops to protect fleets from these and other mistakes.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Asynchronous processors 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Another pattern of failure is around asynchronous message processing, such as a service that gets its work by polling an SQS Queue or Amazon Kinesis Stream. Unlike in systems that take requests from load balancers, there isn’t anything automatically performing health checks to remove servers from service. </p> 
+        <p>When services don’t have deep enough health checks, individual queue worker servers can have failures like disks filling up or running out of file descriptors. This issue won’t stop the server from pulling work off the queue, but it will stop the server from being able to successfully process messages. This issue has resulted in delayed message processing, where the bad server pulls off work from the queue quickly and fails to deal with it. </p> 
+        <p>In these kinds of situations, there are often several compensating factors to help contain the impact. For example, if a server fails to process the message that it pulls off SQS, then SQS redelivers that message to another server after a configured message visibility timeout. End-to-end latency increases, but messages are not dropped. Another compensating factor is an alarm that goes off when there are too many errors processing messages, alerting an operator to investigate.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Disks filling up 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Another class of failures we see is when disks on servers fill up, causing both processing and logging to fail. This failure leads to a gap in monitoring visibility, since the server might not be able to report its failures to the monitoring system. </p> 
+        <p>Again, several mitigating controls keep services from “flying blind” and mitigate impact quickly. Systems fronted by a proxy such as an Application Load Balancer or API Gateway will have error rate and latency metrics produced by that proxy. In this case, alarms fire even if the server isn’t reporting them. For queue-based systems, services like Amazon Simple Queue Service (Amazon SQS) report metrics that indicate that processing is delayed for some messages. </p> 
+        <p>The thing that these solutions have in common is that there are multiple layers of monitoring. The server itself reports errors, but so does an external system. The same principle is important with health checks. An external system can test the health of a given system more accurately than it can test itself. This is why with AWS Auto Scaling, teams configure a load balancer to do external ping health checks. </p> 
+        <p>Teams also write their own custom health check system to periodically ask each server if it is healthy and report to AWS Auto Scaling when a server is unhealthy. One common implementation of this system involves a Lambda function that runs every minute, testing the health of every server. These health checks can even save their state between each run in something like DynamoDB so that they don’t inadvertently mark too many servers as unhealthy at once.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Zombies 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Another pattern of problems includes zombie servers. Servers can become disconnected from the network for periods of time but remain running, or they can power off for extended periods and later be rebooted. </p> 
+        <p>When zombie servers come back to life they can be significantly out of sync with the rest of the fleet, which can cause serious problems. For example, if a zombie server is running a much older, incompatible software version, it can cause failures when it tries to interact with a database with different schema or it can use the wrong configuration. </p> 
+        <p>To deal with zombies, systems often reply to health checks with their currently running software version. Then a central monitoring agent then compares the responses across the fleet to look for anything running an unexpectedly out of date version and prevents these servers from moving back into service.<br> </p> 
+       </div> 
+       <h2 id="Conclusion" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Conclusion</h2> 
+       <div class="lb-rtxt"> 
+        <p>Servers, and the software that runs on them, fail for all kinds of weird reasons. Hardware eventually physically breaks. As software developers, we eventually write some bug like the one I describe above that puts the software into a broken state. Multiple layers of checks, from lightweight liveness checks to passive monitoring of per-server metrics, are needed to catch all types of unexpected failure modes.</p> 
+        <p>When these failures happen, it is important to detect them and take the affected servers out of service quickly. However, as with any fleet automation, we add rate-limiting, thresholding, and circuit breakers that turn off automation and involve humans in situations of uncertainty or in extreme situations. Failing open and building centralized actors are strategies for reaping the benefits of deep health checking with the safety of rate-limited automation.</p> 
+       </div> 
+       <h2 id="Hands-on_lab" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Hands-on lab</h2> 
+       <div class="lb-rtxt"> 
+        <p>Try out some of the principles you learned here with a <a href="https://web.archive.org/web/20241224144628/https://wellarchitectedlabs.com/Reliability/300_Health_Checks_and_Dependencies/README.html" target="_blank">hands-on lab</a>.</p> 
+       </div> 
+       <hr class="lb-divider" style="margin-top:0px; margin-bottom:0px;"> 
+       <h4 id="About_the_author" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h4 lb-title" style="color:#232f3e;"> About the author</h4> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <div class="lb-box"> 
+          <figure class="lb-tiny-v-margin lb-img"> 
+           <div> 
+            <img src="https://web.archive.org/web/20241224144628im_/https://d1.awsstatic.com/builderslibrary/authors-biopage/WEB_Redwood_Author-Portrait_David_Yanacek.b5f8aae4937996343f3209ef598ca9f3db493eca.png" alt="David Yanacek" title="David Yanacek" class="cq-dd-image"> 
+           </div> 
+          </figure> 
+          <a class="lb-txt-none lb-txt" style="margin-top:20px;" href="/web/20241224144628/https://aws.amazon.com/builders-library/authors/david-yanacek/"> David Yanacek</a> 
+         </div> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <div class="lb-rtxt" style="margin-top:60px;"> 
+          <p>David Yanacek is a&nbsp;Senior Principal Engineer working on AWS Lambda. David has been a software developer at Amazon since 2006, previously working on Amazon DynamoDB and AWS IoT, and also internal web service frameworks and fleet operations automation systems. One of David’s favorite activities at work is performing log analysis and sifting through operational metrics to find ways to make systems run more and more smoothly over time.<br> </p> 
+         </div> 
+        </div> 
+       </div> 
+       <h4 id="Related_content" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h4 lb-title" style="color:#232f3e;"> Related content</h4> 
+       <a class="lb-txt-none lb-txt" style="margin-top:0px;" href="/web/20241224144628/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"> Timeouts, retries and backoff with jitter</a> 
+      </div> 
+     </div> 
+    </div> 
+   </main> 
+  </div> 
+  <footer id="aws-page-footer" class="m-page-footer" role="contentinfo"> 
+   <div class="data-attr-wrapper lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer" data-da-so-version="a"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1 lb-small-xb-3 lb-large-xb-5"> 
+     <div class="lb-xbcol"> 
+      <div class="data-attr-wrapper lb-small-hide lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signin-mobile-default"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/console/home?nc1=f_ct&amp;src=footer-signin-mobile" role="button"> <span> Sign In to the Console</span> </a> 
+      </div> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Learn About AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/what-is-aws/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is AWS?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/what-is-cloud-computing/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is Cloud Computing?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/accessibility/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Accessibility</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/diversity-inclusion/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Inclusion, Diversity &amp; Equity</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/devops/what-is-devops/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is DevOps?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/containers/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Container?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/what-is/data-lake/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Data Lake?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/what-is/artificial-intelligence/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Artificial Intelligence (AI)?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/what-is/generative-ai/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Generative AI?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/what-is/machine-learning/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Machine Learning (ML)?</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/security/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Cloud Security</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/new/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What's New</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/blogs/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Blogs</a></li> 
+       <li><a href="https://web.archive.org/web/20241224144628/https://press.aboutamazon.com/press-releases/aws" target="_blank" rel="noopener noreferrer" title="Press Releases" alt="Press Releases">Press Releases</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Resources for AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/getting-started/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Getting Started</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/training/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Training and Certification</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/solutions/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Solutions Library</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/architecture/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Architecture Center</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/faqs/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Product and Technical FAQs</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/resources/analyst-reports/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Analyst Reports</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/partners/work-with-partners/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Partners</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Developers on AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/developer/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Developer Center</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/developer/tools/?nc1=f_dr" target="_blank" rel="noopener noreferrer">SDKs &amp; Tools</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/developer/language/net/?nc1=f_dr" target="_blank" rel="noopener noreferrer">.NET on AWS</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/developer/language/python/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Python on AWS</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/developer/language/java/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Java on AWS</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/developer/language/php/?nc1=f_cc" target="_blank" rel="noopener noreferrer">PHP on AWS</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/developer/language/javascript/?nc1=f_dr" target="_blank" rel="noopener noreferrer">JavaScript on AWS</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Help</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/contact-us/?nc1=f_m" target="_blank" rel="noopener noreferrer">Contact Us</a></li> 
+       <li><a href="https://web.archive.org/web/20241224144628/https://iq.aws.amazon.com/?utm=mkt.foot/?nc1=f_m" target="_blank" rel="noopener noreferrer">Get Expert Help</a></li> 
+       <li><a href="https://web.archive.org/web/20241224144628/https://console.aws.amazon.com/support/home/?nc1=f_dr" target="_blank" rel="noopener noreferrer">File a Support Ticket</a></li> 
+       <li><a href="https://web.archive.org/web/20241224144628/https://repost.aws/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS re:Post</a></li> 
+       <li><a href="https://web.archive.org/web/20241224144628/https://repost.aws/knowledge-center/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Knowledge Center</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/premiumsupport/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Support Overview</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/legal/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Legal</a></li> 
+       <li><a href="/web/20241224144628/https://aws.amazon.com/careers/">AWS Careers</a></li> 
+      </ul> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_addl-help"> 
+      </div> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_cta"> 
+       <div class="data-attr-wrapper lb-tiny-hide lb-small-show lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signup-default"> 
+        <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241224144628/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc1=f_ct&amp;src=default" role="button"> <span> Create an AWS Account</span> </a> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:20px; margin-bottom:0px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-left:0px; padding-right:5px;" href="https://web.archive.org/web/20241224144628/https://twitter.com/awscloud" target="_blank" rel="noopener noreferrer" title="Twitter" alt="Twitter"> <i class="icon-twitter lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-none-v-margin lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241224144628/https://www.facebook.com/amazonwebservices" target="_blank" rel="noopener noreferrer" title="Facebook" alt="Facebook"> <i class="icon-facebook lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241224144628/https://www.linkedin.com/company/amazon-web-services/" target="_blank" rel="noopener noreferrer" title="Linkedin" alt="Linkedin"> <i class="icon-linkedin lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241224144628/https://www.instagram.com/amazonwebservices/" target="_blank" rel="noopener noreferrer" title="Instagram" alt="Instagram"> <i class="icon-instagram lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:10px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241224144628/https://www.twitch.tv/aws" target="_blank" rel="noopener noreferrer" title="Twitch" alt="Twitch"> <i class="icon-twitch lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241224144628/https://www.youtube.com/user/AmazonWebServices/Cloud/" target="_blank" rel="noopener noreferrer" title="YouTube" alt="YouTube"> <i class="icon-youtube lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="/web/20241224144628/https://aws.amazon.com/podcasts/" target="_blank" rel="noopener noreferrer" title="Podcast" alt="Podcast"> <i class="icon-podcast lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241224144628/https://pages.awscloud.com/communication-preferences?trk=homepage" target="_blank" rel="noopener noreferrer" title="Email" alt="Email"> <i class="icon-envelope-o lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-txt-normal lb-txt-white lb-txt-14 lb-rtxt" style="color:#eaeded; margin-top:0px;"> 
+       <div>
+         Amazon is an Equal Opportunity Employer: 
+        <i> Minority / Women / Disability / Veteran / Gender Identity / Sexual Orientation / Age.</i> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <ul class="lb-txt-white lb-tiny-iblock lb-none-v-margin lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-iblock"> 
+       <li class="lb-txt-bold">Language</li> 
+       <li data-language="ar" lang="ar-SA" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+       <li data-language="id" lang="id-ID" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+       <li data-language="de" lang="de-DE" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+       <li data-language="en" lang="en-US" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+       <li data-language="es" lang="es-ES" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+       <li data-language="fr" lang="fr-FR" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+       <li data-language="it" lang="it-IT" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+       <li data-language="pt" lang="pt-BR" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       <li data-language="vi" lang="vi-VN" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+       <li data-language="tr" lang="tr-TR" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+       <li data-language="ru" lang="ru-RU" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+       <li data-language="th" lang="th-TH" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+       <li data-language="jp" lang="ja-JP" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+       <li data-language="ko" lang="ko-KR" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+       <li data-language="cn" lang="zh-CN" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+       <li data-language="tw" lang="zh-TW" translate="no"><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+      </ul> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#EAEDED; padding-top:5px;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-legal-links"> 
+       <ul class="lb-txt-squid lb-none-v-margin lb-ul lb-list-style-none lb-li-none-v-margin lb-tiny-ul-iblock"> 
+        <li><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/privacy/?nc1=f_pr">Privacy</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/accessibility/?nc1=f_acc">Accessibility</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/terms/?nc1=f_pr">Site Terms</a></li> 
+        <li>|</li> 
+        <li data-cookie-consent-modal="1"><a href="#"> Cookie Preferences </a></li> 
+        <li>|</li> 
+        <li>© 2024, Amazon Web Services, Inc. or its affiliates. All rights reserved.</li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </footer> 
+  <div id="aws-page-end"></div> 
+  <div id="lb-page-end"></div> 
+  <div id="mrc-sunrise-chat"></div> 
+  <script defer id="mrc-sunrise-chat-loader" src="https://web.archive.org/web/20241224144628js_/https://loader.us-east-1.prod.mrc-sunrise.marketing.aws.dev/loader.js"></script> 
+  <!--[if lte IE 9]>
+  <p class="deprecated-browser-support-message">
+    You are using an outdated browser. Please upgrade to a modern browser to improve your experience.<img src="https://fls-na.amazon.com/1/action-impressions/1/OE/aws-mktg/action/awsm_:comp_DeprecatedBrowser@v=1:u=c?dataset=LIVE:PROD&instance=PUB&client=dsk&marketplaceId=A12QK8IU0H0XW5&requestId=ABCDEFGHIJKLMNOPQRST&session=123-1234567-1234567"
+           alt="deprecated-browser pixel tag" />
+      </p>
+<![endif]--> 
+  <div class="lb-skt-overlay lb-modal lb-comp-content-container" data-lb-comp="modal" data-lb-modal-id="ie-deprecation-msg" data-ie10-deprecation-msg="You are using an outdated browser. Please upgrade to a modern browser to improve your experience."> 
+   <div class="lb-modal-dialog"> 
+    <div class="lb-modal-content"> 
+     <div class="lb-modal-header"> 
+      <h4 class="lb-h4"> Ending Support for Internet Explorer</h4> 
+      <a class="lb-modal-close" role="button" href="#" title="Close"> <span class="lb-sr-only">Got it</span> </a> 
+     </div> 
+     <div class="lb-modal-body">
+       AWS support for Internet Explorer ends on 07/31/2022. Supported browsers are Chrome, Firefox, Edge, and Safari. 
+      <a href="https://web.archive.org/web/20241224144628/https://aws.amazon.com/blogs/aws/heads-up-aws-support-for-internet-explorer-11-is-ending/" rel="noopener">Learn more »</a> 
+     </div> 
+     <div class="lb-modal-footer"> 
+      <a class="lb-btn-p-primary lb-modal-close lb-modal-action" role="button">Got it</a> 
+     </div> 
+    </div> 
+   </div> 
+  </div> 
+  <a data-lb-modal-trigger="ie-deprecation-msg" style="display: none;"></a> 
+  <!-- cms_updated_at: 2024-12-05T14:27:53.828-0800 -->  
+ </body>
+</html><!--
+     FILE ARCHIVED ON 14:46:28 Dec 24, 2024 AND RETRIEVED FROM THE
+     INTERNET ARCHIVE ON 06:16:39 Sep 19, 2026.
+     JAVASCRIPT APPENDED BY WAYBACK MACHINE, COPYRIGHT INTERNET ARCHIVE.
+
+     ALL OTHER CONTENT MAY ALSO BE PROTECTED BY COPYRIGHT (17 U.S.C.
+     SECTION 108(a)(3)).
+-->
+<!--
+playback timings (ms):
+  captures_list: 0.441
+  exclusion.robots: 0.053
+  exclusion.robots.policy: 0.045
+  esindex: 0.01
+  cdx.remote: 6.708
+  LoadShardBlock: 101.715 (3)
+  PetaboxLoader3.datanode: 111.052 (4)
+  PetaboxLoader3.resolve: 259.094 (2)
+  load_resource: 307.344
+  nav: 0.136 (6)
+-->

@@ -1,0 +1,1088 @@
+<!doctype html>
+<html class="no-js aws-lng-en_US aws-with-target" lang="en-US" data-static-assets="https://a0.awsstatic.com" data-js-version="1.0.592" data-css-version="1.0.506">
+ <head><script src="https://web-static.archive.org/_static/js/athena.js" type="text/javascript"></script>
+<script type="text/javascript">window.addEventListener('DOMContentLoaded',function(){var v=archive_analytics.values;v.service='wb';v.server_name='wwwb-app204.us.archive.org';v.server_ms=1323;archive_analytics.send_pageview({});});</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/bundle-playback.js?v=lGQTDXxZ" charset="utf-8"></script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/wombat.js?v=o9P2E1FK" charset="utf-8"></script>
+<script>window.RufflePlayer=window.RufflePlayer||{};window.RufflePlayer.config={"autoplay":"on","unmuteOverlay":"hidden","showSwfDownload":true};</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/ruffle/ruffle.js"></script>
+<script type="text/javascript">
+    __wm.init("https://web.archive.org/web");
+  __wm.wombat("https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/","20250113051047","https://web.archive.org/","web","https://web-static.archive.org/_static/",
+	      "1736745047");
+</script>
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3" />
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv" />
+<!-- End Wayback Rewrite JS Include -->
+ 
+  <meta http-equiv="Content-Security-Policy" content="" data-report-uri="https://prod-us-west-2.csp-report.marketing.aws.dev/submit"> 
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+  <link rel="preconnect" href="https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/" crossorigin="anonymous"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250113051047/https://d1.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250113051047/https://amazonwebservicesinc.tt.omtrdc.net/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250113051047/https://s0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250113051047/https://t0.m.awsstatic.com/"> 
+  <title>Using load shedding to avoid overload</title> 
+  <meta name="description" content="Strategies for maintaining predictable, consistent performance in the face of overload."> 
+  <meta name="robots" content="index, follow"> 
+  <meta property="twitter:title" content="Using load shedding to avoid overload"> 
+  <meta property="twitter:description" content="Strategies for maintaining predictable, consistent performance in the face of overload."> 
+  <meta property="og:title" content="Using load shedding to avoid overload"> 
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"> 
+  <link rel="canonical" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ar/builders-library/using-load-shedding-to-avoid-overload/" hreflang="ar-sa"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/de/builders-library/using-load-shedding-to-avoid-overload/" hreflang="de-de"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/es/builders-library/using-load-shedding-to-avoid-overload/" hreflang="es-es"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/fr/builders-library/using-load-shedding-to-avoid-overload/" hreflang="fr-fr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/id/builders-library/using-load-shedding-to-avoid-overload/" hreflang="id-id"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/it/builders-library/using-load-shedding-to-avoid-overload/" hreflang="it-it"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/jp/builders-library/using-load-shedding-to-avoid-overload/" hreflang="ja-jp"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ko/builders-library/using-load-shedding-to-avoid-overload/" hreflang="ko-kr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/pt/builders-library/using-load-shedding-to-avoid-overload/" hreflang="pt-br"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ru/builders-library/using-load-shedding-to-avoid-overload/" hreflang="ru-ru"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/th/builders-library/using-load-shedding-to-avoid-overload/" hreflang="th-th"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/tr/builders-library/using-load-shedding-to-avoid-overload/" hreflang="tr-tr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/vi/builders-library/using-load-shedding-to-avoid-overload/" hreflang="vi-vn"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/cn/builders-library/using-load-shedding-to-avoid-overload/" hreflang="zh-cn"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/tw/builders-library/using-load-shedding-to-avoid-overload/" hreflang="zh-tw"> 
+  <script src="https://web.archive.org/web/20250113051047js_/https://a0.awsstatic.com/libra/1.0.592/csp/csp-report.js" async="true"></script> 
+  <meta property="twitter:card" content="summary"> 
+  <meta property="twitter:image" content="https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_179x109.png"> 
+  <meta property="twitter:site" content="@awscloud"> 
+  <meta property="fb:pages" content="153063591397681"> 
+  <meta name="baidu-site-verification" content="pjxJUyWxae"> 
+  <meta name="360-site-verification" content="cbe5c6f0249e273e71fffd6d6580ce09"> 
+  <meta name="shenma-site-verification" content="79b94bb338f010af876605819a332e19_1617844070"> 
+  <meta name="sogou_site_verification" content="Ow8cCy3Hgq"> 
+  <link rel="icon" type="image/ico" href="https://web.archive.org/web/20250113051047im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="shortcut icon" type="image/ico" href="https://web.archive.org/web/20250113051047im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="apple-touch-icon" sizes="57x57" href="https://web.archive.org/web/20250113051047im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="72x72" href="https://web.archive.org/web/20250113051047im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <link rel="apple-touch-icon" sizes="114x114" href="https://web.archive.org/web/20250113051047im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="144x144" href="https://web.archive.org/web/20250113051047im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <meta property="og:type" content="company"> 
+  <meta property="og:url" content="https://web.archive.org/web/20250113051047/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/"> 
+  <meta property="og:image" content="https://web.archive.org/web/20250113051047im_/https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_1200x630.png"> 
+  <meta property="og:site_name" content="Amazon Web Services, Inc."> 
+  <meta name="facebook-domain-verification" content="ucogvbvio3zpukhjxw4pcprci7qylr"> 
+  <meta name="google-site-verification" content="XHghG81ulgiW-3EylGcF48sG28tBW5EH0bNUhgo_DrU"> 
+  <meta name="msvalidate.01" content="6F92E52A288E266E30C2797ECB5FCCF3"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20250113051047cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-base.css"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20250113051047cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-components.css"> 
+  <script type="esms-options">{"noLoadEventRetriggers": true, "nonce":"zFckaeP+FY7WiBRztyAjAIKkF7r83BIPxLOR0uCSc64="}</script> 
+  <script async src="https://web.archive.org/web/20250113051047js_/https://a0.awsstatic.com/eb-csr/1.0.116/polyfills/es-module-shims/es-module-shims.js"></script> 
+  <script type="importmap">{"imports":{"react":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/react/react.js","react/jsx-runtime":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/react/jsx-runtime.js","react-dom":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/react/react-dom.js","react-dom/server":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/react/server-browser.js","react-dom-server-browser":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/react/react-dom-server-browser.js","sanitize-html":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/sanitize-html/index.js","video.js":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/video.js","videojs-event-tracking":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/videojs-event-tracking.js","videojs-hotkeys":"https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/videojs-hotkeys.js"}}</script> 
+  <script type="application/json" id="aws-page-settings">
+  {
+    "supportedLanguages": ["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],
+    "defaultLanguage": "en",
+    "logDataSet": "LIVE:PROD",
+    "logInstance": "PUB",
+    "csdsEndpoint": "https://web.archive.org/web/20250113051047/https://d2c.aws.amazon.com/",
+    "framework": "v2",
+    "g11nLibPath": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/g11n-lib/2.0.107",
+    "i18nStringPath": "https://web.archive.org/web/20250113051047/https://i18n-string.us-west-2.prod.pricing.aws.a2z.com",
+    "libraCSSPath": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/libra-css/css/1.0.506",
+    "libraCSSImagePath": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/libra-css/images",
+    "isLoggingEnabled": true,
+    "currentLanguage": "en-US",
+    "currentStage": "Prod",
+    "isBJS": false,
+    "isMarketplace": false,
+    "isRTL": false,
+    "requireBaseUrl": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com",
+    "requirePackages":[
+      {
+          "name": "libra",
+          "location": "libra/1.0.592"
+      }
+    ],
+    "requirePaths": {
+      "directories": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/libra/1.0.592/directories",
+      "libra-cardsui": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/libra/1.0.592/libra-cardsui",
+      "librastandardlib": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/libra/1.0.592/librastandardlib",
+      "aws-blog": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/aws-blog/1.0.80/js",
+      "plc": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/plc/js/1.0.138/plc",
+      "scripts": "libra/1.0.592/v1-polyfills/scripts",
+      "libra-search": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/libra-search/1.0.19/js",
+      "pricing-calculator": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/pricing-calculator/js/1.0.2",
+      "pricing-savings-plan": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/pricing-savings-plan/js/1.0.23"
+    },
+    "staticAssetPath": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com",
+    "jsAssetPath": "https://web.archive.org/web/20250113051047/https://a0.awsstatic.com/libra/1.0.592",
+    "awstvVideoAssetOrigin": "https://web.archive.org/web/20250113051047/https://tv.awsstatic.com",
+    "awstvVideoAPIOrigin": "//web.archive.org/web/20250113051047/https://aws.amazon.com"
+  }
+</script> 
+  <script src="https://web.archive.org/web/20250113051047js_/https://a0.awsstatic.com/libra/1.0.592/libra-head.js"></script> 
+  <script src="https://web.archive.org/web/20250113051047js_/https://a0.awsstatic.com/s_code/js/3.0/awshome_s_code.js"></script> 
+  <script src="https://web.archive.org/web/20250113051047js_/https://d2c.aws.amazon.com/client/loader/v1/d2c-load.js"></script> 
+  <script async src="https://web.archive.org/web/20250113051047js_/https://a0.awsstatic.com/da/js/1.0.51/aws-da.js"></script> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20250113051047cs_/https://a0.awsstatic.com/eb-csr/1.0.116/orchestrate.css"> 
+  <script type="module" async="true" src="https://web.archive.org/web/20250113051047jm_/https://a0.awsstatic.com/eb-csr/1.0.116/orchestrate.js"></script> 
+  <script type="application/json" id="target-mediator">{"pageLanguage":"en","supportedLanguages":["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],"offerOrigin":"https://web.archive.org/web/20250113051047/https://s0.awsstatic.com"}</script> 
+  <script data-js-script="target-mediator" src="https://web.archive.org/web/20250113051047js_/https://a0.awsstatic.com/target/1.0.123/aws-target-mediator.js" async="true"></script> 
+ </head> 
+ <body class="awsm"><!-- BEGIN WAYBACK TOOLBAR INSERT -->
+<script>__wm.rw(0);</script>
+<div id="wm-ipp-base" lang="en" style="display:none;direction:ltr;" toolbar-mode="auto">
+<div id="wm-ipp" style="position:fixed;left:0;top:0;right:0;">
+<div id="donato" style="position:relative;width:100%;height:0;">
+  <div id="donato-base">
+    <iframe id="donato-if" src="https://archive.org/includes/donate.php?as_page=1&amp;platform=wb&amp;referer=https%3A//web.archive.org/web/20250113051047/https%3A//aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/"
+	    scrolling="no" frameborder="0" style="width:100%; height:100%">
+    </iframe>
+  </div>
+</div><div id="wm-ipp-inside">
+  <div id="wm-toolbar" style="position:relative;display:flex;flex-flow:row nowrap;justify-content:space-between;" nav="async">
+    <div id="wm-logo" style="/*width:110px;*/padding-top:12px;">
+      <a href="/web/" title="Wayback Machine home page"><img src="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png" srcset="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-100.png, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-150.png 1.5x, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png 2x" alt="Wayback Machine" style="width:100px" border="0" /></a>
+    </div>
+    <div class="c" style="display:flex;flex-flow:column nowrap;justify-content:space-between;flex:1;">
+      <form class="u" style="display:flex;flex-direction:row;flex-wrap:nowrap;" target="_top" method="get" action="/web/submit" name="wmtb" id="wmtb"><input type="text" name="url" id="wmtbURL" value="https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/" onfocus="this.focus();this.select();" style="flex:1;"/><input type="hidden" name="type" value="replay" /><input type="hidden" name="date" value="20250113051047" /><input type="submit" value="Go" />
+      </form>
+      <div style="display:flex;flex-flow:row nowrap;align-items:flex-end;">
+                <div class="s" id="wm-nav-captures" style="flex:1;">
+                    <a class="t" href="/web/20250113051047*/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/" title="See a list of every capture for this URL">89 captures</a>
+          <div class="r" title="Timespan for captures of this URL">04 Mar 2020 - 31 Jul 2026</div>
+          </div>
+        <div class="k">
+          <a href="" id="wm-graph-anchor">
+            <div id="wm-ipp-sparkline" title="Explore captures for this URL" style="position: relative">
+              <canvas id="wm-sparkline-canvas" width="775" height="27" border="0"></canvas>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="n">
+      <table>
+        <tbody>
+          <!-- NEXT/PREV MONTH NAV AND MONTH INDICATOR -->
+          <tr class="m">
+            <td class="b" nowrap="nowrap">Dec</td>
+            <td class="c" id="displayMonthEl" title="You are here: 05:10:47 Jan 13, 2025">JAN</td>
+            <td class="f" nowrap="nowrap">Feb</td>
+          </tr>
+          <!-- NEXT/PREV CAPTURE NAV AND DAY OF MONTH INDICATOR -->
+          <tr class="d">
+            <td class="b" nowrap="nowrap"><span class="ta"></span></td>
+            <td class="c" id="displayDayEl" style="width:34px;font-size:22px;white-space:nowrap;" title="You are here: 05:10:47 Jan 13, 2025">13</td>
+            <td class="f" nowrap="nowrap"><span class="ta"></span></td>
+          </tr>
+          <!-- NEXT/PREV YEAR NAV AND YEAR INDICATOR -->
+          <tr class="y">
+            <td class="b" nowrap="nowrap">2024</td>
+            <td class="c" id="displayYearEl" title="You are here: 05:10:47 Jan 13, 2025">2025</td>
+            <td class="f" nowrap="nowrap">2026</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="r" style="display:flex;flex-flow:column nowrap;align-items:flex-end;justify-content:space-between;">
+      <div id="wm-btns" style="text-align:right;height:23px;">
+                <span class="xxs">
+          <div id="wm-save-snapshot-success">success</div>
+          <div id="wm-save-snapshot-fail">fail</div>
+          <a id="wm-save-snapshot-open" href="#" title="Share via My Web Archive" >
+            <span class="iconochive-web"></span>
+          </a>
+          <a href="https://archive.org/account/login.php" title="Sign In" id="wm-sign-in">
+            <span class="iconochive-person"></span>
+          </a>
+          <span id="wm-save-snapshot-in-progress" class="iconochive-web"></span>
+        </span>
+                <a class="xxs" href="https://help.archive.org/help/category/the-wayback-machine/" title="Get some help using the Wayback Machine" style="top:-6px;"><span class="iconochive-question" style="color:rgb(87,186,244);font-size:160%;"></span></a>
+        <a id="wm-tb-close" href="#close" style="top:-2px;" title="Close the toolbar"><span class="iconochive-remove-circle" style="color:#888888;font-size:240%;"></span></a>
+      </div>
+      <div id="wm-share" class="xxs">
+        <a href="/web/20250113051047/http://web.archive.org/screenshot/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/"
+           id="wm-screenshot"
+           title="screenshot">
+          <span class="wm-icon-screen-shot"></span>
+        </a>
+        <a href="#" id="wm-video" title="video">
+          <span class="iconochive-movies"></span>
+        </a>
+        <a id="wm-share-facebook" href="#" data-url="https://web.archive.org/web/20250113051047/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/" title="Share on Facebook" style="margin-right:5px;" target="_blank"><span class="iconochive-facebook" style="color:#3b5998;font-size:160%;"></span></a>
+        <a id="wm-share-twitter" href="#" data-url="https://web.archive.org/web/20250113051047/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/" title="Share on Twitter" style="margin-right:5px;" target="_blank"><span class="iconochive-twitter" style="color:#1dcaff;font-size:160%;"></span></a>
+      </div>
+      <div style="padding-right:2px;text-align:right;white-space:nowrap;">
+        <a id="wm-expand" class="wm-btn wm-closed" href="#expand"><span id="wm-expand-icon" class="iconochive-down-solid"></span> <span class="xxs" style="font-size:80%;">About this capture</span></a>
+      </div>
+    </div>
+  </div>
+    <div id="wm-capinfo" style="border-top:1px solid #777;display:none; overflow: hidden">
+        <div id="wm-capinfo-notice" source="api"></div>
+                <div id="wm-capinfo-collected-by" source="api" trigger="hover" token="MbyjORranYUCv3Q4T0CPFk3mFf2Y5HBPURltP4p0oyWAsnGvdX7bslIYN3Xw3faGvDj7hg"></div>
+    <div id="wm-capinfo-timestamps">
+    <div style="background-color:#666;color:#fff;font-weight:bold;text-align:center;padding:2px 0;" title="Timestamps for the elements of this page">TIMESTAMPS</div>
+    <div>
+      <div id="wm-capresources" style="margin:0 5px 5px 5px;max-height:250px;overflow-y:scroll !important"></div>
+      <div id="wm-capresources-loading" style="text-align:left;margin:0 20px 5px 5px;display:none"><img src="https://web-static.archive.org/_static/images/loading.gif" alt="loading" /></div>
+    </div>
+    </div>
+  </div></div></div></div><div id="wm-ipp-print">The Wayback Machine - https://web.archive.org/web/20250113051047/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/</div>
+<script type="text/javascript">//<![CDATA[
+__wm.bt(775,27,25,2,"web","https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/","20250113051047",1996,"https://web-static.archive.org/_static/",["https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3","https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv"], false);
+  __wm.rw(1);
+//]]></script>
+<!-- END WAYBACK TOOLBAR INSERT -->
+  
+  <script id="awsc-panorama-bundle" type="text/javascript" src="https://web.archive.org/web/20250113051047js_/https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{&quot;appEntity&quot;:&quot;aws-marketing&quot;,&quot;region&quot;:&quot;us-west-1&quot;,&quot;service&quot;:&quot;global-site&quot;,&quot;trackerConstants&quot;:{&quot;cookieDomain&quot;:&quot;aws.amazon.com&quot;}}" async="true"></script> 
+  <a id="aws-page-skip-to-main" class="lb-sr-only lb-sr-only-focusable lb-bold lb-skip-el" href="#aws-page-content-main"> Skip to main content</a> 
+  <header id="aws-page-header" class="awsm m-page-header lb-with-mobile-subrow" role="banner"> 
+   <div id="m-nav" class="m-nav" role="navigation" aria-label="Global Navigation"> 
+    <div class="m-nav-header lb-clearfix" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/desktop/index.html"> 
+     <div class="m-nav-logo"> 
+      <div class="lb-bg-logo aws-amazon_web_services_smile-header-desktop-en"> 
+       <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+      </div> 
+     </div> 
+     <nav class="m-nav-secondary-links" style="min-width: 620px" aria-label="Secondary Global Navigation"> 
+      <a href="/web/20250113051047/https://aws.amazon.com/about-aws/?nc2=h_header">About AWS</a> 
+      <a href="/web/20250113051047/https://aws.amazon.com/contact-us/?nc2=h_header">Contact Us</a> 
+      <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt lb-has-trigger-indicator" href="#" data-mbox-ignore="true" data-lb-popover-trigger="popover-support-selector" role="button" aria-expanded="false" aria-label="Explore support options" id="popover-popover-support-selector-trigger" aria-controls="popover-support-selector" aria-haspopup="true"> Support &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a id="m-nav-language-selector" class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-language-selector" data-language="en" aria-label="Set site language" role="button" aria-controls="popover-language-selector" aria-expanded="false" aria-haspopup="true"> English &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-my-account" aria-label="Access account options" role="button" aria-controls="popover-my-account" aria-expanded="false" aria-haspopup="true"> My Account &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <div class="m-nav-cta-btn"> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_nav_cta"> 
+        <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="sign-up-sign-in-all" data-da-so-url="nav"> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-pad lb-box" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-sign-in" data-da-so-url="all"> 
+          <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt" style="padding-top:8px; padding-right:13px;" href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/console/home?nc2=h_ct&amp;src=header-signin"> Sign In</a> 
+         </div> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-v-margin lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-signup" data-da-so-url="all"> 
+          <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250113051047/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_ct&amp;src=header_signup" data-trk-params="{&quot;trkOverrideWithQs&quot;:true}" role="button"> <span> Create an AWS Account</span> </a> 
+         </div> 
+        </div> 
+       </div> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_desktop_nav_cta_test"> 
+        <div class="data-attr-wrapper lb-tiny-iblock lb-none-pad lb-box" style="padding-top:2px; padding-left:13px;" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="main-button-clicks" data-da-so-url="desktop"> 
+         <div class="lb-tiny-iblock lb-box"> 
+          <div class="lb-tiny-iblock lb-micro-v-margin lb-btn lb-icon-only" data-myaws-auth-hidden-only="true"> 
+           <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-out-options" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-out-options-trigger" aria-controls="signed-out-options" aria-haspopup="true"> <span> <i class="icon-user-o-aura lb-before"></i></span> </a> 
+          </div> 
+          <div class="lb-tiny-iblock lb-micro-v-margin m-no-auth lb-btn lb-icon-only" data-myaws-auth-only="true"> 
+           <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-in-options" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-in-options-trigger" aria-controls="signed-in-options" aria-haspopup="true"> <span> <i class="icon-user-aura lb-before"></i></span> </a> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-mid-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-out-options" id="signed-out-options" aria-modal="false" aria-labelledby="popover-signed-out-options-trigger" data-action="hover" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="sign-in-button" data-da-so-url="desktop"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="background-color:rgb(17,22,29); color:rgb(17,22,29); border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-pad lb-none-v-margin lb-txt" style="padding-top:5px; color:#f5f5f5; padding-bottom:5px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250113051047/https://auth.aws.amazon.com/sign-in"> Login</a> 
+            </div> 
+           </div> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-mid-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-in-options" id="signed-in-options" aria-modal="false" aria-labelledby="popover-signed-in-options-trigger" data-action="hover" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="view-profile" data-da-so-url="desktop"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="color:rgb(17,22,29); border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="padding-top:5px; color:rgb(17,22,29); padding-bottom:5px;" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/profile"> View profile</a> 
+            </div> 
+           </div> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="log-out" data-da-so-url="desktop"> 
+            <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="color:rgb(17,22,29); margin-top:16px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250113051047/https://auth.aws.amazon.com/sign-out"> Log out</a> 
+           </div> 
+          </div> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </nav> 
+     <div class="m-nav-primary-group"> 
+      <nav class="m-nav-primary-links" aria-label="Primary Global Navigation"> 
+       <i class="m-nav-angle-left-icon" aria-hidden="true"></i> 
+       <ul> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/q/?nc2=h_ql_prod_l1_q" class="m-nav-featured">Amazon Q</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/products/?nc2=h_ql_prod" data-panel="m-nav-panel-products">Products</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/solutions/?nc2=h_ql_sol" data-panel="m-nav-panel-solutions">Solutions</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/pricing/?nc2=h_ql_pr" data-panel="m-nav-panel-pricing">Pricing</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/documentation-overview/?nc2=h_ql_doc_do" data-panel="m-nav-panel-documentation">Documentation</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/getting-started/?nc2=h_ql_le" data-panel="m-nav-panel-learn">Learn</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/partners/?nc2=h_ql_pn" data-panel="m-nav-panel-partner">Partner Network</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/marketplace/?nc2=h_ql_mp" data-panel="m-nav-panel-marketplace">AWS Marketplace</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/customer-enablement/?nc2=h_ql_ce" data-panel="m-nav-panel-customer">Customer Enablement</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/events/?nc2=h_ql_ev" data-panel="m-nav-panel-events">Events</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250113051047/https://aws.amazon.com/contact-us/?nc2=h_ql_exm" data-panel="m-nav-panel-more">Explore More </a></span></li> 
+       </ul> 
+       <div class="m-nav-icon-group"> 
+        <i class="m-nav-angle-right-icon" aria-hidden="true"></i> 
+        <button class="m-nav-search-icon" tabindex="0" aria-expanded="false" aria-label="Search"> 
+         <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-magnify"> 
+          <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+          <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+         </svg> </button> 
+       </div> 
+      </nav> 
+      <div id="m-nav-desktop-search" class="m-nav-search"> 
+       <form action="https://web.archive.org/web/20250113051047/https://aws.amazon.com/search/" role="search"> 
+        <div class="m-typeahead" data-directory-id="typeahead-suggestions" data-lb-comp="typeahead"> 
+         <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+        </div> 
+       </form> 
+       <i class="m-nav-close-icon" role="button" aria-label="Close"></i> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-language-selector" id="popover-language-selector" aria-modal="false" aria-labelledby="popover-popover-language-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="ar-SA" translate="no" data-language="ar"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+        <li lang="id-ID" translate="no" data-language="id"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+        <li lang="de-DE" translate="no" data-language="de"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+        <li lang="en-US" translate="no" data-language="en"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+        <li lang="es-ES" translate="no" data-language="es"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+        <li lang="fr-FR" translate="no" data-language="fr"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+        <li lang="it-IT" translate="no" data-language="it"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+        <li lang="pt-BR" translate="no" data-language="pt"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       </ul> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="vi-VN" translate="no" data-language="vi"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+        <li lang="tr-TR" translate="no" data-language="tr"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+        <li lang="ru-RU" translate="no" data-language="ru"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+        <li lang="th-TH" translate="no" data-language="th"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+        <li lang="ja-JP" translate="no" data-language="jp"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+        <li lang="ko-KR" translate="no" data-language="ko"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+        <li lang="zh-CN" translate="no" data-language="cn"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+        <li lang="zh-TW" translate="no" data-language="tw"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-my-account" id="popover-my-account" aria-modal="false" aria-labelledby="popover-popover-my-account-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="/web/20250113051047/https://aws.amazon.com/profile/?nc2=h_m_mc">My Profile</a></li> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="https://web.archive.org/web/20250113051047/https://auth.aws.amazon.com/sign-out/?nc2=h_m_mc">Sign out of AWS Builder ID</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/?nc2=h_m_mc">AWS Management Console</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/billing/home#/account?nc2=h_m_ma">Account Settings</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/billing/home?nc2=h_m_bc">Billing &amp; Cost Management</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/iam/home?nc2=h_m_sc#security_credential">Security Credentials</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://phd.aws.amazon.com/?nc2=h_m_sc">AWS Personal Health Dashboard</a></li> 
+     </ul> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-support-selector" id="popover-support-selector" aria-modal="false" aria-labelledby="popover-popover-support-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/support/home/?nc2=h_ql_cu">Support Center</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://iq.aws.amazon.com/?utm=mkt.nav">Expert Help</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://repost.aws/knowledge-center/?nc2=h_m_ma">Knowledge Center</a></li> 
+      <li><a href="/web/20250113051047/https://aws.amazon.com/premiumsupport/?nc2=h_m_bc">AWS Support Overview</a></li> 
+      <li><a href="https://web.archive.org/web/20250113051047/https://repost.aws/">AWS re:Post</a></li> 
+     </ul> 
+    </div> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/suggestions" data-hbs-context="{&quot;pricingText&quot;:&quot;Pricing&quot;,&quot;documentationText&quot;:&quot;Documentation&quot;,&quot;calculatorText&quot;:&quot;Calculator&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/products-head" data-hbs-context="{&quot;productsText&quot;:&quot;Products&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/keypages-head" data-hbs-context="{&quot;relatedPagesText&quot;:&quot;Related Pages&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/tutorials-head" data-hbs-context="{&quot;tutorialsText&quot;:&quot;Tutorials&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/blogs-head" data-hbs-context="{&quot;blogsText&quot;:&quot;Blogs&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/see-all" data-hbs-context="{&quot;resultsText&quot;:&quot;See more results for&quot;}"></script> 
+   </div> 
+   <div id="m-nav-mobile" class="m-nav-mobile" role="navigation" aria-label="Global Navigation for Mobile"> 
+    <div id="m-nav-mobile-header" class="m-nav-mobile-header m-nav-mobile-with-sub-row" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/mobile/index.html"> 
+     <div class="lb-bg-logo aws-amazon_web_services_smile-header-mobile-en"> 
+      <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+     </div> 
+     <div class="m-nav-mobile-button-group"> 
+      <button class="m-nav-mobile-button icon-search" tabindex="0" aria-expanded="false" aria-label="Search"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <button class="m-nav-mobile-button icon-reorder" tabindex="0" aria-expanded="false" aria-label="Menu"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M15 3H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 8H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 13H1" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_mobile_nav_cta_test"> 
+       <div class="data-attr-wrapper lb-none-pad lb-none-v-margin lb-box" style="padding-top:0px; padding-left:0px; padding-bottom:0px; margin-top:10px; padding-right:0px;" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="main-button-clicks" data-da-so-url="mobile"> 
+        <div class="data-attr-wrapper lb-none-v-margin lb-box" style="padding-top:0px; padding-left:10px; padding-bottom:0px; margin-top:10px; padding-right:27px;" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="main-button-clicks" data-da-so-url="mobile"> 
+         <div class="lb-none-v-margin lb-btn lb-icon-only" data-myaws-auth-hidden-only="true"> 
+          <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-out-options-mobile" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-out-options-mobile-trigger" aria-controls="signed-out-options-mobile" aria-haspopup="true"> <span> <i class="icon-user-o-aura lb-before"></i></span> </a> 
+         </div> 
+         <div class="lb-none-v-margin m-no-auth lb-btn lb-icon-only" data-myaws-auth-only="true"> 
+          <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-in-options-mobile" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-in-options-mobile-trigger" aria-controls="signed-in-options-mobile" aria-haspopup="true"> <span> <i class="icon-user-aura lb-before"></i></span> </a> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-out-options-mobile" id="signed-out-options-mobile" aria-modal="false" aria-labelledby="popover-signed-out-options-mobile-trigger" data-action="clickOnly" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="sign-in-button" data-da-so-url="mobile"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="background-color:rgb(17,22,29); color:rgb(17,22,29); border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-pad lb-none-v-margin lb-txt" style="padding-top:5px; color:#f5f5f5; padding-bottom:5px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250113051047/https://auth.aws.amazon.com/sign-in"> Login</a> 
+            </div> 
+           </div> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-in-options-mobile" id="signed-in-options-mobile" aria-modal="false" aria-labelledby="popover-signed-in-options-mobile-trigger" data-action="clickOnly" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="view-profile" data-da-so-url="mobile"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="color:rgb(17,22,29); border-width:2px; border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="padding-top:5px; color:rgb(17,22,29); padding-bottom:5px;" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/profile"> View profile</a> 
+            </div> 
+           </div> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="log-out" data-da-so-url="mobile"> 
+            <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="color:rgb(17,22,29); margin-top:16px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250113051047/https://auth.aws.amazon.com/sign-out"> Log out</a> 
+           </div> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-in-options-mobile" id="signed-in-options-mobile" aria-modal="false" aria-labelledby="popover-signed-in-options-mobile-trigger" data-action="clickOnly" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="view-profile" data-da-so-url="mobile"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="color:rgb(17,22,29); border-width:2px; border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="padding-top:5px; color:rgb(17,22,29); padding-bottom:5px;" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/profile"> View profile</a> 
+            </div> 
+           </div> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="log-out" data-da-so-url="mobile"> 
+            <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="color:rgb(17,22,29); margin-top:16px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250113051047/https://auth.aws.amazon.com/sign-out"> Log out</a> 
+           </div> 
+          </div> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+     <div id="m-nav-mobile-sub-row" class="m-nav-mobile-sub-row"> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="get-started-for-free-cta" data-da-so-url="all"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250113051047/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_mobile" role="button"> <span> Get Started for Free</span> </a> 
+      </div> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="contact-us"> 
+       <a class="lb-btn-p" href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/contact-us/?nc2=h_mobile" role="button"> <span> Contact Us</span> </a> 
+      </div> 
+     </div> 
+    </div> 
+    <div id="m-nav-mobile-search" class="m-nav-mobile-search"> 
+     <form action="https://web.archive.org/web/20250113051047/https://aws.amazon.com/search" role="search"> 
+      <div class="m-typeahead"> 
+       <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+      </div> 
+     </form> 
+    </div> 
+    <nav id="m-nav-trimdown" aria-label="Condensed Global Navigation for Mobile"> 
+     <ul class="m-nav-mobile-menu-group"> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/products/?nc2=h_mo"> <span class="m-nav-link-title">Products</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/solutions/?nc2=h_mo"> <span class="m-nav-link-title">Solutions</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/pricing/?nc2=h_mo"> <span class="m-nav-link-title">Pricing</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/what-is-aws/?nc2=h_mo"> <span class="m-nav-link-title">Introduction to AWS</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/getting-started/?nc2=h_mo"> <span class="m-nav-link-title">Getting Started</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/documentation-overview/?nc2=h_mo"> <span class="m-nav-link-title">Documentation</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/training/?nc2=h_mo"> <span class="m-nav-link-title">Training and Certification</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/developer/?nc2=h_mo"> <span class="m-nav-link-title">Developer Center</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/solutions/case-studies/?nc2=h_mo"> <span class="m-nav-link-title">Customer Success</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/partners/?nc2=h_mo"> <span class="m-nav-link-title">Partner Network</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/marketplace/?nc2=h_mo"> <span class="m-nav-link-title">AWS Marketplace</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/support/home?nc2=h_ql_cu"> <span class="m-nav-link-title">Support</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250113051047/https://repost.aws/"> <span class="m-nav-link-title">AWS re:Post</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/console/home"> <span class="m-nav-link-title">Log into Console</span> </a> </li> 
+      <li> <a href="/web/20250113051047/https://aws.amazon.com/console/mobile/"> <span class="m-nav-link-title">Download the Mobile App</span> </a> </li> 
+     </ul> 
+    </nav> 
+   </div> 
+   <div class="lb-sticky-subnav" data-lb-comp="sticky-subnav" data-lb-page-path="/builders-library/using-load-shedding-to-avoid-overload/"> 
+    <div class="lb-row lb-row-max-large lb-snap"> 
+     <div class="lb-tiny-24 lb-sticky-subnav-content"> 
+      <div class="lb-sticky-subnav-title"> 
+       <a class="lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/"> The Amazon Builders' Library</a> 
+      </div> 
+      <div class="lb-sticky-subnav-links"> 
+       <a class="lb-txt-bold lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/"> Overview</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/authors/"> Authors</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/faqs/"> FAQs</a> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </header> 
+  <div id="aws-page-content" class="lb-page-with-sidebar-left lb-page-content lb-page-with-sticky-subnav" style="padding-top:0px; padding-bottom:0px;" data-page-alert-target="true"> 
+   <div> 
+    <div class="lb-bg-left-bottom-cover lb-none-v-margin lb-grid" style="padding-top:50px; background-image:url('https://web.archive.org/web/20250113051047im_/https://d1.awsstatic.com/legal/builders-library/WEB_Library-header.d958a0d6de10906ba0ed43e35bfd1669a3c84031.jpg');"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-16"> 
+       <div class="lb-breadcrumbs lb-breadcrumbs-dropTitle lb-breadcrumbs-dark"> 
+        <ul> 
+         <li> <a href="/web/20250113051047/https://aws.amazon.com/builders-library/"><span>Amazon Builders' Library</span></a> </li> 
+        </ul> 
+        <h1>Using load shedding to avoid overload</h1> 
+       </div> 
+       <div class="lb-txt-uppercase lb-txt-white lb-txt-16 lb-txt" style="margin-bottom:20px;">
+         Software Delivery and Operations | LEVEL 400 
+       </div> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-8"> 
+       <div class="lb-tiny-iblock lb-tiny-pad lb-box" style="background-color:#eaeded;"> 
+        <div class="lb-none-v-margin lb-rtxt" style="margin-top:10px;"> 
+         <p style="text-align: center;"><b>Would you like to be notified of&nbsp;new content?</b></p> 
+        </div> 
+        <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-14"> 
+          <div class="lb-btn"> 
+           <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250113051047/https://pages.awscloud.com/amazon-builders-library.html" target="_blank" rel="noopener noreferrer" role="button"> <span> Send me updates</span> </a> 
+          </div> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <main id="aws-page-content-main" role="main" tabindex="-1"> 
+    <div class="lb-sticky-sidebar lb-sticky-sidebar-modern" data-lb-comp="sticky-sidebar"> 
+     <div data-lb-comp="floating-wrapper" class="lb-floating-wrapper"> 
+      <div class="lb-floating-wrapper-content"> 
+       <div class="lb-wrapper-content"> 
+        <div class="lb-toggle-wrapper"> 
+         <button class="lb-toggle" aria-label="Collapse sidebar" data-aria-label-toggle="Expand sidebar" aria-expanded="true"></button> 
+        </div> 
+        <div class="lb-sidebar-content"> 
+         <div> 
+          <div class="lb-sidebar-header">
+            Article Content 
+          </div> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Introduction"> Introduction</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#The_anatomy_of_overload"> The anatomy of overload</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Testing"> Testing</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Visibility"> Visibility</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Load_shedding_mechanisms"> Load shedding mechanisms</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Thinking_about_overload_differently"> Thinking about overload differently</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Further_reading"> Further reading</a> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-grid"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-24"> 
+       <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-txt-none lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/authors/david-yanacek/"> By David Yanacek</a> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-16"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-tiny-align-left lb-small-align-left lb-mid-align-left lb-large-align-left lb-xlarge-align-left lb-txt-none lb-tiny-hide lb-small-show lb-mid-show lb-large-show lb-xlarge-show lb-txt" href="https://web.archive.org/web/20250113051047/https://d1.awsstatic.com/builderslibrary/pdfs/using-load-shedding-to-avoid-overload.pdf" target="_blank" rel="noopener noreferrer"> <i class="icon-file-pdf-o lb-before"></i>&nbsp;PDF</a> 
+         <a class="lb-tiny-align-left lb-small-align-left lb-mid-align-left lb-large-align-left lb-xlarge-align-left lb-txt-none lb-tiny-hide lb-small-show lb-mid-show lb-large-show lb-xlarge-show lb-txt" href="https://web.archive.org/web/20250113051047/https://www.amazon.com/dp/B082LY7J8F" target="_blank" rel="noopener noreferrer"> <i class="icon-file-pdf-o lb-before"></i>&nbsp;Kindle</a> 
+        </div> 
+       </div> 
+       <div id="Introduction"></div> 
+       <div class="lb-rtxt"> 
+        <p>For a few years, I worked on the Service Frameworks team at Amazon. Our team wrote tools that helped the owners of AWS services such as Amazon Route 53 and Elastic Load Balancing build their services more quickly, and service clients call those services more easily. Other Amazon teams provided service owners with functionality such as metering, authentication, monitoring, client library generation, and documentation generation. Instead of each service team having to integrate those features into their services manually, the Service Frameworks team did that integration once and exposed the functionality to each service through configuration.</p> 
+        <p>One challenge we faced was in determining how to provide sensible defaults, especially for features that were performance or availability related. For example, we couldn’t set a default client-side timeout easily, because our framework had no idea what the latency characteristics of an API call might be. This wouldn’t have been any easier for service owners or clients to figure out themselves, so we kept trying, and gained some useful insights along the way.</p> 
+        <p>One common question we struggled with was determining the default number of connections the server would allow to be open to clients at the same time. This setting was designed to prevent a server from taking on too much work and becoming overloaded. More specifically, we wanted to configure the maximum connections settings for the server in proportion to the maximum connections for the load balancer. This was before the days of Elastic Load Balancing, so hardware load balancers were in widespread use.</p> 
+        <p>We set out to help Amazon service owners and service clients figure out the ideal value for maximum connections to set on the load balancer, and the corresponding value to set in the frameworks we provided. We decided that if we could figure out how to use human judgment to make a choice, we could then write software to emulate that judgment.</p> 
+        <p>Determining the ideal value ended up being very challenging. When maximum connections were set too low, the load balancer might cut off increases in the number of requests, even when the service had plenty of capacity. When maximum connections were set too high, servers would become slow and unresponsive. When maximum connections were set just right for a workload, the workload would shift or dependency performance would change. Then the values would be wrong again, resulting in unnecessary outages or overloads.</p> 
+        <p>In the end, we found that the maximum connections concept was too imprecise to provide the complete answer to the puzzle. In this article, we’ll describe other approaches such as load shedding that we found worked well.<br> </p> 
+       </div> 
+       <h2 id="The_anatomy_of_overload" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> The anatomy of overload</h2> 
+       <div class="lb-rtxt"> 
+        <div>
+          At Amazon we avoid overload by designing our systems to scale proactively, before they encounter overload situations. However, protecting systems involves protection in layers. This begins with automatic scaling, but also includes mechanisms to shed excess load gracefully, the ability to monitor those mechanisms, and most importantly, continuous testing. 
+        </div> 
+        <div>
+          &nbsp; 
+        </div> 
+        <div>
+          When we load-test our services, we find that the latency of a server at low utilization is lower than its latency at high utilization. Under heavy load, thread contention, context switching, garbage collection, and I/O contention become more pronounced. Eventually, services reach an inflection point where their performance starts degrading even more rapidly. 
+        </div> 
+        <div>
+          &nbsp; 
+        </div> 
+        <div>
+          The theory behind this observation is known as the 
+         <a href="https://web.archive.org/web/20250113051047/http://www.perfdynamics.com/Manifesto/USLscalability.html" target="_blank">Universal Scalability Law</a>, which is a derivation of 
+         <a href="https://web.archive.org/web/20250113051047/https://en.wikipedia.org/wiki/Amdahl%27s_law" target="_blank">Amdahl’s law</a>. This theory specifies that while a system’s throughput can be increased by using parallelization, it is ultimately limited by the throughput of the points of serialization (that is, by the tasks that can’t be parallelized). 
+        </div> 
+        <div>
+          &nbsp; 
+        </div> 
+        <div>
+          Unfortunately, not only is throughput bounded by a system’s resources, throughput typically degrades when the system is overloaded. When a system is given more work than its resources support, it becomes slow. Computers take on work even when they’re overloaded, but they spend increasing amounts of their time context switching and become too slow to be useful. 
+        </div> 
+        <div>
+          &nbsp; 
+        </div> 
+        <div>
+          In a distributed system where a client is talking to a server, the client typically becomes impatient and stops waiting for the server to respond after some time. This duration is known as a timeout. When a server gets so overloaded that its latency exceeds its client’s timeout, requests start to fail. The following graph shows how server response time increases as offered throughput (in transactions per second) increases, and response time eventually reaches an inflection point where things deteriorate quickly. 
+         <br> 
+        </div> 
+       </div> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap" style="margin-top:0px; margin-bottom:0px;"> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <figure class="lb-img"> 
+          <div> 
+           <img src="https://web.archive.org/web/20250113051047im_/https://d1.awsstatic.com/legal/builders-library/Screenshots/Single-Host-Latency.6a6629e2d488b674db0db0a96c17ea538d4101ef.png" alt="" title="" class="cq-dd-image"> 
+          </div> 
+         </figure> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>In the previous graph, when the response time exceeds the client timeout, it’s clear that things are bad, but the graph doesn’t show just how bad. To illustrate this, we can plot the client-perceived availability alongside latency. Instead of using a generic response time measurement, we can switch to using the median response time. Median response time means that 50 percent of requests were faster than the median value. If the service's median latency is equal to the client timeout, half of the requests are timing out, so the availability is 50 percent. This is where a latency increase transforms a latency problem into an availability problem. Here is a graph of that happening:<br> </p> 
+       </div> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap" style="margin-top:0px; margin-bottom:0px;"> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <figure class="lb-img"> 
+          <div> 
+           <img src="https://web.archive.org/web/20250113051047im_/https://d1.awsstatic.com/legal/builders-library/Screenshots/Availability-degrades.e2575747655dd3d21818737eb4a8dc109ebbf6b8.png" alt="" title="" class="cq-dd-image"> 
+          </div> 
+         </figure> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Unfortunately, this graph is tricky to read. A simpler way to describe the availability problem is to distinguish <i>goodput</i> from <i>throughput</i>. Throughput is the total number of requests per second that is being sent to the server. Goodput is the subset of the throughput that is handled without errors and with low enough latency for the client to make use of the response. <br> </p> 
+       </div> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap" style="margin-top:0px; margin-bottom:0px;"> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <figure class="lb-img"> 
+          <div> 
+           <img src="https://web.archive.org/web/20250113051047im_/https://d1.awsstatic.com/legal/builders-library/Screenshots/Goodput-vs-throughput.e70dda256e2e9a8aa6744ccd04874ec4d1e1d8f8.png" alt="" title="" class="cq-dd-image"> 
+          </div> 
+         </figure> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Positive feedback loops 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p> The insidious part of an overload situation is how it amplifies itself in a feedback loop. When a client times out, it’s bad enough that the client got an error. What’s even worse is that all the progress that the server made so far on that request goes to waste. And the last thing a system should do in an overload situation, where capacity is constrained, is waste work. </p> 
+        <p> Making matters even worse is that clients often retry their request. This multiplies the offered load on the system. And if there’s a deep enough call graph in a service-oriented architecture (that is, a client calls a service, which calls other services, which call other services), and if each layer performs a number of retries, an overload in the bottom layer causes cascading retries that amplify the offered load exponentially.</p> 
+        <p> When these factors are combined, an overload creates its own feedback loop that results in overload as a steady state.</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Preventing work from going to waste 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p> On the surface, load shedding is simple. When a server approaches overload, it should start rejecting excess requests so that it can focus on the requests it decides to let in. The goal of load shedding is to keep latency low for the requests that the server decides to accept so that the service replies before the client times out. With this approach, the server maintains high availability for the requests it accepts, and only the excess traffic’s availability is affected.</p> 
+       </div> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap" style="margin-top:0px; margin-bottom:0px;"> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <figure class="lb-img"> 
+          <div> 
+           <img src="https://web.archive.org/web/20250113051047im_/https://d1.awsstatic.com/legal/builders-library/Screenshots/Graceful-availability-degradation.6b862d8036d30846c8715b8a9d5aac3c36b37210.png" alt="" title="" class="cq-dd-image"> 
+          </div> 
+         </figure> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Keeping latency in check by shedding excess load makes the system more available. But the benefits of this approach are hard to visualize in the previous graph. The overall availability line still drifts downward, which looks bad. The key is that the requests that the server decided to accept remain available because they were served quickly.<br> Load shedding lets a server maintain its goodput and complete as many requests as it can, even as offered throughput increases. However, the act of shedding load isn’t free, so eventually the server falls prey to Amdahl’s law and goodput drops.<br> </p> 
+       </div> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap" style="margin-top:0px; margin-bottom:0px;"> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <figure class="lb-img"> 
+          <div> 
+           <img src="https://web.archive.org/web/20250113051047im_/https://d1.awsstatic.com/legal/builders-library/Screenshots/with-and-without-load-shedding.a0933e305994fae6386e6de1e9ed1944b4a22baa.png" alt="" title="" class="cq-dd-image"> 
+          </div> 
+         </figure> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-2"> 
+        </div> 
+       </div> 
+       <h2 id="Testing" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Testing</h2> 
+       <div class="lb-rtxt"> 
+        <p>When I talk to other engineers about load shedding, I like to point out that if they haven’t load tested their service to the point where it breaks, and far beyond the point where it breaks, they should assume that the service will fail in the least desirable way possible. At Amazon we spend a great deal of time load testing our services. Generating graphs like the ones earlier in this article helps us baseline overload performance and track how we do over time as we make changes to our services.</p> 
+        <p>There are multiple types of load tests. Some load tests ensure that a fleet automatically scales as load increases whereas others use a fixed fleet size. If, in an overload test, a service’s availability degrades rapidly to zero as throughput increases, that’s a good sign that the service is in need of additional load shedding mechanisms. The ideal load test result is for goodput to plateau when the service is close to being fully utilized, and to remain flat even when more throughput is applied.</p> 
+        <p>Tools like <a href="https://web.archive.org/web/20250113051047/https://github.com/Netflix/SimianArmy/wiki/The-Chaos-Monkey-Army" target="_blank">Chaos Monkey</a> help perform chaos engineering tests on services. For example, they can overburden the CPU or introduce packet loss to simulate conditions that happen during an overload. Another testing technique we use is to take an existing load generation test or canary, drive sustained load (instead of increasing load) toward a test environment, but begin removing servers from that test environment. This increases the offered throughput per instance, so it can test instance throughput. This technique of artificially increasing load by decreasing fleet sizes is useful for testing a service in isolation, but it isn’t a complete substitute for full load tests. A full, end-to-end load test will also increase load to that service’s dependencies, which could uncover other bottlenecks.</p> 
+        <p>During tests, we make sure to measure client-perceived availability and latency in addition to server-side availability and latency. When client-side availability begins to decrease, we push the load far beyond that point. If load shedding is working, goodput will remain steady even as offered throughput increases well beyond the scaled capabilities of the service.</p> 
+        <p>Overload testing is crucial before exploring mechanisms to avoid overload. Each mechanism introduces complexity. For example, consider all the configuration options in the service frameworks I mentioned at the beginning of the article, and how difficult defaults were to get right. Each mechanism for avoiding overload adds different protections and has limited effectiveness. Through testing, a team can detect their system’s bottlenecks and determine the combination of protections they need to handle overload.<br> </p> 
+       </div> 
+       <h2 id="Visibility" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Visibility</h2> 
+       <div class="lb-rtxt"> 
+        <p>At Amazon, regardless of which techniques we use to protect our services from overload, we think carefully about the metrics and visibility we need when these overload countermeasures take effect. </p> 
+        <p>When brownout protection rejects a request, that rejection reduces the availability of a service. When the service gets it wrong and rejects a request although it has capacity (for example, when the maximum number of connections is set too low), it generates a false positive. We strive to keep a service’s false positive rate at zero. If a team finds that their service’s false positive rate is non-zero on a regular basis, the service is either tuned too sensitively, or individual hosts are being constantly and legitimately overloaded, and there may be a scaling or load balancing problem. In cases like this, we might have some application performance tuning to do, or we may switch to larger instance types that they can handle load imbalances more gracefully.</p> 
+        <p>In terms of visibility, when load shedding rejects requests, we make sure that we have proper instrumentation to know who the client was, which operation they were calling, and any other information that will help us tune our protection measures. We also use alarms to detect whether the countermeasures are rejecting any significant volume of traffic. When there is a brownout, our priority is to add capacity and to address the current bottleneck.</p> 
+        <p>There’s another subtle but important consideration around visibility in load shedding. We’ve found that it’s important not to pollute our services’ latency metrics with failed request latency. After all, the latency of load shedding a request should be extremely low compared with other requests. For example, if a service is load shedding 60 percent of its traffic, the service's median latency might look pretty amazing even if its successful request latency is terrible, because it’s being under-reported as a result of fast-failing requests.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Load shedding effects on automatic scaling and Availability Zone failure 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>If misconfigured, load shedding can disable reactive automatic scaling. Consider the following example: a service is configured for CPU-based reactive scaling and also has load shedding configured to reject requests at a similar CPU target. In this case, the load shedding system will reduce the number of requests to keep the CPU load low, and reactive scaling will never receive or get a delayed signal to launch new instances.</p> 
+        <p>We are also careful to consider load shedding logic when we set automatic scaling limits for handling Availability Zone failures. Services are scaled to a point where an Availability Zone's worth of their capacity can become unavailable while preserving our latency goals. Amazon teams often look at system metrics like CPU to approximate how close a service is to reaching its capacity limit. However, with load shedding, a fleet might run much closer to the point at which requests would be rejected than system metrics indicate, and might not have the excess capacity provisioned to handle an Availability Zone failure. With load shedding, we need to be extra sure to test our services to breakage to understand our fleet's capacity and headroom at any point in time.</p> 
+        <p>In fact, we can use load shedding to save costs by shaping off-peak, non-critical traffic. For example, if a fleet handles website traffic for amazon.com, it might decide that search crawler traffic is not worth the expense of being scaled for full Availability Zone redundancy. However, we are very careful with this approach. Not all requests cost the same, and proving that a service should provide Availability Zone redundancy for human traffic and for shedding excess crawler traffic at the same time requires careful design, continuous testing, and buy-in from the business. And if a service’s clients don't know that a service is configured this way, its behavior during an Availability Zone failure might look like a massive critical availability drop instead of non-critical load shedding. For this reason, in a service-oriented architecture, we try to push this kind of shaping as early as possible (such as in the service that receives the initial request from the client) instead of trying to make global prioritization decisions throughout the stack.<br> </p> 
+       </div> 
+       <h2 id="Load_shedding_mechanisms" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Load shedding mechanisms</h2> 
+       <div class="lb-rtxt"> 
+        <p>When discussing load shedding and unpredictable scenarios, it’s also important to focus on the many <i>predictable</i> conditions that lead to brownout. At Amazon, services maintain enough excess capacity to handle Availability Zone failures without having to add more capacity. They use throttling to ensure fairness among clients.</p> 
+        <p>However, despite these protections and operational practices, a service has a certain amount of capacity at any point in time, and can therefore become overloaded for a variety of reasons. These reasons include unexpected surges in traffic, sudden loss of fleet capacity (from bad deployments or otherwise), clients shifting from making cheap requests (like cached reads) to expensive requests (like cache misses or writes). When a service becomes overloaded, it has to finish the requests that it has taken on; that is, services have to protect themselves from brownout. In the rest of this section, we’ll discuss some of the considerations and techniques we’ve used over the years to manage overload.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Understanding the cost of dropping requests 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>We make sure to load test our services far beyond the point where goodput plateaus. One of the key reasons for this approach is to ensure that when we drop requests during load shedding, the cost of dropping the request is as small as possible. We’ve seen that it’s easy to miss an accidental log statement or a socket setting, which might make dropping a request far more expensive than it needs to be.</p> 
+        <p>In rare cases, quickly dropping a request can be more expensive than holding on to the request. In these cases, we slow down rejected requests to match (at the minimum) the latency of successful responses. However, it’s important to do this when the cost of holding on to requests is as low as possible; for example, when they’re not tying up an application thread.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Prioritizing requests 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>When a server is overloaded, it has an opportunity to triage incoming requests to decide which ones to accept and which ones to turn away. The most important request that a server will receive is a ping request from a load balancer. If the server doesn't respond to ping requests in time, the load balancer will stop sending new requests to that server for a period of time, and the server will sit idle. And in a brownout scenario, the last thing we want to do is to reduce the size of our fleets. Beyond ping requests, request prioritization options vary from service to service. </p> 
+        <p>Consider a web service that provides data to render amazon.com. A service call that supports web page rendering for a search index crawler is likely to be less critical to serve than a request that originates from a human. Crawler requests are important to serve, but ideally they can be shifted to an off-peak time. However, in a complex environment like amazon.com where a large number of services cooperate, if services use conflicting prioritization heuristics, systemwide availability could be affected and work could be wasted.</p> 
+        <p>Prioritization and throttling can be used together to avoid strict throttling ceilings while still protecting a service from overload. At Amazon, in cases where we allow clients to burst above their configured throttle limits, the excess requests from these clients might be prioritized lower than within-quota requests from other clients. We spend a lot of time focusing on placement algorithms to minimize the probability of burst capacity becoming unavailable, but given the tradeoffs, we favor the predictable provisioned workload over the unpredictable workload.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Keeping an eye on the clock 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>If a service has gotten partway through serving a request and notices that the client has timed out, it can skip doing the rest of the work and fail the request at that point. Otherwise, the server keeps working on the request, and its late reply is like a tree falling in the forest. From the server’s perspective, it has returned a successful response. But from the perspective of the client that timed out, it was an error.</p> 
+        <p>One way to avoid this wasted work is for clients to include timeout hints in each request, which tell the server how long they’re willing to wait. The server can evaluate these hints and drop doomed requests at little cost.</p> 
+        <p>This timeout hint can be expressed either as an absolute time or as a duration. Unfortunately, servers in distributed systems are notoriously bad at agreeing what the exact current time is. The <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/" target="_blank">Amazon Time Sync Service</a> compensates by synchronizing your Amazon Elastic Compute Cloud (Amazon EC2) instances’ clocks with a fleet of redundant satellite-controlled and atomic clocks in each AWS Region. Well-synchronized clocks are important at Amazon for logging purposes as well. Comparing two log files on servers that have out-of-sync clocks makes troubleshooting even harder than it is to begin with.</p> 
+        <p>The other way to “watch the clock” is to measure a duration on a single machine. Servers are good at measuring elapsed durations locally because they do not need to gain consensus with other servers. Unfortunately, expressing timeouts in terms of durations has its problems, too. For one, the timer you use must be monotonic and not go backward when the server syncs with the Network Time Protocol (NTP). A far more difficult problem is that in order to measure a duration, the server has to know when to start a stopwatch. In some extreme overload scenarios, huge volumes of requests can queue up in Transmission Control Protocol (TCP) buffers, so by the time the server reads the requests from its buffers, the client has already timed out.</p> 
+        <p>Whenever systems at Amazon express client timeout hints, we try to apply them transitively. In places where a service-oriented architecture includes multiple hops, we propagate the “remaining time” deadline between each hop so that a downstream service at the end of a call chain can be aware of how much time it has for its response to be useful.</p> 
+        <p>Once a server knows the client deadline, there’s the question of where to enforce the deadline in the service implementation. If a service has a request queue, we use that opportunity to evaluate the timeout after dequeueing each request. But this is still pretty complicated, because we don’t know how long the request is likely to take. Some systems keep an estimate of how long API requests are taking, and they drop requests early if the client-reported deadline exceeds a latency estimate. However, things are rarely that simple. For example, cache hits are faster than cache misses, and the estimator doesn’t know whether it's a hit or a miss up front. Or the service’s backend resources might be partitioned, and only some partitions might be slow. There's a great deal of opportunity for cleverness, but it's also possible for that cleverness to backfire in an unpredictable situation.</p> 
+        <p>In our experience, enforcing client timeouts on the server is still better than the alternative, despite the complexities and tradeoffs. Instead of requests piling up and the server possibly working on requests that no longer matter to anyone, we have found it helpful to enforce a “per-request time-to-live” and throw away doomed requests.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Finishing what was started 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>We don't want any useful work to go to waste, especially in an overload. Throwing away work creates a positive feedback loop that increases the overload, since clients often retry a request if a service doesn't respond in time. When that happens, one resource-consuming request turns into many resource-consuming requests, multiplying the load on the service. When clients time out and retry, they often stop waiting for a reply on their first connection while they’re making a new request on a separate connection. If the server finishes the first request and replies, the client might not be listening, because it's now waiting for a reply from its retried request.</p> 
+        <p>This wasted work problem is why we try to design services to perform <i>bounded work</i>. In places where we expose an API that can return a large dataset (or really any list at all), we expose it as an API that supports pagination. These APIs return partial results and a token that the client can use to request more data. We have found it easier to estimate the additional load on a service when the server handles a request that has an upper bound to the amount of memory, CPU, and network bandwidth. It’s very difficult to perform admission control when a server has no idea what it will take to process a request.</p> 
+        <p>A more subtle opportunity to prioritize requests is around how clients use a service’s APIs. For example, let's say a service has two APIs: <b>start()</b> and <b>end()</b>. In order to finish their work, clients need to be able to call both APIs. In this case, the service should prioritize <b>end()</b> requests over <b>start()</b> requests. If it prioritized <b>start()</b>, clients wouldn’t be able to complete the work they started, resulting in brownouts.</p> 
+        <p>Pagination is another place to watch for wasted work. If a client has to make several sequential requests to paginate through the results from a service, and it sees a failure after page N-1 and throws away the results, it’s wasting N-2 service calls and any retries it performed along the way. This suggests that like <b>end()</b> requests, first-page requests should be prioritized behind subsequent-page pagination requests. It also underscores why we design services to perform bounded work and not paginate endlessly through a service that they call during a synchronous operation.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Watching out for queues 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>It’s also helpful to look at request duration when managing internal queues. Many modern service architectures use in-memory queues to connect thread pools to process requests during various stages of work. A web service framework with an executor is likely to have a queue configured in front of it. With any TCP-based service, the operating system maintains a buffer for each socket, and those buffers can contain a huge volume of pent-up requests.</p> 
+        <p>When we pull work off queues, we use that opportunity to examine how long the work was sitting on the queue. At a minimum, we try to record that duration in our service metrics. In addition to bounding the size of queues, we’ve found it’s extremely important to place an upper bound on the amount of time that an incoming request sits on a queue, and we throw it out if it's too old. This frees up the server to work on newer requests that have a greater chance of succeeding. As an extreme version of this approach, we look for ways to use a last in, first out (LIFO) queue instead, if the protocol supports it. (HTTP/1.1 pipelining of requests on a given TCP connection doesn’t support LIFO queues, but HTTP/2 generally does.)</p> 
+        <p>Load balancers might also queue incoming requests or connections when services are overloaded, using a feature called <i>surge queues</i>. These queues can lead to brownout, because when a server finally gets a request, it has no idea how long the request was in the queue. A generally safe default is to use a spillover configuration, which fast-fails instead of queueing excess requests. At Amazon, this learning was baked into the next generation of the Elastic Load Balancing (ELB) service. The Classic Load Balancer used a surge queue, but the Application Load Balancer <a href="https://web.archive.org/web/20250113051047/https://www.youtube.com/watch?v=qy7zNaDTYGQ&amp;feature=youtu.be&amp;t=2506" target="_blank">rejects excess traffic</a>. Regardless of configuration, teams at Amazon monitor the relevant load balancer metrics, like surge queue depth or spillover count, for their services.</p> 
+        <p>In our experience, the importance of watching out for queues can’t be overstated. I’m often surprised to find in-memory queues where I didn’t intuitively think to look for them, in systems and libraries I depend on. When I’m digging into systems, I find that it’s helpful to assume there are queues somewhere that I don’t know about yet. Of course, overload testing provides more useful information than digging into code, as long as I can come up with the right realistic test cases.<br> </p> 
+       </div> 
+       <div class="lb-txt-lead lb-txt">
+         Protecting against overload in lower layers 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Services are made up of several layers─from load balancers, to operating systems with <i>netfilter</i> and <i>iptables</i> capabilities, to service frameworks, to the code—and each layer provides some capability to protect the service. </p> 
+        <p>HTTP proxies like NGINX often support a maximum connections feature (<i>max_conns</i>) to limit the number of active requests or connections it will pass to the backend server. This can be a helpful mechanism, but we learned to use it as a last resort instead of the default protection option. With proxies, it’s difficult to prioritize important traffic, and raw in-flight request count tracking sometimes provides inaccurate information about whether a service is actually overloaded.</p> 
+        <p>In the beginning of this article, I described a challenge from my time on the Service Frameworks team. We were trying to provide Amazon teams with a recommended default for maximum connections to configure on their load balancers. In the end, we suggested that teams set maximum connections for their load balancer and proxy high, and let the server implement more accurate load shedding algorithms with local information. However, it was also important for the maximum connections value to not exceed the number of listener threads, listener processes, or file descriptors on a server, so the server had the resources to handle critical health check requests from the load balancer.</p> 
+        <p>Operating system features for limiting server resource usage are powerful and can be helpful to use in emergencies. And because we know that overload can happen, we make sure to prepare for it by using the right runbooks with specific commands at the ready. The <i>iptables</i> utility can put an upper bound on the number of connections that the server will accept, and can reject excess connections far more cheaply than any server process. It can also be configured with more sophisticated controls, like allowing new connections at a bounded rate, or even allowing a limited connection rate or count per source IP address. Source IP filters are powerful, but do not apply with traditional load balancers. However, an ELB Network Load Balancer preserves the source IP of the caller even at the operating system layer through network virtualization, making iptables rules like source IP filters work as expected.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Protecting in layers 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>In some cases, a server runs out of resources to even reject requests without slowing down. With this reality in mind, we look at all the hops between a server and its clients to see how they can cooperate and help shed excess load. For example, several AWS services include load shedding options by default. When we front a service with Amazon API Gateway, we can configure a maximum request rate that any API will accept. When our services are fronted by API Gateway, an Application Load Balancer, or Amazon CloudFront, we can configure <a href="/web/20250113051047/https://aws.amazon.com/waf/">AWS WAF</a> to shed excess traffic on a number of dimensions.</p> 
+        <p>Visibility creates a difficult tension. Early rejection is important because it’s the cheapest place to drop excess traffic, but it comes at a cost to visibility. This is why we protect in layers: to let a server take on more than it can work on and drop the excess, and log enough information to know what traffic it is dropping. Since there is only so much traffic a server can drop, we rely on the layer in front of it to protect it from extreme volumes of traffic.<br> </p> 
+       </div> 
+       <h2 id="Thinking_about_overload_differently" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Thinking about overload differently</h2> 
+       <div class="lb-rtxt"> 
+        <p>In this article, we discussed how the need to shed load arises out of the fact that systems become slower as they are given more concurrent work, as forces like resource limits and contention kick in. The overload feedback loop is driven by latency, which ultimately causes wasted work, request rate amplification, and even more overload. This force, driven by the Universal Scalability Law and Amdahl’s law, is important to sidestep by <b>shedding excess load and maintaining predictable, consistent performance in the face of overload</b>. Focusing on predictable, consistent performance is a key design principle on which services at Amazon are built. </p> 
+        <p>For example, Amazon DynamoDB is a database service that offers predictable performance and availability at scale. Even if a workload bursts quickly and exceeds the provisioned resources, DynamoDB maintains predictable goodput latency for that workload. Factors like <a href="https://web.archive.org/web/20250113051047/https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/AutoScaling.html" target="_blank">DynamoDB auto scaling</a>, <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/blogs/database/how-amazon-dynamodb-adaptive-capacity-accommodates-uneven-data-access-patterns-or-why-what-you-know-about-dynamodb-might-be-outdated/#targetText=May%2024%2C%202019%2C%20update%3A,high%20performance%20at%20any%20scale." target="_blank">adaptive capacity</a>, and <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/blogs/aws/amazon-dynamodb-on-demand-no-capacity-planning-and-pay-per-request-pricing/" target="_blank">on-demand</a> react quickly to increase goodput rates to adapt to an increase in a workload. During that time, goodput remains steady, keeping a service in the layers above DynamoDB with predictable performance as well, and improving the stability of the whole system.</p> 
+        <p>AWS Lambda provides an even broader example of the focus on predictable performance. When we use Lambda to implement a service, each API call runs in its own execution environment with consistent amounts of compute resources allocated to it, and that execution environment works on only that one request at a time. This differs from a server-based paradigm, where a given server works on multiple APIs.</p> 
+        <p>Isolating each API call to its own independent resources (compute, memory, disk, network) will circumvent Amdahl’s law in some ways, because the resources of one API call won’t be contending with the resources of another API call. Therefore, if throughput exceeds goodput, goodput will remain flat instead of dropping down as it does in a more traditional server-based environment. This isn’t a panacea, since dependencies can slow down and cause concurrency to go up. However, in this scenario, at least the types of on-host resource contention that we discussed in this article won’t apply. </p> 
+        <p>This resource isolation is a somewhat subtle but important benefit of modern, serverless compute environments like <a href="/web/20250113051047/https://aws.amazon.com/fargate/">AWS Fargate</a>, <a href="/web/20250113051047/https://aws.amazon.com/ecs/">Amazon Elastic Container Service</a> (Amazon ECS), and <a href="/web/20250113051047/https://aws.amazon.com/lambda/">AWS Lambda</a>. At Amazon, we have found that it requires a lot of work to implement load shedding, from tuning thread pools, to picking the perfect configuration for maximum load balancer connections. Sensible defaults for these types of configurations are difficult or impossible to find, because they depend on the unique operational characteristics of each system. These newer, serverless compute environments provide lower-level resource isolation and expose higher-level knobs, like throttling and concurrency controls, for protecting against overload. In some ways, instead of chasing the perfect default configuration value, we’re able to sidestep that configuration altogether and protect from categories of overload without any configuration at all.</p> 
+       </div> 
+       <h2 id="Further_reading" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Further reading</h2> 
+       <div class="lb-rtxt"> 
+        <p>• <a href="https://web.archive.org/web/20250113051047/http://www.perfdynamics.com/Manifesto/USLscalability.html" target="_blank">Universal Scalability Law <br> </a>• <a href="https://web.archive.org/web/20250113051047/https://en.wikipedia.org/wiki/Amdahl%27s_law" target="_blank">Amdahl's law</a><br> • <a href="https://web.archive.org/web/20250113051047/https://en.wikipedia.org/wiki/Staged_event-driven_architecture" target="_blank">Staged event-driven architecture (SEDA)<br> •</a> <a href="https://web.archive.org/web/20250113051047/https://en.wikipedia.org/wiki/Little%27s_law" target="_blank">Little's law</a> (describes concurrency in a system and how to determine the capacity of distributed systems)<br> • <a href="https://web.archive.org/web/20250113051047/https://brooker.co.za/blog/2018/06/20/littles-law.html" target="_blank">Telling Stories About Little’s Law</a>, Marc’s Blog<br> • <a href="https://web.archive.org/web/20250113051047/https://www.youtube.com/watch?v=qy7zNaDTYGQ&amp;feature=youtu.be&amp;t=2506" target="_blank">Elastic Load Balancing Deep Dive and Best Practices</a>, presentation at re:Invent 2016 (describes the evolution of Elastic Load Balancing to stop queueing excess requests)<br> • Burgess, <a href="https://web.archive.org/web/20250113051047/https://www.amazon.com/gp/product/1491917873" target="_blank">Thinking in Promises: Designing Systems for Cooperation</a>, O’Reilly Media, 2015<br> <br> <br> </p> 
+       </div> 
+       <hr class="lb-divider" style="margin-top:0px; margin-bottom:0px;"> 
+       <h4 id="About_the_author" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h4 lb-title" style="color:#232f3e;"> About the author</h4> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <div class="lb-box"> 
+          <figure class="lb-tiny-v-margin lb-img"> 
+           <div> 
+            <img src="https://web.archive.org/web/20250113051047im_/https://d1.awsstatic.com/builderslibrary/authors-biopage/WEB_Redwood_Author-Portrait_David_Yanacek.b5f8aae4937996343f3209ef598ca9f3db493eca.png" alt="David Yanacek" title="David Yanacek" class="cq-dd-image"> 
+           </div> 
+          </figure> 
+          <a class="lb-txt-none lb-txt" style="margin-top:20px;" href="/web/20250113051047/https://aws.amazon.com/builders-library/authors/david-yanacek/"> David Yanacek</a> 
+         </div> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <div class="lb-rtxt" style="margin-top:60px;"> 
+          <p>David Yanacek is a Senior Principal Engineer working on AWS Lambda. David has been a software developer at Amazon since 2006, previously working on Amazon DynamoDB and AWS IoT, and also internal web service frameworks and fleet operations automation systems. One of David’s favorite activities at work is performing log analysis and sifting through operational metrics to find ways to make systems run more and more smoothly over time.<br> </p> 
+         </div> 
+        </div> 
+       </div> 
+       <h4 id="Related_content" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h4 lb-title" style="color:#232f3e;"> Related content</h4> 
+       <a class="lb-txt-none lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"> Timeouts, retries and backoff with jitter</a> 
+       <a class="lb-txt-none lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/implementing-health-checks/"> Implementing health checks</a> 
+       <a class="lb-txt-none lb-txt" href="/web/20250113051047/https://aws.amazon.com/builders-library/instrumenting-distributed-systems-for-operational-visibility/"> Instrumenting distributed systems for operational visibility</a> 
+      </div> 
+     </div> 
+    </div> 
+   </main> 
+  </div> 
+  <footer id="aws-page-footer" class="m-page-footer" role="contentinfo"> 
+   <div class="data-attr-wrapper lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer" data-da-so-version="a"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1 lb-small-xb-3 lb-large-xb-5"> 
+     <div class="lb-xbcol"> 
+      <div class="data-attr-wrapper lb-small-hide lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signin-mobile-default"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/console/home?nc1=f_ct&amp;src=footer-signin-mobile" role="button"> <span> Sign In to the Console</span> </a> 
+      </div> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Learn About AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/what-is-aws/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is AWS?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/what-is-cloud-computing/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is Cloud Computing?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/accessibility/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Accessibility</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/diversity-inclusion/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Inclusion, Diversity &amp; Equity</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/devops/what-is-devops/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is DevOps?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/containers/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Container?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/what-is/data-lake/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Data Lake?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/what-is/artificial-intelligence/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Artificial Intelligence (AI)?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/what-is/generative-ai/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Generative AI?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/what-is/machine-learning/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Machine Learning (ML)?</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/security/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Cloud Security</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/new/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What's New</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/blogs/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Blogs</a></li> 
+       <li><a href="https://web.archive.org/web/20250113051047/https://press.aboutamazon.com/press-releases/aws" target="_blank" rel="noopener noreferrer" title="Press Releases" alt="Press Releases">Press Releases</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Resources for AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/getting-started/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Getting Started</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/training/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Training and Certification</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/solutions/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Solutions Library</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/architecture/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Architecture Center</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/faqs/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Product and Technical FAQs</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/resources/analyst-reports/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Analyst Reports</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/partners/work-with-partners/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Partners</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Developers on AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/developer/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Developer Center</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/developer/tools/?nc1=f_dr" target="_blank" rel="noopener noreferrer">SDKs &amp; Tools</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/developer/language/net/?nc1=f_dr" target="_blank" rel="noopener noreferrer">.NET on AWS</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/developer/language/python/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Python on AWS</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/developer/language/java/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Java on AWS</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/developer/language/php/?nc1=f_cc" target="_blank" rel="noopener noreferrer">PHP on AWS</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/developer/language/javascript/?nc1=f_dr" target="_blank" rel="noopener noreferrer">JavaScript on AWS</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Help</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/contact-us/?nc1=f_m" target="_blank" rel="noopener noreferrer">Contact Us</a></li> 
+       <li><a href="https://web.archive.org/web/20250113051047/https://iq.aws.amazon.com/?utm=mkt.foot/?nc1=f_m" target="_blank" rel="noopener noreferrer">Get Expert Help</a></li> 
+       <li><a href="https://web.archive.org/web/20250113051047/https://console.aws.amazon.com/support/home/?nc1=f_dr" target="_blank" rel="noopener noreferrer">File a Support Ticket</a></li> 
+       <li><a href="https://web.archive.org/web/20250113051047/https://repost.aws/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS re:Post</a></li> 
+       <li><a href="https://web.archive.org/web/20250113051047/https://repost.aws/knowledge-center/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Knowledge Center</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/premiumsupport/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Support Overview</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/legal/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Legal</a></li> 
+       <li><a href="/web/20250113051047/https://aws.amazon.com/careers/">AWS Careers</a></li> 
+      </ul> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_addl-help"> 
+      </div> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_cta"> 
+       <div class="data-attr-wrapper lb-tiny-hide lb-small-show lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signup-default"> 
+        <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250113051047/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc1=f_ct&amp;src=default" role="button"> <span> Create an AWS Account</span> </a> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:20px; margin-bottom:0px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-left:0px; padding-right:5px;" href="https://web.archive.org/web/20250113051047/https://twitter.com/awscloud" target="_blank" rel="noopener noreferrer" title="Twitter" alt="Twitter"> <i class="icon-twitter lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-none-v-margin lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250113051047/https://www.facebook.com/amazonwebservices" target="_blank" rel="noopener noreferrer" title="Facebook" alt="Facebook"> <i class="icon-facebook lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250113051047/https://www.linkedin.com/company/amazon-web-services/" target="_blank" rel="noopener noreferrer" title="Linkedin" alt="Linkedin"> <i class="icon-linkedin lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250113051047/https://www.instagram.com/amazonwebservices/" target="_blank" rel="noopener noreferrer" title="Instagram" alt="Instagram"> <i class="icon-instagram lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:10px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250113051047/https://www.twitch.tv/aws" target="_blank" rel="noopener noreferrer" title="Twitch" alt="Twitch"> <i class="icon-twitch lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250113051047/https://www.youtube.com/user/AmazonWebServices/Cloud/" target="_blank" rel="noopener noreferrer" title="YouTube" alt="YouTube"> <i class="icon-youtube lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="/web/20250113051047/https://aws.amazon.com/podcasts/" target="_blank" rel="noopener noreferrer" title="Podcast" alt="Podcast"> <i class="icon-podcast lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250113051047/https://pages.awscloud.com/communication-preferences?trk=homepage" target="_blank" rel="noopener noreferrer" title="Email" alt="Email"> <i class="icon-envelope-o lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-txt-normal lb-txt-white lb-txt-14 lb-rtxt" style="color:#eaeded; margin-top:0px;"> 
+       <div>
+         Amazon is an Equal Opportunity Employer: 
+        <i> Minority / Women / Disability / Veteran / Gender Identity / Sexual Orientation / Age.</i> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <ul class="lb-txt-white lb-tiny-iblock lb-none-v-margin lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-iblock"> 
+       <li class="lb-txt-bold">Language</li> 
+       <li data-language="ar" lang="ar-SA" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+       <li data-language="id" lang="id-ID" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+       <li data-language="de" lang="de-DE" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+       <li data-language="en" lang="en-US" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+       <li data-language="es" lang="es-ES" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+       <li data-language="fr" lang="fr-FR" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+       <li data-language="it" lang="it-IT" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+       <li data-language="pt" lang="pt-BR" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       <li data-language="vi" lang="vi-VN" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+       <li data-language="tr" lang="tr-TR" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+       <li data-language="ru" lang="ru-RU" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+       <li data-language="th" lang="th-TH" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+       <li data-language="jp" lang="ja-JP" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+       <li data-language="ko" lang="ko-KR" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+       <li data-language="cn" lang="zh-CN" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+       <li data-language="tw" lang="zh-TW" translate="no"><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+      </ul> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#EAEDED; padding-top:5px;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-legal-links"> 
+       <ul class="lb-txt-squid lb-none-v-margin lb-ul lb-list-style-none lb-li-none-v-margin lb-tiny-ul-iblock"> 
+        <li><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/privacy/?nc1=f_pr">Privacy</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/accessibility/?nc1=f_acc">Accessibility</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/terms/?nc1=f_pr">Site Terms</a></li> 
+        <li>|</li> 
+        <li data-cookie-consent-modal="1"><a href="#"> Cookie Preferences </a></li> 
+        <li>|</li> 
+        <li>© 2024, Amazon Web Services, Inc. or its affiliates. All rights reserved.</li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </footer> 
+  <div id="aws-page-end"></div> 
+  <div id="lb-page-end"></div> 
+  <div id="mrc-sunrise-chat"></div> 
+  <script defer id="mrc-sunrise-chat-loader" src="https://web.archive.org/web/20250113051047js_/https://loader.us-east-1.prod.mrc-sunrise.marketing.aws.dev/loader.js"></script> 
+  <!--[if lte IE 9]>
+  <p class="deprecated-browser-support-message">
+    You are using an outdated browser. Please upgrade to a modern browser to improve your experience.<img src="https://fls-na.amazon.com/1/action-impressions/1/OE/aws-mktg/action/awsm_:comp_DeprecatedBrowser@v=1:u=c?dataset=LIVE:PROD&instance=PUB&client=dsk&marketplaceId=A12QK8IU0H0XW5&requestId=ABCDEFGHIJKLMNOPQRST&session=123-1234567-1234567"
+           alt="deprecated-browser pixel tag" />
+      </p>
+<![endif]--> 
+  <div class="lb-skt-overlay lb-modal lb-comp-content-container" data-lb-comp="modal" data-lb-modal-id="ie-deprecation-msg" data-ie10-deprecation-msg="You are using an outdated browser. Please upgrade to a modern browser to improve your experience."> 
+   <div class="lb-modal-dialog"> 
+    <div class="lb-modal-content"> 
+     <div class="lb-modal-header"> 
+      <h4 class="lb-h4"> Ending Support for Internet Explorer</h4> 
+      <a class="lb-modal-close" role="button" href="#" title="Close"> <span class="lb-sr-only">Got it</span> </a> 
+     </div> 
+     <div class="lb-modal-body">
+       AWS support for Internet Explorer ends on 07/31/2022. Supported browsers are Chrome, Firefox, Edge, and Safari. 
+      <a href="https://web.archive.org/web/20250113051047/https://aws.amazon.com/blogs/aws/heads-up-aws-support-for-internet-explorer-11-is-ending/" rel="noopener">Learn more »</a> 
+     </div> 
+     <div class="lb-modal-footer"> 
+      <a class="lb-btn-p-primary lb-modal-close lb-modal-action" role="button">Got it</a> 
+     </div> 
+    </div> 
+   </div> 
+  </div> 
+  <a data-lb-modal-trigger="ie-deprecation-msg" style="display: none;"></a> 
+  <!-- cms_updated_at: 2025-01-07T22:17:31.676-0800 -->  
+ </body>
+</html><!--
+     FILE ARCHIVED ON 05:10:47 Jan 13, 2025 AND RETRIEVED FROM THE
+     INTERNET ARCHIVE ON 06:16:55 Sep 19, 2026.
+     JAVASCRIPT APPENDED BY WAYBACK MACHINE, COPYRIGHT INTERNET ARCHIVE.
+
+     ALL OTHER CONTENT MAY ALSO BE PROTECTED BY COPYRIGHT (17 U.S.C.
+     SECTION 108(a)(3)).
+-->
+<!--
+playback timings (ms):
+  captures_list: 0.484
+  exclusion.robots: 0.078
+  exclusion.robots.policy: 0.07
+  esindex: 0.007
+  cdx.remote: 4.541
+  LoadShardBlock: 1131.776 (3)
+  PetaboxLoader3.datanode: 1043.955 (4)
+  PetaboxLoader3.resolve: 214.398 (2)
+  load_resource: 164.56
+  nav: 0.146 (6)
+-->

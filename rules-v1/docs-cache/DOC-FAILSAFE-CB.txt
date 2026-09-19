@@ -1,0 +1,84 @@
+# doc_id: DOC-FAILSAFE-CB
+# url: https://failsafe.dev/circuit-breaker/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H1]] Circuit Breaker
+How it Works
+Configuration
+Opening
+Half-Opening
+Closing
+Failure Handling
+Event Listeners
+Metrics
+Best Practices
+Standalone Usage
+Time Based Resolution
+Performance
+Circuit breakers allow you to create systems that fail fast by temporarily disabling execution as a way of preventing system overload. There are two types of circuit breakers: count based and time based. Count based circuit breakers operate by tracking recent execution results up to a certain limit. Time based circuit breakers operate by tracking any number of execution results that occur within a time period.
+Creating a CircuitBreaker is straightforward, for example:
+// Opens after 5 failures, half-opens after 1 minute, closes after 2 successes
+CircuitBreaker<Object> breaker = CircuitBreaker.builder()
+.handle(ConnectException.class)
+.withFailureThreshold(5)
+.withDelay(Duration.ofMinutes(1))
+.withSuccessThreshold(2)
+.build();
+[[H2]] How it Works
+When the number of recent execution failures exceed a configured threshold, the breaker is opened and further executions will fail with CircuitBreakerOpenException. After a delay, the breaker is half-opened and trial executions are allowed which determine whether the breaker should be closed or opened again. If the trial executions meet a success threshold, the breaker is closed again and executions will proceed as normal, otherwise it’s re-opened.
+[[H2]] Configuration
+Circuit breakers can be flexibly configured to express when the breaker should be opened, half-opened, and closed.
+[[H3]] Opening
+A circuit breaker is count based by default and will open after a single failure occurs. You can instead configure a circuit breaker to open when a successive number of executions have failed:
+builder.withFailureThreshold(5);
+Or when, for example, 3 out of the last 5 executions have failed:
+builder.withFailureThreshold(3, 5);
+A time based circuit breaker can be configured to open when a number of failures occur within a time period:
+builder.withFailureThreshold(3, Duration.ofMinutes(1));
+Or when a number of failures occur out of a minimum number of executions within a time period:
+builder.withFailureThreshold(3, 5, Duration.ofMinutes(1));
+It can also be configured to open when the percentage rate of failures out of a minimum number of executions exceeds a threshold:
+builder.withFailureRateThreshold(20, 5, Duration.ofMinutes(1));
+[[H3]] Half-Opening
+After opening, a breaker will delay for 1 minute by default before before transitioning to half-open. You can configure a different delay:
+builder.withDelay(Duration.ofSeconds(30));
+Or a computed delay based on an execution result.
+[[H3]] Closing
+The breaker can be configured to close again if a number of trial executions succeed, else it will re-open:
+builder.withSuccessThreshold(5);
+The breaker can also be configured to close again if, for example, 3 out of the last 5 executions succeed, else it will re-open:
+builder.withSuccessThreshold(3, 5);
+If a success threshold is not configured, then the failure threshold is used to determine if a breaker should transition from half-open to either closed or open.
+[[H2]] Failure Handling
+A CircuitBreaker can be configured to handle only certain results or exceptions, in combination with any of the configuration described above:
+builder
+.handle(ConnectException.class)
+.handleResult(null);
+[[H2]] Event Listeners
+In addition to the standard policy listeners, a CircuitBreaker can notify you when the state of the breaker changes:
+builder
+.onOpen(e -> log.info("The circuit breaker was opened"))
+.onClose(e -> log.info("The circuit breaker was closed"))
+.onHalfOpen(e -> log.info("The circuit breaker was half-opened"));
+[[H2]] Metrics
+CircuitBreaker can provide metrics for the current state that the breaker is in, including execution count, success count, failure count, success rate and failure rate. It can also return the remaining delay when in an open state.
+[[H2]] Best Practices
+A circuit breaker can and should be shared across code that accesses common dependencies. This ensures that if the circuit breaker is opened, all executions that share the same dependency and use the same circuit breaker will be blocked until the circuit is closed again. For example, if multiple connections or requests are made to the same external server, typically they should all go through the same circuit breaker.
+[[H2]] Standalone Usage
+A CircuitBreaker can also be manually operated in a standalone way:
+breaker.open();
+breaker.halfOpen();
+breaker.close();
+if (breaker.tryAcquirePermit()) {
+try {
+doSomething();
+breaker.recordSuccess();
+} catch (Exception e) {
+breaker.recordException(e);
+}
+}
+[[H2]] Time Based Resolution
+Time based circuit breakers use a sliding window to aggregate execution results. As time progresses and newer results are recorded, older results are discarded. In order to maintain space and time efficiency, results are grouped into 10 time slices, each representing 1/10th of the configured failure threshold period. When a time slice is no longer within the thresholding period, its results are discarded. This allows the circuit breaker to operate based on recent results without needing to track the time of each individual execution.
+[[H2]] Performance
+Failsafe’s internal CircuitBreaker implementation is space and time efficient, utilizing a single circular data structure to record execution results. Recording an execution and evaluating a threshold has an O(1) time complexity, regardless of the thresholding capacity.
+Copyright © 2015-present Jonathan Halterman and friends. Released under the Apache 2.0 license.

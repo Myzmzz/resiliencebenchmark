@@ -1,0 +1,2238 @@
+# doc_id: DOC-NODE-HTTP
+# url: https://nodejs.org/api/http.html
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H2]] HTTP#
+Source Code: lib/http.js
+Stability: 2 - Stable
+This module, containing both a client and server, can be imported via require('node:http') (CommonJS) or import * as http from 'node:http' (ES module).
+The HTTP interfaces in Node.js are designed to support many features of the protocol which have been traditionally difficult to use. In particular, large, possibly chunk-encoded, messages. The interface is careful to never buffer entire requests or responses, so the user is able to stream data.
+HTTP message headers are represented by an object like this:
+{ "content-length": "123",
+"content-type": "text/plain",
+"connection": "keep-alive",
+"host": "example.com",
+"accept": "*/*" }
+jsoncopy
+Keys are lowercased. Values are not modified.
+In order to support the full spectrum of possible HTTP applications, the Node.js HTTP API is very low-level. It deals with stream handling and message parsing only. It parses a message into headers and body but it does not parse the actual headers or the body.
+See message.headers for details on how duplicate headers are handled.
+The raw headers as they were received are retained in the rawHeaders property, which is an array of [key, value, key2, value2, ...]. For example, the previous message header object might have a rawHeaders list like the following:
+[ "ConTent-Length", "123456",
+"content-LENGTH", "123",
+"content-type", "text/plain",
+"CONNECTION", "keep-alive",
+"Host", "example.com",
+"accepT", "*/*" ]
+jsoncopy
+[[H3]] Class: http.Agent#
+Added in: v0.3.4
+An Agent is responsible for managing connection persistence and reuse for HTTP clients. It maintains a queue of pending requests for a given host and port, reusing a single socket connection for each until the queue is empty, at which time the socket is either destroyed or put into a pool where it is kept to be used again for requests to the same host and port. Whether it is destroyed or pooled depends on the keepAlive option.
+Pooled connections have TCP Keep-Alive enabled for them, but servers may still close idle connections, in which case they will be removed from the pool and a new connection will be made when a new HTTP request is made for that host and port. Servers may also refuse to allow multiple requests over the same connection, in which case the connection will have to be remade for every request and cannot be pooled. The Agent will still make the requests to that server, but each one will occur over a new connection.
+[[H4]] Response ordering with connection reuse#
+On a reused HTTP/1.1 keep-alive connection, responses are associated with requests by their order on that connection. HTTP/1.1 keep-alive does not provide per-request response attribution beyond that ordering. Applications that require per-request connection isolation can use a separate Agent, disable keep-alive, or pass agent: false.
+When a connection is closed by the client or the server, it is removed from the pool. Any unused sockets in the pool will be unrefed so as not to keep the Node.js process running when there are no outstanding requests. (see socket.unref()).
+It is good practice, to destroy() an Agent instance when it is no longer in use, because unused sockets consume OS resources.
+Sockets are removed from an agent when the socket emits either a 'close' event or an 'agentRemove' event. When intending to keep one HTTP request open for a long time without keeping it in the agent, something like the following may be done:
+http.get(options, (res) => {
+// Do stuff
+}).on('socket', (socket) => {
+socket.emit('agentRemove');
+});
+jscopy
+An agent may also be used for an individual request. By providing {agent: false} as an option to the http.get() or http.request() functions, a one-time use Agent with default options will be used for the client connection.
+agent:false:
+http.get({
+hostname: 'localhost',
+port: 80,
+path: '/',
+agent: false, // Create a new agent just for this one request
+}, (res) => {
+// Do stuff with response
+});
+jscopy
+Use agent: false to avoid connection reuse for a request.
+[[H4]] new Agent([options])#
+Added in: v0.3.4
+History
+VersionChanges
+v24.7.0, v22.20.0
+Add support for agentKeepAliveTimeoutBuffer.
+v24.5.0, v22.21.0
+Add support for proxyEnv.
+v24.5.0, v22.21.0
+Add support for defaultPort and protocol.
+v15.6.0, v14.17.0
+Change the default scheduling from 'fifo' to 'lifo'.
+v14.5.0, v12.19.0
+Add maxTotalSockets option to agent constructor.
+v14.5.0, v12.20.0
+Add scheduling option to specify the free socket scheduling strategy.
+options <Object> Set of configurable options to set on the agent. Can have the following fields:
+keepAlive <boolean> Keep sockets around even when there are no outstanding requests, so they can be used for future requests without having to reestablish a TCP connection. Not to be confused with the keep-alive value of the Connection header. The Connection: keep-alive header is always sent when using an agent except when the Connection header is explicitly specified or when the keepAlive and maxSockets options are respectively set to false and Infinity, in which case Connection: close will be used. Default: false.
+keepAliveMsecs <number> When using the keepAlive option, specifies the initial delay for TCP Keep-Alive packets. Ignored when the keepAlive option is false or undefined. Default: 1000.
+agentKeepAliveTimeoutBuffer <number> Milliseconds to subtract from the server-provided keep-alive: timeout=... hint when determining socket expiration time. This buffer helps ensure the agent closes the socket slightly before the server does, reducing the chance of sending a request on a socket that’s about to be closed by the server. Default: 1000.
+maxSockets <number> Maximum number of sockets to allow per host. If the same host opens multiple concurrent connections, each request will use new socket until the maxSockets value is reached. If the host attempts to open more connections than maxSockets, the additional requests will enter into a pending request queue, and will enter active connection state when an existing connection terminates. This makes sure there are at most maxSockets active connections at any point in time, from a given host. Default: Infinity.
+maxTotalSockets <number> Maximum number of sockets allowed for all hosts in total. Each request will use a new socket until the maximum is reached. Default: Infinity.
+maxFreeSockets <number> Maximum number of sockets per host to leave open in a free state. Only relevant if keepAlive is set to true. Default: 256.
+scheduling <string> Scheduling strategy to apply when picking the next free socket to use. It can be 'fifo' or 'lifo'. The main difference between the two scheduling strategies is that 'lifo' selects the most recently used socket, while 'fifo' selects the least recently used socket. In case of a low rate of request per second, the 'lifo' scheduling will lower the risk of picking a socket that might have been closed by the server due to inactivity. In case of a high rate of request per second, the 'fifo' scheduling will maximize the number of open sockets, while the 'lifo' scheduling will keep it as low as possible. Default: 'lifo'.
+timeout <number> Socket timeout in milliseconds. This will set the timeout when the socket is created.
+proxyEnv <Object> | <undefined> Environment variables for proxy configuration. See Built-in Proxy Support for details. Default: undefined
+HTTP_PROXY <string> | <undefined> URL for the proxy server that HTTP requests should use. If undefined, no proxy is used for HTTP requests.
+HTTPS_PROXY <string> | <undefined> URL for the proxy server that HTTPS requests should use. If undefined, no proxy is used for HTTPS requests.
+NO_PROXY <string> | <undefined> Patterns specifying the endpoints that should not be routed through a proxy.
+http_proxy <string> | <undefined> Same as HTTP_PROXY. If both are set, http_proxy takes precedence.
+https_proxy <string> | <undefined> Same as HTTPS_PROXY. If both are set, https_proxy takes precedence.
+no_proxy <string> | <undefined> Same as NO_PROXY. If both are set, no_proxy takes precedence.
+defaultPort <number> Default port to use when the port is not specified in requests. Default: 80.
+protocol <string> The protocol to use for the agent. Default: 'http:'.
+options in socket.connect() are also supported.
+To configure any of them, a custom http.Agent instance must be created.
+import { Agent, request } from 'node:http';
+const keepAliveAgent = new Agent({ keepAlive: true });
+options.agent = keepAliveAgent;
+request(options, onResponseCallback);
+const http = require('node:http');
+const keepAliveAgent = new http.Agent({ keepAlive: true });
+options.agent = keepAliveAgent;
+http.request(options, onResponseCallback);
+javascriptcopy
+[[H4]] agent.createConnection(options[, callback])#
+Added in: v0.11.4
+options <Object> Options containing connection details. Check net.createConnection() for the format of the options. For custom agents, this object is passed to the custom createConnection function.
+callback <Function> (Optional, primarily for custom agents) A function to be called by a custom createConnection implementation when the socket is created, especially for asynchronous operations.
+err <Error> | <null> An error object if socket creation failed.
+socket <stream.Duplex> The created socket.
+Returns: <stream.Duplex> The created socket. This is returned by the default implementation or by a custom synchronous createConnection implementation. If a custom createConnection uses the callback for asynchronous operation, this return value might not be the primary way to obtain the socket.
+Produces a socket/stream to be used for HTTP requests.
+By default, this function behaves identically to net.createConnection(), synchronously returning the created socket. The optional callback parameter in the signature is not used by this default implementation.
+However, custom agents may override this method to provide greater flexibility, for example, to create sockets asynchronously. When overriding createConnection:
+Synchronous socket creation: The overriding method can return the socket/stream directly.
+Asynchronous socket creation: The overriding method can accept the callback and pass the created socket/stream to it (e.g., callback(null, newSocket)). If an error occurs during socket creation, it should be passed as the first argument to the callback (e.g., callback(err)).
+The agent will call the provided createConnection function with options and this internal callback. The callback provided by the agent has a signature of (err, stream).
+[[H4]] agent.keepSocketAlive(socket)#
+Added in: v8.1.0
+socket <stream.Duplex>
+Called when socket is detached from a request and could be persisted by the Agent. Default behavior is to:
+socket.setKeepAlive(true, this.keepAliveMsecs);
+socket.unref();
+return true;
+jscopy
+This method can be overridden by a particular Agent subclass. If this method returns a falsy value, the socket will be destroyed instead of persisting it for use with the next request.
+The socket argument can be an instance of <net.Socket>, a subclass of <stream.Duplex>.
+[[H4]] agent.reuseSocket(socket, request)#
+Added in: v8.1.0
+socket <stream.Duplex>
+request <http.ClientRequest>
+Called when socket is attached to request after being persisted because of the keep-alive options. Default behavior is to:
+socket.ref();
+jscopy
+This method can be overridden by a particular Agent subclass.
+The socket argument can be an instance of <net.Socket>, a subclass of <stream.Duplex>.
+[[H4]] agent.destroy()#
+Added in: v0.11.4
+Destroy any sockets that are currently in use by the agent.
+It is usually not necessary to do this. However, if using an agent with keepAlive enabled, then it is best to explicitly shut down the agent when it is no longer needed. Otherwise, sockets might stay open for quite a long time before the server terminates them.
+[[H4]] agent.freeSockets#
+Added in: v0.11.4
+History
+VersionChanges
+v16.0.0
+The property now has a null prototype.
+Type: <Object>
+An object which contains arrays of sockets currently awaiting use by the agent when keepAlive is enabled. Do not modify.
+Sockets in the freeSockets list will be automatically destroyed and removed from the array on 'timeout'.
+[[H4]] agent.getName([options])#
+Added in: v0.11.4
+History
+VersionChanges
+v17.7.0, v16.15.0
+The options parameter is now optional.
+options <Object> A set of options providing information for name generation
+host <string> A domain name or IP address of the server to issue the request to
+port <number> Port of remote server
+localAddress <string> Local interface to bind for network connections when issuing the request
+family <integer> Must be 4 or 6 if this doesn't equal undefined.
+Returns: <string>
+Get a unique name for a set of request options, to determine whether a connection can be reused. For an HTTP agent, this returns host:port:localAddress or host:port:localAddress:family. For an HTTPS agent, the name includes the CA, cert, ciphers, and other HTTPS/TLS-specific options that determine socket reusability.
+[[H4]] agent.maxFreeSockets#
+Added in: v0.11.7
+Type: <number>
+By default set to 256. For agents with keepAlive enabled, this sets the maximum number of sockets that will be left open in the free state.
+[[H4]] agent.maxSockets#
+Added in: v0.3.6
+Type: <number>
+By default set to Infinity. Determines how many concurrent sockets the agent can have open per origin. Origin is the returned value of agent.getName().
+[[H4]] agent.maxTotalSockets#
+Added in: v14.5.0, v12.19.0
+Type: <number>
+By default set to Infinity. Determines how many concurrent sockets the agent can have open. Unlike maxSockets, this parameter applies across all origins.
+[[H4]] agent.requests#
+Added in: v0.5.9
+History
+VersionChanges
+v16.0.0
+The property now has a null prototype.
+Type: <Object>
+An object which contains queues of requests that have not yet been assigned to sockets. Do not modify.
+[[H4]] agent.sockets#
+Added in: v0.3.6
+History
+VersionChanges
+v16.0.0
+The property now has a null prototype.
+Type: <Object>
+An object which contains arrays of sockets currently in use by the agent. Do not modify.
+[[H3]] Class: http.ClientRequest#
+Added in: v0.1.17
+Extends: <http.OutgoingMessage>
+This object is created internally and returned from http.request(). It represents an in-progress request whose header has already been queued. The header is still mutable using the setHeader(name, value), getHeader(name), removeHeader(name) API. The actual header will be sent along with the first data chunk or when calling request.end().
+To get the response, add a listener for 'response' to the request object. 'response' will be emitted from the request object when the response headers have been received. The 'response' event is executed with one argument which is an instance of http.IncomingMessage.
+During the 'response' event, one can add listeners to the response object; particularly to listen for the 'data' event.
+If no 'response' handler is added, then the response will be entirely discarded. However, if a 'response' event handler is added, then the data from the response object must be consumed, either by calling response.read() whenever there is a 'readable' event, or by adding a 'data' handler, or by calling the .resume() method. Until the data is consumed, the 'end' event will not fire. Also, until the data is read it will consume memory that can eventually lead to a 'process out of memory' error.
+For backward compatibility, res will only emit 'error' if there is an 'error' listener registered.
+Set Content-Length header to limit the response body size. If response.strictContentLength is set to true, mismatching the Content-Length header value will result in an Error being thrown, identified by code: 'ERR_HTTP_CONTENT_LENGTH_MISMATCH'.
+Content-Length value should be in bytes, not characters. Use Buffer.byteLength() to determine the length of the body in bytes.
+[[H4]] Event: 'abort'#
+Added in: v1.4.1Deprecated in: v17.0.0, v16.12.0
+Stability: 0 - Deprecated. Listen for the 'close' event instead.
+Emitted when the request has been aborted by the client. This event is only emitted on the first call to abort().
+[[H4]] Event: 'close'#
+Added in: v0.5.4
+Indicates that the request is completed, or its underlying connection was terminated prematurely (before the response completion).
+[[H4]] Event: 'connect'#
+Added in: v0.7.0
+response <http.IncomingMessage>
+socket <stream.Duplex>
+head <Buffer>
+Emitted each time a server responds to a request with a CONNECT method. If this event is not being listened for, clients receiving a CONNECT method will have their connections closed.
+This event is guaranteed to be passed an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specifies a socket type other than <net.Socket>.
+A client and server pair demonstrating how to listen for the 'connect' event:
+import { createServer, request } from 'node:http';
+import { connect } from 'node:net';
+import { URL } from 'node:url';
+// Create an HTTP tunneling proxy
+const proxy = createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('okay');
+});
+proxy.on('connect', (req, clientSocket, head) => {
+// Connect to an origin server
+const { port, hostname } = new URL(`http://${req.url}`);
+const serverSocket = connect(port || 80, hostname, () => {
+clientSocket.write('HTTP/1.1 200 Connection Established\r\n' +
+'Proxy-agent: Node.js-Proxy\r\n' +
+'\r\n');
+serverSocket.write(head);
+serverSocket.pipe(clientSocket);
+clientSocket.pipe(serverSocket);
+});
+});
+// Now that proxy is running
+proxy.listen(1337, '127.0.0.1', () => {
+// Make a request to a tunneling proxy
+const options = {
+port: 1337,
+host: '127.0.0.1',
+method: 'CONNECT',
+path: 'www.google.com:80',
+};
+const req = request(options);
+req.end();
+req.on('connect', (res, socket, head) => {
+console.log('got connected!');
+// Make a request over an HTTP tunnel
+socket.write('GET / HTTP/1.1\r\n' +
+'Host: www.google.com:80\r\n' +
+'Connection: close\r\n' +
+'\r\n');
+socket.on('data', (chunk) => {
+console.log(chunk.toString());
+});
+socket.on('end', () => {
+proxy.close();
+});
+});
+});
+const http = require('node:http');
+const net = require('node:net');
+const { URL } = require('node:url');
+// Create an HTTP tunneling proxy
+const proxy = http.createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('okay');
+});
+proxy.on('connect', (req, clientSocket, head) => {
+// Connect to an origin server
+const { port, hostname } = new URL(`http://${req.url}`);
+const serverSocket = net.connect(port || 80, hostname, () => {
+clientSocket.write('HTTP/1.1 200 Connection Established\r\n' +
+'Proxy-agent: Node.js-Proxy\r\n' +
+'\r\n');
+serverSocket.write(head);
+serverSocket.pipe(clientSocket);
+clientSocket.pipe(serverSocket);
+});
+});
+// Now that proxy is running
+proxy.listen(1337, '127.0.0.1', () => {
+// Make a request to a tunneling proxy
+const options = {
+port: 1337,
+host: '127.0.0.1',
+method: 'CONNECT',
+path: 'www.google.com:80',
+};
+const req = http.request(options);
+req.end();
+req.on('connect', (res, socket, head) => {
+console.log('got connected!');
+// Make a request over an HTTP tunnel
+socket.write('GET / HTTP/1.1\r\n' +
+'Host: www.google.com:80\r\n' +
+'Connection: close\r\n' +
+'\r\n');
+socket.on('data', (chunk) => {
+console.log(chunk.toString());
+});
+socket.on('end', () => {
+proxy.close();
+});
+});
+});
+javascriptcopy
+[[H4]] Event: 'continue'#
+Added in: v0.3.2
+Emitted when the server sends a '100 Continue' HTTP response, usually because the request contained 'Expect: 100-continue'. This is an instruction that the client should send the request body.
+[[H4]] Event: 'finish'#
+Added in: v0.3.6
+Emitted when the request has been sent. More specifically, this event is emitted when the last segment of the request headers and body have been handed off to the operating system for transmission over the network. It does not imply that the server has received anything yet.
+[[H4]] Event: 'information'#
+Added in: v10.0.0
+info <Object>
+httpVersion <string>
+httpVersionMajor <integer>
+httpVersionMinor <integer>
+statusCode <integer>
+statusMessage <string>
+headers <Object>
+rawHeaders <string>[]
+Emitted when the server sends a 1xx intermediate response (excluding 101 Upgrade). The listeners of this event will receive an object containing the HTTP version, status code, status message, key-value headers object, and array with the raw header names followed by their respective values.
+import { request } from 'node:http';
+const options = {
+host: '127.0.0.1',
+port: 8080,
+path: '/length_request',
+};
+// Make a request
+const req = request(options);
+req.end();
+req.on('information', (info) => {
+console.log(`Got information prior to main response: ${info.statusCode}`);
+});
+const http = require('node:http');
+const options = {
+host: '127.0.0.1',
+port: 8080,
+path: '/length_request',
+};
+// Make a request
+const req = http.request(options);
+req.end();
+req.on('information', (info) => {
+console.log(`Got information prior to main response: ${info.statusCode}`);
+});
+javascriptcopy
+101 Upgrade statuses do not fire this event due to their break from the traditional HTTP request/response chain, such as web sockets, in-place TLS upgrades, or HTTP 2.0. To be notified of 101 Upgrade notices, listen for the 'upgrade' event instead.
+[[H4]] Event: 'response'#
+Added in: v0.1.0
+response <http.IncomingMessage>
+Emitted when a response is received to this request. This event is emitted only once.
+[[H4]] Event: 'socket'#
+Added in: v0.5.3
+socket <stream.Duplex>
+This event is guaranteed to be passed an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specifies a socket type other than <net.Socket>.
+[[H4]] Event: 'timeout'#
+Added in: v0.7.8
+Emitted when the underlying socket times out from inactivity. This only notifies that the socket has been idle. The request must be destroyed manually.
+See also: request.setTimeout().
+[[H4]] Event: 'upgrade'#
+Added in: v0.1.94
+response <http.IncomingMessage>
+stream <stream.Duplex>
+head <Buffer>
+Emitted each time a server responds to a request with an upgrade. If this event is not being listened for and the response status code is 101 Switching Protocols, clients receiving an upgrade header will have their connections closed.
+This event is guaranteed to be passed an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specifies a socket type other than <net.Socket>.
+A client server pair demonstrating how to listen for the 'upgrade' event.
+import http from 'node:http';
+import process from 'node:process';
+// Create an HTTP server
+const server = http.createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('okay');
+});
+server.on('upgrade', (req, stream, head) => {
+stream.write('HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
+'Upgrade: WebSocket\r\n' +
+'Connection: Upgrade\r\n' +
+'\r\n');
+stream.pipe(stream); // echo back
+});
+// Now that server is running
+server.listen(1337, '127.0.0.1', () => {
+// make a request
+const options = {
+port: 1337,
+host: '127.0.0.1',
+headers: {
+'Connection': 'Upgrade',
+'Upgrade': 'websocket',
+},
+};
+const req = http.request(options);
+req.end();
+req.on('upgrade', (res, stream, upgradeHead) => {
+console.log('got upgraded!');
+stream.end();
+process.exit(0);
+});
+});
+const http = require('node:http');
+// Create an HTTP server
+const server = http.createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('okay');
+});
+server.on('upgrade', (req, stream, head) => {
+stream.write('HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
+'Upgrade: WebSocket\r\n' +
+'Connection: Upgrade\r\n' +
+'\r\n');
+stream.pipe(stream); // echo back
+});
+// Now that server is running
+server.listen(1337, '127.0.0.1', () => {
+// make a request
+const options = {
+port: 1337,
+host: '127.0.0.1',
+headers: {
+'Connection': 'Upgrade',
+'Upgrade': 'websocket',
+},
+};
+const req = http.request(options);
+req.end();
+req.on('upgrade', (res, stream, upgradeHead) => {
+console.log('got upgraded!');
+stream.end();
+process.exit(0);
+});
+});
+javascriptcopy
+[[H4]] request.abort()#
+Added in: v0.3.8Deprecated in: v14.1.0, v13.14.0
+Stability: 0 - Deprecated: Use request.destroy() instead.
+Marks the request as aborting. Calling this will cause remaining data in the response to be dropped and the socket to be destroyed.
+[[H4]] request.aborted#
+Added in: v0.11.14Deprecated in: v17.0.0, v16.12.0
+History
+VersionChanges
+v11.0.0
+The aborted property is no longer a timestamp number.
+Stability: 0 - Deprecated. Check request.destroyed instead.
+Type: <boolean>
+The request.aborted property will be true if the request has been aborted.
+[[H4]] request.connection#
+Added in: v0.3.0Deprecated in: v13.0.0
+Stability: 0 - Deprecated. Use request.socket.
+Type: <stream.Duplex>
+See request.socket.
+[[H4]] request.cork()#
+Added in: v13.2.0, v12.16.0
+See writable.cork().
+[[H4]] request.end([data[, encoding]][, callback])#
+Added in: v0.1.90
+History
+VersionChanges
+v15.0.0
+The data parameter can now be a Uint8Array.
+v10.0.0
+This method now returns a reference to ClientRequest.
+data <string> | <Buffer> | <Uint8Array>
+encoding <string>
+callback <Function>
+Returns: <this>
+Finishes sending the request. If any parts of the body are unsent, it will flush them to the stream. If the request is chunked, this will send the terminating '0\r\n\r\n'.
+If data is specified, it is equivalent to calling request.write(data, encoding) followed by request.end(callback).
+If callback is specified, it will be called when the request stream is finished.
+[[H4]] request.destroy([error])#
+Added in: v0.3.0
+History
+VersionChanges
+v14.5.0
+The function returns this for consistency with other Readable streams.
+error <Error> Optional, an error to emit with 'error' event.
+Returns: <this>
+Destroy the request. Optionally emit an 'error' event, and emit a 'close' event. Calling this will cause remaining data in the response to be dropped, and the socket to be destroyed if used, or returned to the corresponding Agent pool otherwise if possible.
+See writable.destroy() for further details.
+[[H5]] request.destroyed#
+Added in: v14.1.0, v13.14.0
+Type: <boolean>
+Is true after request.destroy() has been called.
+See writable.destroyed for further details.
+[[H4]] request.finished#
+Added in: v0.0.1Deprecated in: v13.4.0, v12.16.0
+Stability: 0 - Deprecated. Use request.writableEnded.
+Type: <boolean>
+The request.finished property will be true if request.end() has been called. request.end() will automatically be called if the request was initiated via http.get().
+[[H4]] request.flushHeaders()#
+Added in: v1.6.0
+Flushes the request headers.
+For efficiency reasons, Node.js normally buffers the request headers until request.end() is called or the first chunk of request data is written. It then tries to pack the request headers and data into a single TCP packet.
+That's usually desired (it saves a TCP round-trip), but not when the first data is not sent until possibly much later. request.flushHeaders() bypasses the optimization and kickstarts the request.
+[[H4]] request.getHeader(name)#
+Added in: v1.6.0
+name <string>
+Returns: <any>
+Reads out a header on the request. The name is case-insensitive. The type of the return value depends on the arguments provided to request.setHeader().
+request.setHeader('content-type', 'text/html');
+request.setHeader('Content-Length', Buffer.byteLength(body));
+request.setHeader('Cookie', ['type=ninja', 'language=javascript']);
+const contentType = request.getHeader('Content-Type');
+// 'contentType' is 'text/html'
+const contentLength = request.getHeader('Content-Length');
+// 'contentLength' is of type number
+const cookie = request.getHeader('Cookie');
+// 'cookie' is of type string[]
+jscopy
+[[H4]] request.getHeaderNames()#
+Added in: v7.7.0
+Returns: <string>[]
+Returns an array containing the unique names of the current outgoing headers. All header names are lowercase.
+request.setHeader('Foo', 'bar');
+request.setHeader('Cookie', ['foo=bar', 'bar=baz']);
+const headerNames = request.getHeaderNames();
+// headerNames === ['foo', 'cookie']
+jscopy
+[[H4]] request.getHeaders()#
+Added in: v7.7.0
+Returns: <Object>
+Returns a shallow copy of the current outgoing headers. Since a shallow copy is used, array values may be mutated without additional calls to various header-related http module methods. The keys of the returned object are the header names and the values are the respective header values. All header names are lowercase.
+The object returned by the request.getHeaders() method does not prototypically inherit from the JavaScript Object. This means that typical Object methods such as obj.toString(), obj.hasOwnProperty(), and others are not defined and will not work.
+request.setHeader('Foo', 'bar');
+request.setHeader('Cookie', ['foo=bar', 'bar=baz']);
+const headers = request.getHeaders();
+// headers === { foo: 'bar', 'cookie': ['foo=bar', 'bar=baz'] }
+jscopy
+[[H4]] request.getRawHeaderNames()#
+Added in: v15.13.0, v14.17.0
+Returns: <string>[]
+Returns an array containing the unique names of the current outgoing raw headers. Header names are returned with their exact casing being set.
+request.setHeader('Foo', 'bar');
+request.setHeader('Set-Cookie', ['foo=bar', 'bar=baz']);
+const headerNames = request.getRawHeaderNames();
+// headerNames === ['Foo', 'Set-Cookie']
+jscopy
+[[H4]] request.hasHeader(name)#
+Added in: v7.7.0
+name <string>
+Returns: <boolean>
+Returns true if the header identified by name is currently set in the outgoing headers. The header name matching is case-insensitive.
+const hasContentType = request.hasHeader('content-type');
+jscopy
+[[H4]] request.maxHeadersCount#
+Type: <number> Default: 1000
+Limits maximum response headers count. If set to 0, no limit will be applied.
+[[H4]] request.path#
+Added in: v0.4.0
+Type: <string> The request path.
+[[H4]] request.method#
+Added in: v0.1.97
+Type: <string> The request method.
+[[H4]] request.host#
+Added in: v14.5.0, v12.19.0
+Type: <string> The request host.
+[[H4]] request.protocol#
+Added in: v14.5.0, v12.19.0
+Type: <string> The request protocol.
+[[H4]] request.removeHeader(name)#
+Added in: v1.6.0
+name <string>
+Removes a header that's already defined into headers object.
+request.removeHeader('Content-Type');
+jscopy
+[[H4]] request.reusedSocket#
+Added in: v13.0.0, v12.16.0
+Type: <boolean> Whether the request is sent through a reused socket.
+When sending request through a keep-alive enabled agent, the underlying socket might be reused. But if server closes connection at unfortunate time, client may run into a 'ECONNRESET' error.
+import http from 'node:http';
+const agent = new http.Agent({ keepAlive: true });
+// Server has a 5 seconds keep-alive timeout by default
+http
+.createServer((req, res) => {
+res.write('hello\n');
+res.end();
+})
+.listen(3000);
+setInterval(() => {
+// Adapting a keep-alive agent
+http.get('http://localhost:3000', { agent }, (res) => {
+res.on('data', (data) => {
+// Do nothing
+});
+});
+}, 5000); // Sending request on 5s interval so it's easy to hit idle timeout
+const http = require('node:http');
+const agent = new http.Agent({ keepAlive: true });
+// Server has a 5 seconds keep-alive timeout by default
+http
+.createServer((req, res) => {
+res.write('hello\n');
+res.end();
+})
+.listen(3000);
+setInterval(() => {
+// Adapting a keep-alive agent
+http.get('http://localhost:3000', { agent }, (res) => {
+res.on('data', (data) => {
+// Do nothing
+});
+});
+}, 5000); // Sending request on 5s interval so it's easy to hit idle timeout
+javascriptcopy
+By marking a request whether it reused socket or not, we can do automatic error retry base on it.
+import http from 'node:http';
+const agent = new http.Agent({ keepAlive: true });
+function retriableRequest() {
+const req = http
+.get('http://localhost:3000', { agent }, (res) => {
+// ...
+})
+.on('error', (err) => {
+// Check if retry is needed
+if (req.reusedSocket && err.code === 'ECONNRESET') {
+retriableRequest();
+}
+});
+}
+retriableRequest();
+const http = require('node:http');
+const agent = new http.Agent({ keepAlive: true });
+function retriableRequest() {
+const req = http
+.get('http://localhost:3000', { agent }, (res) => {
+// ...
+})
+.on('error', (err) => {
+// Check if retry is needed
+if (req.reusedSocket && err.code === 'ECONNRESET') {
+retriableRequest();
+}
+});
+}
+retriableRequest();
+javascriptcopy
+[[H4]] request.setHeader(name, value)#
+Added in: v1.6.0
+name <string>
+value <any>
+Sets a single header value for headers object. If this header already exists in the to-be-sent headers, its value will be replaced. Use an array of strings here to send multiple headers with the same name. Non-string values will be stored without modification. Therefore, request.getHeader() may return non-string values. However, the non-string values will be converted to strings for network transmission.
+request.setHeader('Content-Type', 'application/json');
+jscopy
+or
+request.setHeader('Cookie', ['type=ninja', 'language=javascript']);
+jscopy
+When the value is a string an exception will be thrown if it contains characters outside the latin1 encoding.
+If you need to pass UTF-8 characters in the value please encode the value using the RFC 8187 standard.
+const filename = 'Rock 🎵.txt';
+request.setHeader('Content-Disposition', `attachment; filename*=utf-8''${encodeURIComponent(filename)}`);
+jscopy
+[[H4]] request.setNoDelay([noDelay])#
+Added in: v0.5.9
+noDelay <boolean>
+Once a socket is assigned to this request and is connected socket.setNoDelay() will be called.
+[[H4]] request.setSocketKeepAlive([enable][, initialDelay])#
+Added in: v0.5.9
+enable <boolean>
+initialDelay <number>
+Once a socket is assigned to this request and is connected socket.setKeepAlive() will be called.
+[[H4]] request.setTimeout(timeout[, callback])#
+Added in: v0.5.9
+History
+VersionChanges
+v9.0.0
+Consistently set socket timeout only when the socket connects.
+timeout <number> Milliseconds before a request times out.
+callback <Function> Optional function to be called when a timeout occurs. Same as binding to the 'timeout' event.
+Returns: <http.ClientRequest>
+Once a socket is assigned to this request and is connected socket.setTimeout() will be called.
+[[H4]] request.socket#
+Added in: v0.3.0
+Type: <stream.Duplex>
+Reference to the underlying socket. Usually users will not want to access this property. In particular, the socket will not emit 'readable' events because of how the protocol parser attaches to the socket.
+import http from 'node:http';
+const options = {
+host: 'www.google.com',
+};
+const req = http.get(options);
+req.end();
+req.once('response', (res) => {
+const ip = req.socket.localAddress;
+const port = req.socket.localPort;
+console.log(`Your IP address is ${ip} and your source port is ${port}.`);
+// Consume response object
+});
+const http = require('node:http');
+const options = {
+host: 'www.google.com',
+};
+const req = http.get(options);
+req.end();
+req.once('response', (res) => {
+const ip = req.socket.localAddress;
+const port = req.socket.localPort;
+console.log(`Your IP address is ${ip} and your source port is ${port}.`);
+// Consume response object
+});
+javascriptcopy
+This property is guaranteed to be an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specified a socket type other than <net.Socket>.
+[[H4]] request.uncork()#
+Added in: v13.2.0, v12.16.0
+See writable.uncork().
+[[H4]] request.writableEnded#
+Added in: v12.9.0
+Type: <boolean>
+Is true after request.end() has been called. This property does not indicate whether the data has been flushed, for this use request.writableFinished instead.
+[[H4]] request.writableFinished#
+Added in: v12.7.0
+Type: <boolean>
+Is true if all data has been flushed to the underlying system, immediately before the 'finish' event is emitted.
+[[H4]] request.write(chunk[, encoding][, callback])#
+Added in: v0.1.29
+History
+VersionChanges
+v15.0.0
+The chunk parameter can now be a Uint8Array.
+chunk <string> | <Buffer> | <Uint8Array>
+encoding <string>
+callback <Function>
+Returns: <boolean>
+Sends a chunk of the body. This method can be called multiple times. If no Content-Length is set, data will automatically be encoded in HTTP Chunked transfer encoding, so that server knows when the data ends. The Transfer-Encoding: chunked header is added. Calling request.end() is necessary to finish sending the request.
+The encoding argument is optional and only applies when chunk is a string. Defaults to 'utf8'.
+The callback argument is optional and will be called when this chunk of data is flushed, but only if the chunk is non-empty.
+Returns true if the entire data was flushed successfully to the kernel buffer. Returns false if all or part of the data was queued in user memory. 'drain' will be emitted when the buffer is free again.
+When write function is called with empty string or buffer, it does nothing and waits for more input.
+[[H3]] Class: http.Server#
+Added in: v0.1.17
+Extends: <net.Server>
+[[H4]] Event: 'checkContinue'#
+Added in: v0.3.0
+request <http.IncomingMessage>
+response <http.ServerResponse>
+Emitted each time a request with an HTTP Expect: 100-continue is received. If this event is not listened for, the server will automatically respond with a 100 Continue as appropriate.
+Handling this event involves calling response.writeContinue() if the client should continue to send the request body, or generating an appropriate HTTP response (e.g. 400 Bad Request) if the client should not continue to send the request body.
+When this event is emitted and handled, the 'request' event will not be emitted.
+[[H4]] Event: 'checkExpectation'#
+Added in: v5.5.0
+request <http.IncomingMessage>
+response <http.ServerResponse>
+Emitted each time a request with an HTTP Expect header is received, where the value is not 100-continue. If this event is not listened for, the server will automatically respond with a 417 Expectation Failed as appropriate.
+When this event is emitted and handled, the 'request' event will not be emitted.
+[[H4]] Event: 'clientError'#
+Added in: v0.1.94
+History
+VersionChanges
+v12.0.0
+The default behavior will return a 431 Request Header Fields Too Large if an HPE_HEADER_OVERFLOW error occurs.
+v9.4.0
+The rawPacket is the current buffer that just parsed. Adding this buffer to the error object of 'clientError' event is to make it possible that developers can log the broken packet.
+v6.0.0
+The default action of calling .destroy() on the socket will no longer take place if there are listeners attached for 'clientError'.
+exception <Error>
+socket <stream.Duplex>
+If a client connection emits an 'error' event, it will be forwarded here. Listener of this event is responsible for closing/destroying the underlying socket. For example, one may wish to more gracefully close the socket with a custom HTTP response instead of abruptly severing the connection. The socket must be closed or destroyed before the listener ends.
+This event is guaranteed to be passed an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specifies a socket type other than <net.Socket>.
+Default behavior is to try close the socket with an HTTP '400 Bad Request', or an HTTP '431 Request Header Fields Too Large' in the case of an HPE_HEADER_OVERFLOW error. If the socket is not writable or headers of the current attached http.ServerResponse has been sent, it is immediately destroyed.
+socket is the net.Socket object that the error originated from.
+import http from 'node:http';
+const server = http.createServer((req, res) => {
+res.end();
+});
+server.on('clientError', (err, socket) => {
+socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+});
+server.listen(8000);
+const http = require('node:http');
+const server = http.createServer((req, res) => {
+res.end();
+});
+server.on('clientError', (err, socket) => {
+socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+});
+server.listen(8000);
+javascriptcopy
+When the 'clientError' event occurs, there is no request or response object, so any HTTP response sent, including response headers and payload, must be written directly to the socket object. Care must be taken to ensure the response is a properly formatted HTTP response message.
+err is an instance of Error with two extra columns:
+bytesParsed: the bytes count of request packet that Node.js may have parsed correctly;
+rawPacket: the raw packet of current request.
+In some cases, the client has already received the response and/or the socket has already been destroyed, like in case of ECONNRESET errors. Before trying to send data to the socket, it is better to check that it is still writable.
+server.on('clientError', (err, socket) => {
+if (err.code === 'ECONNRESET' || !socket.writable) {
+return;
+}
+socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+});
+jscopy
+[[H4]] Event: 'close'#
+Added in: v0.1.4
+Emitted when the server closes.
+[[H4]] Event: 'connect'#
+Added in: v0.7.0
+request <http.IncomingMessage> Arguments for the HTTP request, as it is in the 'request' event
+socket <stream.Duplex> Network socket between the server and client
+head <Buffer> The first packet of the tunneling stream (may be empty)
+Emitted each time a client requests an HTTP CONNECT method. If this event is not listened for, then clients requesting a CONNECT method will have their connections closed.
+This event is guaranteed to be passed an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specifies a socket type other than <net.Socket>.
+After this event is emitted, the request's socket will not have a 'data' event listener, meaning it will need to be bound in order to handle data sent to the server on that socket.
+[[H4]] Event: 'connection'#
+Added in: v0.1.0
+socket <stream.Duplex>
+This event is emitted when a new TCP stream is established. socket is typically an object of type net.Socket. Usually users will not want to access this event. In particular, the socket will not emit 'readable' events because of how the protocol parser attaches to the socket. The socket can also be accessed at request.socket.
+This event can also be explicitly emitted by users to inject connections into the HTTP server. In that case, any Duplex stream can be passed.
+If socket.setTimeout() is called here, the timeout will be replaced with server.keepAliveTimeout when the socket has served a request (if server.keepAliveTimeout is non-zero).
+This event is guaranteed to be passed an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specifies a socket type other than <net.Socket>.
+[[H4]] Event: 'dropRequest'#
+Added in: v18.7.0, v16.17.0
+request <http.IncomingMessage> Arguments for the HTTP request, as it is in the 'request' event
+socket <stream.Duplex> Network socket between the server and client
+When the number of requests on a socket reaches the threshold of server.maxRequestsPerSocket, the server will drop new requests and emit 'dropRequest' event instead, then send 503 to client.
+[[H4]] Event: 'request'#
+Added in: v0.1.0
+request <http.IncomingMessage>
+response <http.ServerResponse>
+Emitted each time there is a request. There may be multiple requests per connection (in the case of HTTP Keep-Alive connections).
+[[H4]] Event: 'upgrade'#
+Added in: v0.1.94
+History
+VersionChanges
+v26.0.0
+Request bodies are no longer exposed raw (unparsed) on the socket argument. Instead, if a body is received, the stream argument will be a duplex that emits socket content only after the request body, while the parsed request body data will be emitted from the request, just as in normal server 'request' events.
+v24.9.0, v22.21.0
+Whether this event is fired can now be controlled by the shouldUpgradeCallback and sockets will be destroyed if upgraded while no event handler is listening.
+v10.0.0
+Not listening to this event no longer causes the socket to be destroyed if a client sends an Upgrade header.
+request <http.IncomingMessage> Arguments for the HTTP request, as it is in the 'request' event
+stream <stream.Duplex> The upgraded stream between the server and client
+head <Buffer> The first packet of the upgraded stream (may be empty)
+Emitted each time a client's HTTP upgrade request is accepted. By default all HTTP upgrade requests are ignored (i.e. only regular 'request' events are emitted, sticking with the normal HTTP request/response flow) unless you listen to this event, in which case they are all accepted (i.e. the 'upgrade' event is emitted instead, and future communication must handled directly through the raw stream). You can control this more precisely by using the server shouldUpgradeCallback option.
+Listening to this event is optional and clients cannot insist on a protocol change.
+If an upgrade is accepted by shouldUpgradeCallback but no event handler is registered then the socket will be destroyed, resulting in an immediate connection closure for the client.
+In the uncommon case that the incoming request has a body, this body will be parsed as normal, separate to the upgrade stream, and the raw stream data will only begin after it has completed. To ensure that reading from the stream isn't blocked by waiting for the request body to be read, any reads on the stream will start the request body flowing automatically. If you want to read the request body, ensure that you do so (i.e. you attach 'data' listeners) before starting to read from the upgraded stream.
+The stream argument will typically be the <net.Socket> instance used by the request, but in some cases (such as with a request body) it may be a duplex stream. If required, you can access the raw connection underlying the request via request.socket, which is guaranteed to be an instance of <net.Socket> unless the user specified another socket type.
+[[H4]] server.close([callback])#
+Added in: v0.1.90
+History
+VersionChanges
+v19.0.0
+The method closes idle connections before returning.
+callback <Function>
+Stops the server from accepting new connections and closes all connections connected to this server which are not sending a request or waiting for a response. See net.Server.close().
+const http = require('node:http');
+const server = http.createServer({ keepAliveTimeout: 60000 }, (req, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+// Close the server after 10 seconds
+setTimeout(() => {
+server.close(() => {
+console.log('server on port 8000 closed successfully');
+});
+}, 10000);
+jscopy
+[[H4]] server.closeAllConnections()#
+Added in: v18.2.0
+Closes all established HTTP(S) connections connected to this server, including active connections connected to this server which are sending a request or waiting for a response. This does not destroy sockets upgraded to a different protocol, such as WebSocket or HTTP/2.
+This is a forceful way of closing all connections and should be used with caution. Whenever using this in conjunction with server.close, calling this after server.close is recommended as to avoid race conditions where new connections are created between a call to this and a call to server.close.
+const http = require('node:http');
+const server = http.createServer({ keepAliveTimeout: 60000 }, (req, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+// Close the server after 10 seconds
+setTimeout(() => {
+server.close(() => {
+console.log('server on port 8000 closed successfully');
+});
+// Closes all connections, ensuring the server closes successfully
+server.closeAllConnections();
+}, 10000);
+jscopy
+[[H4]] server.closeIdleConnections()#
+Added in: v18.2.0
+Closes all connections connected to this server which are not sending a request or waiting for a response.
+Starting with Node.js 19.0.0, there's no need for calling this method in conjunction with server.close to reap keep-alive connections. Using it won't cause any harm though, and it can be useful to ensure backwards compatibility for libraries and applications that need to support versions older than 19.0.0. Whenever using this in conjunction with server.close, calling this after server.close is recommended as to avoid race conditions where new connections are created between a call to this and a call to server.close.
+const http = require('node:http');
+const server = http.createServer({ keepAliveTimeout: 60000 }, (req, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+// Close the server after 10 seconds
+setTimeout(() => {
+server.close(() => {
+console.log('server on port 8000 closed successfully');
+});
+// Closes idle connections, such as keep-alive connections. Server will close
+// once remaining active connections are terminated
+server.closeIdleConnections();
+}, 10000);
+jscopy
+[[H4]] server.headersTimeout#
+Added in: v11.3.0, v10.14.0
+History
+VersionChanges
+v19.4.0, v18.14.0
+The default is now set to the minimum between 60000 (60 seconds) or requestTimeout.
+Type: <number> Default: The minimum between server.requestTimeout or 60000.
+Limit the amount of time the parser will wait to receive the complete HTTP headers.
+If the timeout expires, the server responds with status 408 without forwarding the request to the request listener and then closes the connection.
+It must be set to a non-zero value (e.g. 120 seconds) to protect against potential Denial-of-Service attacks in case the server is deployed without a reverse proxy in front.
+[[H4]] server.listen()#
+Starts the HTTP server listening for connections. This method is identical to server.listen() from net.Server.
+[[H4]] server.listening#
+Added in: v5.7.0
+Type: <boolean> Indicates whether or not the server is listening for connections.
+[[H4]] server.maxHeadersCount#
+Added in: v0.7.0
+Type: <number> Default: 1000
+Limits maximum incoming headers count. If set to 0, no limit will be applied.
+[[H4]] server.requestTimeout#
+Added in: v14.11.0
+History
+VersionChanges
+v18.0.0
+The default request timeout changed from no timeout to 300s (5 minutes).
+Type: <number> Default: 300000
+Sets the timeout value in milliseconds for receiving the entire request from the client.
+If the timeout expires, the server responds with status 408 without forwarding the request to the request listener and then closes the connection.
+It must be set to a non-zero value (e.g. 120 seconds) to protect against potential Denial-of-Service attacks in case the server is deployed without a reverse proxy in front.
+[[H4]] server.setTimeout([msecs][, callback])#
+Added in: v0.9.12
+History
+VersionChanges
+v13.0.0
+The default timeout changed from 120s to 0 (no timeout).
+msecs <number> Default: 0 (no timeout)
+callback <Function>
+Returns: <http.Server>
+Sets the timeout value for sockets, and emits a 'timeout' event on the Server object, passing the socket as an argument, if a timeout occurs.
+If there is a 'timeout' event listener on the Server object, then it will be called with the timed-out socket as an argument.
+By default, the Server does not timeout sockets. However, if a callback is assigned to the Server's 'timeout' event, timeouts must be handled explicitly.
+[[H4]] server.maxRequestsPerSocket#
+Added in: v16.10.0
+Type: <number> Requests per socket. Default: 0 (no limit)
+The maximum number of requests socket can handle before closing keep alive connection.
+A value of 0 will disable the limit.
+When the limit is reached it will set the Connection header value to close, but will not actually close the connection, subsequent requests sent after the limit is reached will get 503 Service Unavailable as a response.
+[[H4]] server.timeout#
+Added in: v0.9.12
+History
+VersionChanges
+v13.0.0
+The default timeout changed from 120s to 0 (no timeout).
+Type: <number> Timeout in milliseconds. Default: 0 (no timeout)
+The number of milliseconds of inactivity before a socket is presumed to have timed out.
+A value of 0 will disable the timeout behavior on incoming connections.
+The socket timeout logic is set up on connection, so changing this value only affects new connections to the server, not any existing connections.
+[[H4]] server.keepAliveTimeout#
+Added in: v8.0.0
+Type: <number> Timeout in milliseconds. Default: 5000 (5 seconds).
+The number of milliseconds of inactivity a server needs to wait for additional incoming data, after it has finished writing the last response, before a socket will be destroyed.
+This timeout value is combined with the server.keepAliveTimeoutBuffer option to determine the actual socket timeout, calculated as: socketTimeout = keepAliveTimeout + keepAliveTimeoutBuffer If the server receives new data before the keep-alive timeout has fired, it will reset the regular inactivity timeout, i.e., server.timeout.
+A value of 0 will disable the keep-alive timeout behavior on incoming connections. A value of 0 makes the HTTP server behave similarly to Node.js versions prior to 8.0.0, which did not have a keep-alive timeout.
+The socket timeout logic is set up on connection, so changing this value only affects new connections to the server, not any existing connections.
+[[H4]] server.keepAliveTimeoutBuffer#
+Added in: v24.6.0, v22.19.0
+Type: <number> Timeout in milliseconds. Default: 1000 (1 second).
+An additional buffer time added to the server.keepAliveTimeout to extend the internal socket timeout.
+This buffer helps reduce connection reset (ECONNRESET) errors by increasing the socket timeout slightly beyond the advertised keep-alive timeout.
+This option applies only to new incoming connections.
+[[H4]] server[Symbol.asyncDispose]()#
+Added in: v20.4.0
+History
+VersionChanges
+v24.2.0
+No longer experimental.
+Calls server.close() and returns a promise that fulfills when the server has closed.
+[[H3]] Class: http.ServerResponse#
+Added in: v0.1.17
+Extends: <http.OutgoingMessage>
+This object is created internally by an HTTP server, not by the user. It is passed as the second parameter to the 'request' event.
+[[H4]] Event: 'close'#
+Added in: v0.6.7
+Indicates that the response is completed, or its underlying connection was terminated prematurely (before the response completion).
+[[H4]] Event: 'finish'#
+Added in: v0.3.6
+Emitted when the response has been sent. More specifically, this event is emitted when the last segment of the response headers and body have been handed off to the operating system for transmission over the network. It does not imply that the client has received anything yet.
+[[H4]] response.addTrailers(headers)#
+Added in: v0.3.0
+headers <Object>
+This method adds HTTP trailing headers (a header but at the end of the message) to the response.
+Trailers will only be emitted if chunked encoding is used for the response; if it is not (e.g. if the request was HTTP/1.0), they will be silently discarded.
+HTTP requires the Trailer header to be sent in order to emit trailers, with a list of the header fields in its value. E.g.,
+response.writeHead(200, { 'Content-Type': 'text/plain',
+'Trailer': 'Content-MD5' });
+response.write(fileData);
+response.addTrailers({ 'Content-MD5': '7895bf4b8828b55ceaf47747b4bca667' });
+response.end();
+jscopy
+Attempting to set a header field name or value that contains invalid characters will result in a TypeError being thrown.
+[[H4]] response.connection#
+Added in: v0.3.0Deprecated in: v13.0.0
+Stability: 0 - Deprecated. Use response.socket.
+Type: <stream.Duplex>
+See response.socket.
+[[H4]] response.cork()#
+Added in: v13.2.0, v12.16.0
+See writable.cork().
+[[H4]] response.end([data[, encoding]][, callback])#
+Added in: v0.1.90
+History
+VersionChanges
+v15.0.0
+The data parameter can now be a Uint8Array.
+v10.0.0
+This method now returns a reference to ServerResponse.
+data <string> | <Buffer> | <Uint8Array>
+encoding <string>
+callback <Function>
+Returns: <this>
+This method signals to the server that all of the response headers and body have been sent; that server should consider this message complete. The method, response.end(), MUST be called on each response.
+If data is specified, it is similar in effect to calling response.write(data, encoding) followed by response.end(callback).
+If callback is specified, it will be called when the response stream is finished.
+[[H4]] response.finished#
+Added in: v0.0.2Deprecated in: v13.4.0, v12.16.0
+Stability: 0 - Deprecated. Use response.writableEnded.
+Type: <boolean>
+The response.finished property will be true if response.end() has been called.
+[[H4]] response.flushHeaders()#
+Added in: v1.6.0
+Flushes the response headers. See also: request.flushHeaders().
+[[H4]] response.getHeader(name)#
+Added in: v0.4.0
+name <string>
+Returns: <number> | <string> | <string>[] | <undefined>
+Reads out a header that's already been queued but not sent to the client. The name is case-insensitive. The type of the return value depends on the arguments provided to response.setHeader().
+response.setHeader('Content-Type', 'text/html');
+response.setHeader('Content-Length', Buffer.byteLength(body));
+response.setHeader('Set-Cookie', ['type=ninja', 'language=javascript']);
+const contentType = response.getHeader('content-type');
+// contentType is 'text/html'
+const contentLength = response.getHeader('Content-Length');
+// contentLength is of type number
+const setCookie = response.getHeader('set-cookie');
+// setCookie is of type string[]
+jscopy
+[[H4]] response.getHeaderNames()#
+Added in: v7.7.0
+Returns: <string>[]
+Returns an array containing the unique names of the current outgoing headers. All header names are lowercase.
+response.setHeader('Foo', 'bar');
+response.setHeader('Set-Cookie', ['foo=bar', 'bar=baz']);
+const headerNames = response.getHeaderNames();
+// headerNames === ['foo', 'set-cookie']
+jscopy
+[[H4]] response.getHeaders()#
+Added in: v7.7.0
+Returns: <Object>
+Returns a shallow copy of the current outgoing headers. Since a shallow copy is used, array values may be mutated without additional calls to various header-related http module methods. The keys of the returned object are the header names and the values are the respective header values. All header names are lowercase.
+The object returned by the response.getHeaders() method does not prototypically inherit from the JavaScript Object. This means that typical Object methods such as obj.toString(), obj.hasOwnProperty(), and others are not defined and will not work.
+response.setHeader('Foo', 'bar');
+response.setHeader('Set-Cookie', ['foo=bar', 'bar=baz']);
+const headers = response.getHeaders();
+// headers === { foo: 'bar', 'set-cookie': ['foo=bar', 'bar=baz'] }
+jscopy
+[[H4]] response.hasHeader(name)#
+Added in: v7.7.0
+name <string>
+Returns: <boolean>
+Returns true if the header identified by name is currently set in the outgoing headers. The header name matching is case-insensitive.
+const hasContentType = response.hasHeader('content-type');
+jscopy
+[[H4]] response.headersSent#
+Added in: v0.9.3
+Type: <boolean>
+Boolean (read-only). True if headers were sent, false otherwise.
+[[H4]] response.removeHeader(name)#
+Added in: v0.4.0
+name <string>
+Removes a header that's queued for implicit sending.
+response.removeHeader('Content-Encoding');
+jscopy
+[[H4]] response.req#
+Added in: v15.7.0
+Type: <http.IncomingMessage>
+A reference to the original HTTP request object.
+[[H4]] response.sendDate#
+Added in: v0.7.5
+Type: <boolean>
+When true, the Date header will be automatically generated and sent in the response if it is not already present in the headers. Defaults to true.
+This should only be disabled for testing; the Date header is required in most HTTP responses (see RFC 9110 Section 6.6.1 for details).
+[[H4]] response.setHeader(name, value)#
+Added in: v0.4.0
+name <string>
+value <number> | <string> | <string>[]
+Returns: <http.ServerResponse>
+Returns the response object.
+Sets a single header value for implicit headers. If this header already exists in the to-be-sent headers, its value will be replaced. Use an array of strings here to send multiple headers with the same name. Non-string values will be stored without modification. Therefore, response.getHeader() may return non-string values. However, the non-string values will be converted to strings for network transmission. The same response object is returned to the caller, to enable call chaining.
+response.setHeader('Content-Type', 'text/html');
+jscopy
+or
+response.setHeader('Set-Cookie', ['type=ninja', 'language=javascript']);
+jscopy
+Attempting to set a header field name or value that contains invalid characters will result in a TypeError being thrown.
+When headers have been set with response.setHeader(), they will be merged with any headers passed to response.writeHead(), with the headers passed to response.writeHead() given precedence.
+// Returns content-type = text/plain
+const server = http.createServer((req, res) => {
+res.setHeader('Content-Type', 'text/html');
+res.setHeader('X-Foo', 'bar');
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('ok');
+});
+jscopy
+If response.writeHead() method is called and this method has not been called, it will directly write the supplied header values onto the network channel without caching internally, and the response.getHeader() on the header will not yield the expected result. If progressive population of headers is desired with potential future retrieval and modification, use response.setHeader() instead of response.writeHead().
+[[H4]] response.setTimeout(msecs[, callback])#
+Added in: v0.9.12
+msecs <number>
+callback <Function>
+Returns: <http.ServerResponse>
+Sets the Socket's timeout value to msecs. If a callback is provided, then it is added as a listener on the 'timeout' event on the response object.
+If no 'timeout' listener is added to the request, the response, or the server, then sockets are destroyed when they time out. If a handler is assigned to the request, the response, or the server's 'timeout' events, timed out sockets must be handled explicitly.
+[[H4]] response.socket#
+Added in: v0.3.0
+Type: <stream.Duplex>
+Reference to the underlying socket. Usually users will not want to access this property. In particular, the socket will not emit 'readable' events because of how the protocol parser attaches to the socket. After response.end(), the property is nulled.
+import http from 'node:http';
+const server = http.createServer((req, res) => {
+const ip = res.socket.remoteAddress;
+const port = res.socket.remotePort;
+res.end(`Your IP address is ${ip} and your source port is ${port}.`);
+}).listen(3000);
+const http = require('node:http');
+const server = http.createServer((req, res) => {
+const ip = res.socket.remoteAddress;
+const port = res.socket.remotePort;
+res.end(`Your IP address is ${ip} and your source port is ${port}.`);
+}).listen(3000);
+javascriptcopy
+This property is guaranteed to be an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specified a socket type other than <net.Socket>.
+[[H4]] response.statusCode#
+Added in: v0.4.0
+Type: <number> Default: 200
+When using implicit headers (not calling response.writeHead() explicitly), this property controls the status code that will be sent to the client when the headers get flushed.
+response.statusCode = 404;
+jscopy
+After response header was sent to the client, this property indicates the status code which was sent out.
+[[H4]] response.statusMessage#
+Added in: v0.11.8
+Type: <string>
+When using implicit headers (not calling response.writeHead() explicitly), this property controls the status message that will be sent to the client when the headers get flushed. If this is left as undefined then the standard message for the status code will be used.
+response.statusMessage = 'Not found';
+jscopy
+After response header was sent to the client, this property indicates the status message which was sent out.
+[[H4]] response.strictContentLength#
+Added in: v18.10.0, v16.18.0
+Type: <boolean> Default: false
+If set to true, Node.js will check whether the Content-Length header value and the size of the body, in bytes, are equal. Mismatching the Content-Length header value will result in an Error being thrown, identified by code: 'ERR_HTTP_CONTENT_LENGTH_MISMATCH'.
+[[H4]] response.uncork()#
+Added in: v13.2.0, v12.16.0
+See writable.uncork().
+[[H4]] response.writableEnded#
+Added in: v12.9.0
+Type: <boolean>
+Is true after response.end() has been called. This property does not indicate whether the data has been flushed, for this use response.writableFinished instead.
+[[H4]] response.writableFinished#
+Added in: v12.7.0
+Type: <boolean>
+Is true if all data has been flushed to the underlying system, immediately before the 'finish' event is emitted.
+[[H4]] response.write(chunk[, encoding][, callback])#
+Added in: v0.1.29
+History
+VersionChanges
+v15.0.0
+The chunk parameter can now be a Uint8Array.
+chunk <string> | <Buffer> | <Uint8Array>
+encoding <string> Default: 'utf8'
+callback <Function>
+Returns: <boolean>
+If this method is called and response.writeHead() has not been called, it will switch to implicit header mode and flush the implicit headers.
+This sends a chunk of the response body. This method may be called multiple times to provide successive parts of the body.
+If rejectNonStandardBodyWrites is set to true in createServer then writing to the body is not allowed when the request method or response status do not support content. If an attempt is made to write to the body for a HEAD request or as part of a 204 or 304response, a synchronous Error with the code ERR_HTTP_BODY_NOT_ALLOWED is thrown.
+chunk can be a string or a buffer. If chunk is a string, the second parameter specifies how to encode it into a byte stream. callback will be called when this chunk of data is flushed.
+This is the raw HTTP body and has nothing to do with higher-level multi-part body encodings that may be used.
+The first time response.write() is called, it will send the buffered header information and the first chunk of the body to the client. The second time response.write() is called, Node.js assumes data will be streamed, and sends the new data separately. That is, the response is buffered up to the first chunk of the body.
+Returns true if the entire data was flushed successfully to the kernel buffer. Returns false if all or part of the data was queued in user memory. 'drain' will be emitted when the buffer is free again.
+[[H4]] response.writeContinue()#
+Added in: v0.3.0
+Sends an HTTP/1.1 100 Continue message to the client, indicating that the request body should be sent. See the 'checkContinue' event on Server.
+[[H4]] response.writeEarlyHints(hints[, callback])#
+Added in: v18.11.0
+History
+VersionChanges
+v18.11.0
+Allow passing hints as an object.
+hints <Object>
+callback <Function>
+Sends an HTTP/1.1 103 Early Hints message to the client with a Link header, indicating that the user agent can preload/preconnect the linked resources. The hints is an object containing the values of headers to be sent with early hints message. The optional callback argument will be called when the response message has been written.
+Example
+const earlyHintsLink = '</styles.css>; rel=preload; as=style';
+response.writeEarlyHints({
+'link': earlyHintsLink,
+});
+const earlyHintsLinks = [
+'</styles.css>; rel=preload; as=style',
+'</scripts.js>; rel=preload; as=script',
+];
+response.writeEarlyHints({
+'link': earlyHintsLinks,
+'x-trace-id': 'id for diagnostics',
+});
+const earlyHintsCallback = () => console.log('early hints message sent');
+response.writeEarlyHints({
+'link': earlyHintsLinks,
+}, earlyHintsCallback);
+jscopy
+[[H4]] response.writeHead(statusCode[, statusMessage][, headers])#
+Added in: v0.1.30
+History
+VersionChanges
+v14.14.0
+Allow passing headers as an array.
+v11.10.0, v10.17.0
+Return this from writeHead() to allow chaining with end().
+v5.11.0, v4.4.5
+A RangeError is thrown if statusCode is not a number in the range [100, 999].
+statusCode <number>
+statusMessage <string>
+headers <Object> | <Array>
+Returns: <http.ServerResponse>
+Sends a response header to the request. The status code is a 3-digit HTTP status code, like 404. The last argument, headers, are the response headers. Optionally one can give a human-readable statusMessage as the second argument.
+headers may be an Array where the keys and values are in the same list. It is not a list of tuples. So, the even-numbered offsets are key values, and the odd-numbered offsets are the associated values. The array is in the same format as request.rawHeaders.
+Returns a reference to the ServerResponse, so that calls can be chained.
+const body = 'hello world';
+response
+.writeHead(200, {
+'Content-Length': Buffer.byteLength(body),
+'Content-Type': 'text/plain',
+})
+.end(body);
+jscopy
+This method must only be called once on a message and it must be called before response.end() is called.
+If response.write() or response.end() are called before calling this, the implicit/mutable headers will be calculated and call this function.
+When headers have been set with response.setHeader(), they will be merged with any headers passed to response.writeHead(), with the headers passed to response.writeHead() given precedence.
+If this method is called and response.setHeader() has not been called, it will directly write the supplied header values onto the network channel without caching internally, and the response.getHeader() on the header will not yield the expected result. If progressive population of headers is desired with potential future retrieval and modification, use response.setHeader() instead.
+// Returns content-type = text/plain
+const server = http.createServer((req, res) => {
+res.setHeader('Content-Type', 'text/html');
+res.setHeader('X-Foo', 'bar');
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('ok');
+});
+jscopy
+Content-Length is read in bytes, not characters. Use Buffer.byteLength() to determine the length of the body in bytes. Node.js will check whether Content-Length and the length of the body which has been transmitted are equal or not.
+Attempting to set a header field name or value that contains invalid characters will result in a TypeError being thrown.
+[[H4]] response.writeInformation(statusCode[, headers][, callback])#
+Added in: v26.2.0
+statusCode <number> An HTTP 1xx informational status code, between 100 and 199 inclusive, excluding 101 (Switching Protocols) which is only available through the 'upgrade' event.
+headers <Object> | <Array> An optional set of headers to send with the informational response. Accepts the same shapes as response.writeHead().
+callback <Function> Optional, called once the message has been written to the socket.
+Sends an arbitrary HTTP/1.1 1xx informational response to the client. This is a generic equivalent of response.writeContinue(), response.writeProcessing() and response.writeEarlyHints(), and can be called multiple times before the final response. After the final response headers have been sent (via response.writeHead() or an implicit header), calling this method throws ERR_HTTP_HEADERS_SENT.
+Clients receive these responses via the 'information' event on http.ClientRequest.
+response.writeInformation(110, { 'X-Progress': '50%' });
+jscopy
+[[H4]] response.writeProcessing()#
+Added in: v10.0.0
+Sends an HTTP/1.1 102 Processing message to the client, indicating that the request body should be sent.
+[[H3]] Class: http.IncomingMessage#
+Added in: v0.1.17
+History
+VersionChanges
+v15.5.0
+The destroyed value returns true after the incoming data is consumed.
+v13.1.0, v12.16.0
+The readableHighWaterMark value mirrors that of the socket.
+Extends: <stream.Readable>
+An IncomingMessage object is created by http.Server or http.ClientRequest and passed as the first argument to the 'request' and 'response' event respectively. It may be used to access response status, headers, and data.
+Different from its socket value which is a subclass of <stream.Duplex>, the IncomingMessage itself extends <stream.Readable> and is created separately to parse and emit the incoming HTTP headers and payload, as the underlying socket may be reused multiple times in case of keep-alive.
+[[H4]] Event: 'aborted'#
+Added in: v0.3.8Deprecated in: v17.0.0, v16.12.0
+Stability: 0 - Deprecated. Listen for 'close' event instead.
+Emitted when the request has been aborted.
+[[H4]] Event: 'close'#
+Added in: v0.4.2
+History
+VersionChanges
+v16.0.0
+The close event is now emitted when the request has been completed and not when the underlying socket is closed.
+Emitted when the request has been completed.
+[[H4]] message.aborted#
+Added in: v10.1.0Deprecated in: v17.0.0, v16.12.0
+Stability: 0 - Deprecated. Check message.destroyed from <stream.Readable>.
+Type: <boolean>
+The message.aborted property will be true if the request has been aborted.
+[[H4]] message.complete#
+Added in: v0.3.0
+Type: <boolean>
+The message.complete property will be true if a complete HTTP message has been received and successfully parsed.
+This property is particularly useful as a means of determining if a client or server fully transmitted a message before a connection was terminated:
+const req = http.request({
+host: '127.0.0.1',
+port: 8080,
+method: 'POST',
+}, (res) => {
+res.resume();
+res.on('end', () => {
+if (!res.complete)
+console.error(
+'The connection was terminated while the message was still being sent');
+});
+});
+jscopy
+[[H4]] message.connection#
+Added in: v0.1.90Deprecated in: v16.0.0
+Stability: 0 - Deprecated. Use message.socket.
+Alias for message.socket.
+[[H4]] message.destroy([error])#
+Added in: v0.3.0
+History
+VersionChanges
+v14.5.0, v12.19.0
+The function returns this for consistency with other Readable streams.
+error <Error>
+Returns: <this>
+Calls destroy() on the socket that received the IncomingMessage. If error is provided, an 'error' event is emitted on the socket and error is passed as an argument to any listeners on the event.
+[[H4]] message.headers#
+Added in: v0.1.5
+History
+VersionChanges
+v19.5.0, v18.14.0
+The joinDuplicateHeaders option in the http.request() and http.createServer() functions ensures that duplicate headers are not discarded, but rather combined using a comma separator, in accordance with RFC 9110 Section 5.3.
+v15.1.0
+message.headers is now lazily computed using an accessor property on the prototype and is no longer enumerable.
+Type: <Object>
+The request/response headers object.
+Key-value pairs of header names and values. Header names are lower-cased.
+// Prints something like:
+//
+// { 'user-agent': 'curl/7.22.0',
+// host: '127.0.0.1:8000',
+// accept: '*/*' }
+console.log(request.headers);
+jscopy
+Duplicates in raw headers are handled in the following ways, depending on the header name:
+Duplicates of age, authorization, content-length, content-type, etag, expires, from, host, if-modified-since, if-unmodified-since, last-modified, location, max-forwards, proxy-authorization, referer, retry-after, server, or user-agent are discarded. To allow duplicate values of the headers listed above to be joined, use the option joinDuplicateHeaders in http.request() and http.createServer(). See RFC 9110 Section 5.3 for more information.
+set-cookie is always an array. Duplicates are added to the array.
+For duplicate cookie headers, the values are joined together with ; .
+For all other headers, the values are joined together with , .
+[[H4]] message.headersDistinct#
+Added in: v18.3.0, v16.17.0
+Type: <Object>
+Similar to message.headers, but there is no join logic and the values are always arrays of strings, even for headers received just once.
+// Prints something like:
+//
+// { 'user-agent': ['curl/7.22.0'],
+// host: ['127.0.0.1:8000'],
+// accept: ['*/*'] }
+console.log(request.headersDistinct);
+jscopy
+[[H4]] message.httpVersion#
+Added in: v0.1.1
+Type: <string>
+In case of server request, the HTTP version sent by the client. In the case of client response, the HTTP version of the connected-to server. Probably either '1.1' or '1.0'.
+Also message.httpVersionMajor is the first integer and message.httpVersionMinor is the second.
+[[H4]] message.method#
+Added in: v0.1.1
+Type: <string>
+Only valid for request obtained from http.Server.
+The request method as a string. Read only. Examples: 'GET', 'DELETE'.
+[[H4]] message.rawHeaders#
+Added in: v0.11.6
+Type: <string>[]
+The raw request/response headers list exactly as they were received.
+The keys and values are in the same list. It is not a list of tuples. So, the even-numbered offsets are key values, and the odd-numbered offsets are the associated values.
+Header names are not lowercased, and duplicates are not merged.
+// Prints something like:
+//
+// [ 'user-agent',
+// 'this is invalid because there can be only one',
+// 'User-Agent',
+// 'curl/7.22.0',
+// 'Host',
+// '127.0.0.1:8000',
+// 'ACCEPT',
+// '*/*' ]
+console.log(request.rawHeaders);
+jscopy
+[[H4]] message.rawTrailers#
+Added in: v0.11.6
+Type: <string>[]
+The raw request/response trailer keys and values exactly as they were received. Only populated at the 'end' event.
+[[H4]] message.setTimeout(msecs[, callback])#
+Added in: v0.5.9
+msecs <number>
+callback <Function>
+Returns: <http.IncomingMessage>
+Calls message.socket.setTimeout(msecs, callback).
+[[H4]] message.signal#
+Added in: v26.1.0
+History
+VersionChanges
+v26.7.0
+The signal is no longer aborted after the message completes normally.
+Type: <AbortSignal>
+An <AbortSignal> that is aborted when the message is destroyed before completion or when its underlying socket closes before request handling or response reading completes. The signal is created lazily on first access — no <AbortController> is allocated for requests that never use this property.
+This is useful for cancelling downstream asynchronous work such as database queries or fetch calls when a client disconnects mid-request.
+import http from 'node:http';
+http.createServer(async (req, res) => {
+try {
+const data = await fetch('https://example.com/api', { signal: req.signal });
+res.end(JSON.stringify(await data.json()));
+} catch (err) {
+if (err.name === 'AbortError') return;
+res.statusCode = 500;
+res.end('Internal Server Error');
+}
+}).listen(3000);
+const http = require('node:http');
+http.createServer(async (req, res) => {
+try {
+const data = await fetch('https://example.com/api', { signal: req.signal });
+res.end(JSON.stringify(await data.json()));
+} catch (err) {
+if (err.name === 'AbortError') return;
+res.statusCode = 500;
+res.end('Internal Server Error');
+}
+}).listen(3000);
+javascriptcopy
+[[H4]] message.socket#
+Added in: v0.3.0
+Type: <stream.Duplex>
+The net.Socket object associated with the connection.
+With HTTPS support, use request.socket.getPeerCertificate() to obtain the client's authentication details.
+This property is guaranteed to be an instance of the <net.Socket> class, a subclass of <stream.Duplex>, unless the user specified a socket type other than <net.Socket> or internally nulled.
+[[H4]] message.statusCode#
+Added in: v0.1.1
+Type: <number>
+Only valid for response obtained from http.ClientRequest.
+The 3-digit HTTP response status code. E.G. 404.
+[[H4]] message.statusMessage#
+Added in: v0.11.10
+Type: <string>
+Only valid for response obtained from http.ClientRequest.
+The HTTP response status message (reason phrase). E.G. OK or Internal Server Error.
+[[H4]] message.trailers#
+Added in: v0.3.0
+Type: <Object>
+The request/response trailers object. Only populated at the 'end' event.
+[[H4]] message.trailersDistinct#
+Added in: v18.3.0, v16.17.0
+Type: <Object>
+Similar to message.trailers, but there is no join logic and the values are always arrays of strings, even for headers received just once. Only populated at the 'end' event.
+[[H4]] message.url#
+Added in: v0.1.90
+Type: <string>
+Only valid for request obtained from http.Server.
+Request URL string. This contains only the URL that is present in the actual HTTP request. Take the following request:
+GET /status?name=ryan HTTP/1.1
+Accept: text/plain
+httpcopy
+To parse the URL into its parts:
+new URL(`http://${process.env.HOST ?? 'localhost'}${request.url}`);
+jscopy
+When request.url is '/status?name=ryan' and process.env.HOST is undefined:
+$ node
+> new URL(`http://${process.env.HOST ?? 'localhost'}${request.url}`);
+URL {
+href: 'http://localhost/status?name=ryan',
+origin: 'http://localhost',
+protocol: 'http:',
+username: '',
+password: '',
+host: 'localhost',
+hostname: 'localhost',
+port: '',
+pathname: '/status',
+search: '?name=ryan',
+searchParams: URLSearchParams { 'name' => 'ryan' },
+hash: ''
+}
+consolecopy
+Ensure that you set process.env.HOST to the server's host name, or consider replacing this part entirely. If using req.headers.host, ensure proper validation is used, as clients may specify a custom Host header.
+[[H3]] Class: http.OutgoingMessage#
+Added in: v0.1.17
+Extends: <Stream>
+This class serves as the parent class of http.ClientRequest and http.ServerResponse. It is an abstract outgoing message from the perspective of the participants of an HTTP transaction.
+[[H4]] Event: 'drain'#
+Added in: v0.3.6
+Emitted when the buffer of the message is free again.
+[[H4]] Event: 'finish'#
+Added in: v0.1.17
+Emitted when the transmission is finished successfully.
+[[H4]] Event: 'prefinish'#
+Added in: v0.11.6
+Emitted after outgoingMessage.end() is called. When the event is emitted, all data has been processed but not necessarily completely flushed.
+[[H4]] outgoingMessage.addTrailers(headers)#
+Added in: v0.3.0
+headers <Object>
+Adds HTTP trailers (headers but at the end of the message) to the message.
+Trailers will only be emitted if the message is chunked encoded. If not, the trailers will be silently discarded.
+HTTP requires the Trailer header to be sent to emit trailers, with a list of header field names in its value, e.g.
+message.writeHead(200, { 'Content-Type': 'text/plain',
+'Trailer': 'Content-MD5' });
+message.write(fileData);
+message.addTrailers({ 'Content-MD5': '7895bf4b8828b55ceaf47747b4bca667' });
+message.end();
+jscopy
+Attempting to set a header field name or value that contains invalid characters will result in a TypeError being thrown.
+[[H4]] outgoingMessage.appendHeader(name, value)#
+Added in: v18.3.0, v16.17.0
+name <string> Header name
+value <string> | <string>[] Header value
+Returns: <this>
+Append a single header value to the header object.
+If the value is an array, this is equivalent to calling this method multiple times.
+If there were no previous values for the header, this is equivalent to calling outgoingMessage.setHeader(name, value).
+Depending of the value of options.uniqueHeaders when the client request or the server were created, this will end up in the header being sent multiple times or a single time with values joined using ; .
+[[H4]] outgoingMessage.connection#
+Added in: v0.3.0Deprecated in: v15.12.0, v14.17.1
+Stability: 0 - Deprecated: Use outgoingMessage.socket instead.
+Alias of outgoingMessage.socket.
+[[H4]] outgoingMessage.cork()#
+Added in: v13.2.0, v12.16.0
+See writable.cork().
+[[H4]] outgoingMessage.destroy([error])#
+Added in: v0.3.0
+error <Error> Optional, an error to emit with error event
+Returns: <this>
+Destroys the message. Once a socket is associated with the message and is connected, that socket will be destroyed as well.
+[[H4]] outgoingMessage.end(chunk[, encoding][, callback])#
+Added in: v0.1.90
+History
+VersionChanges
+v15.0.0
+The chunk parameter can now be a Uint8Array.
+v0.11.6
+add callback argument.
+chunk <string> | <Buffer> | <Uint8Array>
+encoding <string> Optional, Default: utf8
+callback <Function> Optional
+Returns: <this>
+Finishes the outgoing message. If any parts of the body are unsent, it will flush them to the underlying system. If the message is chunked, it will send the terminating chunk 0\r\n\r\n, and send the trailers (if any).
+If chunk is specified, it is equivalent to calling outgoingMessage.write(chunk, encoding), followed by outgoingMessage.end(callback).
+If callback is provided, it will be called when the message is finished (equivalent to a listener of the 'finish' event).
+[[H4]] outgoingMessage.flushHeaders()#
+Added in: v1.6.0
+Flushes the message headers.
+For efficiency reason, Node.js normally buffers the message headers until outgoingMessage.end() is called or the first chunk of message data is written. It then tries to pack the headers and data into a single TCP packet.
+It is usually desired (it saves a TCP round-trip), but not when the first data is not sent until possibly much later. outgoingMessage.flushHeaders() bypasses the optimization and kickstarts the message.
+[[H4]] outgoingMessage.getHeader(name)#
+Added in: v0.4.0
+name <string> Name of header
+Returns: <number> | <string> | <string>[] | <undefined>
+Gets the value of the HTTP header with the given name. If that header is not set, the returned value will be undefined.
+[[H4]] outgoingMessage.getHeaderNames()#
+Added in: v7.7.0
+Returns: <string>[]
+Returns an array containing the unique names of the current outgoing headers. All names are lowercase.
+[[H4]] outgoingMessage.getHeaders()#
+Added in: v7.7.0
+Returns: <Object>
+Returns a shallow copy of the current outgoing headers. Since a shallow copy is used, array values may be mutated without additional calls to various header-related HTTP module methods. The keys of the returned object are the header names and the values are the respective header values. All header names are lowercase.
+The object returned by the outgoingMessage.getHeaders() method does not prototypically inherit from the JavaScript Object. This means that typical Object methods such as obj.toString(), obj.hasOwnProperty(), and others are not defined and will not work.
+outgoingMessage.setHeader('Foo', 'bar');
+outgoingMessage.setHeader('Set-Cookie', ['foo=bar', 'bar=baz']);
+const headers = outgoingMessage.getHeaders();
+// headers === { foo: 'bar', 'set-cookie': ['foo=bar', 'bar=baz'] }
+jscopy
+[[H4]] outgoingMessage.hasHeader(name)#
+Added in: v7.7.0
+name <string>
+Returns: <boolean>
+Returns true if the header identified by name is currently set in the outgoing headers. The header name is case-insensitive.
+const hasContentType = outgoingMessage.hasHeader('content-type');
+jscopy
+[[H4]] outgoingMessage.headersSent#
+Added in: v0.9.3
+Type: <boolean>
+Read-only. true if the headers were sent, otherwise false.
+[[H4]] outgoingMessage.pipe()#
+Added in: v9.0.0
+Overrides the stream.pipe() method inherited from the legacy Stream class which is the parent class of http.OutgoingMessage.
+Calling this method will throw an Error because outgoingMessage is a write-only stream.
+[[H4]] outgoingMessage.removeHeader(name)#
+Added in: v0.4.0
+name <string> Header name
+Removes a header that is queued for implicit sending.
+outgoingMessage.removeHeader('Content-Encoding');
+jscopy
+[[H4]] outgoingMessage.setHeader(name, value)#
+Added in: v0.4.0
+name <string> Header name
+value <number> | <string> | <string>[] Header value
+Returns: <this>
+Sets a single header value. If the header already exists in the to-be-sent headers, its value will be replaced. Use an array of strings to send multiple headers with the same name.
+[[H4]] outgoingMessage.setHeaders(headers)#
+Added in: v19.6.0, v18.15.0
+headers <Headers> | <Map>
+Returns: <this>
+Sets multiple header values for implicit headers. headers must be an instance of Headers or Map, if a header already exists in the to-be-sent headers, its value will be replaced.
+const headers = new Headers({ foo: 'bar' });
+outgoingMessage.setHeaders(headers);
+jscopy
+or
+const headers = new Map([['foo', 'bar']]);
+outgoingMessage.setHeaders(headers);
+jscopy
+When headers have been set with outgoingMessage.setHeaders(), they will be merged with any headers passed to response.writeHead(), with the headers passed to response.writeHead() given precedence.
+// Returns content-type = text/plain
+const server = http.createServer((req, res) => {
+const headers = new Headers({ 'Content-Type': 'text/html' });
+res.setHeaders(headers);
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('ok');
+});
+jscopy
+[[H4]] outgoingMessage.setTimeout(msecs[, callback])#
+Added in: v0.9.12
+msecs <number>
+callback <Function> Optional function to be called when a timeout occurs. Same as binding to the timeout event.
+Returns: <this>
+Once a socket is associated with the message and is connected, socket.setTimeout() will be called with msecs as the first parameter.
+[[H4]] outgoingMessage.socket#
+Added in: v0.3.0
+Type: <stream.Duplex>
+Reference to the underlying socket. Usually, users will not want to access this property.
+After calling outgoingMessage.end(), this property will be nulled.
+[[H4]] outgoingMessage.uncork()#
+Added in: v13.2.0, v12.16.0
+See writable.uncork()
+[[H4]] outgoingMessage.writableCorked#
+Added in: v13.2.0, v12.16.0
+Type: <number>
+The number of times outgoingMessage.cork() has been called.
+[[H4]] outgoingMessage.writableEnded#
+Added in: v12.9.0
+Type: <boolean>
+Is true if outgoingMessage.end() has been called. This property does not indicate whether the data has been flushed. For that purpose, use message.writableFinished instead.
+[[H4]] outgoingMessage.writableFinished#
+Added in: v12.7.0
+Type: <boolean>
+Is true if all data has been flushed to the underlying system.
+[[H4]] outgoingMessage.writableHighWaterMark#
+Added in: v12.9.0
+Type: <number>
+The highWaterMark of the underlying socket if assigned. Otherwise, the default buffer level when writable.write() starts returning false (16384).
+[[H4]] outgoingMessage.writableLength#
+Added in: v12.9.0
+Type: <number>
+The number of buffered bytes.
+[[H4]] outgoingMessage.writableObjectMode#
+Added in: v12.9.0
+Type: <boolean>
+Always false.
+[[H4]] outgoingMessage.write(chunk[, encoding][, callback])#
+Added in: v0.1.29
+History
+VersionChanges
+v15.0.0
+The chunk parameter can now be a Uint8Array.
+v0.11.6
+The callback argument was added.
+chunk <string> | <Buffer> | <Uint8Array>
+encoding <string> Default: utf8
+callback <Function>
+Returns: <boolean>
+Sends a chunk of the body. This method can be called multiple times.
+The encoding argument is only relevant when chunk is a string. Defaults to 'utf8'.
+The callback argument is optional and will be called when this chunk of data is flushed.
+Returns true if the entire data was flushed successfully to the kernel buffer. Returns false if all or part of the data was queued in the user memory. The 'drain' event will be emitted when the buffer is free again.
+[[H3]] http.METHODS#
+Added in: v0.11.8
+Type: <string>[]
+A list of the HTTP methods that are supported by the parser.
+[[H3]] http.STATUS_CODES#
+Added in: v0.1.22
+Type: <Object>
+A collection of all the standard HTTP response status codes, and the short description of each. For example, http.STATUS_CODES[404] === 'Not Found'.
+[[H3]] http.createServer([options][, requestListener])#
+Added in: v0.1.13
+History
+VersionChanges
+v26.3.0
+The httpValidation option is supported now.
+v25.1.0, v24.12.0
+Add optimizeEmptyRequests option.
+v24.9.0, v22.21.0
+The shouldUpgradeCallback option is now supported.
+v20.1.0, v18.17.0
+The highWaterMark option is supported now.
+v18.0.0
+The requestTimeout, headersTimeout, keepAliveTimeout, and connectionsCheckingInterval options are supported now.
+v18.0.0
+The noDelay option now defaults to true.
+v17.7.0, v16.15.0
+The noDelay, keepAlive and keepAliveInitialDelay options are supported now.
+v13.8.0, v12.15.0, v10.19.0
+The insecureHTTPParser option is supported now.
+v13.3.0
+The maxHeaderSize option is supported now.
+v9.6.0, v8.12.0
+The options argument is supported now.
+options <Object>
+connectionsCheckingInterval: Sets the interval value in milliseconds to check for request and headers timeout in incomplete requests. Default: 30000.
+headersTimeout: Sets the timeout value in milliseconds for receiving the complete HTTP headers from the client. See server.headersTimeout for more information. Default: 60000.
+highWaterMark <number> Optionally overrides all sockets' readableHighWaterMark and writableHighWaterMark. This affects highWaterMark property of both IncomingMessage and ServerResponse. Default: See stream.getDefaultHighWaterMark().
+httpValidation <string> Controls HTTP header value validation strictness for incoming requests. Accepted values are:
+'strict': Strictest validation; rejects any non-ASCII or control characters in header values.
+'relaxed': Allows a limited set of non-ASCII characters in header values, aligning with the Fetch specification.
+'insecure': Disables all header value validation (equivalent to insecureHTTPParser: true). Cannot be used together with insecureHTTPParser. Default: 'strict'.
+insecureHTTPParser <boolean> If set to true, it will use an HTTP parser with leniency flags enabled. Using the insecure parser should be avoided. See --insecure-http-parser for more information. Default: false.
+IncomingMessage <http.IncomingMessage> Specifies the IncomingMessage class to be used. Useful for extending the original IncomingMessage. Default: IncomingMessage.
+joinDuplicateHeaders <boolean> If set to true, this option allows joining the field line values of multiple headers in a request with a comma (, ) instead of discarding the duplicates. For more information, refer to message.headers. Default: false.
+keepAlive <boolean> If set to true, it enables keep-alive functionality on the socket immediately after a new incoming connection is received, similarly on what is done in socket.setKeepAlive(). Default: false.
+keepAliveInitialDelay <number> If set to a positive number, it sets the initial delay before the first keepalive probe is sent on an idle socket. Default: 0.
+keepAliveTimeout: The number of milliseconds of inactivity a server needs to wait for additional incoming data, after it has finished writing the last response, before a socket will be destroyed. See server.keepAliveTimeout for more information. Default: 65000.
+maxHeaderSize <number> Optionally overrides the value of --max-http-header-size for requests received by this server, i.e. the maximum length of request headers in bytes. Default: 16384 (16 KiB).
+noDelay <boolean> If set to true, it disables the use of Nagle's algorithm immediately after a new incoming connection is received. Default: true.
+requestTimeout: Sets the timeout value in milliseconds for receiving the entire request from the client. See server.requestTimeout for more information. Default: 300000.
+requireHostHeader <boolean> If set to true, it forces the server to respond with a 400 (Bad Request) status code to any HTTP/1.1 request message that lacks a Host header (as mandated by the specification). Default: true.
+ServerResponse <http.ServerResponse> Specifies the ServerResponse class to be used. Useful for extending the original ServerResponse. Default: ServerResponse.
+shouldUpgradeCallback(request) <Function> A callback which receives an incoming request and returns a boolean, to control which upgrade attempts should be accepted. Accepted upgrades will fire an 'upgrade' event (or their sockets will be destroyed, if no listener is registered) while rejected upgrades will fire a 'request' event like any non-upgrade request. This options defaults to () => server.listenerCount('upgrade') > 0.
+uniqueHeaders <Array> A list of response headers that should be sent only once. If the header's value is an array, the items will be joined using ; .
+rejectNonStandardBodyWrites <boolean> If set to true, an error is thrown when writing to an HTTP response which does not have a body. Default: false.
+optimizeEmptyRequests <boolean> If set to true, requests without Content-Length or Transfer-Encoding headers (indicating no body) will be initialized with an already-ended body stream, so they will never emit any stream events (like 'data' or 'end'). You can use req.readableEnded to detect this case. Default: false.
+requestListener <Function>
+Returns: <http.Server>
+Returns a new instance of http.Server.
+The requestListener is a function which is automatically added to the 'request' event.
+import http from 'node:http';
+// Create a local server to receive data from
+const server = http.createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+const http = require('node:http');
+// Create a local server to receive data from
+const server = http.createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+javascriptcopy
+import http from 'node:http';
+// Create a local server to receive data from
+const server = http.createServer();
+// Listen to the request event
+server.on('request', (request, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+const http = require('node:http');
+// Create a local server to receive data from
+const server = http.createServer();
+// Listen to the request event
+server.on('request', (request, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+javascriptcopy
+[[H3]] http.get(options[, callback])#
+[[H3]] http.get(url[, options][, callback])#
+Added in: v0.3.6
+History
+VersionChanges
+v10.9.0
+The url parameter can now be passed along with a separate options object.
+v7.5.0
+The options parameter can be a WHATWG URL object.
+url <string> | <URL>
+options <Object> Accepts the same options as http.request(), with the method set to GET by default.
+callback <Function>
+Returns: <http.ClientRequest>
+Since most requests are GET requests without bodies, Node.js provides this convenience method. The only difference between this method and http.request() is that it sets the method to GET by default and calls req.end() automatically. The callback must take care to consume the response data for reasons stated in http.ClientRequest section.
+The callback is invoked with a single argument that is an instance of http.IncomingMessage.
+JSON fetching example:
+http.get('http://localhost:8000/', (res) => {
+const { statusCode } = res;
+const contentType = res.headers['content-type'];
+let error;
+// Any 2xx status code signals a successful response but
+// here we're only checking for 200.
+if (statusCode !== 200) {
+error = new Error('Request Failed.\n' +
+`Status Code: ${statusCode}`);
+} else if (!/^application\/json/.test(contentType)) {
+error = new Error('Invalid content-type.\n' +
+`Expected application/json but received ${contentType}`);
+}
+if (error) {
+console.error(error.message);
+// Consume response data to free up memory
+res.resume();
+return;
+}
+res.setEncoding('utf8');
+let rawData = '';
+res.on('data', (chunk) => { rawData += chunk; });
+res.on('end', () => {
+try {
+const parsedData = JSON.parse(rawData);
+console.log(parsedData);
+} catch (e) {
+console.error(e.message);
+}
+});
+}).on('error', (e) => {
+console.error(`Got error: ${e.message}`);
+});
+// Create a local server to receive data from
+const server = http.createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({
+data: 'Hello World!',
+}));
+});
+server.listen(8000);
+jscopy
+[[H3]] http.globalAgent#
+Added in: v0.5.9
+History
+VersionChanges
+v19.0.0
+The agent now uses HTTP Keep-Alive and a 5 second timeout by default.
+Type: <http.Agent>
+Global instance of Agent which is used as the default for all HTTP client requests. Diverges from a default Agent configuration by having keepAlive enabled and a timeout of 5 seconds.
+[[H3]] http.maxHeaderSize#
+Added in: v11.6.0, v10.15.0
+Type: <number>
+Read-only property specifying the maximum allowed size of HTTP headers in bytes. Defaults to 16 KiB. Configurable using the --max-http-header-size CLI option.
+This can be overridden for servers and client requests by passing the maxHeaderSize option.
+[[H3]] http.request(options[, callback])#
+[[H3]] http.request(url[, options][, callback])#
+Added in: v0.3.6
+History
+VersionChanges
+v26.3.0
+The httpValidation option is supported now.
+v16.7.0, v14.18.0
+When using a URL object parsed username and password will now be properly URI decoded.
+v15.3.0, v14.17.0
+It is possible to abort a request with an AbortSignal.
+v13.8.0, v12.15.0, v10.19.0
+The insecureHTTPParser option is supported now.
+v13.3.0
+The maxHeaderSize option is supported now.
+v10.9.0
+The url parameter can now be passed along with a separate options object.
+v7.5.0
+The options parameter can be a WHATWG URL object.
+url <string> | <URL>
+options <Object>
+agent <http.Agent> | <boolean> Controls Agent behavior. Possible values:
+undefined (default): use http.globalAgent for this host and port.
+Agent object: explicitly use the passed in Agent.
+false: causes a new Agent with default values to be used.
+auth <string> Basic authentication ('user:password') to compute an Authorization header.
+createConnection <Function> A function that produces a socket/stream to use for the request when the agent option is not used. This can be used to avoid creating a custom Agent class just to override the default createConnection function. See agent.createConnection() for more details. Any Duplex stream is a valid return value.
+defaultPort <number> Default port for the protocol. Default: agent.defaultPort if an Agent is used, else undefined.
+family <number> IP address family to use when resolving host or hostname. Valid values are 4 or 6. When unspecified, both IP v4 and v6 will be used.
+headers <Object> | <Array> An object or an array of strings containing request headers. The array is in the same format as message.rawHeaders.
+hints <number> Optional dns.lookup() hints.
+host <string> A domain name or IP address of the server to issue the request to. Default: 'localhost'.
+hostname <string> Alias for host. To support url.parse(), hostname will be used if both host and hostname are specified.
+httpValidation <string> Controls HTTP header value validation strictness for outgoing requests. Accepted values are:
+'strict': Strictest validation; rejects any non-ASCII or control characters in header values.
+'relaxed': Allows a limited set of non-ASCII characters in header values, aligning with the Fetch specification.
+'insecure': Disables all header value validation (equivalent to insecureHTTPParser: true). Cannot be used together with insecureHTTPParser. Default: 'strict'.
+insecureHTTPParser <boolean> If set to true, it will use an HTTP parser with leniency flags enabled. Using the insecure parser should be avoided. See --insecure-http-parser for more information. Default: false
+joinDuplicateHeaders <boolean> It joins the field line values of multiple headers in a request with , instead of discarding the duplicates. See message.headers for more information. Default: false.
+localAddress <string> Local interface to bind for network connections.
+localPort <number> Local port to connect from.
+lookup <Function> Custom lookup function. Default: dns.lookup().
+maxHeaderSize <number> Optionally overrides the value of --max-http-header-size (the maximum length of response headers in bytes) for responses received from the server. Default: 16384 (16 KiB).
+method <string> A string specifying the HTTP request method. Default: 'GET'.
+path <string> Request path. Should include query string if any. E.G. '/index.html?page=12'. An exception is thrown when the request path contains illegal characters. Currently, only spaces are rejected but that may change in the future. Default: '/'. The content in path is sent as the request target in the HTTP 1.1 message. When path is an absolute URL, this means the request target in the message in absolute form. If the receiving server is a proxy, the server typically forwards the request to the destination specified in the request target, and ignores the Host header. The user needs to make sure that path, host and the Host headers conform to the requirement of the request target in the HTTP specification. When the receiving server is known to be a proxy because the request is routed through Built-in Proxy Support, http.request will additionally perform a best-effort check to see that the host option or Host in headers agrees with the authority in path during the initial construction of the request. It gives up rewriting the request target for proxying and throws an error if they don't match at request construction time, though there won't be checks for later header mutations done by the user.
+port <number> Port of remote server. Default: defaultPort if set, else 80.
+protocol <string> Protocol to use. Default: 'http:'.
+setDefaultHeaders <boolean>: Specifies whether or not to automatically add default headers such as Connection, Content-Length, Transfer-Encoding, and Host. If set to false then all necessary headers must be added manually. Defaults to true.
+setHost <boolean>: Specifies whether or not to automatically add the Host header. If provided, this overrides setDefaultHeaders. Defaults to true.
+signal <AbortSignal>: An AbortSignal that may be used to abort an ongoing request.
+socketPath <string> Unix domain socket. Cannot be used if one of host or port is specified, as those specify a TCP Socket.
+timeout <number>: A number specifying the socket timeout in milliseconds. This will set the timeout before the socket is connected.
+uniqueHeaders <Array> A list of request headers that should be sent only once. If the header's value is an array, the items will be joined using ; .
+callback <Function>
+Returns: <http.ClientRequest>
+options in socket.connect() are also supported.
+Node.js maintains several connections per server to make HTTP requests. This function allows one to transparently issue requests.
+url can be a string or a URL object. If url is a string, it is automatically parsed with new URL(). If it is a URL object, it will be automatically converted to an ordinary options object.
+If both url and options are specified, the objects are merged, with the options properties taking precedence.
+The optional callback parameter will be added as a one-time listener for the 'response' event.
+http.request() returns an instance of the http.ClientRequest class. The ClientRequest instance is a writable stream. If one needs to upload a file with a POST request, then write to the ClientRequest object.
+import http from 'node:http';
+import { Buffer } from 'node:buffer';
+const postData = JSON.stringify({
+'msg': 'Hello World!',
+});
+const options = {
+hostname: 'www.google.com',
+port: 80,
+path: '/upload',
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'Content-Length': Buffer.byteLength(postData),
+},
+};
+const req = http.request(options, (res) => {
+console.log(`STATUS: ${res.statusCode}`);
+console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
+res.setEncoding('utf8');
+res.on('data', (chunk) => {
+console.log(`BODY: ${chunk}`);
+});
+res.on('end', () => {
+console.log('No more data in response.');
+});
+});
+req.on('error', (e) => {
+console.error(`problem with request: ${e.message}`);
+});
+// Write data to request body
+req.write(postData);
+req.end();
+const http = require('node:http');
+const postData = JSON.stringify({
+'msg': 'Hello World!',
+});
+const options = {
+hostname: 'www.google.com',
+port: 80,
+path: '/upload',
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'Content-Length': Buffer.byteLength(postData),
+},
+};
+const req = http.request(options, (res) => {
+console.log(`STATUS: ${res.statusCode}`);
+console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
+res.setEncoding('utf8');
+res.on('data', (chunk) => {
+console.log(`BODY: ${chunk}`);
+});
+res.on('end', () => {
+console.log('No more data in response.');
+});
+});
+req.on('error', (e) => {
+console.error(`problem with request: ${e.message}`);
+});
+// Write data to request body
+req.write(postData);
+req.end();
+javascriptcopy
+In the example req.end() was called. With http.request() one must always call req.end() to signify the end of the request - even if there is no data being written to the request body.
+If any error is encountered during the request (be that with DNS resolution, TCP level errors, or actual HTTP parse errors) an 'error' event is emitted on the returned request object. As with all 'error' events, if no listeners are registered the error will be thrown.
+There are a few special headers that should be noted.
+Sending a 'Connection: keep-alive' will notify Node.js that the connection to the server should be persisted until the next request.
+Sending a 'Content-Length' header will disable the default chunked encoding.
+Sending an 'Expect' header will immediately send the request headers. Usually, when sending 'Expect: 100-continue', both a timeout and a listener for the 'continue' event should be set. See RFC 2616 Section 8.2.3 for more information.
+Sending an Authorization header will override using the auth option to compute basic authentication.
+Example using a URL as options:
+const options = new URL('http://abc:xyz@example.com');
+const req = http.request(options, (res) => {
+// ...
+});
+jscopy
+In a successful request, the following events will be emitted in the following order:
+'socket'
+'response'
+'data' any number of times, on the res object ('data' will not be emitted at all if the response body is empty, for instance, in most redirects)
+'end' on the res object
+'close'
+In the case of a connection error, the following events will be emitted:
+'socket'
+'error'
+'close'
+In the case of a premature connection close before the response is received, the following events will be emitted in the following order:
+'socket'
+'error' with an error with message 'Error: socket hang up' and code 'ECONNRESET'
+'close'
+In the case of a premature connection close after the response is received, the following events will be emitted in the following order:
+'socket'
+'response'
+'data' any number of times, on the res object
+(connection closed here)
+'aborted' on the res object
+'close'
+'error' on the res object with an error with message 'Error: aborted' and code 'ECONNRESET'
+'close' on the res object
+If req.destroy() is called before a socket is assigned, the following events will be emitted in the following order:
+(req.destroy() called here)
+'error' with an error with message 'Error: socket hang up' and code 'ECONNRESET', or the error with which req.destroy() was called
+'close'
+If req.destroy() is called before the connection succeeds, the following events will be emitted in the following order:
+'socket'
+(req.destroy() called here)
+'error' with an error with message 'Error: socket hang up' and code 'ECONNRESET', or the error with which req.destroy() was called
+'close'
+If req.destroy() is called after the response is received, the following events will be emitted in the following order:
+'socket'
+'response'
+'data' any number of times, on the res object
+(req.destroy() called here)
+'aborted' on the res object
+'close'
+'error' on the res object with an error with message 'Error: aborted' and code 'ECONNRESET', or the error with which req.destroy() was called
+'close' on the res object
+If req.abort() is called before a socket is assigned, the following events will be emitted in the following order:
+(req.abort() called here)
+'abort'
+'close'
+If req.abort() is called before the connection succeeds, the following events will be emitted in the following order:
+'socket'
+(req.abort() called here)
+'abort'
+'error' with an error with message 'Error: socket hang up' and code 'ECONNRESET'
+'close'
+If req.abort() is called after the response is received, the following events will be emitted in the following order:
+'socket'
+'response'
+'data' any number of times, on the res object
+(req.abort() called here)
+'abort'
+'aborted' on the res object
+'error' on the res object with an error with message 'Error: aborted' and code 'ECONNRESET'.
+'close'
+'close' on the res object
+Setting the timeout option or using the setTimeout() function will not abort the request or do anything besides add a 'timeout' event.
+Passing an AbortSignal and then calling abort() on the corresponding AbortController will behave the same way as calling .destroy() on the request. Specifically, the 'error' event will be emitted with an error with the message 'AbortError: The operation was aborted', the code 'ABORT_ERR' and the cause, if one was provided.
+[[H3]] http.validateHeaderName(name[, label])#
+Added in: v14.3.0
+History
+VersionChanges
+v19.5.0, v18.14.0
+The label parameter is added.
+name <string>
+label <string> Label for error message. Default: 'Header name'.
+Performs the low-level validations on the provided name that are done when res.setHeader(name, value) is called.
+Passing illegal value as name will result in a TypeError being thrown, identified by code: 'ERR_INVALID_HTTP_TOKEN'.
+It is not necessary to use this method before passing headers to an HTTP request or response. The HTTP module will automatically validate such headers.
+Example:
+import { validateHeaderName } from 'node:http';
+try {
+validateHeaderName('');
+} catch (err) {
+console.error(err instanceof TypeError); // --> true
+console.error(err.code); // --> 'ERR_INVALID_HTTP_TOKEN'
+console.error(err.message); // --> 'Header name must be a valid HTTP token [""]'
+}
+const { validateHeaderName } = require('node:http');
+try {
+validateHeaderName('');
+} catch (err) {
+console.error(err instanceof TypeError); // --> true
+console.error(err.code); // --> 'ERR_INVALID_HTTP_TOKEN'
+console.error(err.message); // --> 'Header name must be a valid HTTP token [""]'
+}
+javascriptcopy
+[[H3]] http.validateHeaderValue(name, value)#
+Added in: v14.3.0
+name <string>
+value <any>
+Performs the low-level validations on the provided value that are done when res.setHeader(name, value) is called.
+Passing illegal value as value will result in a TypeError being thrown.
+Undefined value error is identified by code: 'ERR_HTTP_INVALID_HEADER_VALUE'.
+Invalid value character error is identified by code: 'ERR_INVALID_CHAR'.
+It is not necessary to use this method before passing headers to an HTTP request or response. The HTTP module will automatically validate such headers.
+Examples:
+import { validateHeaderValue } from 'node:http';
+try {
+validateHeaderValue('x-my-header', undefined);
+} catch (err) {
+console.error(err instanceof TypeError); // --> true
+console.error(err.code === 'ERR_HTTP_INVALID_HEADER_VALUE'); // --> true
+console.error(err.message); // --> 'Invalid value "undefined" for header "x-my-header"'
+}
+try {
+validateHeaderValue('x-my-header', 'oʊmɪɡə');
+} catch (err) {
+console.error(err instanceof TypeError); // --> true
+console.error(err.code === 'ERR_INVALID_CHAR'); // --> true
+console.error(err.message); // --> 'Invalid character in header content ["x-my-header"]'
+}
+const { validateHeaderValue } = require('node:http');
+try {
+validateHeaderValue('x-my-header', undefined);
+} catch (err) {
+console.error(err instanceof TypeError); // --> true
+console.error(err.code === 'ERR_HTTP_INVALID_HEADER_VALUE'); // --> true
+console.error(err.message); // --> 'Invalid value "undefined" for header "x-my-header"'
+}
+try {
+validateHeaderValue('x-my-header', 'oʊmɪɡə');
+} catch (err) {
+console.error(err instanceof TypeError); // --> true
+console.error(err.code === 'ERR_INVALID_CHAR'); // --> true
+console.error(err.message); // --> 'Invalid character in header content ["x-my-header"]'
+}
+javascriptcopy
+[[H3]] http.setMaxIdleHTTPParsers(max)#
+Added in: v18.8.0, v16.18.0
+max <number> Default: 1000.
+Set the maximum number of idle HTTP parsers.
+[[H3]] http.setGlobalProxyFromEnv([proxyEnv])#
+Added in: v25.4.0, v24.14.0
+proxyEnv <Object> An object containing proxy configuration. This accepts the same options as the proxyEnv option accepted by Agent. Default: process.env.
+Returns: <Function> A function that restores the original agent and dispatcher settings to the state before this http.setGlobalProxyFromEnv() is invoked.
+Dynamically resets the global configurations to enable built-in proxy support for fetch() and http.request()/https.request() at runtime, as an alternative to using the --use-env-proxy flag or NODE_USE_ENV_PROXY environment variable. It can also be used to override settings configured from the environment variables.
+As this function resets the global configurations, any previously configured http.globalAgent, https.globalAgent or undici global dispatcher would be overridden after this function is invoked. It's recommended to invoke it before any requests are made and avoid invoking it in the middle of any requests.
+See Built-in Proxy Support for details on proxy URL formats and NO_PROXY syntax.
+[[H3]] Class: WebSocket#
+Added in: v22.5.0
+A browser-compatible implementation of <WebSocket>.
+[[H3]] Built-in Proxy Support#
+Added in: v24.5.0, v22.21.0
+Stability: 1.1 - Active development
+When Node.js creates the global agent, if the NODE_USE_ENV_PROXY environment variable is set to 1 or --use-env-proxy is enabled, the global agent will be constructed with proxyEnv: process.env, enabling proxy support based on the environment variables.
+To enable proxy support dynamically and globally, use http.setGlobalProxyFromEnv().
+Custom agents can also be created with proxy support by passing a proxyEnv option when constructing the agent. The value can be process.env if they just want to inherit the configuration from the environment variables, or an object with specific setting overriding the environment.
+The following properties of the proxyEnv are checked to configure proxy support.
+HTTP_PROXY or http_proxy: Proxy server URL for HTTP requests. If both are set, http_proxy takes precedence.
+HTTPS_PROXY or https_proxy: Proxy server URL for HTTPS requests. If both are set, https_proxy takes precedence.
+NO_PROXY or no_proxy: Comma-separated list of hosts to bypass the proxy. If both are set, no_proxy takes precedence.
+If the request is made to a Unix domain socket, the proxy settings will be ignored.
+[[H4]] Proxy security considerations#
+Built-in proxy support routes outbound requests through an HTTP(S) proxy, often because a firewall requires one to access external networks. It is not an anonymity or traffic-hiding feature and does not attempt to hide traffic from the proxy, the local network, network operators, or authorities that govern the deployment.
+Configure only proxies that are trusted and authorized for the deployment. A proxy can observe connection metadata; for plain HTTP requests, or when TLS is terminated or intercepted by the proxy, it can also observe request and response contents. Node.js does not support treating an untrusted proxy as a privacy boundary. Deployment operators are responsible for controlling proxy configuration and for meeting deployment-specific network policy and legal requirements.
+[[H4]] Proxy URL Format#
+Proxy URLs can use either HTTP or HTTPS protocols:
+HTTP proxy: http://proxy.example.com:8080
+HTTPS proxy: https://proxy.example.com:8080
+Proxy with authentication: http://username:password@proxy.example.com:8080
+[[H4]] NO_PROXY Format#
+The NO_PROXY environment variable supports several formats:
+* - Bypass proxy for all hosts
+example.com - Exact host name match
+.example.com - Domain suffix match (matches sub.example.com)
+*.example.com - Wildcard domain match
+192.168.1.100 - Exact IP address match
+192.168.1.1-192.168.1.100 - IP address range
+example.com:8080 - Hostname with specific port
+Multiple entries should be separated by commas.
+[[H4]] Example#
+To start a Node.js process with proxy support enabled for all requests sent through the default global agent, either use the NODE_USE_ENV_PROXY environment variable:
+NODE_USE_ENV_PROXY=1 HTTP_PROXY=http://proxy.example.com:8080 NO_PROXY=localhost,127.0.0.1 node client.js
+consolecopy
+Or the --use-env-proxy flag.
+HTTP_PROXY=http://proxy.example.com:8080 NO_PROXY=localhost,127.0.0.1 node --use-env-proxy client.js
+consolecopy
+To enable proxy support dynamically and globally with process.env (the default option of http.setGlobalProxyFromEnv()):
+const http = require('node:http');
+// Reads proxy-related environment variables from process.env
+const restore = http.setGlobalProxyFromEnv();
+// Subsequent requests will use the configured proxies from environment variables
+http.get('http://www.example.com', (res) => {
+// This request will be proxied if HTTP_PROXY or http_proxy is set
+});
+fetch('https://www.example.com', (res) => {
+// This request will be proxied if HTTPS_PROXY or https_proxy is set
+});
+// To restore the original global agent and dispatcher settings, call the returned function.
+// restore();
+import http from 'node:http';
+// Reads proxy-related environment variables from process.env
+http.setGlobalProxyFromEnv();
+// Subsequent requests will use the configured proxies from environment variables
+http.get('http://www.example.com', (res) => {
+// This request will be proxied if HTTP_PROXY or http_proxy is set
+});
+fetch('https://www.example.com', (res) => {
+// This request will be proxied if HTTPS_PROXY or https_proxy is set
+});
+// To restore the original global agent and dispatcher settings, call the returned function.
+// restore();
+javascriptcopy
+To enable proxy support dynamically and globally with custom settings:
+const http = require('node:http');
+const restore = http.setGlobalProxyFromEnv({
+http_proxy: 'http://proxy.example.com:8080',
+https_proxy: 'https://proxy.example.com:8443',
+no_proxy: 'localhost,127.0.0.1,.internal.example.com',
+});
+// Subsequent requests will use the configured proxies
+http.get('http://www.example.com', (res) => {
+// This request will be proxied through proxy.example.com:8080
+});
+fetch('https://www.example.com', (res) => {
+// This request will be proxied through proxy.example.com:8443
+});
+import http from 'node:http';
+http.setGlobalProxyFromEnv({
+http_proxy: 'http://proxy.example.com:8080',
+https_proxy: 'https://proxy.example.com:8443',
+no_proxy: 'localhost,127.0.0.1,.internal.example.com',
+});
+// Subsequent requests will use the configured proxies
+http.get('http://www.example.com', (res) => {
+// This request will be proxied through proxy.example.com:8080
+});
+fetch('https://www.example.com', (res) => {
+// This request will be proxied through proxy.example.com:8443
+});
+javascriptcopy
+To create a custom agent with built-in proxy support:
+const http = require('node:http');
+// Creating a custom agent with custom proxy support.
+const agent = new http.Agent({ proxyEnv: { HTTP_PROXY: 'http://proxy.example.com:8080' } });
+http.request({
+hostname: 'www.example.com',
+port: 80,
+path: '/',
+agent,
+}, (res) => {
+// This request will be proxied through proxy.example.com:8080 using the HTTP protocol.
+console.log(`STATUS: ${res.statusCode}`);
+});
+cjscopy
+Alternatively, the following also works:
+const http = require('node:http');
+// Use lower-cased option name.
+const agent1 = new http.Agent({ proxyEnv: { http_proxy: 'http://proxy.example.com:8080' } });
+// Use values inherited from the environment variables, if the process is started with
+// HTTP_PROXY=http://proxy.example.com:8080 this will use the proxy server specified
+// in process.env.HTTP_PROXY.
+const agent2 = new http.Agent({ proxyEnv: process.env });
+cjscopy

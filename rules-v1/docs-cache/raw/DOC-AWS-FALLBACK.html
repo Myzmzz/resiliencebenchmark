@@ -1,0 +1,990 @@
+<!doctype html>
+<html class="no-js aws-lng-en_US aws-with-target" lang="en-US" data-static-assets="https://a0.awsstatic.com" data-js-version="1.0.592" data-css-version="1.0.506">
+ <head><script src="https://web-static.archive.org/_static/js/athena.js" type="text/javascript"></script>
+<script type="text/javascript">window.addEventListener('DOMContentLoaded',function(){var v=archive_analytics.values;v.service='wb';v.server_name='wwwb-app244.us.archive.org';v.server_ms=3758;archive_analytics.send_pageview({});});</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/bundle-playback.js?v=lGQTDXxZ" charset="utf-8"></script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/wombat.js?v=o9P2E1FK" charset="utf-8"></script>
+<script>window.RufflePlayer=window.RufflePlayer||{};window.RufflePlayer.config={"autoplay":"on","unmuteOverlay":"hidden","showSwfDownload":true};</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/ruffle/ruffle.js"></script>
+<script type="text/javascript">
+    __wm.init("https://web.archive.org/web");
+  __wm.wombat("https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/","20250119023338","https://web.archive.org/","web","https://web-static.archive.org/_static/",
+	      "1737254018");
+</script>
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3" />
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv" />
+<!-- End Wayback Rewrite JS Include -->
+ 
+  <meta http-equiv="Content-Security-Policy" content="" data-report-uri="https://prod-us-west-2.csp-report.marketing.aws.dev/submit"> 
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+  <link rel="preconnect" href="https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/" crossorigin="anonymous"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250119023338/https://d1.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250119023338/https://amazonwebservicesinc.tt.omtrdc.net/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250119023338/https://s0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20250119023338/https://t0.m.awsstatic.com/"> 
+  <title>Avoiding fallback in distributed systems</title> 
+  <meta name="description" content="Building services that behave predictably during failures by avoiding fallback logic."> 
+  <meta name="robots" content="index, follow"> 
+  <meta property="twitter:title" content="Avoiding fallback in distributed systems"> 
+  <meta property="twitter:description" content="Building services that behave predictably during failures by avoiding fallback logic."> 
+  <meta property="og:title" content="Avoiding fallback in distributed systems"> 
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"> 
+  <link rel="canonical" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ar/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="ar-sa"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/de/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="de-de"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/es/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="es-es"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/fr/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="fr-fr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/id/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="id-id"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/it/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="it-it"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/jp/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="ja-jp"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ko/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="ko-kr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/pt/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="pt-br"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ru/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="ru-ru"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/th/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="th-th"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/tr/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="tr-tr"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/vi/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="vi-vn"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/cn/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="zh-cn"> 
+  <link rel="alternate" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/tw/builders-library/avoiding-fallback-in-distributed-systems/" hreflang="zh-tw"> 
+  <script src="https://web.archive.org/web/20250119023338js_/https://a0.awsstatic.com/libra/1.0.592/csp/csp-report.js" async="true"></script> 
+  <meta property="twitter:card" content="summary"> 
+  <meta property="twitter:image" content="https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_179x109.png"> 
+  <meta property="twitter:site" content="@awscloud"> 
+  <meta property="fb:pages" content="153063591397681"> 
+  <meta name="baidu-site-verification" content="pjxJUyWxae"> 
+  <meta name="360-site-verification" content="cbe5c6f0249e273e71fffd6d6580ce09"> 
+  <meta name="shenma-site-verification" content="79b94bb338f010af876605819a332e19_1617844070"> 
+  <meta name="sogou_site_verification" content="Ow8cCy3Hgq"> 
+  <link rel="icon" type="image/ico" href="https://web.archive.org/web/20250119023338im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="shortcut icon" type="image/ico" href="https://web.archive.org/web/20250119023338im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="apple-touch-icon" sizes="57x57" href="https://web.archive.org/web/20250119023338im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="72x72" href="https://web.archive.org/web/20250119023338im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <link rel="apple-touch-icon" sizes="114x114" href="https://web.archive.org/web/20250119023338im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="144x144" href="https://web.archive.org/web/20250119023338im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <meta property="og:type" content="company"> 
+  <meta property="og:url" content="https://web.archive.org/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/"> 
+  <meta property="og:image" content="https://web.archive.org/web/20250119023338im_/https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_1200x630.png"> 
+  <meta property="og:site_name" content="Amazon Web Services, Inc."> 
+  <meta name="facebook-domain-verification" content="ucogvbvio3zpukhjxw4pcprci7qylr"> 
+  <meta name="google-site-verification" content="XHghG81ulgiW-3EylGcF48sG28tBW5EH0bNUhgo_DrU"> 
+  <meta name="msvalidate.01" content="6F92E52A288E266E30C2797ECB5FCCF3"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20250119023338cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-base.css"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20250119023338cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-components.css"> 
+  <script type="esms-options">{"noLoadEventRetriggers": true, "nonce":"hWj1dPvlgU32kOe5h2F7NODu+ntvMeNMZ5jmjRd1i1I="}</script> 
+  <script async src="https://web.archive.org/web/20250119023338js_/https://a0.awsstatic.com/eb-csr/1.0.116/polyfills/es-module-shims/es-module-shims.js"></script> 
+  <script type="importmap">{"imports":{"react":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/react/react.js","react/jsx-runtime":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/react/jsx-runtime.js","react-dom":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/react/react-dom.js","react-dom/server":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/react/server-browser.js","react-dom-server-browser":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/react/react-dom-server-browser.js","sanitize-html":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/sanitize-html/index.js","video.js":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/video.js","videojs-event-tracking":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/videojs-event-tracking.js","videojs-hotkeys":"https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/eb-csr/1.0.116/videojs/videojs-hotkeys.js"}}</script> 
+  <script type="application/json" id="aws-page-settings">
+  {
+    "supportedLanguages": ["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],
+    "defaultLanguage": "en",
+    "logDataSet": "LIVE:PROD",
+    "logInstance": "PUB",
+    "csdsEndpoint": "https://web.archive.org/web/20250119023338/https://d2c.aws.amazon.com/",
+    "framework": "v2",
+    "g11nLibPath": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/g11n-lib/2.0.107",
+    "i18nStringPath": "https://web.archive.org/web/20250119023338/https://i18n-string.us-west-2.prod.pricing.aws.a2z.com",
+    "libraCSSPath": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/libra-css/css/1.0.506",
+    "libraCSSImagePath": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/libra-css/images",
+    "isLoggingEnabled": true,
+    "currentLanguage": "en-US",
+    "currentStage": "Prod",
+    "isBJS": false,
+    "isMarketplace": false,
+    "isRTL": false,
+    "requireBaseUrl": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com",
+    "requirePackages":[
+      {
+          "name": "libra",
+          "location": "libra/1.0.592"
+      }
+    ],
+    "requirePaths": {
+      "directories": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/libra/1.0.592/directories",
+      "libra-cardsui": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/libra/1.0.592/libra-cardsui",
+      "librastandardlib": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/libra/1.0.592/librastandardlib",
+      "aws-blog": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/aws-blog/1.0.80/js",
+      "plc": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/plc/js/1.0.138/plc",
+      "scripts": "libra/1.0.592/v1-polyfills/scripts",
+      "libra-search": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/libra-search/1.0.19/js",
+      "pricing-calculator": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/pricing-calculator/js/1.0.2",
+      "pricing-savings-plan": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/pricing-savings-plan/js/1.0.23"
+    },
+    "staticAssetPath": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com",
+    "jsAssetPath": "https://web.archive.org/web/20250119023338/https://a0.awsstatic.com/libra/1.0.592",
+    "awstvVideoAssetOrigin": "https://web.archive.org/web/20250119023338/https://tv.awsstatic.com",
+    "awstvVideoAPIOrigin": "//web.archive.org/web/20250119023338/https://aws.amazon.com"
+  }
+</script> 
+  <script src="https://web.archive.org/web/20250119023338js_/https://a0.awsstatic.com/libra/1.0.592/libra-head.js"></script> 
+  <script src="https://web.archive.org/web/20250119023338js_/https://a0.awsstatic.com/s_code/js/3.0/awshome_s_code.js"></script> 
+  <script src="https://web.archive.org/web/20250119023338js_/https://d2c.aws.amazon.com/client/loader/v1/d2c-load.js"></script> 
+  <script async src="https://web.archive.org/web/20250119023338js_/https://a0.awsstatic.com/da/js/1.0.51/aws-da.js"></script> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20250119023338cs_/https://a0.awsstatic.com/eb-csr/1.0.116/orchestrate.css"> 
+  <script type="module" async="true" src="https://web.archive.org/web/20250119023338jm_/https://a0.awsstatic.com/eb-csr/1.0.116/orchestrate.js"></script> 
+  <script type="application/json" id="target-mediator">{"pageLanguage":"en","supportedLanguages":["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],"offerOrigin":"https://web.archive.org/web/20250119023338/https://s0.awsstatic.com"}</script> 
+  <script data-js-script="target-mediator" src="https://web.archive.org/web/20250119023338js_/https://a0.awsstatic.com/target/1.0.123/aws-target-mediator.js" async="true"></script> 
+ </head> 
+ <body class="awsm"><!-- BEGIN WAYBACK TOOLBAR INSERT -->
+<script>__wm.rw(0);</script>
+<div id="wm-ipp-base" lang="en" style="display:none;direction:ltr;" toolbar-mode="auto">
+<div id="wm-ipp" style="position:fixed;left:0;top:0;right:0;">
+<div id="donato" style="position:relative;width:100%;height:0;">
+  <div id="donato-base">
+    <iframe id="donato-if" src="https://archive.org/includes/donate.php?as_page=1&amp;platform=wb&amp;referer=https%3A//web.archive.org/web/20250119023338/https%3A//aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/"
+	    scrolling="no" frameborder="0" style="width:100%; height:100%">
+    </iframe>
+  </div>
+</div><div id="wm-ipp-inside">
+  <div id="wm-toolbar" style="position:relative;display:flex;flex-flow:row nowrap;justify-content:space-between;" nav="async">
+    <div id="wm-logo" style="/*width:110px;*/padding-top:12px;">
+      <a href="/web/" title="Wayback Machine home page"><img src="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png" srcset="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-100.png, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-150.png 1.5x, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png 2x" alt="Wayback Machine" style="width:100px" border="0" /></a>
+    </div>
+    <div class="c" style="display:flex;flex-flow:column nowrap;justify-content:space-between;flex:1;">
+      <form class="u" style="display:flex;flex-direction:row;flex-wrap:nowrap;" target="_top" method="get" action="/web/submit" name="wmtb" id="wmtb"><input type="text" name="url" id="wmtbURL" value="https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/" onfocus="this.focus();this.select();" style="flex:1;"/><input type="hidden" name="type" value="replay" /><input type="hidden" name="date" value="20250119023338" /><input type="submit" value="Go" />
+      </form>
+      <div style="display:flex;flex-flow:row nowrap;align-items:flex-end;">
+                <div class="s" id="wm-nav-captures" style="flex:1;">
+                    <a class="t" href="/web/20250119023338*/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/" title="See a list of every capture for this URL">79 captures</a>
+          <div class="r" title="Timespan for captures of this URL">13 Feb 2020 - 02 Jul 2026</div>
+          </div>
+        <div class="k">
+          <a href="" id="wm-graph-anchor">
+            <div id="wm-ipp-sparkline" title="Explore captures for this URL" style="position: relative">
+              <canvas id="wm-sparkline-canvas" width="775" height="27" border="0"></canvas>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="n">
+      <table>
+        <tbody>
+          <!-- NEXT/PREV MONTH NAV AND MONTH INDICATOR -->
+          <tr class="m">
+            <td class="b" nowrap="nowrap">Dec</td>
+            <td class="c" id="displayMonthEl" title="You are here: 02:33:38 Jan 19, 2025">JAN</td>
+            <td class="f" nowrap="nowrap">Feb</td>
+          </tr>
+          <!-- NEXT/PREV CAPTURE NAV AND DAY OF MONTH INDICATOR -->
+          <tr class="d">
+            <td class="b" nowrap="nowrap"><span class="ta"></span></td>
+            <td class="c" id="displayDayEl" style="width:34px;font-size:22px;white-space:nowrap;" title="You are here: 02:33:38 Jan 19, 2025">19</td>
+            <td class="f" nowrap="nowrap"><span class="ta"></span></td>
+          </tr>
+          <!-- NEXT/PREV YEAR NAV AND YEAR INDICATOR -->
+          <tr class="y">
+            <td class="b" nowrap="nowrap">2024</td>
+            <td class="c" id="displayYearEl" title="You are here: 02:33:38 Jan 19, 2025">2025</td>
+            <td class="f" nowrap="nowrap">2026</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="r" style="display:flex;flex-flow:column nowrap;align-items:flex-end;justify-content:space-between;">
+      <div id="wm-btns" style="text-align:right;height:23px;">
+                <span class="xxs">
+          <div id="wm-save-snapshot-success">success</div>
+          <div id="wm-save-snapshot-fail">fail</div>
+          <a id="wm-save-snapshot-open" href="#" title="Share via My Web Archive" >
+            <span class="iconochive-web"></span>
+          </a>
+          <a href="https://archive.org/account/login.php" title="Sign In" id="wm-sign-in">
+            <span class="iconochive-person"></span>
+          </a>
+          <span id="wm-save-snapshot-in-progress" class="iconochive-web"></span>
+        </span>
+                <a class="xxs" href="https://help.archive.org/help/category/the-wayback-machine/" title="Get some help using the Wayback Machine" style="top:-6px;"><span class="iconochive-question" style="color:rgb(87,186,244);font-size:160%;"></span></a>
+        <a id="wm-tb-close" href="#close" style="top:-2px;" title="Close the toolbar"><span class="iconochive-remove-circle" style="color:#888888;font-size:240%;"></span></a>
+      </div>
+      <div id="wm-share" class="xxs">
+        <a href="/web/20250119023338/http://web.archive.org/screenshot/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/"
+           id="wm-screenshot"
+           title="screenshot">
+          <span class="wm-icon-screen-shot"></span>
+        </a>
+        <a href="#" id="wm-video" title="video">
+          <span class="iconochive-movies"></span>
+        </a>
+        <a id="wm-share-facebook" href="#" data-url="https://web.archive.org/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/" title="Share on Facebook" style="margin-right:5px;" target="_blank"><span class="iconochive-facebook" style="color:#3b5998;font-size:160%;"></span></a>
+        <a id="wm-share-twitter" href="#" data-url="https://web.archive.org/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/" title="Share on Twitter" style="margin-right:5px;" target="_blank"><span class="iconochive-twitter" style="color:#1dcaff;font-size:160%;"></span></a>
+      </div>
+      <div style="padding-right:2px;text-align:right;white-space:nowrap;">
+        <a id="wm-expand" class="wm-btn wm-closed" href="#expand"><span id="wm-expand-icon" class="iconochive-down-solid"></span> <span class="xxs" style="font-size:80%;">About this capture</span></a>
+      </div>
+    </div>
+  </div>
+    <div id="wm-capinfo" style="border-top:1px solid #777;display:none; overflow: hidden">
+        <div id="wm-capinfo-notice" source="api"></div>
+                <div id="wm-capinfo-collected-by" source="api" trigger="hover" token="MULmm8j3Wo38yQzBFMg6657HFng-Szmy1NTL4oCwEZB7Hr6AXBhwgAcjK3UqZsTJlDk"></div>
+    <div id="wm-capinfo-timestamps">
+    <div style="background-color:#666;color:#fff;font-weight:bold;text-align:center;padding:2px 0;" title="Timestamps for the elements of this page">TIMESTAMPS</div>
+    <div>
+      <div id="wm-capresources" style="margin:0 5px 5px 5px;max-height:250px;overflow-y:scroll !important"></div>
+      <div id="wm-capresources-loading" style="text-align:left;margin:0 20px 5px 5px;display:none"><img src="https://web-static.archive.org/_static/images/loading.gif" alt="loading" /></div>
+    </div>
+    </div>
+  </div></div></div></div><div id="wm-ipp-print">The Wayback Machine - https://web.archive.org/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/</div>
+<script type="text/javascript">//<![CDATA[
+__wm.bt(775,27,25,2,"web","https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/","20250119023338",1996,"https://web-static.archive.org/_static/",["https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3","https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv"], false);
+  __wm.rw(1);
+//]]></script>
+<!-- END WAYBACK TOOLBAR INSERT -->
+  
+  <script id="awsc-panorama-bundle" type="text/javascript" src="https://web.archive.org/web/20250119023338js_/https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{&quot;appEntity&quot;:&quot;aws-marketing&quot;,&quot;region&quot;:&quot;us-west-1&quot;,&quot;service&quot;:&quot;global-site&quot;,&quot;trackerConstants&quot;:{&quot;cookieDomain&quot;:&quot;aws.amazon.com&quot;}}" async="true"></script> 
+  <a id="aws-page-skip-to-main" class="lb-sr-only lb-sr-only-focusable lb-bold lb-skip-el" href="#aws-page-content-main"> Skip to main content</a> 
+  <header id="aws-page-header" class="awsm m-page-header lb-with-mobile-subrow" role="banner"> 
+   <div id="m-nav" class="m-nav" role="navigation" aria-label="Global Navigation"> 
+    <div class="m-nav-header lb-clearfix" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/desktop/index.html"> 
+     <div class="m-nav-logo"> 
+      <div class="lb-bg-logo aws-amazon_web_services_smile-header-desktop-en"> 
+       <a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+      </div> 
+     </div> 
+     <nav class="m-nav-secondary-links" style="min-width: 620px" aria-label="Secondary Global Navigation"> 
+      <a href="/web/20250119023338/https://aws.amazon.com/about-aws/?nc2=h_header">About AWS</a> 
+      <a href="/web/20250119023338/https://aws.amazon.com/contact-us/?nc2=h_header">Contact Us</a> 
+      <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt lb-has-trigger-indicator" href="#" data-mbox-ignore="true" data-lb-popover-trigger="popover-support-selector" role="button" aria-expanded="false" aria-label="Explore support options" id="popover-popover-support-selector-trigger" aria-controls="popover-support-selector" aria-haspopup="true"> Support &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a id="m-nav-language-selector" class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-language-selector" data-language="en" aria-label="Set site language" role="button" aria-controls="popover-language-selector" aria-expanded="false" aria-haspopup="true"> English &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-my-account" aria-label="Access account options" role="button" aria-controls="popover-my-account" aria-expanded="false" aria-haspopup="true"> My Account &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <div class="m-nav-cta-btn"> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_nav_cta"> 
+        <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="sign-up-sign-in-all" data-da-so-url="nav"> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-pad lb-box" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-sign-in" data-da-so-url="all"> 
+          <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt" style="padding-top:8px; padding-right:13px;" href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/console/home?nc2=h_ct&amp;src=header-signin"> Sign In</a> 
+         </div> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-v-margin lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-signup" data-da-so-url="all"> 
+          <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250119023338/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_ct&amp;src=header_signup" data-trk-params="{&quot;trkOverrideWithQs&quot;:true}" role="button"> <span> Create an AWS Account</span> </a> 
+         </div> 
+        </div> 
+       </div> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_desktop_nav_cta_test"> 
+        <div class="data-attr-wrapper lb-tiny-iblock lb-none-pad lb-box" style="padding-top:2px; padding-left:13px;" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="main-button-clicks" data-da-so-url="desktop"> 
+         <div class="lb-tiny-iblock lb-box"> 
+          <div class="lb-tiny-iblock lb-micro-v-margin lb-btn lb-icon-only" data-myaws-auth-hidden-only="true"> 
+           <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-out-options" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-out-options-trigger" aria-controls="signed-out-options" aria-haspopup="true"> <span> <i class="icon-user-o-aura lb-before"></i></span> </a> 
+          </div> 
+          <div class="lb-tiny-iblock lb-micro-v-margin m-no-auth lb-btn lb-icon-only" data-myaws-auth-only="true"> 
+           <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-in-options" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-in-options-trigger" aria-controls="signed-in-options" aria-haspopup="true"> <span> <i class="icon-user-aura lb-before"></i></span> </a> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-mid-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-out-options" id="signed-out-options" aria-modal="false" aria-labelledby="popover-signed-out-options-trigger" data-action="hover" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="sign-in-button" data-da-so-url="desktop"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="background-color:rgb(17,22,29); color:rgb(17,22,29); border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-pad lb-none-v-margin lb-txt" style="padding-top:5px; color:#f5f5f5; padding-bottom:5px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250119023338/https://auth.aws.amazon.com/sign-in"> Login</a> 
+            </div> 
+           </div> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-mid-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-in-options" id="signed-in-options" aria-modal="false" aria-labelledby="popover-signed-in-options-trigger" data-action="hover" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="view-profile" data-da-so-url="desktop"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="color:rgb(17,22,29); border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="padding-top:5px; color:rgb(17,22,29); padding-bottom:5px;" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/profile"> View profile</a> 
+            </div> 
+           </div> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="log-out" data-da-so-url="desktop"> 
+            <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="color:rgb(17,22,29); margin-top:16px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250119023338/https://auth.aws.amazon.com/sign-out"> Log out</a> 
+           </div> 
+          </div> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </nav> 
+     <div class="m-nav-primary-group"> 
+      <nav class="m-nav-primary-links" aria-label="Primary Global Navigation"> 
+       <i class="m-nav-angle-left-icon" aria-hidden="true"></i> 
+       <ul> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/q/?nc2=h_ql_prod_l1_q" class="m-nav-featured">Amazon Q</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/products/?nc2=h_ql_prod" data-panel="m-nav-panel-products">Products</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/solutions/?nc2=h_ql_sol" data-panel="m-nav-panel-solutions">Solutions</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/pricing/?nc2=h_ql_pr" data-panel="m-nav-panel-pricing">Pricing</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/documentation-overview/?nc2=h_ql_doc_do" data-panel="m-nav-panel-documentation">Documentation</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/getting-started/?nc2=h_ql_le" data-panel="m-nav-panel-learn">Learn</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/partners/?nc2=h_ql_pn" data-panel="m-nav-panel-partner">Partner Network</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/marketplace/?nc2=h_ql_mp" data-panel="m-nav-panel-marketplace">AWS Marketplace</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/customer-enablement/?nc2=h_ql_ce" data-panel="m-nav-panel-customer">Customer Enablement</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/events/?nc2=h_ql_ev" data-panel="m-nav-panel-events">Events</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20250119023338/https://aws.amazon.com/contact-us/?nc2=h_ql_exm" data-panel="m-nav-panel-more">Explore More </a></span></li> 
+       </ul> 
+       <div class="m-nav-icon-group"> 
+        <i class="m-nav-angle-right-icon" aria-hidden="true"></i> 
+        <button class="m-nav-search-icon" tabindex="0" aria-expanded="false" aria-label="Search"> 
+         <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-magnify"> 
+          <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+          <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+         </svg> </button> 
+       </div> 
+      </nav> 
+      <div id="m-nav-desktop-search" class="m-nav-search"> 
+       <form action="https://web.archive.org/web/20250119023338/https://aws.amazon.com/search/" role="search"> 
+        <div class="m-typeahead" data-directory-id="typeahead-suggestions" data-lb-comp="typeahead"> 
+         <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+        </div> 
+       </form> 
+       <i class="m-nav-close-icon" role="button" aria-label="Close"></i> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-language-selector" id="popover-language-selector" aria-modal="false" aria-labelledby="popover-popover-language-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="ar-SA" translate="no" data-language="ar"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+        <li lang="id-ID" translate="no" data-language="id"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+        <li lang="de-DE" translate="no" data-language="de"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+        <li lang="en-US" translate="no" data-language="en"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+        <li lang="es-ES" translate="no" data-language="es"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+        <li lang="fr-FR" translate="no" data-language="fr"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+        <li lang="it-IT" translate="no" data-language="it"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+        <li lang="pt-BR" translate="no" data-language="pt"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       </ul> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="vi-VN" translate="no" data-language="vi"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+        <li lang="tr-TR" translate="no" data-language="tr"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+        <li lang="ru-RU" translate="no" data-language="ru"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+        <li lang="th-TH" translate="no" data-language="th"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+        <li lang="ja-JP" translate="no" data-language="jp"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+        <li lang="ko-KR" translate="no" data-language="ko"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+        <li lang="zh-CN" translate="no" data-language="cn"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+        <li lang="zh-TW" translate="no" data-language="tw"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-my-account" id="popover-my-account" aria-modal="false" aria-labelledby="popover-popover-my-account-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="/web/20250119023338/https://aws.amazon.com/profile/?nc2=h_m_mc">My Profile</a></li> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="https://web.archive.org/web/20250119023338/https://auth.aws.amazon.com/sign-out/?nc2=h_m_mc">Sign out of AWS Builder ID</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/?nc2=h_m_mc">AWS Management Console</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/billing/home#/account?nc2=h_m_ma">Account Settings</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/billing/home?nc2=h_m_bc">Billing &amp; Cost Management</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/iam/home?nc2=h_m_sc#security_credential">Security Credentials</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://phd.aws.amazon.com/?nc2=h_m_sc">AWS Personal Health Dashboard</a></li> 
+     </ul> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-support-selector" id="popover-support-selector" aria-modal="false" aria-labelledby="popover-popover-support-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/support/home/?nc2=h_ql_cu">Support Center</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://iq.aws.amazon.com/?utm=mkt.nav">Expert Help</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://repost.aws/knowledge-center/?nc2=h_m_ma">Knowledge Center</a></li> 
+      <li><a href="/web/20250119023338/https://aws.amazon.com/premiumsupport/?nc2=h_m_bc">AWS Support Overview</a></li> 
+      <li><a href="https://web.archive.org/web/20250119023338/https://repost.aws/">AWS re:Post</a></li> 
+     </ul> 
+    </div> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/suggestions" data-hbs-context="{&quot;pricingText&quot;:&quot;Pricing&quot;,&quot;documentationText&quot;:&quot;Documentation&quot;,&quot;calculatorText&quot;:&quot;Calculator&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/products-head" data-hbs-context="{&quot;productsText&quot;:&quot;Products&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/keypages-head" data-hbs-context="{&quot;relatedPagesText&quot;:&quot;Related Pages&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/tutorials-head" data-hbs-context="{&quot;tutorialsText&quot;:&quot;Tutorials&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/blogs-head" data-hbs-context="{&quot;blogsText&quot;:&quot;Blogs&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/see-all" data-hbs-context="{&quot;resultsText&quot;:&quot;See more results for&quot;}"></script> 
+   </div> 
+   <div id="m-nav-mobile" class="m-nav-mobile" role="navigation" aria-label="Global Navigation for Mobile"> 
+    <div id="m-nav-mobile-header" class="m-nav-mobile-header m-nav-mobile-with-sub-row" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/mobile/index.html"> 
+     <div class="lb-bg-logo aws-amazon_web_services_smile-header-mobile-en"> 
+      <a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+     </div> 
+     <div class="m-nav-mobile-button-group"> 
+      <button class="m-nav-mobile-button icon-search" tabindex="0" aria-expanded="false" aria-label="Search"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <button class="m-nav-mobile-button icon-reorder" tabindex="0" aria-expanded="false" aria-label="Menu"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M15 3H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 8H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 13H1" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_mobile_nav_cta_test"> 
+       <div class="data-attr-wrapper lb-none-pad lb-none-v-margin lb-box" style="padding-top:0px; padding-left:0px; padding-bottom:0px; margin-top:10px; padding-right:0px;" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="main-button-clicks" data-da-so-url="mobile"> 
+        <div class="data-attr-wrapper lb-none-v-margin lb-box" style="padding-top:0px; padding-left:10px; padding-bottom:0px; margin-top:10px; padding-right:27px;" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="main-button-clicks" data-da-so-url="mobile"> 
+         <div class="lb-none-v-margin lb-btn lb-icon-only" data-myaws-auth-hidden-only="true"> 
+          <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-out-options-mobile" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-out-options-mobile-trigger" aria-controls="signed-out-options-mobile" aria-haspopup="true"> <span> <i class="icon-user-o-aura lb-before"></i></span> </a> 
+         </div> 
+         <div class="lb-none-v-margin m-no-auth lb-btn lb-icon-only" data-myaws-auth-only="true"> 
+          <a class="lb-btn-da-primary-rounded" href="#" data-mbox-ignore="true" data-lb-popover-trigger="signed-in-options-mobile" role="button" aria-expanded="false" aria-label="AWS Builder Id options" id="popover-signed-in-options-mobile-trigger" aria-controls="signed-in-options-mobile" aria-haspopup="true"> <span> <i class="icon-user-aura lb-before"></i></span> </a> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-out-options-mobile" id="signed-out-options-mobile" aria-modal="false" aria-labelledby="popover-signed-out-options-mobile-trigger" data-action="clickOnly" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="sign-in-button" data-da-so-url="mobile"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="background-color:rgb(17,22,29); color:rgb(17,22,29); border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-pad lb-none-v-margin lb-txt" style="padding-top:5px; color:#f5f5f5; padding-bottom:5px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250119023338/https://auth.aws.amazon.com/sign-in"> Login</a> 
+            </div> 
+           </div> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-in-options-mobile" id="signed-in-options-mobile" aria-modal="false" aria-labelledby="popover-signed-in-options-mobile-trigger" data-action="clickOnly" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="view-profile" data-da-so-url="mobile"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="color:rgb(17,22,29); border-width:2px; border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="padding-top:5px; color:rgb(17,22,29); padding-bottom:5px;" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/profile"> View profile</a> 
+            </div> 
+           </div> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="log-out" data-da-so-url="mobile"> 
+            <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="color:rgb(17,22,29); margin-top:16px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250119023338/https://auth.aws.amazon.com/sign-out"> Log out</a> 
+           </div> 
+          </div> 
+         </div> 
+         <div class="lb-none-pad lb-popover lb-popover-rounded lb-popover-small" style="padding-top:40px; padding-left:40px; padding-bottom:40px; padding-right:40px;" data-lb-comp="popover" data-id="signed-in-options-mobile" id="signed-in-options-mobile" aria-modal="false" aria-labelledby="popover-signed-in-options-mobile-trigger" data-action="clickOnly" data-position="top"> 
+          <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+          <div class="lb-tiny-align-center lb-txt-bold lb-txt-none lb-txt-20 lb-none-v-margin lb-txt">
+            Profile 
+          </div> 
+          <div class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt">
+            Your profile helps improve your interactions with select AWS experiences. 
+          </div> 
+          <div class="lb-none-pad lb-none-v-margin lb-box" style="margin-top:32px;"> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="view-profile" data-da-so-url="mobile"> 
+            <div class="lb-xlarge-radius lb-border-p lb-none-pad lb-box" style="color:rgb(17,22,29); border-width:2px; border-color:rgb(17,22,29);"> 
+             <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="padding-top:5px; color:rgb(17,22,29); padding-bottom:5px;" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/profile"> View profile</a> 
+            </div> 
+           </div> 
+           <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="builder-id-dropdown-button" data-da-so-type="viewport" data-da-so-version="log-out" data-da-so-url="mobile"> 
+            <a class="lb-tiny-align-center lb-txt-none lb-none-v-margin lb-txt" style="color:rgb(17,22,29); margin-top:16px;" data-myaws-requested-url="true" href="https://web.archive.org/web/20250119023338/https://auth.aws.amazon.com/sign-out"> Log out</a> 
+           </div> 
+          </div> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+     <div id="m-nav-mobile-sub-row" class="m-nav-mobile-sub-row"> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="get-started-for-free-cta" data-da-so-url="all"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250119023338/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_mobile" role="button"> <span> Get Started for Free</span> </a> 
+      </div> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="contact-us"> 
+       <a class="lb-btn-p" href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/contact-us/?nc2=h_mobile" role="button"> <span> Contact Us</span> </a> 
+      </div> 
+     </div> 
+    </div> 
+    <div id="m-nav-mobile-search" class="m-nav-mobile-search"> 
+     <form action="https://web.archive.org/web/20250119023338/https://aws.amazon.com/search" role="search"> 
+      <div class="m-typeahead"> 
+       <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+      </div> 
+     </form> 
+    </div> 
+    <nav id="m-nav-trimdown" aria-label="Condensed Global Navigation for Mobile"> 
+     <ul class="m-nav-mobile-menu-group"> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/products/?nc2=h_mo"> <span class="m-nav-link-title">Products</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/solutions/?nc2=h_mo"> <span class="m-nav-link-title">Solutions</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/pricing/?nc2=h_mo"> <span class="m-nav-link-title">Pricing</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/what-is-aws/?nc2=h_mo"> <span class="m-nav-link-title">Introduction to AWS</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/getting-started/?nc2=h_mo"> <span class="m-nav-link-title">Getting Started</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/documentation-overview/?nc2=h_mo"> <span class="m-nav-link-title">Documentation</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/training/?nc2=h_mo"> <span class="m-nav-link-title">Training and Certification</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/developer/?nc2=h_mo"> <span class="m-nav-link-title">Developer Center</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/solutions/case-studies/?nc2=h_mo"> <span class="m-nav-link-title">Customer Success</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/partners/?nc2=h_mo"> <span class="m-nav-link-title">Partner Network</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/marketplace/?nc2=h_mo"> <span class="m-nav-link-title">AWS Marketplace</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/support/home?nc2=h_ql_cu"> <span class="m-nav-link-title">Support</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250119023338/https://repost.aws/"> <span class="m-nav-link-title">AWS re:Post</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/console/home"> <span class="m-nav-link-title">Log into Console</span> </a> </li> 
+      <li> <a href="/web/20250119023338/https://aws.amazon.com/console/mobile/"> <span class="m-nav-link-title">Download the Mobile App</span> </a> </li> 
+     </ul> 
+    </nav> 
+   </div> 
+   <div class="lb-sticky-subnav" data-lb-comp="sticky-subnav" data-lb-page-path="/builders-library/avoiding-fallback-in-distributed-systems/"> 
+    <div class="lb-row lb-row-max-large lb-snap"> 
+     <div class="lb-tiny-24 lb-sticky-subnav-content"> 
+      <div class="lb-sticky-subnav-title"> 
+       <a class="lb-txt" href="/web/20250119023338/https://aws.amazon.com/builders-library/"> The Amazon Builders' Library</a> 
+      </div> 
+      <div class="lb-sticky-subnav-links"> 
+       <a class="lb-txt-bold lb-txt" href="/web/20250119023338/https://aws.amazon.com/builders-library/"> Overview</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20250119023338/https://aws.amazon.com/builders-library/authors/"> Authors</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20250119023338/https://aws.amazon.com/builders-library/faqs/"> FAQs</a> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </header> 
+  <div id="aws-page-content" class="lb-page-with-sidebar-left lb-page-content lb-page-with-sticky-subnav" style="padding-top:0px; padding-bottom:0px;" data-page-alert-target="true"> 
+   <div> 
+    <div class="lb-bg-left-bottom-cover lb-none-v-margin lb-grid" style="padding-top:50px; background-image:url('https://web.archive.org/web/20250119023338im_/https://d1.awsstatic.com/legal/builders-library/WEB_Library-header.d958a0d6de10906ba0ed43e35bfd1669a3c84031.jpg');"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-16"> 
+       <div class="lb-breadcrumbs lb-breadcrumbs-dropTitle lb-breadcrumbs-dark"> 
+        <ul> 
+         <li> <a href="/web/20250119023338/https://aws.amazon.com/builders-library/"><span>Amazon Builders' Library</span></a> </li> 
+        </ul> 
+        <h1>Avoiding fallback in distributed systems</h1> 
+       </div> 
+       <div class="lb-txt-uppercase lb-txt-white lb-txt-16 lb-txt" style="margin-bottom:20px;">
+         Architecture | LEVEL 300 
+       </div> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-8"> 
+       <div class="lb-tiny-iblock lb-tiny-pad lb-box" style="background-color:#eaeded;"> 
+        <div class="lb-none-v-margin lb-rtxt" style="margin-top:10px;"> 
+         <p style="text-align: center;"><b>Would you like to be notified of&nbsp;new content?</b></p> 
+        </div> 
+        <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-14"> 
+          <div class="lb-btn"> 
+           <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250119023338/https://pages.awscloud.com/amazon-builders-library.html" target="_blank" rel="noopener noreferrer" role="button"> <span> Send me updates</span> </a> 
+          </div> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <main id="aws-page-content-main" role="main" tabindex="-1"> 
+    <div class="lb-sticky-sidebar lb-sticky-sidebar-modern" data-lb-comp="sticky-sidebar"> 
+     <div data-lb-comp="floating-wrapper" class="lb-floating-wrapper"> 
+      <div class="lb-floating-wrapper-content"> 
+       <div class="lb-wrapper-content"> 
+        <div class="lb-toggle-wrapper"> 
+         <button class="lb-toggle" aria-label="Collapse sidebar" data-aria-label-toggle="Expand sidebar" aria-expanded="true"></button> 
+        </div> 
+        <div class="lb-sidebar-content"> 
+         <div> 
+          <div class="lb-sidebar-header">
+            Article Content 
+          </div> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Introduction"> Introduction</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Single-machine_fallback"> Single-machine fallback</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Distributed_fallback"> Distributed fallback</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#How_Amazon_avoids_fallback"> How Amazon avoids fallback</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Conclusion"> Conclusion</a> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-grid"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-24"> 
+       <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-txt-none lb-txt" href="/web/20250119023338/https://aws.amazon.com/builders-library/authors/jacob-gabrielson/"> By Jacob Gabrielson</a> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-16"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-tiny-align-left lb-small-align-left lb-mid-align-left lb-large-align-left lb-xlarge-align-left lb-txt-none lb-tiny-hide lb-small-show lb-mid-show lb-large-show lb-xlarge-show lb-txt" href="https://web.archive.org/web/20250119023338/https://d1.awsstatic.com/builderslibrary/pdfs/avoiding-fallback-in-distributed-systems.pdf" target="_blank" rel="noopener noreferrer"> <i class="icon-file-pdf-o lb-before"></i>&nbsp;PDF</a> 
+         <a class="lb-tiny-align-left lb-small-align-left lb-mid-align-left lb-large-align-left lb-xlarge-align-left lb-txt-none lb-tiny-hide lb-small-show lb-mid-show lb-large-show lb-xlarge-show lb-txt" href="https://web.archive.org/web/20250119023338/https://www.amazon.com/dp/B082K6PXKR" target="_blank" rel="noopener noreferrer"> <i class="icon-file-pdf-o lb-before"></i>&nbsp;Kindle</a> 
+        </div> 
+       </div> 
+       <div id="Introduction"></div> 
+       <div class="lb-rtxt"> 
+        <p>Critical failures prevent a service from producing useful results. For example, in an ecommerce website, if a database query for product information fails, the website cannot display the product page successfully. Amazon services must handle the majority of critical failures in order to be reliable. There are four broad categories of strategies for handling critical failures:</p> 
+        <p style="margin-left: 40px;">• <b>Retry</b>: Perform the failed activity again, either immediately or after some delay.<br> • <b>Proactive retry</b>: Perform the activity multiple times in parallel, and make use of the first one to finish.<br> • <b>Failover</b>: Perform the activity again against a different copy of the endpoint, or, preferably, perform multiple, parallel copies of the activity to raise the odds of at least one of them succeeding.<br> • <b>Fallback</b>: Use a different mechanism to achieve the same result.</p> 
+        <p>This article covers fallback strategies and why we almost never use them at Amazon. You might find this surprising. After all, engineers often use the real world as a starting point for their designs. And in the real world, fallback strategies must be planned in advance and used when necessary. Let's say an airport's display boards go out. A contingency plan (such as humans writing flight information on whiteboards) must be in place to handle this situation, because passengers still need to find their gates. But consider how awful the contingency plan is: the difficulty of reading the whiteboards, the difficulty of keeping them up-to-date, and the risk that humans will add incorrect information. The whiteboard fallback strategy is necessary but it’s riddled with problems.</p> 
+        <p>In the world of distributed systems, fallback strategies are among the most difficult challenges to handle, especially for time-sensitive services. Compounding this difficulty is that bad fallback strategies can take a long time (even years) to leave repercussions, and the difference between a good strategy and a bad strategy is subtle. In this article, the focus will be on how fallback strategies can cause more problems than they fix. We’ll include examples of where fallback strategies have caused problems at Amazon. Finally, we’ll discuss alternatives to fallback that we use at Amazon.</p> 
+        <p>Analyzing fallback strategies for services isn’t intuitive and their ripple effects are difficult to foresee in distributed systems, so let’s start by first looking at fallback strategies for a single-machine application.<br> </p> 
+       </div> 
+       <h2 id="Single-machine_fallback" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Single-machine fallback</h2> 
+       <div class="lb-rtxt"> 
+        <div>
+          Consider the following C code snippet that illustrates a common pattern for handling memory allocation failures in many applications. This code allocates memory by using the malloc() function, and then copies an image buffer into that memory while performing some kind of transformation: 
+         <br> 
+        </div> 
+       </div> 
+       <div class="lb-code lb-ctxt-p" data-lb-comp="code"> 
+        <pre class="language-c line-numbers"><code class="language-c">pixel_ranges = malloc(image_size); // allocates memory
+if (pixel_ranges == NULL) {
+  // On error, malloc returns NULL
+  exit(1);
+}
+for (i = 0; i &lt; image_size; i++) {
+  pixel_ranges[i] = xform(original_image[i]);
+}</code></pre> 
+        <button class="lb-code-copy-btn"> 
+         <div class="lb-code-copy-confirmation"> 
+          <i class="icon-check"></i> 
+          <span>Code snippet copied</span> 
+         </div> <span class="lb-custom-pol-icon lb-icon-copy-blue"></span> Copy</button> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>The code doesn't gracefully recover from the case where malloc fails. In practice, calls to malloc fail rarely, so developers often ignore its failures in code. Why is this strategy so commonplace? The reasoning is that, on a single machine, if malloc fails, the machine is probably out of memory. So there are bigger problems than one malloc call failing—the machine might crash soon. And most of the time, on a single machine, that is sound reasoning. Many applications aren’t critical enough to be worth the effort for solving such a thorny problem. But what if you did want to handle the error? Trying to do something useful in that situation is tricky. Let’s say we implement a second method called malloc2 that allocates memory differently, and we call malloc2 if the default malloc implementation fails:<br> </p> 
+       </div> 
+       <div class="lb-code lb-ctxt-p" data-lb-comp="code"> 
+        <pre class="language-c line-numbers"><code class="language-c">pixel_ranges = malloc(image_size);
+if (pixel_ranges == NULL) {
+  pixel_ranges = malloc2(image_size);
+}</code></pre> 
+        <button class="lb-code-copy-btn"> 
+         <div class="lb-code-copy-confirmation"> 
+          <i class="icon-check"></i> 
+          <span>Code snippet copied</span> 
+         </div> <span class="lb-custom-pol-icon lb-icon-copy-blue"></span> Copy</button> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>At first glance, this code looks like it could work, but there are problems with it, some less obvious than others. To begin with, fallback logic is <b>hard to test</b>. We could intercept the call to malloc and inject a failure, but that might not accurately simulate what would happen in the production environment. In production, if malloc fails, the machine is most likely out of memory or low on memory. How do you simulate those broader memory problems? Even if you could generate a low-memory environment to run the test in (say, in a Docker container), how would you time the low-memory condition to coincide with the execution of the malloc2 fallback code?</p> 
+        <p>Another problem is that the <b>fallback itself could fail</b>. The previous fallback code doesn’t handle malloc2 failures, so the program doesn’t provide as much benefit as you might think. The fallback strategy possibly makes complete failure less likely but not impossible. At Amazon we have found that spending engineering resources on making the primary (non-fallback) code more reliable usually raises our odds of success more than investing in an infrequently used fallback strategy.</p> 
+        <p>Furthermore, if availability is our highest priority, the <b>fallback strategy might not be worth the risk</b>. Why bother with malloc at all if malloc2 has a higher chance of succeeding? Logically, malloc2 must be making a trade-off in exchange for its higher availability. Maybe it allocates memory in higher-latency, but larger, SSD-based storage. But that raises the question, why is it okay for malloc2 to make this trade-off? Let's consider a potential sequence of events that might happen with this fallback strategy. First, the customer is using the application. Suddenly (because malloc failed), malloc2 kicks in and the application slows down. That's bad: Is it actually okay to be slower? And the problems don't stop there. Consider that the machine is most likely out of (or very low on) memory. The customer is now experiencing two problems (slower application and slower machine) instead of one. The side-effects of switching to malloc2 might even make the overall problem worse. For example, other subsystems might also be contending for the same SSD-based storage.</p> 
+        <p>Fallback logic can also place <b>unpredictable load</b> on the system. Even simple common logic like writing an error message to a log with a stack trace is harmless on the surface, but if something changes suddenly to cause that error to occur at a high rate, a CPU-bound application might suddenly morph into an I/O-bound application. And if the disk wasn’t provisioned to handle writing at that rate or to store that amount of data, it can slow down or crash the application.</p> 
+        <p>Not only might the fallback strategy make the problem worse, this will likely occur as a <b>latent bug</b>. It is easy to develop fallback strategies that rarely trigger in production. It might take years before even one customer's machine actually runs out of memory at just the right moment to trigger the specific line of code with the fallback to malloc2 shown earlier. If there is a bug in the fallback logic or some kind of side-effect that makes the overall problem worse, the engineers who wrote the code will likely have forgotten how it worked in the first place, and the code will be harder to fix. For a single-machine application, this may be an acceptable business trade-off, but in distributed systems the consequences are much more significant, as we’ll discuss later. </p> 
+        <p>All of these problems are thorny, but in our experience, they can often be safely ignored in single-machine applications. The most common solution is the one mentioned earlier: Just let memory allocation errors crash the application. The code that allocates memory shares fate with the rest of the machine, and it's quite likely that the rest of the machine is about to fail in this case. Even if it didn't share fate, the application would now be in a state that wasn’t anticipated, and failing fast is a good strategy. The business trade-off is reasonable.</p> 
+        <p>For critical single-machine applications that must work in case of memory allocation failures, one solution is to pre-allocate all heap memory on startup and never rely on malloc again, even under error conditions. Amazon has implemented this strategy multiple times; for example, in monitoring daemons that run on production servers and Amazon Elastic Compute Cloud (Amazon EC2) daemons that monitor customers' CPU bursts.<br> </p> 
+       </div> 
+       <h2 id="Distributed_fallback" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Distributed fallback</h2> 
+       <div class="lb-rtxt"> 
+        <p>At Amazon, we don’t let distributed systems, especially systems that were meant to respond in real time, make the same trade-offs as single-machine applications. One of our reasons is the lack of shared fate with the customer. We can assume that applications are running on the machine sitting in front of the customer. If the application runs out of memory, the customer probably doesn't expect it to keep running. Services don’t run on the machine the customer is using directly, so the expectation is different. Beyond that, customers typically use services precisely because they're more available than running an application on a single server, so we need to make them so. In theory, this would lead us to implement fallback as a way to make the service more reliable. Unfortunately, distributed fallback has all the same problems, and more, when it comes to critical system failures.</p> 
+        <p><b>Distributed fallback strategies are harder to test</b>. Service fallback is more complicated than the single-machine application case, because multiple machines and downstream services play a part in the failures. The failure modes themselves, such as overload scenarios, are hard to replicate in a test, even if test orchestration across multiple machines is readily available. The combinatorics also increase the sheer number of cases to test, so you need more tests and they're much harder to set up.</p> 
+        <p><b>Distributed fallback strategies themselves can fail.</b> While it might seem that fallback strategies guarantee success, in our experience, they usually improve only the odds of success.</p> 
+        <p><b>Distributed fallback strategies often make the outage worse</b>. In our experience, fallback strategies increase the scope of impact of failures as well as increasing recovery times.</p> 
+        <p><b>Distributed fallback strategies are often not worth the risk</b>. As with malloc2, the fallback strategy often makes some kind of trade-off; otherwise, we'd use it all the time. Why use a fallback that's worse, when something is already going wrong?</p> 
+        <p><b>Distributed fallback strategies often have latent bugs</b> that show up only when an unlikely set of coincidences occur, potentially months or years after their introduction.<br> A real-world major outage triggered by a fallback mechanism in the Amazon retail website illustrates all these problems. The outage occurred around 2001 and was caused by a new feature that provided up-to-date shipping speeds for all products shown on the website. The new feature looked something like this:<br> </p> 
+       </div> 
+       <figure class="lb-img"> 
+        <div> 
+         <img src="https://web.archive.org/web/20250119023338im_/https://d1.awsstatic.com/legal/builders-library/Screenshots/amazon-retail-shipping-speeds.e77183714a5cda40a7c54f4e4dc37a847fed067b.png" alt="" title="" class="cq-dd-image"> 
+        </div> 
+       </figure> 
+       <div class="lb-rtxt"> 
+        <p>At the time, the website architecture had only two tiers, and since this data was stored in a supply chain database, the web servers needed to query the database directly. But the database couldn't keep up with the request volume from the website. The website had a high volume of traffic, and some pages would show 25 or more products, with shipping speeds for each product displayed inline. So we added a caching layer running as a separate process on each web server (somewhat like <a href="https://web.archive.org/web/20250119023338/https://memcached.org/" target="_blank">Memcached</a>):<br> </p> 
+       </div> 
+       <figure class="lb-img"> 
+        <div> 
+         <img src="https://web.archive.org/web/20250119023338im_/https://d1.awsstatic.com/legal/builders-library/Screenshots/memcached.3a7fb3e858a8da481d15837add861707e0c73138.png" alt="" title="" class="cq-dd-image"> 
+        </div> 
+       </figure> 
+       <div class="lb-rtxt"> 
+        <p>This worked well, but the team also attempted to handle the case where the cache (a separate process) failed for some reason. In this scenario, the web servers reverted to querying the database directly. In pseudo-code, we wrote something like this:<br> </p> 
+       </div> 
+       <div class="lb-code lb-ctxt-p" data-lb-comp="code"> 
+        <pre class="language-java line-numbers"><code class="language-java">if (cache_healthy) {
+  shipping_speed = get_speed_via_cache(sku);
+} else {
+  shipping_speed = get_speed_from_database(sku);
+}</code></pre> 
+        <button class="lb-code-copy-btn"> 
+         <div class="lb-code-copy-confirmation"> 
+          <i class="icon-check"></i> 
+          <span>Code snippet copied</span> 
+         </div> <span class="lb-custom-pol-icon lb-icon-copy-blue"></span> Copy</button> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Falling back to direct database queries was an intuitive solution that did work for a number of months. But eventually the caches all failed around the same time, which meant that every web server hit the database directly. This created enough load to completely lock up the database. The entire website went down because all web server processes were blocked on the database. This supply chain database was also critical for fulfillment centers, so the outage spread even further, and all fulfillment centers worldwide ground to a halt until the problem was fixed.</p> 
+        <p>All the problems we saw in the single-machine case were present in the distributed case with more dire consequences. It was <b>hard to test</b> the distributed fallback case; even if we had simulated the cache failure, we wouldn't have found the problem, which required failures across multiple machines in order to trigger. And in this case, the <b>fallback strategy itself amplified the problem</b> and was worse than no fallback strategy at all. The fallback turned a partial website outage (not being able to display shipping speeds) into a full-site outage (no pages loaded at all) and took down the entire Amazon fulfillment network in the back end.</p> 
+        <p>The thinking behind our fallback strategy in this case was<b> illogical</b>. If hitting the database directly was more reliable than going through the cache, why bother with the cache in the first place? We were afraid that not using the cache would result in overloading the database, but why bother having the fallback code if it was potentially so harmful? We might have noticed our error early on, but the bug was a <b>latent</b> one, and the situation that caused the outage showed up months after launch.<br> </p> 
+       </div> 
+       <h2 id="How_Amazon_avoids_fallback" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> How Amazon avoids fallback</h2> 
+       <div class="lb-rtxt"> 
+        <p> Given these pitfalls we encountered in distributed fallback, we now almost always prefer alternatives to fallback. These are outlined here.</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Improve the reliability of non-fallback cases 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p> As mentioned previously, fallback strategies merely reduce the likelihood of complete failures. A service can be much more available if the main (non-fallback) code is made more robust. For example, instead of implementing fallback logic between two different data stores, a team could invest in using a database with higher inherent availability, such as Amazon DynamoDB. This strategy is frequently used successfully across Amazon. For example, <a href="https://web.archive.org/web/20250119023338/https://www.youtube.com/watch?v=83-IWlvJ__8" target="_blank">this talk</a> describes using <a href="/web/20250119023338/https://aws.amazon.com/dynamodb/">DynamoDB</a> to power amazon.com on Prime Day 2017.</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Let the caller handle errors 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>One solution to critical system failures is not to fall back, but to let the calling system handle the failure (by retrying, for example). This is a preferred strategy for AWS services, where our CLIs and SDKs already have built-in retry logic. Where possible we prefer this strategy, especially in situations where enough effort has been put into sharing fate and reducing the likelihood of the main case failing (and the fallback logic would be highly unlikely to improve availability at all).&nbsp;</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Push data proactively 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Another tack we use to avoid needing to fall back is to reduce the number of moving parts when responding to requests. If, for example, a service needs data to fulfill a request, and that data is already present locally (it doesn’t need to be fetched), there is no need for a failover strategy. A successful example of this is in the implementation of <a href="https://web.archive.org/web/20250119023338/https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html" target="_blank">AWS Identity and Access Management (IAM) roles for Amazon EC2</a>. The IAM service needs to provide signed, rotated credentials to code running on EC2 instances. To avoid ever needing to fall back, the credentials are proactively pushed to every instance and remain valid for many hours. This means that IAM role-related requests keep working in the unlikely event of a disruption in the push mechanism.&nbsp;</p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Convert fallback into failover 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>One of the worst things about fallback is that it isn't exercised regularly and is likely to fail or increase the scope of impact when it triggers during an outage. The circumstances that trigger fallback might not naturally occur for months or even years! To address the problem of latent failures of the fallback strategy, it's important to exercise it regularly in production. A service must run both the fallback and the non-fallback logic continuously. It must not merely run the fallback case but also treat it as an equally valid source of data. For example, a service might randomly choose between the fallback and non-fallback responses (when it gets both back) to make sure they're both working. But at this point, the strategy can no longer be considered fallback and falls firmly into the category of failover.<br> </p> 
+       </div> 
+       <div class="lb-txt-none lb-txt-lead lb-txt">
+         Ensure that retries and timeouts don't become fallback 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>Retries and timeouts are discussed in the article <i>Timeouts, Retries, and Backoff with Jitter</i>. The article says that retries are a powerful mechanism for providing high availability in the face of <b>transient and random errors</b>. In other words, retries and timeouts provide insurance against occasional failures due to minor issues like spurious packet loss, uncorrelated single-machine failure, and the like. It’s easy to get retries and timeouts wrong, however. Services often go for months or longer without needing many retries, and these might finally kick in during scenarios that your team has never tested. For this reason, we maintain metrics that monitor overall retry rates and alarms that alert our teams if retries are happening frequently.</p> 
+        <p>One other way to avoid retries turning into fallback is to execute them all the time with <b>proactive retry</b> (also known as hedging or parallel requests). This technique is inherently built into systems that perform quorum reads or writes, where a system might require an answer from two out of three servers in order to respond. Proactive retry follows the design pattern of <b>constant work</b>. Because the redundant requests are always being made, no extra load from retries is added to the system as the need for the redundant requests increases.<br> </p> 
+       </div> 
+       <h2 id="Conclusion" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Conclusion</h2> 
+       <div class="lb-rtxt"> 
+        <p>At Amazon, we avoid fallback in our systems because it’s difficult to prove and its effectiveness is hard to test. Fallback strategies introduce an operational mode that a system enters only in the most chaotic moments where things begin to break, and switching to this mode only increases the chaos. There is often a long delay between the time a fallback strategy is implemented and the time it’s encountered in a production environment.</p> 
+        <p>Instead, we favor code paths that are exercised in production continuously rather than rarely. We focus on improving the availability of our primary systems, by using patterns like pushing data to systems that need it instead of pulling and risking failure of a remote call at a critical time. Finally, we watch out for subtle behavior in our code that could flip it into a fallback-like mode of operation, such as by performing too many retries.</p> 
+        <p>If fallback is essential in a system, we exercise it as often as possible in production, so that fallback behaves just as reliably and predictably as the primary mode of operating. <br> </p> 
+       </div> 
+       <hr class="lb-divider" style="margin-top:0px; margin-bottom:0px;"> 
+       <h4 id="About_the_author" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h4 lb-title" style="color:#232f3e;"> About the author</h4> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <div class="lb-box"> 
+          <figure class="lb-tiny-v-margin lb-img"> 
+           <div> 
+            <img src="https://web.archive.org/web/20250119023338im_/https://d1.awsstatic.com/builderslibrary/authors-biopage/WEB_Redwood_Author-Portrait_Jacob-Gabrielson.1a3a2ea9d2c79557c61a47764930945c1d2418c7.png" alt="Jacob Gabrielson" title="Jacob Gabrielson" class="cq-dd-image"> 
+           </div> 
+          </figure> 
+          <a class="lb-txt-none lb-txt" style="margin-top:20px;" href="/web/20250119023338/https://aws.amazon.com/builders-library/authors/jacob-gabrielson/"> Jacob Gabrielson</a> 
+         </div> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <div class="lb-rtxt" style="margin-top:60px;"> 
+          <p>Jacob Gabrielson is a Senior Principal Engineer at Amazon Web Services. He has worked at Amazon for 17 years, primarily on internal microservices platforms. For the past 8 years he has been working on EC2 and ECS, including software deployment systems, control plane services, the Spot market, Lightsail, and most recently, containers. Jacob’s passions are for systems programming, programming languages, and distributed computing. His biggest dislike is bimodal system behavior, especially under failure conditions. He holds a bachelors degree in Computer Science from the University of Washington in Seattle.<br> </p> 
+         </div> 
+        </div> 
+       </div> 
+       <h4 id="Related_content" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h4 lb-title" style="color:#232f3e;"> Related content</h4> 
+       <a class="lb-txt-none lb-txt" href="/web/20250119023338/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"> Timeouts, retries and backoff with jitter</a> 
+       <a class="lb-txt-none lb-txt lb-current-page-link" href="/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/"> Caching challenges and strategies</a> 
+      </div> 
+     </div> 
+    </div> 
+   </main> 
+  </div> 
+  <footer id="aws-page-footer" class="m-page-footer" role="contentinfo"> 
+   <div class="data-attr-wrapper lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer" data-da-so-version="a"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1 lb-small-xb-3 lb-large-xb-5"> 
+     <div class="lb-xbcol"> 
+      <div class="data-attr-wrapper lb-small-hide lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signin-mobile-default"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/console/home?nc1=f_ct&amp;src=footer-signin-mobile" role="button"> <span> Sign In to the Console</span> </a> 
+      </div> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Learn About AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/what-is-aws/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is AWS?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/what-is-cloud-computing/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is Cloud Computing?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/accessibility/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Accessibility</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/diversity-inclusion/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Inclusion, Diversity &amp; Equity</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/devops/what-is-devops/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is DevOps?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/containers/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Container?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/what-is/data-lake/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Data Lake?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/what-is/artificial-intelligence/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Artificial Intelligence (AI)?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/what-is/generative-ai/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Generative AI?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/what-is/machine-learning/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Machine Learning (ML)?</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/security/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Cloud Security</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/new/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What's New</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/blogs/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Blogs</a></li> 
+       <li><a href="https://web.archive.org/web/20250119023338/https://press.aboutamazon.com/press-releases/aws" target="_blank" rel="noopener noreferrer" title="Press Releases" alt="Press Releases">Press Releases</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Resources for AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/getting-started/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Getting Started</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/training/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Training and Certification</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/solutions/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Solutions Library</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/architecture/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Architecture Center</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/faqs/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Product and Technical FAQs</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/resources/analyst-reports/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Analyst Reports</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/partners/work-with-partners/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Partners</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Developers on AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/developer/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Developer Center</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/developer/tools/?nc1=f_dr" target="_blank" rel="noopener noreferrer">SDKs &amp; Tools</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/developer/language/net/?nc1=f_dr" target="_blank" rel="noopener noreferrer">.NET on AWS</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/developer/language/python/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Python on AWS</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/developer/language/java/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Java on AWS</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/developer/language/php/?nc1=f_cc" target="_blank" rel="noopener noreferrer">PHP on AWS</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/developer/language/javascript/?nc1=f_dr" target="_blank" rel="noopener noreferrer">JavaScript on AWS</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Help</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/contact-us/?nc1=f_m" target="_blank" rel="noopener noreferrer">Contact Us</a></li> 
+       <li><a href="https://web.archive.org/web/20250119023338/https://iq.aws.amazon.com/?utm=mkt.foot/?nc1=f_m" target="_blank" rel="noopener noreferrer">Get Expert Help</a></li> 
+       <li><a href="https://web.archive.org/web/20250119023338/https://console.aws.amazon.com/support/home/?nc1=f_dr" target="_blank" rel="noopener noreferrer">File a Support Ticket</a></li> 
+       <li><a href="https://web.archive.org/web/20250119023338/https://repost.aws/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS re:Post</a></li> 
+       <li><a href="https://web.archive.org/web/20250119023338/https://repost.aws/knowledge-center/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Knowledge Center</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/premiumsupport/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Support Overview</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/legal/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Legal</a></li> 
+       <li><a href="/web/20250119023338/https://aws.amazon.com/careers/">AWS Careers</a></li> 
+      </ul> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_addl-help"> 
+      </div> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_cta"> 
+       <div class="data-attr-wrapper lb-tiny-hide lb-small-show lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signup-default"> 
+        <a class="lb-btn-p-primary" href="https://web.archive.org/web/20250119023338/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc1=f_ct&amp;src=default" role="button"> <span> Create an AWS Account</span> </a> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:20px; margin-bottom:0px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-left:0px; padding-right:5px;" href="https://web.archive.org/web/20250119023338/https://twitter.com/awscloud" target="_blank" rel="noopener noreferrer" title="Twitter" alt="Twitter"> <i class="icon-twitter lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-none-v-margin lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250119023338/https://www.facebook.com/amazonwebservices" target="_blank" rel="noopener noreferrer" title="Facebook" alt="Facebook"> <i class="icon-facebook lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250119023338/https://www.linkedin.com/company/amazon-web-services/" target="_blank" rel="noopener noreferrer" title="Linkedin" alt="Linkedin"> <i class="icon-linkedin lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250119023338/https://www.instagram.com/amazonwebservices/" target="_blank" rel="noopener noreferrer" title="Instagram" alt="Instagram"> <i class="icon-instagram lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:10px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250119023338/https://www.twitch.tv/aws" target="_blank" rel="noopener noreferrer" title="Twitch" alt="Twitch"> <i class="icon-twitch lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250119023338/https://www.youtube.com/user/AmazonWebServices/Cloud/" target="_blank" rel="noopener noreferrer" title="YouTube" alt="YouTube"> <i class="icon-youtube lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="/web/20250119023338/https://aws.amazon.com/podcasts/" target="_blank" rel="noopener noreferrer" title="Podcast" alt="Podcast"> <i class="icon-podcast lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20250119023338/https://pages.awscloud.com/communication-preferences?trk=homepage" target="_blank" rel="noopener noreferrer" title="Email" alt="Email"> <i class="icon-envelope-o lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-txt-normal lb-txt-white lb-txt-14 lb-rtxt" style="color:#eaeded; margin-top:0px;"> 
+       <div>
+         Amazon is an Equal Opportunity Employer: 
+        <i> Minority / Women / Disability / Veteran / Gender Identity / Sexual Orientation / Age.</i> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <ul class="lb-txt-white lb-tiny-iblock lb-none-v-margin lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-iblock"> 
+       <li class="lb-txt-bold">Language</li> 
+       <li data-language="ar" lang="ar-SA" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+       <li data-language="id" lang="id-ID" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+       <li data-language="de" lang="de-DE" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+       <li data-language="en" lang="en-US" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+       <li data-language="es" lang="es-ES" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+       <li data-language="fr" lang="fr-FR" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+       <li data-language="it" lang="it-IT" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+       <li data-language="pt" lang="pt-BR" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       <li data-language="vi" lang="vi-VN" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+       <li data-language="tr" lang="tr-TR" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+       <li data-language="ru" lang="ru-RU" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+       <li data-language="th" lang="th-TH" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+       <li data-language="jp" lang="ja-JP" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+       <li data-language="ko" lang="ko-KR" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+       <li data-language="cn" lang="zh-CN" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+       <li data-language="tw" lang="zh-TW" translate="no"><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+      </ul> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#EAEDED; padding-top:5px;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-legal-links"> 
+       <ul class="lb-txt-squid lb-none-v-margin lb-ul lb-list-style-none lb-li-none-v-margin lb-tiny-ul-iblock"> 
+        <li><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/privacy/?nc1=f_pr">Privacy</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/accessibility/?nc1=f_acc">Accessibility</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/terms/?nc1=f_pr">Site Terms</a></li> 
+        <li>|</li> 
+        <li data-cookie-consent-modal="1"><a href="#"> Cookie Preferences </a></li> 
+        <li>|</li> 
+        <li>© 2024, Amazon Web Services, Inc. or its affiliates. All rights reserved.</li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </footer> 
+  <div id="aws-page-end"></div> 
+  <div id="lb-page-end"></div> 
+  <div id="mrc-sunrise-chat"></div> 
+  <script defer id="mrc-sunrise-chat-loader" src="https://web.archive.org/web/20250119023338js_/https://loader.us-east-1.prod.mrc-sunrise.marketing.aws.dev/loader.js"></script> 
+  <!--[if lte IE 9]>
+  <p class="deprecated-browser-support-message">
+    You are using an outdated browser. Please upgrade to a modern browser to improve your experience.<img src="https://fls-na.amazon.com/1/action-impressions/1/OE/aws-mktg/action/awsm_:comp_DeprecatedBrowser@v=1:u=c?dataset=LIVE:PROD&instance=PUB&client=dsk&marketplaceId=A12QK8IU0H0XW5&requestId=ABCDEFGHIJKLMNOPQRST&session=123-1234567-1234567"
+           alt="deprecated-browser pixel tag" />
+      </p>
+<![endif]--> 
+  <div class="lb-skt-overlay lb-modal lb-comp-content-container" data-lb-comp="modal" data-lb-modal-id="ie-deprecation-msg" data-ie10-deprecation-msg="You are using an outdated browser. Please upgrade to a modern browser to improve your experience."> 
+   <div class="lb-modal-dialog"> 
+    <div class="lb-modal-content"> 
+     <div class="lb-modal-header"> 
+      <h4 class="lb-h4"> Ending Support for Internet Explorer</h4> 
+      <a class="lb-modal-close" role="button" href="#" title="Close"> <span class="lb-sr-only">Got it</span> </a> 
+     </div> 
+     <div class="lb-modal-body">
+       AWS support for Internet Explorer ends on 07/31/2022. Supported browsers are Chrome, Firefox, Edge, and Safari. 
+      <a href="https://web.archive.org/web/20250119023338/https://aws.amazon.com/blogs/aws/heads-up-aws-support-for-internet-explorer-11-is-ending/" rel="noopener">Learn more »</a> 
+     </div> 
+     <div class="lb-modal-footer"> 
+      <a class="lb-btn-p-primary lb-modal-close lb-modal-action" role="button">Got it</a> 
+     </div> 
+    </div> 
+   </div> 
+  </div> 
+  <a data-lb-modal-trigger="ie-deprecation-msg" style="display: none;"></a> 
+  <!-- cms_updated_at: 2025-01-07T22:13:54.592-0800 -->  
+ </body>
+</html><!--
+     FILE ARCHIVED ON 02:33:38 Jan 19, 2025 AND RETRIEVED FROM THE
+     INTERNET ARCHIVE ON 06:16:48 Sep 19, 2026.
+     JAVASCRIPT APPENDED BY WAYBACK MACHINE, COPYRIGHT INTERNET ARCHIVE.
+
+     ALL OTHER CONTENT MAY ALSO BE PROTECTED BY COPYRIGHT (17 U.S.C.
+     SECTION 108(a)(3)).
+-->
+<!--
+playback timings (ms):
+  captures_list: 0.619
+  exclusion.robots: 0.102
+  exclusion.robots.policy: 0.09
+  esindex: 0.008
+  cdx.remote: 83.439
+  LoadShardBlock: 2945.906 (3)
+  PetaboxLoader3.datanode: 2942.246 (4)
+  PetaboxLoader3.resolve: 74.226 (2)
+  load_resource: 674.255
+  nav: 0.39 (6)
+-->

@@ -1,0 +1,90 @@
+# doc_id: DOC-R4J-TIMELIMITER
+# url: https://resilience4j.readme.io/docs/timeout
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H2]] Getting Started
+Introduction
+Comparison to Netflix Hystrix
+Maven
+Gradle
+[[H2]] Core Modules
+CircuitBreaker
+Examples
+Bulkhead
+Examples
+RateLimiter
+Examples
+Retry
+Examples
+TimeLimiter
+Cache
+[[H2]] Add-on modules
+Kotlin
+Feign
+[[H2]] RxJava 2&3
+Getting Started
+Examples
+[[H2]] Spring Reactor
+Getting Started
+Examples
+[[H2]] Spring Boot 2&3
+Getting Started
+[[H2]] Micronaut
+Getting Started
+[[H2]] Spring Cloud
+Getting Started
+[[H2]] Metrics
+Micrometer
+Grafana
+[[H2]] License
+Apache 2.0
+Powered by
+[[H1]] TimeLimiter
+Getting started with resilience4j-timelimiter
+Suggest Edits
+[[H2]] Create a TimeLimiterRegistry
+Just like the CircuitBreaker module, this module provides an in-memory TimeLimiterRegistry which you can use to manage (create and retrieve) TimeLimiter instances.
+Java
+TimeLimiterRegistry timeLimiterRegistry = TimeLimiterRegistry.ofDefaults();
+[[H2]] Create and configure TimeLimiter
+You can provide a custom global TimeLimiterConfig. In order to create a custom global TimeLimiterConfig, you can use the TimeLimiterConfig builder. You can use the builder to configure:
+the timeout duration
+whether cancel should be called on the running future
+Java
+TimeLimiterConfig config = TimeLimiterConfig.custom()
+.cancelRunningFuture(true)
+.timeoutDuration(Duration.ofMillis(500))
+.build();
+// Create a TimeLimiterRegistry with a custom global configuration
+TimeLimiterRegistry timeLimiterRegistry = TimeLimiterRegistry.of(config);
+// Get or create a TimeLimiter from the registry -
+// TimeLimiter will be backed by the default config
+TimeLimiter timeLimiterWithDefaultConfig = registry.timeLimiter("name1");
+// Get or create a TimeLimiter from the registry,
+// use a custom configuration when creating the TimeLimiter
+TimeLimiterConfig config = TimeLimiterConfig.custom()
+.cancelRunningFuture(false)
+.timeoutDuration(Duration.ofMillis(1000))
+.build();
+TimeLimiter timeLimiterWithCustomConfig = registry.timeLimiter("name2", config);
+[[H2]] Decorate and execute a functional interface
+TimeLimiter has higher order decorator functions to decorate a CompletionStage or Future in order to limit the execution time.
+Java
+// Given I have a helloWorldService.sayHelloWorld() method which takes too long
+HelloWorldService helloWorldService = mock(HelloWorldService.class);
+// Create a TimeLimiter
+TimeLimiter timeLimiter = TimeLimiter.of(Duration.ofSeconds(1));
+// The Scheduler is needed to schedule a timeout on a non-blocking CompletableFuture
+ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3);
+// The non-blocking variant with a CompletableFuture
+CompletableFuture<String> result = timeLimiter.executeCompletionStage(
+scheduler, () -> CompletableFuture.supplyAsync(helloWorldService::sayHelloWorld)).toCompletableFuture();
+// The blocking variant which is basically future.get(timeoutDuration, MILLISECONDS)
+String result = timeLimiter.executeFutureSupplier(
+() -> CompletableFuture.supplyAsync(() -> helloWorldService::sayHelloWorld));
+Updated over 6 years ago
+Copy Page
+Table of Contents
+Create a TimeLimiterRegistry
+Create and configure TimeLimiter
+Decorate and execute a functional interface

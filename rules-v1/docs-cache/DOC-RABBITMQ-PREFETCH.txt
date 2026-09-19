@@ -1,0 +1,66 @@
+# doc_id: DOC-RABBITMQ-PREFETCH
+# url: https://www.rabbitmq.com/docs/consumer-prefetch
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+How to Use RabbitMQ
+Consuming Messages
+Consumer Prefetch
+Version: 4.3
+On this page
+[[H1]] Consumer Prefetch
+[[H2]] Overview
+Consumer prefetch is an extension to the channel prefetch mechanism.
+AMQP 0-9-1 specifies the basic.qos method to make it possible to limit the number of unacknowledged messages on a channel (or connection) when consuming (aka "prefetch count"). Unfortunately the channel is not the ideal scope for this - since a single channel may consume from multiple queues, the channel and the queue(s) need to coordinate with each other for every message sent to ensure they don't go over the limit. This is slow on a single machine, and very slow when consuming across a cluster.
+Furthermore for many uses it is simply more natural to specify a prefetch count that applies to each consumer.
+Therefore RabbitMQ slightly deviates from the AMQP 0-9-1 spec when it comes to how the prefetch is applied to multiple consumers on a channel:
+Meaning of prefetch_count in AMQP 0-9-1Meaning of prefetch_count in RabbitMQ
+shared across all consumers on the channelapplied separately to each new consumer on the channel
+[[H2]] Single Consumer
+The following basic example in Java will receive a maximum of 10 unacknowledged messages at once:
+Channel channel = ...;
+Consumer consumer = ...;
+channel.basicQos(10); // Per consumer limit
+channel.basicConsume("my-queue", false, consumer);
+A value of 0 is treated as infinite, allowing any number of unacknowledged messages.
+Channel channel = ...;
+Consumer consumer = ...;
+channel.basicQos(0); // No limit for this consumer
+channel.basicConsume("my-queue", false, consumer);
+[[H2]] Independent Consumers
+This example starts two consumers on the same channel, each of which will independently receive a maximum of 10 unacknowledged messages at once:
+Channel channel = ...;
+Consumer consumer1 = ...;
+Consumer consumer2 = ...;
+channel.basicQos(10); // Per consumer limit
+channel.basicConsume("my-queue1", false, consumer1);
+channel.basicConsume("my-queue2", false, consumer2);
+[[H2]] Multiple Consumers Sharing the Limit
+The AMQP 0-9-1 specification does not explain what happens if you invoke basic.qos multiple times with different global values. RabbitMQ interprets this as meaning that the two prefetch limits should be enforced independently of each other; consumers will only receive new messages when neither limit on unacknowledged messages has been reached.
+For example:
+Channel channel = ...;
+Consumer consumer1 = ...;
+Consumer consumer2 = ...;
+channel.basicQos(10, false); // Per consumer limit
+channel.basicQos(15, true); // Per channel limit
+channel.basicConsume("my-queue1", false, consumer1);
+channel.basicConsume("my-queue2", false, consumer2);
+These two consumers will only ever have 15 unacknowledged messages between them, with a maximum of 10 messages for each consumer. This will be slower than the above examples, due to the additional overhead of coordinating between the channel and the queues to enforce the global limit.
+[[H2]] Configurable Default Prefetch
+RabbitMQ can use a default prefetch that will be applied if the consumer doesn't specify one. The value can be configured as rabbit.default_consumer_prefetch in the advanced configuration file:
+%% advanced.config file
+[
+{rabbit, [
+{default_consumer_prefetch, {false,250}}
+]
+}
+].
+Edit this page
+Previous
+Consumer Cancellation Notifications
+Next
+Consumer Priorities
+Overview
+Single Consumer
+Independent Consumers
+Multiple Consumers Sharing the Limit
+Configurable Default Prefetch

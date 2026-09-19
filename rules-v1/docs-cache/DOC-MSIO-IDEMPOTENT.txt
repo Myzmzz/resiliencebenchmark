@@ -1,0 +1,85 @@
+# doc_id: DOC-MSIO-IDEMPOTENT
+# url: https://microservices.io/patterns/communication-style/idempotent-consumer.html
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H4]] Microservice Architecture
+Patterns
+Articles
+Presentations
+Adopt
+Refactoring
+Testing
+Modernization Help
+About
+[[H1]] Pattern: Idempotent Consumer
+pattern
+[[H2]] Context
+In an enterprise application, it’s usually a good idea to use a message broker that guarantees at-least once delivery. At-least once delivery guarantees that a message broker will deliver a message to a consumer even if errors occur. One side-effect, however, is that the consumer can be invoked repeatedly for the same message. Consequently, a consumer must be idempotent: the outcome of processing the same message repeatedly must be the same as processing the message once. If a consumer is not idempotent, multiple invocations can cause bugs. For example, a consumer of an AccountDebited message that subtracts the debit amount from the current balance would calculate the incorrect balance.
+[[H2]] Problem
+How does a message consumer handle duplicate messages correctly?
+[[H2]] Solution
+Make a consumer idempotent by having it record the IDs of processed messages in the database. When processing a message, a consumer can detect and discard duplicates by querying the database. There are a couple of different places to store the message IDs. One option is for the consumer to use a separate PROCESSED_MESSAGES table. The other option is for the consumer to store the IDs in the business entities that it creates or updates.
+Here’s how a consumer can use the PROCESSED_MESSAGES table:
+After starting the database transaction, the message handler inserts the message’s ID into the PROCESSED_MESSAGE table. Since the (subscriberId, messageID) is the PROCESSED_MESSAGE table’s primary key the INSERT will fail if the message has been already processed successfully. The message handler can then rollback the transaction and ignore the message.
+[[H2]] See also
+The Eventuate framework implements this pattern.
+This blog post about this pattern
+pattern
+Modernization Help
+Copyright © 2026 Chris Richardson • All rights reserved
+[[H4]] About Microservices.io
+Microservices.io is created by Chris Richardson, software architect, creator of the original CloudFoundry.com, and author of Microservices Patterns. Chris helps organizations modernize their architecture to enable fast flow and GenAI-powered software delivery.
+[[H4]] Need help modernizing your architecture?
+Avoid the trap of creating a modern legacy system — a new architecture with the same old problems.
+Contact me to discuss your modernization goals.
+Get Help
+[[H4]] Microservices Patterns, 2nd edition
+I am very excited to announce that the MEAP for the second edition of my book, Microservices Patterns is now available!
+Learn more
+Writing better problem reports: 6 essential details
+-->
+[[H4]] ASK CHRIS
+?
+Got a question about microservices?
+Fill in this form. If I can, I'll write a blog post that answers your question.
+[[H4]] NEED HELP?
+I help organizations improve agility and competitiveness through better software architecture.
+Learn more about my consulting engagements, and training workshops.
+[[H4]] PREMIUM CONTENT
+Premium content now available for paid subscribers at premium.microservices.io.
+[[H4]] MICROSERVICES WORKSHOPS
+Chris teaches comprehensive workshops for architects and developers that will enable your organization use microservices effectively.
+Avoid the pitfalls of adopting microservices and learn essential topics, such as service decomposition and design and how to refactor a monolith to microservices.
+Learn more
+[[H4]] Remote consulting session
+Got a specific microservice architecture-related question? For example:
+Wondering whether your organization should adopt microservices?
+Want to know how to migrate your monolith to microservices?
+Facing a tricky microservice architecture design problem?
+Consider signing up for a two hour, highly focussed, consulting session.
+[[H4]] ASSESS your architecture
+Assess your application's microservice architecture and identify what needs to be improved. Engage Chris to conduct an architect review.
+[[H4]] LEARN about microservices
+Chris offers numerous other resources for learning the microservice architecture.
+[[H4]] Get the book: Microservices Patterns
+Read Chris Richardson's book:
+[[H4]] Example microservices applications
+Want to see an example? Check out Chris Richardson's example applications. See code
+[[H4]] Virtual bootcamp: Distributed data patterns in a microservice architecture
+My virtual bootcamp, distributed data patterns in a microservice architecture, is now open for enrollment!
+It covers the key distributed data management patterns including Saga, API Composition, and CQRS.
+It consists of video lectures, code labs, and a weekly ask-me-anything video conference repeated in multiple timezones.
+The regular price is $395/person but use coupon OFFEFKCW to sign up for $95 (valid until Sept 30th, 2025). There are deeper discounts for buying multiple seats.
+Learn more
+[[H4]] Learn how to create a service template and microservice chassis
+Take a look at my Manning LiveProject that teaches you how to develop a service template and microservice chassis.
+Signup for the newsletter
+For Email Marketing you can trust.
+[[H4]] BUILD microservices
+Ready to start using the microservice architecture?
+[[H4]] Consulting services
+Engage Chris to create a microservices adoption roadmap and help you define your microservice architecture,
+[[H4]] The Eventuate platform
+Use the Eventuate.io platform to tackle distributed data management challenges in your microservices architecture.
+Eventuate is Chris's latest startup. It makes it easy to use the Saga pattern to manage transactions and the CQRS pattern to implement queries.
+Join the microservices google group

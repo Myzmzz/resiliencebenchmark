@@ -1,0 +1,148 @@
+# doc_id: DOC-R4J-RETRY
+# url: https://resilience4j.readme.io/docs/retry
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H2]] Getting Started
+Introduction
+Comparison to Netflix Hystrix
+Maven
+Gradle
+[[H2]] Core Modules
+CircuitBreaker
+Examples
+Bulkhead
+Examples
+RateLimiter
+Examples
+Retry
+Examples
+TimeLimiter
+Cache
+[[H2]] Add-on modules
+Kotlin
+Feign
+[[H2]] RxJava 2&3
+Getting Started
+Examples
+[[H2]] Spring Reactor
+Getting Started
+Examples
+[[H2]] Spring Boot 2&3
+Getting Started
+[[H2]] Micronaut
+Getting Started
+[[H2]] Spring Cloud
+Getting Started
+[[H2]] Metrics
+Micrometer
+Grafana
+[[H2]] License
+Apache 2.0
+Powered by
+[[H1]] Retry
+Getting started with resilience4j-retry
+Suggest Edits
+[[H2]] Create a RetryRegistry
+Just like the CircuitBreaker module, this module provides an in-memory RetryRegistry which you can use to manage (create and retrieve) Retry instances.
+Java
+RetryRegistry retryRegistry = RetryRegistry.ofDefaults();
+[[H2]] Create and configure Retry
+You can provide a custom global RetryConfig. In order to create a custom global RetryConfig, you can use the RetryConfig builder. You can use the builder to configure:
+the maximum number of attempts
+the wait duration between successive attempts
+a custom IntervalBiFunction which calculates the waiting interval after a failure based on attempt number and result or exception.
+a custom Predicate which evaluates if a certain response should trigger a retry attempt
+a custom Predicate which evaluates if an exception should trigger a retry attempt
+a list of exceptions which should trigger a retry attempt
+a list of exceptions which should be ignored and not trigger a retry attempt
+Config property | Default value | Description
+maxAttempts | 3 | The maximum number of attempts (including the initial call as the first attempt)
+waitDuration | 500 [ms] | A fixed wait duration between retry attempts
+intervalFunction | numOfAttempts -> waitDuration | A function to modify the waiting interval after a failure. By default the wait duration remains constant.
+intervalBiFunction | (numOfAttempts, Either<throwable, result>) -> waitDuration | A function to modify the waiting interval after a failure based on attempt number and result or exception. When used together with intervalFunction will throw an IllegalStateException.
+retryOnResultPredicate | result -> false | Configures a Predicate which evaluates if a result should be retried. The Predicate must return true, if the result should be retried, otherwise it must return false.
+retryExceptionPredicate | throwable -> true | Configures a Predicate which evaluates if an exception should be retried. The Predicate must return true, if the exception should be retried, otherwise it must return false.
+retryExceptions | empty | Configures a list of Throwable classes that are recorded as a failure and thus are retried. This parameter supports subtyping.
+Note: If you are using Checked Exceptions you must use a CheckedSupplier
+ignoreExceptions | empty | Configures a list of Throwable classes that are ignored and thus are not retried. This parameter supports subtyping.
+failAfterMaxAttempts | false | A boolean to enable or disable throwing of MaxRetriesExceededException when the Retry has reached the configured maxAttempts, and the result is still not passing the retryOnResultPredicate
+Java
+RetryConfig config = RetryConfig.custom()
+.maxAttempts(2)
+.waitDuration(Duration.ofMillis(1000))
+.retryOnResult(response -> response.getStatus() == 500)
+.retryOnException(e -> e instanceof WebServiceException)
+.retryExceptions(IOException.class, TimeoutException.class)
+.ignoreExceptions(BusinessException.class, OtherBusinessException.class)
+.failAfterMaxAttempts(true)
+.build();
+// Create a RetryRegistry with a custom global configuration
+RetryRegistry registry = RetryRegistry.of(config);
+// Get or create a Retry from the registry -
+// Retry will be backed by the default config
+Retry retryWithDefaultConfig = registry.retry("name1");
+// Get or create a Retry from the registry,
+// use a custom configuration when creating the retry
+RetryConfig custom = RetryConfig.custom()
+.waitDuration(Duration.ofMillis(100))
+.build();
+Retry retryWithCustomConfig = registry.retry("name2", custom);
+[[H2]] Decorate and execute a functional interface
+As you can guess Retry has all sort of higher order decorator functions just like CircuitBreaker. You can decorate any Callable, Supplier, Runnable, Consumer, CheckedRunnable, CheckedSupplier, CheckedConsumer or CompletionStage with a Retry.
+Java
+// Given I have a HelloWorldService which throws an exception
+HelloWorldService helloWorldService = mock(HelloWorldService.class);
+given(helloWorldService.sayHelloWorld())
+.willThrow(new WebServiceException("BAM!"));
+// Create a Retry with default configuration
+Retry retry = Retry.ofDefaults("id");
+// Decorate the invocation of the HelloWorldService
+CheckedFunction0<String> retryableSupplier = Retry
+.decorateCheckedSupplier(retry, helloWorldService::sayHelloWorld);
+// When I invoke the function
+Try<String> result = Try.of(retryableSupplier)
+.recover((throwable) -> "Hello world from recovery function");
+// Then the helloWorldService should be invoked 3 times
+BDDMockito.then(helloWorldService).should(times(3)).sayHelloWorld();
+// and the exception should be handled by the recovery function
+assertThat(result.get()).isEqualTo("Hello world from recovery function");
+[[H2]] Consume emitted RegistryEvents
+You can register event consumer on a RetryRegistry and take actions whenever a Retry is created, replaced or deleted.
+Java
+RetryRegistry registry = RetryRegistry.ofDefaults();
+registry.getEventPublisher()
+.onEntryAdded(entryAddedEvent -> {
+Retry addedRetry = entryAddedEvent.getAddedEntry();
+LOG.info("Retry {} added", addedRetry.getName());
+})
+.onEntryRemoved(entryRemovedEvent -> {
+Retry removedRetry = entryRemovedEvent.getRemovedEntry();
+LOG.info("Retry {} removed", removedRetry.getName());
+});
+[[H2]] Use a custom IntervalFunction
+If you don't want to use a fixed wait duration between retry attempts, you can configure an IntervalFunction which is used instead to calculate the wait duration for every attempt. Resilience4j provides several factory methods to simplify the creation of an IntervalFunction.
+Java
+IntervalFunction defaultWaitInterval = IntervalFunction
+.ofDefaults();
+// This interval function is used internally
+// when you only configure waitDuration
+IntervalFunction fixedWaitInterval = IntervalFunction
+.of(Duration.ofSeconds(5));
+IntervalFunction intervalWithExponentialBackoff = IntervalFunction
+.ofExponentialBackoff();
+IntervalFunction intervalWithCustomExponentialBackoff = IntervalFunction
+.ofExponentialBackoff(IntervalFunction.DEFAULT_INITIAL_INTERVAL, 2d);
+IntervalFunction randomWaitInterval = IntervalFunction
+.ofRandomized();
+// Overwrite the default intervalFunction with your custom one
+RetryConfig retryConfig = RetryConfig.custom()
+.intervalFunction(intervalWithExponentialBackoff)
+.build();
+Updated over 3 years ago
+Copy Page
+Table of Contents
+Create a RetryRegistry
+Create and configure Retry
+Decorate and execute a functional interface
+Consume emitted RegistryEvents
+Use a custom IntervalFunction

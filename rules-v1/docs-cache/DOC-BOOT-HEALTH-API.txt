@@ -1,0 +1,127 @@
+# doc_id: DOC-BOOT-HEALTH-API
+# url: https://docs.spring.io/spring-boot/api/rest/actuator/health.html
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Search
+Edit this Page GitHub Project Stack Overflow
+Spring Boot
+Rest APIs
+Actuator
+Health (health)
+[[H1]] Health (health)
+The health endpoint provides detailed information about the health of the application.
+[[H2]] Retrieving the Health of the Application
+To retrieve the health of the application, make a GET request to /actuator/health, as shown in the following curl-based example:
+$ curl 'http://localhost:8080/actuator/health' -i -X GET \
+-H 'Accept: application/json'
+The resulting response is similar to the following:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 828
+{
+"components" : {
+"broker" : {
+"components" : {
+"us1" : {
+"details" : {
+"version" : "1.0.2"
+},
+"status" : "UP"
+},
+"us2" : {
+"details" : {
+"version" : "1.0.4"
+},
+"status" : "UP"
+}
+},
+"status" : "UP"
+},
+"db" : {
+"details" : {
+"database" : "H2",
+"validationQuery" : "isValid()"
+},
+"status" : "UP"
+},
+"diskSpace" : {
+"details" : {
+"total" : 77851254784,
+"free" : 15224733696,
+"threshold" : 10485760,
+"path" : "/home/runner/work/spring-boot-commercial/spring-boot-commercial/documentation/spring-boot-actuator-docs/.",
+"exists" : true
+},
+"status" : "UP"
+}
+},
+"status" : "UP"
+}
+[[H3]] Response Structure
+The response contains details of the health of the application. The following table describes the structure of the response:
+Path | Type | Description
+status
+String
+Overall status of the application.
+components
+Object
+The components that make up the health.
+components.*.status
+String
+Status of a specific part of the application.
+components.*.components
+Object
+The nested components that make up the health.
+components.*.details
+Object
+Details of the health of a specific part of the application. Presence is controlled by management.endpoint.health.show-details.
+| The response fields above are for the V3 API. If you need to return V2 JSON you should use an accept header or application/vnd.spring-boot.actuator.v2+json
+[[H2]] Retrieving the Health of a Component
+To retrieve the health of a particular component of the application’s health, make a GET request to /actuator/health/{component}, as shown in the following curl-based example:
+$ curl 'http://localhost:8080/actuator/health/db' -i -X GET \
+-H 'Accept: application/json'
+The resulting response is similar to the following:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 101
+{
+"details" : {
+"database" : "H2",
+"validationQuery" : "isValid()"
+},
+"status" : "UP"
+}
+[[H3]] Response Structure
+The response contains details of the health of a particular component of the application’s health. The following table describes the structure of the response:
+Path | Type | Description
+status
+String
+Status of a specific part of the application
+details
+Object
+Details of the health of a specific part of the application.
+[[H2]] Retrieving the Health of a Nested Component
+If a particular component contains other nested components (as the broker indicator in the example above), the health of such a nested component can be retrieved by issuing a GET request to /actuator/health/{component}/{subcomponent}, as shown in the following curl-based example:
+$ curl 'http://localhost:8080/actuator/health/broker/us1' -i -X GET \
+-H 'Accept: application/json'
+The resulting response is similar to the following:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 66
+{
+"details" : {
+"version" : "1.0.2"
+},
+"status" : "UP"
+}
+Components of an application’s health may be nested arbitrarily deep depending on the application’s health indicators and how they have been grouped. The health endpoint supports any number of /{component} identifiers in the URL to allow the health of a component at any depth to be retrieved.
+[[H3]] Response Structure
+The response contains details of the health of an instance of a particular component of the application. The following table describes the structure of the response:
+Path | Type | Description
+status
+String
+Status of a specific part of the application
+details
+Object
+Details of the health of a specific part of the application.
+Flyway (flyway) Heap Dump (heapdump)

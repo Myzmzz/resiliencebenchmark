@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+      <title>Retry resilience strategy | Polly </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Retry resilience strategy | Polly ">
+      
+      
+      <link rel="icon" href="../icon.png">
+      <link rel="stylesheet" href="../public/docfx.min.css">
+      <link rel="stylesheet" href="../public/main.css">
+      <meta name="docfx:navrel" content="../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/App-vNext/Polly/blob/main/docs/strategies/retry.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../index.html">
+            <img id="logo" class="svg" src="../icon.png" alt="Polly">
+            Polly
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="retry-resilience-strategy">Retry resilience strategy</h1>
+
+<h2 id="about">About</h2>
+<ul>
+<li><strong>Option(s)</strong>:
+<ul>
+<li><a class="xref" href="../api/Polly.Retry.RetryStrategyOptions.html"><code>RetryStrategyOptions</code></a></li>
+<li><a class="xref" href="../api/Polly.Retry.RetryStrategyOptions-1.html"><code>RetryStrategyOptions&lt;T&gt;</code></a></li>
+</ul>
+</li>
+<li><strong>Extension(s)</strong>:
+<ul>
+<li><code>AddRetry</code></li>
+</ul>
+</li>
+<li><strong>Exception(s)</strong>: -</li>
+</ul>
+<hr>
+<p>The retry <strong>reactive</strong> resilience strategy re-executes the same callback method if its execution fails. Failure can be either an <code>Exception</code> or a result object indicating unsuccessful processing. Between the retry attempts the retry strategy waits a specified amount of time. You have fine-grained control over how to calculate the next delay. The retry strategy stops invoking the same callback when it reaches the maximum allowed number of retry attempts or an unhandled exception is thrown / result object indicating a failure is returned.</p>
+<h2 id="usage">Usage</h2>
+<!-- snippet: retry -->
+<pre><code class="lang-cs">// Retry using the default options.
+// See https://www.pollydocs.org/strategies/retry#defaults for defaults.
+var optionsDefaults = new RetryStrategyOptions();
+
+// For instant retries with no delay
+var optionsNoDelay = new RetryStrategyOptions
+{
+    Delay = TimeSpan.Zero
+};
+
+// For advanced control over the retry behavior, including the number of attempts,
+// delay between retries, and the types of exceptions to handle.
+var optionsComplex = new RetryStrategyOptions
+{
+    ShouldHandle = new PredicateBuilder().Handle&lt;SomeExceptionType&gt;(),
+    BackoffType = DelayBackoffType.Exponential,
+    UseJitter = true,  // Adds a random factor to the delay
+    MaxRetryAttempts = 4,
+    Delay = TimeSpan.FromSeconds(3),
+};
+
+// To use a custom function to generate the delay for retries
+var optionsDelayGenerator = new RetryStrategyOptions
+{
+    MaxRetryAttempts = 2,
+    DelayGenerator = static args =&gt;
+    {
+        var delay = args.AttemptNumber switch
+        {
+            0 =&gt; TimeSpan.Zero,
+            1 =&gt; TimeSpan.FromSeconds(1),
+            _ =&gt; TimeSpan.FromSeconds(5)
+        };
+
+        // This example uses a synchronous delay generator,
+        // but the API also supports asynchronous implementations.
+        return new ValueTask&lt;TimeSpan?&gt;(delay);
+    }
+};
+
+// To extract the delay from the result object
+var optionsExtractDelay = new RetryStrategyOptions&lt;HttpResponseMessage&gt;
+{
+    DelayGenerator = static args =&gt;
+    {
+        if (args.Outcome.Result is HttpResponseMessage responseMessage &amp;&amp;
+            TryGetDelay(responseMessage, out TimeSpan delay))
+        {
+            return new ValueTask&lt;TimeSpan?&gt;(delay);
+        }
+
+        // Returning null means the retry strategy will use its internal delay for this attempt.
+        return new ValueTask&lt;TimeSpan?&gt;((TimeSpan?)null);
+    }
+};
+
+// To get notifications when a retry is performed
+var optionsOnRetry = new RetryStrategyOptions
+{
+    MaxRetryAttempts = 2,
+    OnRetry = static args =&gt;
+    {
+        Console.WriteLine(&quot;OnRetry, Attempt: {0}&quot;, args.AttemptNumber);
+
+        // Event handlers can be asynchronous; here, we return an empty ValueTask.
+        return default;
+    }
+};
+
+// To keep retrying indefinitely or until success use int.MaxValue.
+var optionsIndefiniteRetry = new RetryStrategyOptions
+{
+    MaxRetryAttempts = int.MaxValue,
+};
+
+// Add a retry strategy with a RetryStrategyOptions{&lt;TResult&gt;} instance to the pipeline
+new ResiliencePipelineBuilder().AddRetry(optionsDefaults);
+new ResiliencePipelineBuilder&lt;HttpResponseMessage&gt;().AddRetry(optionsExtractDelay);
+</code></pre>
+<!-- endSnippet -->
+<h2 id="defaults">Defaults</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Default Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ShouldHandle</code></td>
+<td>Any exceptions other than <code>OperationCanceledException</code>.</td>
+<td>Defines a predicate to determine what results and/or exceptions are handled by the retry strategy.</td>
+</tr>
+<tr>
+<td><code>MaxRetryAttempts</code></td>
+<td>3</td>
+<td>The maximum number of retry attempts to use, in addition to the original call.</td>
+</tr>
+<tr>
+<td><code>BackoffType</code></td>
+<td>Constant</td>
+<td>The back-off algorithm type to generate the delay(s) between retry attempts.</td>
+</tr>
+<tr>
+<td><code>Delay</code></td>
+<td>2 seconds</td>
+<td>The <em>base</em> delay between retry attempts. See the next section for more details.</td>
+</tr>
+<tr>
+<td><code>MaxDelay</code></td>
+<td><code>null</code></td>
+<td>If provided then the strategy caps the calculated retry delay to this value.</td>
+</tr>
+<tr>
+<td><code>UseJitter</code></td>
+<td>False</td>
+<td>If set to <code>true</code>, a jitter (random value) is added to retry delays. See the next section for more details.</td>
+</tr>
+<tr>
+<td><code>DelayGenerator</code></td>
+<td><code>null</code></td>
+<td>This optional delegate allows you to <strong>dynamically</strong> calculate the retry delay by utilizing information that is only available at runtime (like the attempt number).</td>
+</tr>
+<tr>
+<td><code>OnRetry</code></td>
+<td><code>null</code></td>
+<td>If provided then it will be invoked before the strategy delays the next attempt.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="telemetry">Telemetry</h2>
+<p>The retry strategy reports the following telemetry events:</p>
+<table>
+<thead>
+<tr>
+<th>Event Name</th>
+<th>Event Severity</th>
+<th>When?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ExecutionAttempt</code></td>
+<td><code>Information</code> / <code>Warning</code> / <code>Error</code></td>
+<td>Just before the strategy calculates the next delay</td>
+</tr>
+<tr>
+<td><code>OnRetry</code></td>
+<td><code>Warning</code></td>
+<td>Just before the strategy calls the <code>OnRetry</code> delegate</td>
+</tr>
+</tbody>
+</table>
+<p>Here are some sample events:</p>
+<h3 id="unhandled-case">Unhandled case</h3>
+<p>If the retry strategy does not perform any retries then the reported telemetry events' severity will be <code>Information</code>:</p>
+<pre><code class="lang-none">Execution attempt. Source: 'MyPipeline/MyPipelineInstance/MyRetryStrategy', Operation Key: 'MyRetryableOperation', Result: '1', Handled: 'False', Attempt: '0', Execution Time: 110.952ms
+
+Execution attempt. Source: 'MyPipeline/MyPipelineInstance/MyRetryStrategy', Operation Key: 'MyRetryableOperation', Result: 'Failed', Handled: 'False', Attempt: '0', Execution Time: 5.2194ms
+    System.Exception: Failed
+        at Program.&lt;&gt;c.&lt;Main&gt;b__0_1(ResilienceContext ctx)
+        ...
+        at Polly.ResiliencePipeline.&lt;&gt;c.&lt;&lt;ExecuteAsync&gt;b__1_0&gt;d.MoveNext() in /_/src/Polly.Core/ResiliencePipeline.Async.cs:line 67
+</code></pre>
+<h3 id="handled-case">Handled case</h3>
+<p>If the retry strategy performs some retries then the reported telemetry events' severity will be <code>Warning</code>. If the retry strategy runs out of retry attempts then the last event's severity will be <code>Error</code>:</p>
+<pre><code class="lang-none">Execution attempt. Source: 'MyPipeline/MyPipelineInstance/MyRetryStrategy', Operation Key: 'MyRetryableOperation', Result: 'Failed', Handled: 'True', Attempt: '0', Execution Time: 5.0397ms
+      System.Exception: Failed
+         at Program.&lt;&gt;c.&lt;Main&gt;b__0_1(ResilienceContext ctx)
+         ...
+         at Polly.ResiliencePipeline.&lt;&gt;c.&lt;&lt;ExecuteAsync&gt;b__1_0&gt;d.MoveNext() in /_/src/Polly.Core/ResiliencePipeline.Async.cs:line 67
+
+Resilience event occurred. EventName: 'OnRetry', Source: 'MyPipeline/MyPipelineInstance/MyRetryStrategy', Operation Key: 'MyRetryableOperation', Result: 'Failed'
+    System.Exception: Failed
+        at Program.&lt;&gt;c.&lt;Main&gt;b__0_1(ResilienceContext ctx)
+        ...
+        at Polly.ResiliencePipeline.&lt;&gt;c.&lt;&lt;ExecuteAsync&gt;b__1_0&gt;d.MoveNext() in /_/src/Polly.Core/ResiliencePipeline.Async.cs:line 67
+
+
+Execution attempt. Source: 'MyPipeline/MyPipelineInstance/MyRetryStrategy', Operation Key: 'MyRetryableOperation', Result: 'Failed', Handled: 'True', Attempt: '1', Execution Time: 0.1159ms
+      System.Exception: Failed
+         at Program.&lt;&gt;c.&lt;Main&gt;b__0_1(ResilienceContext ctx)
+         ...
+         at Polly.ResiliencePipeline.&lt;&gt;c.&lt;&lt;ExecuteAsync&gt;b__1_0&gt;d.MoveNext() in /_/src/Polly.Core/ResiliencePipeline.Async.cs:line 67
+</code></pre>
+<div class="NOTE">
+<h5>Note</h5>
+<p>Please note that the <code>OnRetry</code> telemetry event will be reported <strong>only if</strong> the retry strategy performs any retry attempts.</p>
+<p>On the other hand the <code>Execution attempt</code> event will be <strong>always</strong> reported regardless whether the strategy has to perform any retries.</p>
+<p>Also remember that <code>Attempt: '0'</code> relates to the original execution attempt.</p>
+<p>Only the last error event will have <code>Error</code> severity if it was unsuccessful.</p>
+</div>
+<p>For further information please check out the <a href="../advanced/telemetry.html">telemetry page</a>.</p>
+<h2 id="calculation-of-the-next-delay">Calculation of the next delay</h2>
+<p>If the <code>ShouldHandle</code> predicate returns <code>true</code> and the next attempt number is not greater than <code>MaxRetryAttempts</code> then the retry strategy calculates the next delay.</p>
+<p>There are many properties that may contribute to this calculation:</p>
+<ul>
+<li><code>BackoffType</code>: Specifies which calculation algorithm should run.</li>
+<li><code>Delay</code>: If only this property is specified then it will be used as-is. If others are also specified then this will be used as a <em>base delay</em>.</li>
+<li><code>DelayGenerator</code>: If specified, overrides other property-based calculations, <strong>except</strong> if it returns <code>null</code> or a negative <code>TimeSpan</code>, in which case the other property-based calculations are used.</li>
+<li><code>MaxDelay</code>: If specified, caps the delay if the calculated delay is greater than this value, <strong>except</strong> if <code>DelayGenerator</code> is used, where no capping is applied.</li>
+<li><code>UseJitter</code>: If enabled, adds a random value between -25% and +25% of the calculated <code>Delay</code>, <strong>except</strong> if <code>BackoffType</code> is <code>Exponential</code>, where a <code>DecorrelatedJitterBackoffV2</code> formula is used for jitter calculation.
+<ul>
+<li>That formula is based on <a href="https://github.com/Polly-Contrib/Polly.Contrib.WaitAndRetry">Polly.Contrib.WaitAndRetry</a>.</li>
+</ul>
+</li>
+</ul>
+<div class="IMPORTANT">
+<h5>Important</h5>
+<p>The summarized description below is an implementation detail. It may change in the future without notice.</p>
+</div>
+<p>The <code>BackoffType</code> property's data type is the <a class="xref" href="../api/Polly.DelayBackoffType.html"><code>DelayBackoffType</code></a> enumeration. This primarily controls how the calculation is done.</p>
+<h3 id="constant">Constant</h3>
+<pre><code class="lang-mermaid">stateDiagram-v2
+
+    state if_state_step1 &lt;&lt;choice&gt;&gt;
+    state if_state_step2 &lt;&lt;choice&gt;&gt;
+    state if_state_step3 &lt;&lt;choice&gt;&gt;
+
+    constant: Delay
+    constantWJitter: Delay + Random
+    compare: MaxDelay &lt; BaseDelay
+    setBase: Set BaseDelay
+    setNormalized: Set NormalizedDelay
+    setNext: Set NextDelay
+
+    UseJitter --&gt; if_state_step1
+    if_state_step1 --&gt; constantWJitter:true
+    if_state_step1 --&gt; constant: false
+    constantWJitter --&gt; setBase
+    constant --&gt; setBase
+
+    setBase --&gt; compare
+    compare --&gt; if_state_step2
+    if_state_step2 --&gt; MaxDelay: true
+    if_state_step2 --&gt; BaseDelay: false
+    MaxDelay --&gt; setNormalized
+    BaseDelay --&gt; setNormalized
+
+    setNormalized --&gt; DelayGenerator
+    DelayGenerator --&gt; if_state_step3
+    if_state_step3 --&gt; GeneratedDelay: positive
+    if_state_step3 --&gt; NormalizedDelay: null or negative
+    GeneratedDelay --&gt; setNext
+    NormalizedDelay --&gt; setNext
+    setNext --&gt; [*]
+</code></pre>
+<h4 id="constant-examples">Constant examples</h4>
+<p>The delays column contains an example series of five values to depict the patterns.</p>
+<table>
+<thead>
+<tr>
+<th>Settings</th>
+<th>Delays in milliseconds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Delay</code>: <code>1sec</code></td>
+<td>[ 1000, 1000, 1000, 1000, 1000 ]</td>
+</tr>
+<tr>
+<td><code>Delay</code>: <code>1sec</code>, <code>UseJitter</code>: <code>true</code></td>
+<td>[ 986, 912, 842, 972, 1007 ]</td>
+</tr>
+<tr>
+<td><code>Delay</code>: <code>1sec</code>, <code>UseJitter</code>: <code>true</code>, <code>MaxDelay</code>: <code>1100ms</code></td>
+<td>[ 1100, 978, 1100, 1041, 916 ]</td>
+</tr>
+</tbody>
+</table>
+<h3 id="linear">Linear</h3>
+<pre><code class="lang-mermaid">stateDiagram-v2
+
+    state if_state_step1 &lt;&lt;choice&gt;&gt;
+    state if_state_step2 &lt;&lt;choice&gt;&gt;
+    state if_state_step3 &lt;&lt;choice&gt;&gt;
+
+    linear: Delay * AttemptNumber
+    linearWJitter: (Delay * AttemptNumber) + Random
+    compare: MaxDelay &lt; BaseDelay
+    setBase: Set BaseDelay
+    setNormalized: Set NormalizedDelay
+    setNext: Set NextDelay
+
+    UseJitter --&gt; if_state_step1
+    if_state_step1 --&gt; linearWJitter:true
+    if_state_step1 --&gt; linear: false
+    linearWJitter --&gt; setBase
+    linear --&gt; setBase
+
+    setBase --&gt; compare
+    compare --&gt; if_state_step2
+    if_state_step2 --&gt; MaxDelay: true
+    if_state_step2 --&gt; BaseDelay: false
+    MaxDelay --&gt; setNormalized
+    BaseDelay --&gt; setNormalized
+
+    setNormalized --&gt; DelayGenerator
+    DelayGenerator --&gt; if_state_step3
+    if_state_step3 --&gt; GeneratedDelay: positive
+    if_state_step3 --&gt; NormalizedDelay: null or negative
+    GeneratedDelay --&gt; setNext
+    NormalizedDelay --&gt; setNext
+    setNext --&gt; [*]
+</code></pre>
+<h4 id="linear-examples">Linear examples</h4>
+<p>The delays column contains an example series of five values to depict the patterns.</p>
+<div class="NOTE">
+<h5>Note</h5>
+<p>Because the jitter calculation is based on the newly calculated delay, the new delay could be less than the previous value.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Settings</th>
+<th>Delays in milliseconds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Delay</code>: <code>1sec</code></td>
+<td>[ 1000, 2000, 3000, 4000, 5000 ]</td>
+</tr>
+<tr>
+<td><code>Delay</code>: <code>1sec</code>, <code>UseJitter</code>: <code>true</code></td>
+<td>[ 1129, 2147, 2334, 4894, 4102 ]</td>
+</tr>
+<tr>
+<td><code>Delay</code>: <code>1sec</code>, <code>UseJitter</code>: <code>true</code>, <code>MaxDelay</code>: <code>4500ms</code></td>
+<td>[ 907, 2199, 2869, 4500, 4500 ]</td>
+</tr>
+</tbody>
+</table>
+<h3 id="exponential">Exponential</h3>
+<pre><code class="lang-mermaid">stateDiagram-v2
+
+    state if_state_step1 &lt;&lt;choice&gt;&gt;
+    state if_state_step2 &lt;&lt;choice&gt;&gt;
+    state if_state_step3 &lt;&lt;choice&gt;&gt;
+
+    exponential: Delay * 2^AttemptNumber
+    exponentialWJitter: Decorrelated Jitter Backoff V2
+    compare: MaxDelay &lt; BaseDelay
+    setBase: Set BaseDelay
+    setNormalized: Set NormalizedDelay
+    setNext: Set NextDelay
+
+    UseJitter --&gt; if_state_step1
+    if_state_step1 --&gt; exponentialWJitter:true
+    if_state_step1 --&gt; exponential: false
+    exponentialWJitter --&gt; setBase
+    exponential --&gt; setBase
+
+    setBase --&gt; compare
+    compare --&gt; if_state_step2
+    if_state_step2 --&gt; MaxDelay: true
+    if_state_step2 --&gt; BaseDelay: false
+    MaxDelay --&gt; setNormalized
+    BaseDelay --&gt; setNormalized
+
+    setNormalized --&gt; DelayGenerator
+    DelayGenerator --&gt; if_state_step3
+    if_state_step3 --&gt; GeneratedDelay: positive
+    if_state_step3 --&gt; NormalizedDelay: null or negative
+    GeneratedDelay --&gt; setNext
+    NormalizedDelay --&gt; setNext
+    setNext --&gt; [*]
+</code></pre>
+<h4 id="exponential-examples">Exponential examples</h4>
+<p>The delays column contains an example series of five values to depict the patterns.</p>
+<div class="NOTE">
+<h5>Note</h5>
+<p>Because the jitter calculation is based on the newly calculated delay, the new delay could be less than the previous value.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Settings</th>
+<th>Delays in milliseconds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Delay</code>: <code>1sec</code></td>
+<td>[ 1000, 2000, 4000, 8000, 16000 ]</td>
+</tr>
+<tr>
+<td><code>Delay</code>: <code>1sec</code>, <code>UseJitter</code>: <code>true</code></td>
+<td>[ 393, 1453, 4235, 5369, 16849 ]</td>
+</tr>
+<tr>
+<td><code>Delay</code>: <code>1sec</code>, <code>UseJitter</code>: <code>true</code>, <code>MaxDelay</code>: <code>15000ms</code></td>
+<td>[ 477, 793, 2227, 5651, 15000 ]</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<div class="TIP">
+<h5>Tip</h5>
+<p>For more details please check out the <a href="https://github.com/App-vNext/Polly/blob/main/src/Polly.Core/Retry/RetryHelper.cs"><code>RetryHelper</code></a>
+and the <a href="https://github.com/App-vNext/Polly/blob/main/src/Polly.Core/Retry/RetryResilienceStrategy.cs"><code>RetryResilienceStrategy</code></a> classes.</p>
+</div>
+<h2 id="diagrams">Diagrams</h2>
+<p>Let's suppose we have a retry strategy with <code>MaxRetryAttempts</code>: <code>2</code>.</p>
+<h3 id="happy-path-sequence-diagram">Happy path sequence diagram</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    actor C as Caller
+    participant P as Pipeline
+    participant R as Retry
+    participant D as DecoratedUserCallback
+
+    C-&gt;&gt;P: Calls ExecuteAsync
+    P-&gt;&gt;R: Calls ExecuteCore
+    Note over R,D: Initial attempt
+    R-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-R: Fails
+    R--&gt;&gt;R: Sleeps
+    Note over R,D: 1st retry attempt
+    R-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-R: Returns result
+    R-&gt;&gt;P: Returns result
+    P-&gt;&gt;C: Returns result
+</code></pre>
+<h3 id="unhappy-path-sequence-diagram">Unhappy path sequence diagram</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    actor C as Caller
+    participant P as Pipeline
+    participant R as Retry
+    participant D as DecoratedUserCallback
+
+    C-&gt;&gt;P: Calls ExecuteAsync
+    P-&gt;&gt;R: Calls ExecuteCore
+    Note over R,D: Initial attempt
+    R-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-R: Fails
+    R--&gt;&gt;R: Sleeps
+    Note over R,D: 1st retry attempt
+    R-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-R: Fails
+    R--&gt;&gt;R: Sleeps
+    Note over R,D: 2nd retry attempt
+    R-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-R: Fails
+    R-&gt;&gt;P: Propagates failure
+    P-&gt;&gt;C: Propagates failure
+</code></pre>
+<h2 id="patterns">Patterns</h2>
+<h3 id="limiting-the-maximum-delay">Limiting the maximum delay</h3>
+<p>In some cases, you might want to set a limit on the calculated delay. This is beneficial when multiple retries are anticipated, and you wish to prevent excessive wait times between these retries.</p>
+<p>Consider the following example of a long-running background job:</p>
+<!-- snippet: retry-pattern-max-delay -->
+<pre><code class="lang-cs">ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        Delay = TimeSpan.FromSeconds(2),
+        MaxRetryAttempts = int.MaxValue,
+        BackoffType = DelayBackoffType.Exponential,
+
+        // Initially, we aim for an exponential backoff, but after a certain number of retries, we set a maximum delay of 15 minutes.
+        MaxDelay = TimeSpan.FromMinutes(15),
+        UseJitter = true
+    })
+    .Build();
+
+// Background processing
+while (!cancellationToken.IsCancellationRequested)
+{
+    await pipeline.ExecuteAsync(async token =&gt;
+    {
+        // In the event of a prolonged service outage, we can afford to wait for a successful retry since this is a background task.
+        await SynchronizeDataAsync(token);
+    },
+    cancellationToken);
+
+    await Task.Delay(TimeSpan.FromMinutes(30)); // The sync runs every 30 minutes.
+}
+</code></pre>
+<!-- endSnippet -->
+<h2 id="anti-patterns">Anti-patterns</h2>
+<p>Over the years, many developers have used Polly in various ways. Some of these
+recurring patterns may not be ideal. The sections below highlight anti-patterns to avoid.</p>
+<h3 id="overusing-builder-methods">Overusing builder methods</h3>
+<p>❌ DON'T</p>
+<p>Overuse <code>Handle/HandleResult</code>:</p>
+<!-- snippet: retry-anti-pattern-overusing-builder -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        ShouldHandle = new PredicateBuilder()
+        .Handle&lt;HttpRequestException&gt;()
+        .Handle&lt;BrokenCircuitException&gt;()
+        .Handle&lt;TimeoutRejectedException&gt;()
+        .Handle&lt;SocketException&gt;()
+        .Handle&lt;RateLimitRejectedException&gt;(),
+        MaxRetryAttempts = 3,
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>Using multiple <code>Handle/HandleResult</code> methods is redundant. Instead of specifying to retry if the decorated code throws a certain exception repeatedly, it's more efficient to state that retries should occur if any of the retryable exceptions are thrown.</p>
+<p>✅ DO</p>
+<p>Use collections and simple predicate functions:</p>
+<!-- snippet: retry-pattern-overusing-builder -->
+<pre><code class="lang-cs">ImmutableArray&lt;Type&gt; networkExceptions =
+[
+    typeof(SocketException),
+    typeof(HttpRequestException),
+];
+
+ImmutableArray&lt;Type&gt; strategyExceptions =
+[
+    typeof(TimeoutRejectedException),
+    typeof(BrokenCircuitException),
+    typeof(RateLimitRejectedException),
+];
+
+ImmutableArray&lt;Type&gt; retryableExceptions = [.. networkExceptions.Union(strategyExceptions)];
+
+var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        ShouldHandle = args =&gt;
+            ValueTask.FromResult(args.Outcome.Exception is not null &amp;&amp;
+            retryableExceptions.Contains(args.Outcome.Exception.GetType())),
+        MaxRetryAttempts = 3,
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>Grouping exceptions simplifies the configuration and improves reusability. For example, the <code>networkExceptions</code> array can be reused in various strategies such as retry, circuit breaker, and more.</p>
+<h3 id="using-retry-for-periodic-execution">Using retry for periodic execution</h3>
+<p>❌ DON'T</p>
+<p>Use a retry strategy to run indefinitely at a specified interval:</p>
+<!-- snippet: retry-anti-pattern-periodic-execution -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        ShouldHandle = _ =&gt; ValueTask.FromResult(true),
+        Delay = TimeSpan.FromHours(24),
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>The waiting period can be either blocking or non-blocking, based on the defined strategy/pipeline. Even when used not used in a blocking manner, it unnecessarily consumes memory that can't be reclaimed by the garbage collector.</p>
+<p>✅ DO</p>
+<p>Use a suitable tool to schedule recurring tasks, such as <a href="https://www.quartz-scheduler.net/"><em>Quartz.Net</em></a>, <a href="https://www.hangfire.io/"><em>Hangfire</em></a>, or others.</p>
+<p><strong>Reasoning</strong>:</p>
+<ul>
+<li>Polly was not designed to support this scenario; its primary purpose is to help manage <strong>brief</strong> transient failures.</li>
+<li>Specialized job scheduling tools are more memory-efficient and can be set up to withstand machine failures by using persistent storage.</li>
+</ul>
+<h3 id="combining-multiple-sleep-duration-strategies">Combining multiple sleep duration strategies</h3>
+<p>❌ DON'T</p>
+<p>Mix increasing values with constant ones:</p>
+<!-- snippet: retry-anti-pattern-sleeping-strategies -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        DelayGenerator = args =&gt;
+        {
+            var delay = args.AttemptNumber switch
+            {
+                &lt;= 5 =&gt; TimeSpan.FromSeconds(Math.Pow(2, args.AttemptNumber)),
+                _ =&gt; TimeSpan.FromMinutes(3)
+            };
+            return new ValueTask&lt;TimeSpan?&gt;(delay);
+        }
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning:</strong></p>
+<p>Using this approach essentially turns the logic into a state machine. Although this offers a concise way to express sleep durations, it has several disadvantages:</p>
+<ul>
+<li>It doesn't support reusability (for instance, you can't use only the quick retries).</li>
+<li>The sleep duration logic is closely tied to the <code>AttemptNumber</code>.</li>
+<li>Testing becomes more challenging.</li>
+</ul>
+<p>✅ DO</p>
+<p>Use two distinct retry strategy options and combine them:</p>
+<!-- snippet: retry-pattern-sleeping-strategies -->
+<pre><code class="lang-cs">var slowRetries = new RetryStrategyOptions
+{
+    MaxRetryAttempts = 5,
+    Delay = TimeSpan.FromMinutes(3),
+    BackoffType = DelayBackoffType.Constant
+};
+
+var quickRetries = new RetryStrategyOptions
+{
+    MaxRetryAttempts = 5,
+    Delay = TimeSpan.FromSeconds(1),
+    UseJitter = true,
+    BackoffType = DelayBackoffType.Exponential
+};
+
+var retry = new ResiliencePipelineBuilder()
+    .AddRetry(slowRetries)
+    .AddRetry(quickRetries)
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<ul>
+<li>While this method may appear more verbose than the first, it offers greater flexibility.</li>
+<li>Retry strategies can be arranged in any order (either slower first and then quicker, or the other way around).</li>
+<li>Different triggers can be defined for the retry strategies, allowing for switches between them based on exceptions or results. The order isn't fixed, so quick and slow retries can alternate.</li>
+</ul>
+<h3 id="branching-retry-logic-based-on-request-url">Branching retry logic based on request URL</h3>
+<p>Suppose you have an <code>HttpClient</code> and you want to add a retry only for specific endpoints.</p>
+<p>❌ DON'T</p>
+<p>Use <code>ResiliencePipeline.Empty</code> and the <code>?:</code> operator:</p>
+<!-- snippet: retry-anti-pattern-branching-by-url -->
+<pre><code class="lang-cs">var retry =
+    IsRetryable(request.RequestUri)
+        ? new ResiliencePipelineBuilder&lt;HttpResponseMessage&gt;().AddRetry(new()).Build()
+        : ResiliencePipeline&lt;HttpResponseMessage&gt;.Empty;
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>The triggering conditions and logic are spread across different sections. This design is not ideal for extensibility since adding more conditions can make the code less readable.</p>
+<p>✅ DO</p>
+<p>Use the <code>ShouldHandle</code> clause to define the triggering logic:</p>
+<!-- snippet: retry-pattern-branching-by-url -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder&lt;HttpResponseMessage&gt;()
+    .AddRetry(new()
+    {
+        ShouldHandle = _ =&gt; ValueTask.FromResult(IsRetryable(request.RequestUri))
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<ul>
+<li>The conditions for triggering are consolidated in a familiar and easily accessible location.</li>
+<li>You don't need to specify actions for scenarios when the strategy shouldn't be triggered.</li>
+</ul>
+<h3 id="calling-a-method-beforeafter-each-retry-attempt">Calling a method before/after each retry attempt</h3>
+<p>❌ DON'T</p>
+<p>Call a specific method before <code>Execute</code>/<code>ExecuteAsync</code>:</p>
+<!-- snippet: retry-anti-pattern-calling-method-before -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        OnRetry = args =&gt;
+        {
+            BeforeEachAttempt();
+            return ValueTask.CompletedTask;
+        },
+    })
+    .Build();
+
+BeforeEachAttempt();
+await retry.ExecuteAsync(DoSomething);
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<ul>
+<li>The <code>OnRetry</code> function is triggered before each <strong>retry</strong> attempt, but it doesn't activate before the initial attempt since it's not considered a retry.</li>
+<li>Using this method across various parts can lead to accidentally omitting the <code>BeforeEachAttempt</code> call before every <code>Execute</code>.</li>
+<li>Even though the naming here is straightforward, in real-world scenarios, your method might not start with 'Before', leading to potential misuse by calling it after the <code>Execute</code>.</li>
+</ul>
+<p>✅ DO</p>
+<p>Group the two method calls:</p>
+<!-- snippet: retry-pattern-calling-method-before -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new())
+    .Build();
+
+await retry.ExecuteAsync(ct =&gt;
+{
+    BeforeEachAttempt();
+    return DoSomething(ct);
+});
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>If <code>DoSomething</code> and <code>BeforeEachAttempt</code> are interdependent, group them or declare a simple wrapper to invoke them in the correct sequence.</p>
+<h3 id="having-a-single-strategy-for-multiple-failures">Having a single strategy for multiple failures</h3>
+<p>Suppose we have an <code>HttpClient</code> that issues a request and then we try to parse a large JSON response.</p>
+<p>❌ DON'T</p>
+<p>Use a single strategy for everything:</p>
+<!-- snippet: retry-anti-pattern-multiple-failures -->
+<pre><code class="lang-cs">var builder = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        ShouldHandle = new PredicateBuilder().Handle&lt;HttpRequestException&gt;(),
+        MaxRetryAttempts = 3
+    });
+
+builder.AddTimeout(TimeSpan.FromMinutes(1));
+
+var pipeline = builder.Build();
+await pipeline.ExecuteAsync(static async (httpClient, ct) =&gt;
+{
+    var stream = await httpClient.GetStreamAsync(new Uri(&quot;endpoint&quot;), ct);
+    var foo = await JsonSerializer.DeserializeAsync&lt;Foo&gt;(stream, cancellationToken: ct);
+},
+httpClient);
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>Previously, it was suggested that you should combine <code>X</code> and <code>Y</code> only if they are part of the same failure domain. In simpler terms, a pipeline should address only one type of failure.</p>
+<p>✅ DO</p>
+<p>Define a strategy for each failure domain:</p>
+<!-- snippet: retry-pattern-multiple-failures -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        ShouldHandle = new PredicateBuilder().Handle&lt;HttpRequestException&gt;(),
+        MaxRetryAttempts = 3
+    })
+    .Build();
+
+var stream = await retry.ExecuteAsync(
+    static async (httpClient, ct) =&gt;
+        await httpClient.GetStreamAsync(new Uri(&quot;endpoint&quot;), ct),
+    httpClient);
+
+var timeout = new ResiliencePipelineBuilder&lt;Foo&gt;()
+    .AddTimeout(TimeSpan.FromMinutes(1))
+    .Build();
+
+var foo = await timeout.ExecuteAsync((ct) =&gt; JsonSerializer.DeserializeAsync&lt;Foo&gt;(stream, cancellationToken: ct));
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>The failure domain of a network call is different from that of deserialization. Using dedicated strategies makes the application more resilient to various transient failures.</p>
+<h3 id="cancelling-retry-for-specific-exceptions">Cancelling retry for specific exceptions</h3>
+<p>If you encounter a <code>TimeoutException</code>, you may not want to retry the operation.</p>
+<p>❌ DON'T</p>
+<p>Embed cancellation logic within <code>OnRetry</code>:</p>
+<!-- snippet: retry-anti-pattern-cancelling-retry -->
+<pre><code class="lang-cs">var ctsKey = new ResiliencePropertyKey&lt;CancellationTokenSource&gt;(&quot;cts&quot;);
+var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        OnRetry = async args =&gt;
+        {
+            if (args.Outcome.Exception is TimeoutException)
+            {
+                if (args.Context.Properties.TryGetValue(ctsKey, out var cts))
+                {
+                    await cts.CancelAsync();
+                }
+            }
+        }
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>Conditions for triggering retries should be located in <code>ShouldHandle</code>. Bypassing the strategy from within a user-defined delegate—either through an <code>Exception</code> or a <code>CancellationToken</code>—unnecessarily complicates the control flow.</p>
+<p>✅ DO</p>
+<p>Set the condition for retry within <code>ShouldHandle</code>:</p>
+<!-- snippet: retry-pattern-cancelling-retry -->
+<pre><code class="lang-cs">var retry = new ResiliencePipelineBuilder()
+    .AddRetry(new()
+    {
+        ShouldHandle = args =&gt; ValueTask.FromResult(args.Outcome.Exception is not TimeoutException)
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+<p><strong>Reasoning</strong>:</p>
+<p>As previously mentioned, always use the designated area to define retry conditions. Re-frame your original exit conditions to specify when a retry should be initiated.</p>
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/App-vNext/Polly/blob/main/docs/strategies/retry.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

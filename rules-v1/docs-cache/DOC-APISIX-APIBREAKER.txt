@@ -1,0 +1,307 @@
+# doc_id: DOC-APISIX-APIBREAKER
+# url: https://apisix.apache.org/docs/apisix/plugins/api-breaker/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+APISIX 3.18.0
+APISIX 3.18.0
+3.16
+3.15
+3.14
+3.13
+3.12
+3.11
+3.10
+Next (unreleased)
+Getting Started
+Getting Started with Apache APISIX
+Configure Routes
+Load Balancing
+Key Authentication
+Rate Limiting
+Installation
+Architecture
+Tutorials
+Expose API
+Protect API
+Observability
+Observe APIs
+Health Check
+Monitor API Health Check with Prometheus
+Manage API Consumers
+Cache API responses
+Add multiple API versions
+Configure mTLS for client to APISIX
+WebSocket Authentication
+Set Up SSO with Keycloak (OIDC)
+Terminology
+API Gateway
+Consumer
+Consumer Group
+Credential
+Global Rules
+Plugin
+Plugin Config
+Plugin Metadata
+Route
+Router
+Script
+Service
+Upstream
+Secret
+Plugins
+AI
+ai-proxy
+ai-proxy-multi
+ai-cache
+ai-rate-limiting
+ai-prompt-guard
+ai-aws-content-moderation
+ai-aliyun-content-moderation
+ai-lakera-guard
+ai-prompt-decorator
+ai-prompt-template
+ai-rag
+ai-request-rewrite
+General
+batch-requests
+redirect
+echo
+Gzip Compression (gzip)
+Brotli Compression (brotli)
+real-ip
+server-info
+External Plugin Pre-Request (ext-plugin-pre-req)
+External Plugin Post-Request (ext-plugin-post-req)
+External Plugin Post-Response (ext-plugin-post-resp)
+inspect
+ocsp-stapling
+Transformation
+response-rewrite
+error-page
+proxy-rewrite
+gRPC Transcoding (grpc-transcode)
+grpc-web
+fault-injection
+API Mocking (mocking)
+degraphql
+body-transformer
+attach-consumer-label
+exit-transformer
+Authentication
+key-auth
+jwt-auth
+jwe-decrypt
+basic-auth
+Keycloak Authorization (authz-keycloak)
+Casdoor Authorization (authz-casdoor)
+wolf-rbac
+openid-connect
+cas-auth
+dingtalk-auth
+feishu-auth
+hmac-auth
+Casbin Authorization (authz-casbin)
+ldap-auth
+ldap-auth-advanced
+Open Policy Agent (opa)
+Forward Authentication (forward-auth)
+multi-auth
+saml-auth
+Security
+cors
+uri-blocker
+ip-restriction
+User-Agent Restriction (ua-restriction)
+referer-restriction
+consumer-restriction
+acl
+CSRF Protection (csrf)
+public-api
+GM Encryption (gm)
+chaitin-waf
+data-mask
+Traffic
+Rate Limiting (limit-req)
+Concurrency Limiting (limit-conn)
+Rate Limiting by Count (limit-count)
+graphql-limit-count
+proxy-cache
+graphql-proxy-cache
+request-validation
+oas-validator
+proxy-mirror
+API Circuit Breaker (api-breaker)
+traffic-split
+traffic-label
+request-id
+proxy-control
+proxy-buffering
+client-control
+workflow
+Observability
+Tracers
+zipkin
+skywalking
+opentelemetry
+Metrics
+prometheus
+node-status
+datadog
+Loggers
+http-logger
+skywalking-logger
+tcp-logger
+kafka-logger
+rocketmq-logger
+udp-logger
+clickhouse-logger
+syslog
+log-rotate
+error-log-logger
+Alibaba Cloud SLS Logger (sls-logger)
+google-cloud-logging
+splunk-hec-logging
+file-logger
+loggly
+elasticsearch-logger
+tencent-cloud-cls
+loki-logger
+Lago Billing (lago)
+Serverless
+Serverless Functions (serverless)
+azure-functions
+Apache OpenWhisk (openwhisk)
+aws-lambda
+openfunction
+Other protocols
+dubbo-proxy
+mqtt-proxy
+kafka-proxy
+HTTP to Dubbo (http-dubbo)
+mcp-bridge
+API
+Admin API
+Control API
+Status API
+Apache APISIX Dashboard
+Development
+Build development environment with Dev Containers
+Building APISIX from source
+Build development environment on Mac
+Support FIPS in APISIX
+External Plugin
+Wasm
+internal
+The Implementation of Plugin Runner
+Introducing APISIX's testing framework
+Plugin Develop
+Debug mode
+Deployment modes
+FAQ
+Others
+Discovery
+Integration service discovery registry
+DNS
+consul
+consul_kv
+nacos
+eureka
+Control Plane Service Discovery
+Kubernetes
+PubSub
+PubSub
+Apache Kafka
+xRPC
+redis
+xRPC
+router-radixtree
+Stream Proxy
+gRPC Proxy
+Customize Nginx configuration
+Certificate
+Batch Processor
+Benchmark
+Install Dependencies
+APISIX variable
+Running APISIX in AWS with AWS CDK
+Mutual TLS Authentication
+Debug Function
+Configuration based on environments
+SSL Protocol
+security-threat-model
+HTTP/3 Protocol
+Upgrade Guide
+[[H1]] API Circuit Breaker (api-breaker)
+[[H2]] Description
+The api-breaker Plugin implements circuit breaker functionality to protect Upstream services.
+NOTE
+Whenever the Upstream service responds with a status code from the configured unhealthy.http_statuses list for the configured unhealthy.failures number of times, the Upstream service will be considered unhealthy.
+The request is then retried in 2, 4, 8, 16 … seconds until the max_breaker_sec.
+In an unhealthy state, if the Upstream service responds with a status code from the configured list healthy.http_statuses for healthy.successes times, the service is considered healthy again.
+[[H2]] Attributes
+Name | Type | Required | Default | Valid values | Description
+break_response_code | integer | True | | [200, …, 599] | HTTP error code to return when Upstream is unhealthy.
+break_response_body | string | False | | | Body of the response message to return when Upstream is unhealthy.
+break_response_headers | array[object] | False | | [{“key”:“header_name”,“value”:“can contain Nginx $var”}] | Headers of the response message to return when Upstream is unhealthy. Can only be configured when the break_response_body attribute is configured. The values can contain APISIX variables. For example, we can use {"key":"X-Client-Addr","value":"$remote_addr:$remote_port"}.
+max_breaker_sec | integer | False | 300 | >=3 | Maximum time in seconds for circuit breaking.
+unhealthy.http_statuses | array[integer] | False | [500] | [500, …, 599] | Status codes of Upstream to be considered unhealthy.
+unhealthy.failures | integer | False | 3 | >=1 | Number of failures within a certain period of time for the Upstream service to be considered unhealthy.
+healthy.http_statuses | array[integer] | False | [200] | [200, …, 499] | Status codes of Upstream to be considered healthy.
+healthy.successes | integer | False | 3 | >=1 | Number of consecutive healthy requests for the Upstream service to be considered healthy.
+[[H2]] Enable Plugin
+The example below shows how you can configure the Plugin on a specific Route:
+NOTE
+You can fetch the admin_key from config.yaml and save to an environment variable with the following command:
+admin_key=$(yq '.deployment.admin.admin_key[0].key' conf/config.yaml | sed 's/"//g')
+curl "http://127.0.0.1:9180/apisix/admin/routes/1" \
+-H "X-API-KEY: $admin_key" -X PUT -d '
+{
+"plugins": {
+"api-breaker": {
+"break_response_code": 502,
+"unhealthy": {
+"http_statuses": [500, 503],
+"failures": 3
+},
+"healthy": {
+"http_statuses": [200],
+"successes": 1
+}
+}
+},
+"upstream": {
+"type": "roundrobin",
+"nodes": {
+"127.0.0.1:1980": 1
+}
+},
+"uri": "/hello"
+}'
+In this configuration, a response code of 500 or 503 three times within a certain period of time triggers the unhealthy status of the Upstream service. A response code of 200 restores its healthy status.
+[[H2]] Example usage
+Once you have configured the Plugin as shown above, you can test it out by sending a request.
+curl -i -X POST "http://127.0.0.1:9080/hello"
+If the Upstream service responds with an unhealthy response code, you will receive the configured response code (break_response_code).
+HTTP/1.1 502 Bad Gateway
+...
+<html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>openresty</center>
+</body>
+</html>
+[[H2]] Delete Plugin
+To remove the api-breaker Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
+curl http://127.0.0.1:9180/apisix/admin/routes/1 \
+-H "X-API-KEY: $admin_key" -X PUT -d '
+{
+"uri": "/hello",
+"upstream": {
+"type": "roundrobin",
+"nodes": {
+"127.0.0.1:1980": 1
+}
+}
+}'
+Edit this page on GitHub Report an issue

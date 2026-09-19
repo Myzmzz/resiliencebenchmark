@@ -1,0 +1,238 @@
+# doc_id: DOC-KAFKA-TOPIC-CFG
+# url: https://kafka.apache.org/40/generated/topic_config.html
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H4]] cleanup.policy
+This config designates the retention policy to use on log segments. The "delete" policy (which is the default) will discard old segments when their retention time or size limit has been reached. The "compact" policy will enable log compaction, which retains the latest value for each key. It is also possible to specify both policies in a comma-separated list (e.g. "delete,compact"). In this case, old segments will be discarded per the retention time and size configuration, while retained segments will be compacted.
+Type: | list
+Default: | delete
+Valid Values: | [compact, delete]
+Server Default Property: | log.cleanup.policy
+Importance: | medium
+[[H4]] compression.gzip.level
+The compression level to use if compression.type is set to gzip.
+Type: | int
+Default: | -1
+Valid Values: | [1,...,9] or -1
+Server Default Property: | compression.gzip.level
+Importance: | medium
+[[H4]] compression.lz4.level
+The compression level to use if compression.type is set to lz4.
+Type: | int
+Default: | 9
+Valid Values: | [1,...,17]
+Server Default Property: | compression.lz4.level
+Importance: | medium
+[[H4]] compression.type
+Specify the final compression type for a given topic. This configuration accepts the standard compression codecs ('gzip', 'snappy', 'lz4', 'zstd'). It additionally accepts 'uncompressed' which is equivalent to no compression; and 'producer' which means retain the original compression codec set by the producer.
+Type: | string
+Default: | producer
+Valid Values: | [uncompressed, zstd, lz4, snappy, gzip, producer]
+Server Default Property: | compression.type
+Importance: | medium
+[[H4]] compression.zstd.level
+The compression level to use if compression.type is set to zstd.
+Type: | int
+Default: | 3
+Valid Values: | [-131072,...,22]
+Server Default Property: | compression.zstd.level
+Importance: | medium
+[[H4]] delete.retention.ms
+The amount of time to retain delete tombstone markers for log compacted topics. This setting also gives a bound on the time in which a consumer must complete a read if they begin from offset 0 to ensure that they get a valid snapshot of the final stage (otherwise delete tombstones may be collected before they complete their scan).
+Type: | long
+Default: | 86400000 (1 day)
+Valid Values: | [0,...]
+Server Default Property: | log.cleaner.delete.retention.ms
+Importance: | medium
+[[H4]] file.delete.delay.ms
+The time to wait before deleting a file from the filesystem
+Type: | long
+Default: | 60000 (1 minute)
+Valid Values: | [0,...]
+Server Default Property: | log.segment.delete.delay.ms
+Importance: | medium
+[[H4]] flush.messages
+This setting allows specifying an interval at which we will force an fsync of data written to the log. For example if this was set to 1 we would fsync after every message; if it were 5 we would fsync after every five messages. In general we recommend you not set this and use replication for durability and allow the operating system's background flush capabilities as it is more efficient. This setting can be overridden on a per-topic basis (see the per-topic configuration section).
+Type: | long
+Default: | 9223372036854775807
+Valid Values: | [1,...]
+Server Default Property: | log.flush.interval.messages
+Importance: | medium
+[[H4]] flush.ms
+This setting allows specifying a time interval at which we will force an fsync of data written to the log. For example if this was set to 1000 we would fsync after 1000 ms had passed. In general we recommend you not set this and use replication for durability and allow the operating system's background flush capabilities as it is more efficient.
+Type: | long
+Default: | 9223372036854775807
+Valid Values: | [0,...]
+Server Default Property: | log.flush.interval.ms
+Importance: | medium
+[[H4]] follower.replication.throttled.replicas
+A list of replicas for which log replication should be throttled on the follower side. The list should describe a set of replicas in the form [PartitionId]:[BrokerId],[PartitionId]:[BrokerId]:... or alternatively the wildcard '*' can be used to throttle all replicas for this topic.
+Type: | list
+Default: | ""
+Valid Values: | [partitionId]:[brokerId],[partitionId]:[brokerId],...
+Server Default Property: | null
+Importance: | medium
+[[H4]] index.interval.bytes
+This setting controls how frequently Kafka adds an index entry to its offset index. The default setting ensures that we index a message roughly every 4096 bytes. More indexing allows reads to jump closer to the exact position in the log but makes the index larger. You probably don't need to change this.
+Type: | int
+Default: | 4096 (4 kibibytes)
+Valid Values: | [0,...]
+Server Default Property: | log.index.interval.bytes
+Importance: | medium
+[[H4]] leader.replication.throttled.replicas
+A list of replicas for which log replication should be throttled on the leader side. The list should describe a set of replicas in the form [PartitionId]:[BrokerId],[PartitionId]:[BrokerId]:... or alternatively the wildcard '*' can be used to throttle all replicas for this topic.
+Type: | list
+Default: | ""
+Valid Values: | [partitionId]:[brokerId],[partitionId]:[brokerId],...
+Server Default Property: | null
+Importance: | medium
+[[H4]] local.retention.bytes
+The maximum size of local log segments that can grow for a partition before it deletes the old segments. Default value is -2, it represents `retention.bytes` value to be used. The effective value should always be less than or equal to `retention.bytes` value.
+Type: | long
+Default: | -2
+Valid Values: | [-2,...]
+Server Default Property: | log.local.retention.bytes
+Importance: | medium
+[[H4]] local.retention.ms
+The number of milliseconds to keep the local log segment before it gets deleted. Default value is -2, it represents `retention.ms` value is to be used. The effective value should always be less than or equal to `retention.ms` value.
+Type: | long
+Default: | -2
+Valid Values: | [-2,...]
+Server Default Property: | log.local.retention.ms
+Importance: | medium
+[[H4]] max.compaction.lag.ms
+The maximum time a message will remain ineligible for compaction in the log. Only applicable for logs that are being compacted.
+Type: | long
+Default: | 9223372036854775807
+Valid Values: | [1,...]
+Server Default Property: | log.cleaner.max.compaction.lag.ms
+Importance: | medium
+[[H4]] max.message.bytes
+The largest record batch size allowed by Kafka (after compression if compression is enabled). If this is increased and there are consumers older than 0.10.2, the consumers' fetch size must also be increased so that they can fetch record batches this large. In the latest message format version, records are always grouped into batches for efficiency. In previous message format versions, uncompressed records are not grouped into batches and this limit only applies to a single record in that case.
+Type: | int
+Default: | 1048588
+Valid Values: | [0,...]
+Server Default Property: | message.max.bytes
+Importance: | medium
+[[H4]] message.timestamp.after.max.ms
+This configuration sets the allowable timestamp difference between the message timestamp and the broker's timestamp. The message timestamp can be later than or equal to the broker's timestamp, with the maximum allowable difference determined by the value set in this configuration. If message.timestamp.type=CreateTime, the message will be rejected if the difference in timestamps exceeds this specified threshold. This configuration is ignored if message.timestamp.type=LogAppendTime.
+Type: | long
+Default: | 3600000 (1 hour)
+Valid Values: | [0,...]
+Server Default Property: | log.message.timestamp.after.max.ms
+Importance: | medium
+[[H4]] message.timestamp.before.max.ms
+This configuration sets the allowable timestamp difference between the broker's timestamp and the message timestamp. The message timestamp can be earlier than or equal to the broker's timestamp, with the maximum allowable difference determined by the value set in this configuration. If message.timestamp.type=CreateTime, the message will be rejected if the difference in timestamps exceeds this specified threshold. This configuration is ignored if message.timestamp.type=LogAppendTime.
+Type: | long
+Default: | 9223372036854775807
+Valid Values: | [0,...]
+Server Default Property: | log.message.timestamp.before.max.ms
+Importance: | medium
+[[H4]] message.timestamp.type
+Define whether the timestamp in the message is message create time or log append time.
+Type: | string
+Default: | CreateTime
+Valid Values: | [CreateTime, LogAppendTime]
+Server Default Property: | log.message.timestamp.type
+Importance: | medium
+[[H4]] min.cleanable.dirty.ratio
+This configuration controls how frequently the log compactor will attempt to clean the log (assuming log compaction is enabled). By default we will avoid cleaning a log where more than 50% of the log has been compacted. This ratio bounds the maximum space wasted in the log by duplicates (at 50% at most 50% of the log could be duplicates). A higher ratio will mean fewer, more efficient cleanings but will mean more wasted space in the log. If the max.compaction.lag.ms or the min.compaction.lag.ms configurations are also specified, then the log compactor considers the log to be eligible for compaction as soon as either: (i) the dirty ratio threshold has been met and the log has had dirty (uncompacted) records for at least the min.compaction.lag.ms duration, or (ii) if the log has had dirty (uncompacted) records for at most the max.compaction.lag.ms period.
+Type: | double
+Default: | 0.5
+Valid Values: | [0,...,1]
+Server Default Property: | log.cleaner.min.cleanable.ratio
+Importance: | medium
+[[H4]] min.compaction.lag.ms
+The minimum time a message will remain uncompacted in the log. Only applicable for logs that are being compacted.
+Type: | long
+Default: | 0
+Valid Values: | [0,...]
+Server Default Property: | log.cleaner.min.compaction.lag.ms
+Importance: | medium
+[[H4]] min.insync.replicas
+When a producer sets acks to "all" (or "-1"), this configuration specifies the minimum number of replicas that must acknowledge a write for the write to be considered successful. If this minimum cannot be met, then the producer will raise an exception (either NotEnoughReplicas or NotEnoughReplicasAfterAppend).
+Regardless of the acks setting, the messages will not be visible to the consumers until they are replicated to all in-sync replicas and the min.insync.replicas condition is met.
+When used together, min.insync.replicas and acks allow you to enforce greater durability guarantees. A typical scenario would be to create a topic with a replication factor of 3, set min.insync.replicas to 2, and produce with acks of "all". This will ensure that a majority of replicas must persist a write before it's considered successful by the producer and it's visible to consumers.
+Type: | int
+Default: | 1
+Valid Values: | [1,...]
+Server Default Property: | min.insync.replicas
+Importance: | medium
+[[H4]] preallocate
+True if we should preallocate the file on disk when creating a new log segment.
+Type: | boolean
+Default: | false
+Valid Values:
+Server Default Property: | log.preallocate
+Importance: | medium
+[[H4]] remote.log.copy.disable
+Determines whether tiered data for a topic should become read only, and no more data uploading on a topic. Once this config is set to true, the local retention configuration (i.e. local.retention.ms/bytes) becomes irrelevant, and all data expiration follows the topic-wide retention configuration(i.e. retention.ms/bytes).
+Type: | boolean
+Default: | false
+Valid Values:
+Server Default Property: | null
+Importance: | medium
+[[H4]] remote.log.delete.on.disable
+Determines whether tiered data for a topic should be deleted after tiered storage is disabled on a topic. This configuration should be enabled when trying to set `remote.storage.enable` from true to false
+Type: | boolean
+Default: | false
+Valid Values:
+Server Default Property: | null
+Importance: | medium
+[[H4]] remote.storage.enable
+To enable tiered storage for a topic, set this configuration to true. To disable tiered storage for a topic that has it enabled, set this configuration to false. When disabling, you must also set remote.log.delete.on.disable to true.
+Type: | boolean
+Default: | false
+Valid Values:
+Server Default Property: | null
+Importance: | medium
+[[H4]] retention.bytes
+This configuration controls the maximum size a partition (which consists of log segments) can grow to before we will discard old log segments to free up space if we are using the "delete" retention policy. By default there is no size limit only a time limit. Since this limit is enforced at the partition level, multiply it by the number of partitions to compute the topic retention in bytes. Additionally, retention.bytes configuration operates independently of "segment.ms" and "segment.bytes" configurations. Moreover, it triggers the rolling of new segment if the retention.bytes is configured to zero.
+Type: | long
+Default: | -1
+Valid Values:
+Server Default Property: | log.retention.bytes
+Importance: | medium
+[[H4]] retention.ms
+This configuration controls the maximum time we will retain a log before we will discard old log segments to free up space if we are using the "delete" retention policy. This represents an SLA on how soon consumers must read their data. If set to -1, no time limit is applied. Additionally, retention.ms configuration operates independently of "segment.ms" and "segment.bytes" configurations. Moreover, it triggers the rolling of new segment if the retention.ms condition is satisfied.
+Type: | long
+Default: | 604800000 (7 days)
+Valid Values: | [-1,...]
+Server Default Property: | log.retention.ms
+Importance: | medium
+[[H4]] segment.bytes
+This configuration controls the segment file size for the log. Retention and cleaning is always done a file at a time so a larger segment size means fewer files but less granular control over retention.
+Type: | int
+Default: | 1073741824 (1 gibibyte)
+Valid Values: | [14,...]
+Server Default Property: | log.segment.bytes
+Importance: | medium
+[[H4]] segment.index.bytes
+This configuration controls the size of the index that maps offsets to file positions. We preallocate this index file and shrink it only after log rolls. You generally should not need to change this setting.
+Type: | int
+Default: | 10485760 (10 mebibytes)
+Valid Values: | [4,...]
+Server Default Property: | log.index.size.max.bytes
+Importance: | medium
+[[H4]] segment.jitter.ms
+The maximum random jitter subtracted from the scheduled segment roll time to avoid thundering herds of segment rolling
+Type: | long
+Default: | 0
+Valid Values: | [0,...]
+Server Default Property: | log.roll.jitter.ms
+Importance: | medium
+[[H4]] segment.ms
+This configuration controls the period of time after which Kafka will force the log to roll even if the segment file isn't full to ensure that retention can delete or compact old data.
+Type: | long
+Default: | 604800000 (7 days)
+Valid Values: | [1,...]
+Server Default Property: | log.roll.ms
+Importance: | medium
+[[H4]] unclean.leader.election.enable
+Indicates whether to enable replicas not in the ISR set to be elected as leader as a last resort, even though doing so may result in data loss.
+Note: In KRaft mode, when enabling this config dynamically, it needs to wait for the unclean leader electionthread to trigger election periodically (default is 5 minutes). Please run `kafka-leader-election.sh` with `unclean` option to trigger the unclean leader election immediately if needed.
+Type: | boolean
+Default: | false
+Valid Values:
+Server Default Property: | unclean.leader.election.enable
+Importance: | medium

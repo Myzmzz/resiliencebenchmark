@@ -1,0 +1,177 @@
+# doc_id: DOC-MYSQL-CONNJ-NET
+# url: https://web.archive.org/web/2024/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Documentation Home
+MySQL Connector/J Developer Guide
+Preface and Legal Notices
+Overview of MySQL Connector/J
+Compatibility with MySQL and Java Versions
+What's New in Connector/J 9.2?
+Connector/J Installation
+Installing Connector/J from a Binary Distribution
+Installing Connector/J Using Maven
+Installing from Source
+Upgrading from an Older Version
+Upgrading to MySQL Connector/J 9.2 from Connector/J 5.1
+Running on the Java 8 Platform
+Changes in Connection Properties
+Changes in the Connector/J API
+Changes for Build Properties
+Change for Test Properties
+Changes for Exceptions
+Other Changes
+Testing Connector/J
+Connector/J Examples
+Connector/J Reference
+Driver/Datasource Class Name
+Connection URL Syntax
+Configuration Properties
+Authentication
+Connection
+Session
+Networking
+Security
+Statements
+Prepared Statements
+Result Sets
+Metadata
+BLOB/CLOB processing
+Datetime types processing
+High Availability and Clustering
+Performance Extensions
+Debugging/Profiling
+Exceptions/Warnings
+Tunes for integration with other products
+JDBC compliance
+X Protocol and X DevAPI
+JDBC API Implementation Notes
+Java, JDBC, and MySQL Types
+Handling of Date-Time Values
+Preserving Time Instants
+Fractional Seconds
+Handling of YEAR Values
+Using Character Sets and Unicode
+Using Query Attributes
+Connecting Securely Using SSL
+Setting up Server Authentication
+Setting up Client Authentication
+Setting up 2-Way Authentication
+JSSE in FIPS Mode
+Debugging an SSL Connection
+Connecting Using Unix Domain Sockets
+Connecting Using Named Pipes
+Connecting Using Various Authentication Methods
+Connecting Using PAM Authentication
+Connecting Using Kerberos
+Connecting Using Multifactor Authentication
+Connecting Using Web Authentication (WebAuthn) Authentication
+Connecting Using OpenID Connect Authentication
+Using Source/Replica Replication with ReplicationConnection
+Support for DNS SRV Records
+Client Session State Tracker
+Mapping MySQL Error Numbers to JDBC SQLState Codes
+JDBC Concepts
+Connecting to MySQL Using the JDBC DriverManager Interface
+Using JDBC Statement Objects to Execute SQL
+Using JDBC CallableStatements to Execute Stored Procedures
+Retrieving AUTO_INCREMENT Column Values through JDBC
+Connection Pooling with Connector/J
+Multi-Host Connections
+Configuring Server Failover for Connections Using JDBC
+Configuring Server Failover for Connections Using X DevAPI
+Configuring Load Balancing with Connector/J
+Configuring Source/Replica Replication with Connector/J
+Advanced Load-balancing and Failover Configuration
+Using the X DevAPI with Connector/J: Special Topics
+Connection Compression Using X DevAPI
+Schema Validation
+Using the Connector/J Interceptor Classes
+Using Logging Frameworks with SLF4J
+Using Connector/J with OpenTelemetry
+Using Connector/J with Tomcat
+Using Connector/J with Spring
+Using JdbcTemplate
+Transactional JDBC Access
+Connection Pooling with Spring
+Troubleshooting Connector/J Applications
+Known Issues and Limitations
+Connector/J Support
+Connector/J Community Support
+How to Report Connector/J Bugs or Problems
+Index
+Related Documentation
+MySQL Connector/J Release Notes
+Download this Manual
+PDF (US Ltr) - 1.2Mb
+PDF (A4) - 1.2Mb
+MySQL Connector/J Developer Guide / ... / Connector/J Reference / Configuration Properties / Networking
+[[H3]] 6.3.4 Networking
+socksProxyHost
+Name or IP address of a SOCKS host to connect through.
+Since Version | 5.1.34
+socksProxyPort
+Port of the SOCKS server.
+Default Value | 1080
+Since Version | 5.1.34
+socketFactory
+The name of the class that the driver should use for creating socket connections to the server. This class must implement the interface 'com.mysql.cj.protocol.SocketFactory' and have a public no-args constructor.
+Default Value | com.mysql.cj.protocol.StandardSocketFactory
+Since Version | 3.0.3
+connectTimeout
+Timeout for socket connect (in milliseconds), with 0 being no timeout.
+Default Value | 0
+Since Version | 3.0.1
+socketTimeout
+Timeout, specified in milliseconds, on network socket operations. Value "0" means no timeout.
+Default Value | 0
+Since Version | 3.0.1
+dnsSrv
+Should the driver use the given host name to lookup for DNS SRV records and use the resulting list of hosts in a multi-host failover connection? Note that a single host name and no port must be provided when this option is enabled.
+Default Value | false
+Since Version | 8.0.19
+localSocketAddress
+Hostname or IP address given to explicitly configure the interface that the driver will bind the client side of the TCP/IP connection to when connecting.
+Since Version | 5.0.5
+maxAllowedPacket
+Maximum allowed packet size to send to server. If not set, the value of system variable 'max_allowed_packet' will be used to initialize this upon connecting. This value will not take effect if set larger than the value of 'max_allowed_packet'. Also, due to an internal dependency with the property 'blobSendChunkSize', this setting has a minimum value of "8203" if 'useServerPrepStmts' is set to "true".
+Default Value | 65535
+Since Version | 5.1.8
+socksProxyRemoteDns
+When using a SOCKS proxy, whether the DNS lookup for the database host should be performed locally or through the SOCKS proxy.
+Default Value | false
+Since Version | 8.0.29
+tcpKeepAlive
+If connecting using TCP/IP, should the driver set 'SO_KEEPALIVE'?
+Default Value | true
+Since Version | 5.0.7
+tcpNoDelay
+If connecting using TCP/IP, should the driver set 'SO_TCP_NODELAY', disabling the Nagle Algorithm?
+Default Value | true
+Since Version | 5.0.7
+tcpRcvBuf
+If connecting using TCP/IP, should the driver set 'SO_RCV_BUF' to the given value? The default value of "0", means use the platform default value for this property.
+Default Value | 0
+Since Version | 5.0.7
+tcpSndBuf
+If connecting using TCP/IP, should the driver set 'SO_SND_BUF' to the given value? The default value of "0", means use the platform default value for this property.
+Default Value | 0
+Since Version | 5.0.7
+tcpTrafficClass
+If connecting using TCP/IP, should the driver set traffic class or type-of-service fields? See the documentation for 'java.net.Socket.setTrafficClass()' for more information.
+Default Value | 0
+Since Version | 5.0.7
+useCompression
+Use zlib compression when communicating with the server?
+Default Value | false
+Since Version | 3.0.17
+useUnbufferedInput
+Don't use 'BufferedInputStream' for reading data from the server.
+Default Value | true
+Since Version | 3.0.11
+PREV HOME UP NEXT
+Related Documentation
+MySQL Connector/J Release Notes
+Download this Manual
+PDF (US Ltr) - 1.2Mb
+PDF (A4) - 1.2Mb

@@ -1,0 +1,545 @@
+# doc_id: DOC-ISTIO-TIMEOUTS
+# url: https://istio.io/latest/docs/tasks/traffic-management/request-timeouts/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Overview
+What is Istio?
+Why choose Istio?
+Sidecar or ambient?
+Quickstart
+Concepts
+Traffic Management
+Security
+Observability
+Extensibility
+Sidecar Mode
+Getting Started
+Platform Setup
+Alibaba Cloud
+Amazon EKS
+Azure
+Docker Desktop
+Google Kubernetes Engine
+Huawei Cloud
+IBM Cloud
+k3d
+kind
+Kops
+Kubernetes Gardener
+KubeSphere Container Platform
+MicroK8s
+Minikube
+OpenShift
+Oracle Cloud Infrastructure
+Tencent Cloud
+Install
+Install with Istioctl
+Install with Helm
+Install Multicluster
+Before you begin
+Install Multi-Primary
+Install Primary-Remote
+Install Multi-Primary on different networks
+Install Primary-Remote on different networks
+Verify the installation
+Install Istio with an External Control Plane
+Install Multiple Istio Control Planes in a Single Cluster
+Virtual Machine Installation
+Upgrade
+Canary Upgrades
+In-place Upgrades
+Upgrade with Helm
+More Guides
+Download the Istio release
+Installation Configuration Profiles
+Compatibility Versions
+Installing Gateways
+Installing the Sidecar
+Customizing the installation configuration
+Advanced Helm Chart Customization
+Install Istio in Dual-Stack mode
+Install Istio with Pod Security Admission
+Install the Istio CNI node agent
+NetworkPolicy
+Getting Started without the Gateway API
+Ambient Mode
+Overview
+Getting Started
+Deploy a sample application
+Secure and visualize the application
+Enforce authorization policies
+Manage traffic
+Clean up
+Install
+Platform-Specific Prerequisites
+Install with Helm
+Install with istioctl
+Install Multicluster
+Before you begin
+Install ambient multi-primary on different networks
+Verify the ambient installation
+Configure failover behavior in multicluster ambient installation
+Kiali Dashboard for Ambient Multi-network
+Upgrade
+Upgrade with Helm
+Migrate from Sidecar to Ambient
+Before you begin
+Install ambient components
+Migrate policies
+Enable ambient mode
+User Guides
+Add workloads to the mesh
+Verify mutual TLS is enabled
+Ambient and Kubernetes NetworkPolicy
+Use Layer 4 security policy
+Configure waypoint proxies
+Traffic Distribution
+ServiceEntry visibility
+Use agentgateway
+Use Layer 7 features
+Extend waypoints with WebAssembly plugins *
+Extend waypoints with Lua scripts *
+Troubleshoot connectivity issues with ztunnel
+Troubleshoot issues with waypoints
+Architecture
+Ambient and the Istio control plane
+Ambient data plane
+HBONE
+Ztunnel traffic redirection
+Tasks
+Traffic Management
+Request Routing
+Fault Injection
+Traffic Shifting
+TCP Traffic Shifting
+Request Timeouts
+Circuit Breaking
+Mirroring
+Locality Load Balancing
+Before you begin
+Locality failover
+Locality weighted distribution
+Cleanup
+Ingress
+Ingress Gateways
+Secure Gateways
+Ingress Gateway without TLS Termination
+Ingress Sidecar TLS Termination
+Kubernetes Ingress
+Kubernetes Gateway API
+Kubernetes Gateway API Inference Extension
+Egress
+Accessing External Services
+Egress TLS Origination
+Egress Gateways
+Egress Gateways with TLS Origination
+Egress using Wildcard Hosts
+Kubernetes Services for Egress Traffic
+Using an External HTTPS Proxy
+Security
+Certificate Management
+Plug in CA Certificates
+Custom CA Integration using Kubernetes CSR *
+Authentication
+Authentication Policy
+JWT claim based routing *
+Copy JWT Claims to HTTP Headers *
+Mutual TLS Migration
+Authorization
+HTTP Traffic
+TCP Traffic
+JWT Token
+External Authorization
+Explicit Deny
+Ingress Access Control
+Trust Domain Migration
+Dry Run *
+TLS Configuration
+Istio Workload Minimum TLS Version Configuration
+Policy Enforcement
+Enabling Rate Limits using Envoy
+Observability
+Telemetry API
+Metrics
+Customizing Istio Metrics with Telemetry API
+Collecting Metrics for TCP Services
+Customizing Istio Metrics
+Classifying Metrics Based on Request or Response
+Querying Metrics from Prometheus
+Visualizing Metrics with Grafana
+Securing Prometheus Scraping for Istio Sidecar and Gateway
+Logs
+Configure access logs with Telemetry API
+Envoy Access Logs
+OpenTelemetry
+Distributed Tracing
+Overview
+Configure tracing with Telemetry API
+Configure tracing using MeshConfig and pod annotations
+Configure trace sampling
+OpenTelemetry
+Jaeger
+Zipkin
+Apache SkyWalking
+Visualizing Your Mesh
+Remotely Accessing Telemetry Addons
+Extensibility
+Executing WebAssembly Modules *
+Executing Lua Scripts *
+Examples
+Bookinfo Application
+Bookinfo with a Virtual Machine
+Learn Microservices using Kubernetes and Istio
+Prerequisites
+Set up a Kubernetes Cluster
+Set up a Local Computer
+Run a Microservice Locally
+Run ratings in Docker
+Run Bookinfo with Kubernetes
+Test in production
+Add a new version of reviews
+Enable Istio on productpage
+Enable Istio on all the microservices
+Configure Istio Ingress Gateway
+Monitoring with Istio
+Operations
+Deployment
+Platform Requirements
+Architecture
+Security Model
+Deployment Models
+Virtual Machine Architecture
+Ambient Multicluster Performance
+Performance and Scalability
+Application Requirements
+Configuration
+Mesh Configuration
+Dynamic Admission Webhooks Overview
+Health Checking of Istio Services
+Configuration Scoping
+Traffic Management
+Protocol Selection
+Managing In-Mesh Certificates
+TLS Configuration
+Traffic Routing
+DNS
+Configuring Gateway Network Topology *
+DNS Proxying
+Multi-cluster Traffic Management
+Security
+Security policy examples
+Harden Docker Container Images
+Observability
+Envoy Statistics
+Monitoring Multicluster Istio with Prometheus
+Extensibility
+Pull Policy for WebAssembly Modules *
+Best Practices
+Deployment Best Practices
+Traffic Management Best Practices
+Security Best Practices
+Image Signing and Validation
+Observability Best Practices
+Common Problems
+Traffic Management Problems
+Security Problems
+Observability Problems
+Sidecar Injection Problems
+Configuration Validation Problems
+Upgrade Problems
+Diagnostic Tools
+Using the Istioctl Command-line Tool
+Debugging Envoy and Istiod
+Understand your Mesh with Istioctl Describe
+Diagnose your Configuration with Istioctl Analyze
+Verifying Istio Sidecar Injection with Istioctl Check-Inject
+Istiod Introspection
+Component Logging
+Debugging Virtual Machines
+Troubleshooting Multicluster
+Troubleshooting the Istio CNI plugin
+Integrations
+cert-manager
+Grafana
+Integration Guide
+Debug Endpoints
+Jaeger
+Kiali
+Prometheus
+SPIRE
+Apache SkyWalking
+Zipkin
+Third Party Load Balancers
+Releases
+Feature Status
+Reporting Bugs
+Security Vulnerabilities
+Supported Releases
+Contribute Documentation
+Work with GitHub
+Add New Documentation
+Remove Retired Documentation
+Build and serve the website locally
+Front matter
+Documentation Review Process
+Add Code Blocks
+Use Shortcodes
+Follow Formatting Standards
+Style Guide
+Terminology Standards
+Diagram Creation Guidelines
+Website Content Changes
+Reference
+Configuration
+Analysis Messages
+Global Mesh Options
+IstioOperator Options
+Proxy Extensions
+Traffic Extension
+Wasm Plugin
+Traffic Management
+Destination Rule
+Envoy Filter
+Gateway
+ProxyConfig
+Service Entry
+Sidecar
+Virtual Service
+Workload Entry
+Workload Group
+Security
+PeerAuthentication
+RequestAuthentication
+Authorization Policy
+Authorization Policy Conditions
+Authorization Policy Normalization
+Telemetry
+Common Types
+Workload Selector
+Istio Standard Metrics
+Resource Annotations
+Resource Labels
+Configuration Analysis Messages
+AlphaAnnotation
+Analyzer Message Format
+ConflictingMeshGatewayVirtualServiceHosts
+ConflictingSidecarWorkloadSelectors
+ConflictingTelemetryWorkloadSelectors
+DeploymentAssociatedToMultipleServices
+DeploymentConflictingPorts
+Deprecated
+DeprecatedAnnotation
+EnvoyFilterUsesAddOperationIncorrectly
+EnvoyFilterUsesRelativeOperation
+EnvoyFilterUsesRelativeOperationWithProxyVersion
+EnvoyFilterUsesRemoveOperationIncorrectly
+EnvoyFilterUsesReplaceOperationIncorrectly
+ExternalControlPlaneAddressIsNotAHostname
+ExternalNameServiceTypeInvalidPortName
+GatewayPortNotDefinedOnService
+IneffectivePolicy
+IneffectiveSelector
+InternalError
+InvalidAnnotation
+InvalidApplicationUID
+InvalidExternalControlPlaneConfig
+InvalidGatewayCredential
+InvalidTelemetryProvider
+LocalhostListener
+MisplacedAnnotation
+MultipleSidecarsWithoutWorkloadSelectors
+MultipleTelemetriesWithoutWorkloadSelectors
+NamespaceMultipleInjectionLabels
+NamespaceNotInjected
+NoMatchingWorkloadsFound
+NoServerCertificateVerificationDestinationLevel
+NoServerCertificateVerificationPortLevel
+PodMissingProxy
+PodsIstioProxyImageMismatchInNamespace
+PortNameIsNotUnderNamingConvention
+ReferencedResourceNotFound
+SchemaValidationError
+ServiceEntryAddressesRequired
+UnknownAnnotation
+VirtualServiceDestinationPortSelectorRequired
+VirtualServiceHostNotFoundInGateway
+VirtualServiceIneffectiveMatch
+VirtualServiceUnreachableRule
+Commands
+install-cni
+istioctl
+pilot-agent
+pilot-discovery
+Glossary
+Contents
+Documentation
+Tasks
+Traffic Management
+Request Timeouts
+[[H1]] Request Timeouts
+5 minute read page test
+Before you begin
+Request timeouts
+Understanding what happened
+Cleanup
+See also
+This task shows you how to set up request timeouts in Envoy using Istio.
+Istio supports the Kubernetes Gateway API and intends to make it the default API for traffic management in the future. The following instructions allow you to choose to use either the Gateway API or the Istio configuration API when configuring traffic management in the mesh. Follow instructions under either the Gateway API or Istio APIs tab, according to your preference.
+Note that the Kubernetes Gateway API CRDs do not come installed by default on most Kubernetes clusters, so make sure they are installed before using the Gateway API:
+$ kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.0/experimental-install.yaml
+[[H2]] Before you begin
+Setup Istio by following the instructions in the Installation guide.
+Deploy the Bookinfo sample application including the service versions.
+[[H2]] Request timeouts
+A timeout for HTTP requests can be specified using a timeout field in a route rule. By default, the request timeout is disabled, but in this task you override the reviews service timeout to half a second. To see its effect, however, you also introduce an artificial 2 second delay in calls to the ratings service.
+Route requests to v2 of the reviews service, i.e., a version that calls the ratings service:
+Istio APIs Gateway API
+$ kubectl apply -f - <<EOF
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+name: reviews
+spec:
+hosts:
+- reviews
+http:
+- route:
+- destination:
+host: reviews
+subset: v2
+EOF
+$ kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+name: reviews
+spec:
+parentRefs:
+- group: ""
+kind: Service
+name: reviews
+port: 9080
+rules:
+- backendRefs:
+- name: reviews-v2
+port: 9080
+EOF
+Add a 2 second delay to calls to the ratings service:
+Istio APIs Gateway API
+$ kubectl apply -f - <<EOF
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+name: ratings
+spec:
+hosts:
+- ratings
+http:
+- fault:
+delay:
+percentage:
+value: 100
+fixedDelay: 2s
+route:
+- destination:
+host: ratings
+subset: v1
+EOF
+Gateway API does not support fault injection yet, so we need to use an Istio VirtualService to add the delay for now:
+$ kubectl apply -f - <<EOF
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+name: ratings
+spec:
+hosts:
+- ratings
+http:
+- fault:
+delay:
+percentage:
+value: 100
+fixedDelay: 2s
+route:
+- destination:
+host: ratings
+EOF
+Open the Bookinfo URL http://$GATEWAY_URL/productpage in your browser, where $GATEWAY_URL is the External IP address of the ingress, as explained in the Bookinfo doc.
+You should see the Bookinfo application working normally (with ratings stars displayed), but there is a 2 second delay whenever you refresh the page.
+Now add a half second request timeout for calls to the reviews service:
+Istio APIs Gateway API
+$ kubectl apply -f - <<EOF
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+name: reviews
+spec:
+hosts:
+- reviews
+http:
+- route:
+- destination:
+host: reviews
+subset: v2
+timeout: 0.5s
+EOF
+$ kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+name: reviews
+spec:
+parentRefs:
+- group: ""
+kind: Service
+name: reviews
+port: 9080
+rules:
+- backendRefs:
+- name: reviews-v2
+port: 9080
+timeouts:
+request: 500ms
+EOF
+Refresh the Bookinfo web page.
+You should now see that it returns in about 1 second, instead of 2, and the reviews are unavailable.
+The reason that the response takes 1 second, even though the timeout is configured at half a second, is because there is a hard-coded retry in the productpage service, so it calls the timing out reviews service twice before returning.
+[[H2]] Understanding what happened
+In this task, you used Istio to set the request timeout for calls to the reviews microservice to half a second. By default the request timeout is disabled. Since the reviews service subsequently calls the ratings service when handling requests, you used Istio to inject a 2 second delay in calls to ratings to cause the reviews service to take longer than half a second to complete and consequently you could see the timeout in action.
+You observed that instead of displaying reviews, the Bookinfo product page (which calls the reviews service to populate the page) displayed the message: Sorry, product reviews are currently unavailable for this book. This was the result of it receiving the timeout error from the reviews service.
+If you examine the fault injection task, you’ll find out that the productpage microservice also has its own application-level timeout (3 seconds) for calls to the reviews microservice. Notice that in this task you used an Istio route rule to set the timeout to half a second. Had you instead set the timeout to something greater than 3 seconds (such as 4 seconds) the timeout would have had no effect since the more restrictive of the two takes precedence. More details can be found here.
+One more thing to note about timeouts in Istio is that in addition to overriding them in route rules, as you did in this task, they can also be overridden on a per-request basis if the application adds an x-envoy-upstream-rq-timeout-ms header on outbound requests. In the header, the timeout is specified in milliseconds instead of seconds.
+[[H2]] Cleanup
+Remove the application routing rules:
+Istio APIs Gateway API
+Zip
+$ kubectl delete -f @samples/bookinfo/networking/virtual-service-all-v1.yaml@
+$ kubectl delete httproute reviews
+$ kubectl delete virtualservice ratings
+If you are not planning to explore any follow-on tasks, see the Bookinfo cleanup instructions to shutdown the application.
+[[H2]] See also
+Simplifying Egress Routing to Wildcard Destinations
+Istio now supports wildcard ServiceEntry with DYNAMIC_DNS resolution, allowing sidecars to route traffic directly to wildcard HTTPS destinations while simplifying egress configuration.
+Routing egress traffic to wildcard destinations
+A generic approach to set up egress gateways that can route traffic to a restricted set of target remote hosts dynamically, including wildcard domains.
+Getting started with the Kubernetes Gateway API
+Using the Gateway API to configure ingress traffic for your Kubernetes cluster.
+Extending Gateway API support in Istio
+A standard API for service mesh, in Istio and in the broader community.
+Direct encrypted traffic from IBM Cloud Kubernetes Service Ingress to Istio Ingress Gateway
+Configure the IBM Cloud Kubernetes Service Application Load Balancer to direct traffic to the Istio Ingress gateway with mutual TLS.
+Multicluster Istio configuration and service discovery using Admiral
+Automating Istio configuration for Istio deployments (clusters) that work as a single mesh.
+TCP Traffic Shifting
+Circuit Breaking
+Was this information useful?
+Yes No
+Do you have any suggestions for improvement?
+Thanks for your feedback!
+[[H2]] Links
+Before you begin
+Request timeouts
+Understanding what happened
+Cleanup
+See also

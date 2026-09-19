@@ -1,0 +1,277 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
+  
+    <title>Failsafe - Timeout</title>
+
+    
+  
+
+  <link rel="shortcut icon" href="https://failsafe.dev/assets/images/favicon.png" type="image/x-icon">
+
+  <link rel="stylesheet" href="https://failsafe.dev/assets/css/just-the-docs.css">
+
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-145891145-1"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', "UA-145891145-1");
+    </script>
+
+  
+
+  
+    <script type="text/javascript" src="https://failsafe.dev/assets/js/vendor/lunr.min.js"></script>
+  
+  <script type="text/javascript" src="https://failsafe.dev/assets/js/just-the-docs.js"></script>
+
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Timeout | Failsafe</title>
+<meta name="generator" content="Jekyll v3.10.0" />
+<meta property="og:title" content="Timeout" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Failsafe website" />
+<meta property="og:description" content="Failsafe website" />
+<link rel="canonical" href="https://failsafe.dev/timeout/" />
+<meta property="og:url" content="https://failsafe.dev/timeout/" />
+<meta property="og:site_name" content="Failsafe" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Timeout" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Failsafe website","headline":"Timeout","url":"https://failsafe.dev/timeout/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+</head>
+
+<body>
+
+  <div class="page-wrap">
+    <div class="side-bar">
+      <div class="site-header">
+        <a href="https://failsafe.dev/" class="site-title lh-tight"><span class="logo" style="background-image: url('/assets/images/failsafe-logo-color.png')">Failsafe</span></a>
+        <button class="menu-button fs-3 js-main-nav-trigger" data-text-toggle="Hide" type="button">Menu</button>
+      </div>
+
+      <div class="navigation main-nav js-main-nav">
+        <nav role="navigation" class="side-nav" aria-label="Main navigation">
+  
+  <ul>
+  <li>Overview
+    <ul>
+      <li><a href="/">Getting Started</a></li>
+    </ul>
+  </li>
+  <li>Policies
+    <ul>
+      <li><a href="/policies">Policies Overview</a></li>
+      <li><a href="/retry">Retry</a></li>
+      <li><a href="/circuit-breaker">Circuit Breaker</a></li>
+      <li><a href="/rate-limiter">Rate Limiter</a></li>
+      <li><a href="/timeout">Timeout</a></li>
+      <li><a href="/bulkhead">Bulkhead</a></li>
+      <li><a href="/fallback">Fallback</a></li>
+    </ul>
+  </li>
+  <li>Features
+    <ul>
+      <li><a href="/async-execution">Async Execution</a></li>
+      <li><a href="/event-listeners">Event Listeners</a></li>
+      <li><a href="/execution-context">Execution Context</a></li>
+      <li><a href="/execution-cancellation">Execution Cancellation</a></li>
+      <li><a href="/standalone-execution">Standalone Execution</a></li>
+      <li><a href="/strong-typing">Strong Typing</a></li>
+      <li><a href="/extending">Extending Failsafe</a></li>
+    </ul>
+  </li>
+  <li>Modules
+    <ul>
+      <li><a href="/okhttp">OkHttp</a></li>
+      <li><a href="/retrofit">Retrofit</a></li>
+    </ul>
+  </li>
+  <li>Resources
+    <ul>
+      <li><a href="/javadoc/core">Javadocs</a></li>
+      <li><a href="https://failsafe-lib.slack.com/">Slack Chat</a></li>
+      <li><a href="/comparisons">Comparisons</a></li>
+      <li><a href="/whos-using">Who’s Using Failsafe</a></li>
+      <li><a href="/faqs">FAQs</a></li>
+      <li><a href="/example-integrations">Example Integrations</a></li>
+      <li><a href="/third-party-tools">Third Party Tools</a></li>
+      <li><a href="/talks">Talks</a></li>
+    </ul>
+  </li>
+</ul>
+
+<!-- Site links -->
+
+<!-- Failsafe Javadocs - Classes -->
+
+<!-- Failsafe Javadocs - Methods -->
+
+<!-- Failsafe Modules Javadocs - Classes -->
+
+<!-- JDK Javadocs -->
+
+<!-- Maven artifacts -->
+
+<!-- 3rd party Javadocs -->
+
+<!-- 3rd party libs -->
+
+<!-- Misc links -->
+
+
+</nav>
+
+      </div>
+    </div>
+    <div class="main-content-wrap js-main-content" tabindex="0">
+      <div class="main-content">
+        <div class="page-header js-page-header">
+          
+          <div class="search">
+            <div class="search-input-wrap">
+              <input type="text" class="js-search-input search-input" tabindex="0" placeholder="Search Failsafe" aria-label="Search Failsafe" autocomplete="off">
+              <svg width="14" height="14" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg" class="search-icon"><title>Search</title><g fill-rule="nonzero"><path d="M17.332 20.735c-5.537 0-10-4.6-10-10.247 0-5.646 4.463-10.247 10-10.247 5.536 0 10 4.601 10 10.247s-4.464 10.247-10 10.247zm0-4c3.3 0 6-2.783 6-6.247 0-3.463-2.7-6.247-6-6.247s-6 2.784-6 6.247c0 3.464 2.7 6.247 6 6.247z"/><path d="M11.672 13.791L.192 25.271 3.02 28.1 14.5 16.62z"/></g></svg>
+            </div>
+            <div class="js-search-results search-results-wrap"></div>
+          </div>
+          
+            <ul class="list-style-none text-medium aux-nav">
+              <li class="d-inline-block my-0"><a class="github-button" href="https://github.com/failsafe-lib/failsafe" data-show-count="true" aria-label="View Failsafe on GitHub">View on Github</a></li>
+              
+            </ul>
+        </div>
+        <div class="page">
+          <div id="main-content" class="page-content" role="main">
+            
+              <h1 class="no_toc" id="timeout">
+        
+        
+          <a href="#timeout" class="anchor-heading"><svg class="d-inline-block v-align-middle" viewBox="0 0 16 16" version="1.1" width="18" height="18" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a> Timeout
+        
+        
+      </h1>
+
+<ol id="markdown-toc">
+  <li><a href="#timeouts-with-retries" id="markdown-toc-timeouts-with-retries">Timeouts with Retries</a></li>
+  <li><a href="#async-execution-timeouts" id="markdown-toc-async-execution-timeouts">Async Execution Timeouts</a></li>
+  <li><a href="#event-listeners" id="markdown-toc-event-listeners">Event Listeners</a></li>
+  <li><a href="#limitations" id="markdown-toc-limitations">Limitations</a></li>
+</ol>
+
+<p><a href="https://failsafe.dev/javadoc/core/dev/failsafe/Timeout.html">Timeouts</a> allow you to fail an execution with <code class="language-plaintext highlighter-rouge">TimeoutExceededException</code> if it takes too long to complete:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Timeout</span><span class="o">&lt;</span><span class="nc">Object</span><span class="o">&gt;</span> <span class="n">timeout</span> <span class="o">=</span> <span class="nc">Timeout</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="nc">Duration</span><span class="o">.</span><span class="na">ofSeconds</span><span class="o">(</span><span class="mi">10</span><span class="o">));</span>
+</code></pre></div></div>
+
+<p>You can create a Timeout that <a href="https://failsafe.dev/javadoc/core/dev/failsafe/TimeoutBuilder.html#withInterrupt--">interrupts</a> execution if it times out:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Timeout</span><span class="o">&lt;</span><span class="nc">Object</span><span class="o">&gt;</span> <span class="n">timeout</span> <span class="o">=</span> <span class="nc">Timeout</span><span class="o">.</span><span class="na">builder</span><span class="o">(</span><span class="nc">Duration</span><span class="o">.</span><span class="na">ofSeconds</span><span class="o">(</span><span class="mi">10</span><span class="o">)).</span><span class="na">withInterrupt</span><span class="o">().</span><span class="na">build</span><span class="o">();</span>
+</code></pre></div></div>
+
+<p>If a cancellation is triggered by a <code class="language-plaintext highlighter-rouge">Timeout</code>, the execution is completed with <code class="language-plaintext highlighter-rouge">TimeoutExceededException</code>. See the <a href="/execution-cancellation">execution cancellation</a> page for more on cancellation and interruption.</p>
+    
+      <h2 id="timeouts-with-retries">
+        
+        
+          <a href="#timeouts-with-retries" class="anchor-heading"><svg class="d-inline-block v-align-middle" viewBox="0 0 16 16" version="1.1" width="18" height="18" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a> Timeouts with Retries
+        
+        
+      </h2>
+
+<p>When a <code class="language-plaintext highlighter-rouge">Timeout</code> is <a href="/policies#policy-composition">composed</a> <em>outside</em> a <code class="language-plaintext highlighter-rouge">RetryPolicy</code>, a timeout occurrence will cancel any <em>inner</em> retries:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Failsafe</span><span class="o">.</span><span class="na">with</span><span class="o">(</span><span class="n">timeout</span><span class="o">).</span><span class="na">compose</span><span class="o">(</span><span class="n">retryPolicy</span><span class="o">).</span><span class="na">run</span><span class="o">(</span><span class="k">this</span><span class="o">::</span><span class="n">connect</span><span class="o">);</span>
+</code></pre></div></div>
+
+<p>When a <code class="language-plaintext highlighter-rouge">Timeout</code> is <a href="/policies#policy-composition">composed</a> <em>inside</em> a <code class="language-plaintext highlighter-rouge">RetryPolicy</code>, a timeout occurrence will not automatically cancel any <em>outer</em> retries:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Failsafe</span><span class="o">.</span><span class="na">with</span><span class="o">(</span><span class="n">retryPolicy</span><span class="o">).</span><span class="na">compose</span><span class="o">(</span><span class="n">timeout</span><span class="o">).</span><span class="na">run</span><span class="o">(</span><span class="k">this</span><span class="o">::</span><span class="n">connect</span><span class="o">);</span>
+</code></pre></div></div>
+    
+      <h2 id="async-execution-timeouts">
+        
+        
+          <a href="#async-execution-timeouts" class="anchor-heading"><svg class="d-inline-block v-align-middle" viewBox="0 0 16 16" version="1.1" width="18" height="18" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a> Async Execution Timeouts
+        
+        
+      </h2>
+
+<p>When an async executions times out, Failsafe still waits until the execution completes, either through interruption or naturally, before recording a <code class="language-plaintext highlighter-rouge">TimeoutExceededException</code>. This avoids the risk of retrying while the original execution is still running, which ultimately could lead to numerous abandoned executions running in numerous threads.</p>
+    
+      <h2 id="event-listeners">
+        
+        
+          <a href="#event-listeners" class="anchor-heading"><svg class="d-inline-block v-align-middle" viewBox="0 0 16 16" version="1.1" width="18" height="18" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a> Event Listeners
+        
+        
+      </h2>
+
+<p><a href="https://failsafe.dev/javadoc/core/dev/failsafe/Timeout.html">Timeouts</a> support the standard <a href="https://failsafe.dev/javadoc/core/dev/failsafe/PolicyListeners.html">policy listeners</a> which can notify you when a timeout is exceeded:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">builder</span><span class="o">.</span><span class="na">onFailure</span><span class="o">(</span><span class="n">e</span> <span class="o">-&gt;</span> <span class="n">log</span><span class="o">.</span><span class="na">error</span><span class="o">(</span><span class="s">"Connection attempt timed out"</span><span class="o">,</span> <span class="n">e</span><span class="o">.</span><span class="na">getException</span><span class="o">()));</span>
+</code></pre></div></div>
+
+<p>Or when an execution completes and the timeout is not exceeded:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">builder</span><span class="o">.</span><span class="na">onSuccess</span><span class="o">(</span><span class="n">e</span> <span class="o">-&gt;</span> <span class="n">log</span><span class="o">.</span><span class="na">info</span><span class="o">(</span><span class="s">"Execution completed on time"</span><span class="o">));</span>
+</code></pre></div></div>
+    
+      <h2 id="limitations">
+        
+        
+          <a href="#limitations" class="anchor-heading"><svg class="d-inline-block v-align-middle" viewBox="0 0 16 16" version="1.1" width="18" height="18" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a> Limitations
+        
+        
+      </h2>
+
+<p>Since the <a href="/async-execution#async-integration">async integration</a> methods involve external threads, which Failsafe has no knowledge of, these executions cannot be directly cancelled or interrupted by a Timeout. But, these executions can still <a href="/execution-cancellation#cooperative-cancellation">cooperate</a> with a Timeout cancellation.</p>
+
+<!-- Site links -->
+
+<!-- Failsafe Javadocs - Classes -->
+
+<!-- Failsafe Javadocs - Methods -->
+
+<!-- Failsafe Modules Javadocs - Classes -->
+
+<!-- JDK Javadocs -->
+
+<!-- Maven artifacts -->
+
+<!-- 3rd party Javadocs -->
+
+<!-- 3rd party libs -->
+
+<!-- Misc links -->
+            
+
+          <hr>
+          <footer role="contentinfo">
+            <p class="text-small text-grey-dk-000 mb-0" style="text-align: center;">Copyright &copy; 2015-present <a href="https://jodah.net">Jonathan Halterman</a> and <a href="https://github.com/failsafe-lib/failsafe/graphs/contributors">friends</a>. Released under the <a href="https://github.com/failsafe-lib/failsafe/blob/master/LICENSE">Apache 2.0 license.</a></p>
+          </footer>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,29 @@
+# doc_id: DOC-FAILSAFE-TIMEOUT
+# url: https://failsafe.dev/timeout/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H1]] Timeout
+Timeouts with Retries
+Async Execution Timeouts
+Event Listeners
+Limitations
+Timeouts allow you to fail an execution with TimeoutExceededException if it takes too long to complete:
+Timeout<Object> timeout = Timeout.of(Duration.ofSeconds(10));
+You can create a Timeout that interrupts execution if it times out:
+Timeout<Object> timeout = Timeout.builder(Duration.ofSeconds(10)).withInterrupt().build();
+If a cancellation is triggered by a Timeout, the execution is completed with TimeoutExceededException. See the execution cancellation page for more on cancellation and interruption.
+[[H2]] Timeouts with Retries
+When a Timeout is composed outside a RetryPolicy, a timeout occurrence will cancel any inner retries:
+Failsafe.with(timeout).compose(retryPolicy).run(this::connect);
+When a Timeout is composed inside a RetryPolicy, a timeout occurrence will not automatically cancel any outer retries:
+Failsafe.with(retryPolicy).compose(timeout).run(this::connect);
+[[H2]] Async Execution Timeouts
+When an async executions times out, Failsafe still waits until the execution completes, either through interruption or naturally, before recording a TimeoutExceededException. This avoids the risk of retrying while the original execution is still running, which ultimately could lead to numerous abandoned executions running in numerous threads.
+[[H2]] Event Listeners
+Timeouts support the standard policy listeners which can notify you when a timeout is exceeded:
+builder.onFailure(e -> log.error("Connection attempt timed out", e.getException()));
+Or when an execution completes and the timeout is not exceeded:
+builder.onSuccess(e -> log.info("Execution completed on time"));
+[[H2]] Limitations
+Since the async integration methods involve external threads, which Failsafe has no knowledge of, these executions cannot be directly cancelled or interrupted by a Timeout. But, these executions can still cooperate with a Timeout cancellation.
+Copyright © 2015-present Jonathan Halterman and friends. Released under the Apache 2.0 license.

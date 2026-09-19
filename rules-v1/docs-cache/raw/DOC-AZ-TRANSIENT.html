@@ -1,0 +1,1570 @@
+ <!DOCTYPE html>
+		<html
+			class="layout layout-holy-grail   show-table-of-contents conceptual show-breadcrumb default-focus"
+			lang="en-us"
+			dir="ltr"
+			data-authenticated="false"
+			data-auth-status-determined="false"
+			data-target="docs"
+			x-ms-format-detection="none"
+		>
+			
+		<head>
+			<title>Transient Fault Handling - Azure Architecture Center | Microsoft Learn</title>
+			<meta charset="utf-8" />
+			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+			<meta name="color-scheme" content="light dark" />
+
+			<meta name="description" content="Learn how to handle transient faults that the loss of network connectivity, temporary unavailability, or timeouts can cause." />
+			<link rel="canonical" href="https://learn.microsoft.com/en-us/azure/architecture/best-practices/transient-faults" /> 
+
+			<!-- Non-customizable open graph and sharing-related metadata -->
+			<meta name="twitter:card" content="summary_large_image" />
+			<meta name="twitter:site" content="@MicrosoftLearn" />
+			<meta property="og:type" content="website" />
+			<meta property="og:image:alt" content="Microsoft Learn" />
+			<meta property="og:image" content="https://learn.microsoft.com/en-us/media/open-graph-image.png" />
+			<!-- Page specific open graph and sharing-related metadata -->
+			<meta property="og:title" content="Transient Fault Handling - Azure Architecture Center" />
+			<meta property="og:url" content="https://learn.microsoft.com/en-us/azure/architecture/best-practices/transient-faults" />
+			<meta property="og:description" content="Learn how to handle transient faults that the loss of network connectivity, temporary unavailability, or timeouts can cause." />
+			<meta name="platform_id" content="471eebd0-7ba2-dc4e-cd54-b21455659604" /> <meta name="scope" content="Azure,Azure Architecture Center" />
+			<meta name="locale" content="en-us" />
+			 
+			<meta name="uhfHeaderId" content="azure" />
+
+			<meta name="page_type" content="conceptual" />
+
+			<!--page specific meta tags-->
+			
+
+			<!-- custom meta tags -->
+			
+		<meta name="feedback_system" content="Standard" />
+	
+		<meta name="breadcrumb_path" content="/azure/architecture/bread/toc.json" />
+	
+		<meta name="ms.author" content="pnp" />
+	
+		<meta name="ms.service" content="azure-architecture-center" />
+	
+		<meta name="ms.update-cycle" content="1095-days" />
+	
+		<meta name="manager" content="coxford" />
+	
+		<meta name="ms.topic" content="best-practice" />
+	
+		<meta name="author" content="claytonsiemens77" />
+	
+		<meta name="ms.date" content="2026-02-26T00:00:00Z" />
+	
+		<meta name="ms.subservice" content="best-practice" />
+	
+		<meta name="document_id" content="53ff3ea0-9b53-16bb-b81f-a12074ad75d0" />
+	
+		<meta name="document_version_independent_id" content="4e37c8ba-cbb5-1e3d-6186-ccb2ed6553bd" />
+	
+		<meta name="updated_at" content="2026-08-27T05:02:00Z" />
+	
+		<meta name="original_content_git_url" content="https://github.com/MicrosoftDocs/architecture-center-pr/blob/live/docs/best-practices/transient-faults.md" />
+	
+		<meta name="gitcommit" content="https://github.com/MicrosoftDocs/architecture-center-pr/blob/d6ef15167b11bdd59c441e3af2068b5e86369155/docs/best-practices/transient-faults.md" />
+	
+		<meta name="git_commit_id" content="d6ef15167b11bdd59c441e3af2068b5e86369155" />
+	
+		<meta name="site_name" content="Docs" />
+	
+		<meta name="depot_name" content="MSDN.azure-architecture-center-pr2" />
+	
+		<meta name="schema" content="Conceptual" />
+	
+		<meta name="toc_rel" content="../toc.json" />
+	
+		<meta name="pdf_url_template" content="https://learn.microsoft.com/pdfstore/en-us/MSDN.azure-architecture-center-pr2/{branchName}{pdfName}" />
+	
+		<meta name="feedback_product_url" content="" />
+	
+		<meta name="feedback_help_link_type" content="" />
+	
+		<meta name="feedback_help_link_url" content="" />
+	
+		<meta name="word_count" content="3960" />
+	
+		<meta name="asset_id" content="best-practices/transient-faults" />
+	
+		<meta name="moniker_range_name" content="" />
+	
+		<meta name="item_type" content="Content" />
+	
+		<meta name="source_path" content="docs/best-practices/transient-faults.md" />
+	
+		<meta name="previous_tlsh_hash" content="F4E667C2640C4A11BF831E43E09BE3C165F09089AFB07E5800256662645E2DBB8F5498EBE793B345137546D70266663FB2C5E338D83C335724A0A4EEC2A83653E7CA37F7D6" />
+	
+		<meta name="github_feedback_content_git_url" content="https://github.com/microsoftdocs/architecture-center/blob/main/docs/best-practices/transient-faults.md" />
+	
+		<meta name="markdown_url" content="https://learn.microsoft.com/en-us/azure/architecture/best-practices/transient-faults?accept=text/markdown" />
+	 
+		<meta name="cmProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/68ec7f3a-2bc6-459f-b959-19beb729907d" data-source="generated" />
+	
+		<meta name="cmProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/68cb9039-df60-49b0-8ef8-89ad96497f63" data-source="generated" />
+	
+		<meta name="cmProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/a3955c7b-f5ee-420d-aff5-d7119738f38b" data-source="generated" />
+	
+		<meta name="spProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/90370425-aca4-4a39-9533-d52e5e002a5d" data-source="generated" />
+	
+		<meta name="spProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/725b6df3-93e8-472d-834e-e7e0d2953d35" data-source="generated" />
+	
+		<meta name="spProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/b31948f4-2f38-404b-ac93-c3c8c5b3ae33" data-source="generated" />
+	
+
+			<!-- Apply persisted/system theme before first paint to prevent wrong-theme flash when scripts are deferred. -->
+			<script id="theme-preference">
+				(function () {
+			try {
+				var stored = localStorage.getItem('theme');
+				var theme = /^(light|dark|high-contrast)$/.test(stored)
+					? stored
+					: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				document.documentElement.classList.add('theme-' + theme);
+			} catch (e) {}
+		})();;
+			</script>
+
+			<script id="atlas-layout-preferences">
+				(function () {
+			try {
+				var state = JSON.parse(localStorage.getItem('atlas-layout-preferences') || '{}');
+				var view = state["docs-layout-persistence"] || {};
+				var excludesKey = "";
+				var blocked = {};
+				if (excludesKey) {
+					var exclusions = JSON.parse(localStorage.getItem('atlas-layout-exclusions') || '{}');
+					if (Object.prototype.hasOwnProperty.call(exclusions, excludesKey)) {
+						var scoped = exclusions[excludesKey];
+						if (scoped) {
+							if (typeof scoped === 'object') blocked = scoped;
+						}
+					}
+				}
+				var html = document.documentElement;
+				for (var c in view) {
+					if (Object.prototype.hasOwnProperty.call(blocked, c)) continue;
+					if (view[c]) html.classList.add(c);
+					else html.classList.remove(c);
+				}
+			} catch (e) {}
+		})();;
+			</script>
+
+			<!-- assets and js globals -->
+			
+			<link rel="stylesheet" href="/static/assets/0.4.03547.8249-7a3b4850/styles/site.css" />
+			
+			<script src="https://wcpstatic.microsoft.com/mscc/lib/v2/wcp-consent.js"></script>
+			<!-- Keep this URL in sync with oneDSScriptSelector in instrumentation/one-ds.ts. -->
+			<script async src="https://js.monitor.azure.com/scripts/c/ms.jsll-4.min.js"></script>
+			
+
+			<!-- msdocs global object -->
+			<script id="msdocs-script">
+		var msDocs = {
+  "environment": {
+    "accessLevel": "online",
+    "azurePortalHostname": "portal.azure.com",
+    "reviewFeatures": false,
+    "supportLevel": "production",
+    "systemContent": true,
+    "siteName": "learn",
+    "legacyHosting": false
+  },
+  "data": {
+    "contentLocale": "en-us",
+    "contentDir": "ltr",
+    "userLocale": "en-us",
+    "userDir": "ltr",
+    "pageTemplate": "Conceptual",
+    "layoutStateStorageKey": "docs-layout-persistence",
+    "brand": "azure",
+    "context": {},
+    "standardFeedback": true,
+    "showFeedbackReport": false,
+    "feedbackHelpLinkType": "",
+    "feedbackHelpLinkUrl": "",
+    "feedbackSystem": "Standard",
+    "feedbackGitHubRepo": "MicrosoftDocs/architecture-center",
+    "feedbackProductUrl": "",
+    "extendBreadcrumb": false,
+    "isEditDisplayable": true,
+    "isPrivateUnauthorized": false,
+    "hideViewSource": false,
+    "isPermissioned": false,
+    "hasRecommendations": true
+  },
+  "functions": {}
+};;
+	</script>
+
+			<!-- base scripts, msdocs global should be before this -->
+			<script
+				src="/static/assets/0.4.03547.8249-7a3b4850/scripts/en-us/index-docs.js"
+				async
+			></script>
+			
+
+			<!-- json-ld -->
+			
+		<script >bazadebezolkohpepadr="825256817"</script><script type="text/javascript" src="https://learn.microsoft.com/akam/13/31306b96"  defer></script></head>
+	
+			<body
+				id="body"
+				data-bi-name="body"
+				class="layout-body "
+				lang="en-us"
+				dir="ltr"
+			>
+				<header class="layout-body-header background-color-body-medium">
+		<div class="header-holder has-default-focus">
+			
+		<a
+			href="#main"
+			
+			style="z-index: 1070"
+			class="outline-color-text visually-hidden-until-focused position-fixed inner-focus focus-visible top-0 left-0 right-0 padding-xs text-align-center background-color-body"
+			
+		>
+			Skip to main content
+		</a>
+	
+		<a
+			href="#"
+			data-skip-to-ask-learn
+			style="z-index: 1070"
+			class="outline-color-text visually-hidden-until-focused position-fixed inner-focus focus-visible top-0 left-0 right-0 padding-xs text-align-center background-color-body"
+			hidden
+		>
+			Skip to Ask Learn chat experience
+		</a>
+	
+
+			<div hidden id="cookie-consent-holder" data-test-id="cookie-consent-container"></div>
+			<!-- Unsupported browser warning -->
+			<div
+				id="unsupported-browser"
+				style="background-color: white; color: black; padding: 16px; border-bottom: 1px solid grey;"
+				hidden
+			>
+				<div style="max-width: 800px; margin: 0 auto;">
+					<p style="font-size: 24px">This browser is no longer supported.</p>
+					<p style="font-size: 16px; margin-top: 16px;">
+						Upgrade to Microsoft Edge to take advantage of the latest features, security updates, and technical support.
+					</p>
+					<div style="margin-top: 12px;">
+						<a
+							href="https://go.microsoft.com/fwlink/p/?LinkID=2092881 "
+							style="background-color: #0078d4; border: 1px solid #0078d4; color: white; padding: 6px 12px; border-radius: 2px; display: inline-block;"
+						>
+							Download Microsoft Edge
+						</a>
+						<a
+							href="https://learn.microsoft.com/en-us/lifecycle/faq/internet-explorer-microsoft-edge"
+							style="background-color: white; padding: 6px 12px; border: 1px solid #505050; color: #171717; border-radius: 2px; display: inline-block;"
+						>
+							More info about Internet Explorer and Microsoft Edge
+						</a>
+					</div>
+				</div>
+			</div>
+			<!-- site header -->
+			<div
+				id="ms--site-header"
+				data-test-id="site-header-wrapper"
+				itemscope="itemscope"
+				itemtype="http://schema.org/Organization"
+			>
+				<div
+					id="ms--mobile-nav"
+					class="site-header display-none-tablet padding-inline-none gap-none"
+					data-bi-name="mobile-header"
+					data-test-id="mobile-header"
+				></div>
+				<div
+					id="ms--primary-nav"
+					class="site-header display-none display-flex-tablet"
+					data-bi-name="L1-header"
+					data-test-id="primary-header"
+				></div>
+				<div
+					id="ms--secondary-nav"
+					class="site-header display-none display-flex-tablet"
+					data-bi-name="L2-header"
+					data-test-id="secondary-header"
+					
+				></div>
+			</div>
+			
+		<!-- banner -->
+		<div data-banner>
+			<div id="disclaimer-holder"></div>
+			
+		</div>
+		<!-- banner end -->
+	
+		</div>
+	</header>
+				 <section
+					id="layout-body-menu"
+					class="layout-body-menu border-right display-flex background-color-body-medium"
+					data-bi-name="menu"
+			  >
+					
+		<div
+			id="left-container"
+			class="left-container display-none padding-none display-block-tablet width-full display-none-until-layout-restored"
+			data-toc-container="true"
+		>
+			<div
+				id="ms--toc-content"
+				class="padding-left-sm padding-right-none padding-bottom-sm height-full"
+			>
+				<nav
+					id="affixed-left-container"
+					class="margin-top-xxs-tablet position-sticky display-flex flex-direction-column width-full"
+					aria-label="Primary"
+					data-bi-name="left-toc"
+					role="navigation"
+				>
+					<div
+						id="ms--collapsible-toc-header"
+						class="display-flex flex-direction-row-reverse justify-content-center align-items-center margin-bottom-xxs margin-right-xxs"
+					>
+						<button
+							type="button"
+							class="button button-clear button-sm inner-focus"
+							data-collapsible-toc-toggle
+							aria-expanded="true"
+							hidden
+							aria-controls="ms--toc-content"
+							aria-label="Table of contents"
+						>
+							<span class="icon icon-mirrored-rtl" aria-hidden="true">
+								<span
+									class="docon docon-panel-left-contract display-none-layout-menu-collapsed"
+								></span>
+								<span
+									class="docon docon-panel-left-expand display-none display-inline-layout-menu-collapsed"
+								></span>
+							</span>
+						</button>
+						<div
+							id="ms--collapsible-toc-moniker-slot"
+							class="flex-grow-1 display-none-layout-menu-collapsed"
+						></div>
+					</div>
+				</nav>
+			</div>
+		</div>
+	
+			  </section>
+
+				<main
+					id="main"
+					role="main"
+					class="layout-body-main "
+					data-bi-name="content"
+					lang="en-us"
+					dir="ltr"
+				>
+					
+			<div
+		id="ms--content-header"
+		class="content-header default-focus border-bottom-none"
+		data-bi-name="content-header"
+	>
+		<div class="content-header-controls margin-xxs margin-inline-sm-tablet">
+			<button
+				type="button"
+				class="contents-button button button-sm margin-right-xxs"
+				data-bi-name="contents-expand"
+				aria-haspopup="true"
+				data-contents-button
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-menu"></span></span>
+				<span class="contents-expand-title"> Table of contents </span>
+			</button>
+			<button
+				type="button"
+				class="ap-collapse-behavior ap-expanded button button-sm"
+				data-bi-name="ap-collapse"
+				aria-controls="action-panel"
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-exit-mode"></span></span>
+				<span>Exit editor mode</span>
+			</button>
+		</div>
+	</div> 
+		<div
+			id="action-panel"
+			role="region"
+			aria-label="Action Panel"
+			class="action-panel"
+			tabindex="-1"
+		></div>
+	
+			<div
+				data-main-column
+				class="reading-width margin-inline-auto layout-padding padding-top-none padding-top-sm-tablet padding-bottom-sm"
+			>
+				<div>
+					
+		<div id="article-header" class="background-color-body margin-bottom-xs display-none-print">
+			<div class="display-flex align-items-center justify-content-space-between">
+				
+		<details
+			id="article-header-breadcrumbs-overflow-popover"
+			class="popover popover-left"
+			data-for="article-header-breadcrumbs"
+		>
+			<summary
+				class="button button-clear button-primary button-sm inner-focus"
+				aria-label="All breadcrumbs"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-more"></span>
+				</span>
+			</summary>
+			<div id="article-header-breadcrumbs-overflow" class="popover-content"></div>
+		</details>
+
+		<bread-crumbs
+			id="article-header-breadcrumbs"
+			role="group"
+			aria-label="Breadcrumbs"
+			data-test-id="article-header-breadcrumbs"
+			class="overflow-hidden flex-grow-1 margin-right-sm margin-right-md-tablet margin-right-lg-desktop margin-left-negative-xxs padding-left-xxs"
+		></bread-crumbs>
+	 
+		<div
+			id="article-header-page-actions"
+			class="opacity-none margin-left-auto display-flex flex-wrap-no-wrap align-items-stretch"
+		>
+			
+		<button
+			class="button button-sm border-none inner-focus display-none-tablet flex-shrink-0 "
+			data-bi-name="ask-learn-assistant-entry"
+			data-test-id="ask-learn-assistant-modal-entry-mobile"
+			data-ask-learn-modal-entry
+			
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-none display-inline-flex-tablet display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn "
+			data-bi-name="ask-learn-assistant-entry"
+			
+			data-test-id="ask-learn-assistant-modal-entry-tablet"
+			data-ask-learn-modal-entry
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn "
+			data-bi-name="ask-learn-assistant-entry"
+			
+			data-test-id="ask-learn-assistant-flyout-entry"
+			data-ask-learn-flyout-entry
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	 
+
+			<details class="popover popover-right" id="article-header-page-actions-overflow">
+				<summary
+					class="justify-content-flex-start button button-clear button-sm button-primary inner-focus"
+					aria-label="More actions"
+					title="More actions"
+				>
+					<span class="icon" aria-hidden="true">
+						<span class="docon docon-more-vertical"></span>
+					</span>
+				</summary>
+				<div class="popover-content">
+					
+		<button
+			type="button"
+			id="ms--focus-mode-button"
+			data-focus-mode
+			data-bi-name="focus-mode-entry"
+			data-page-action-item="overflow-all"
+			data-popover-close
+			class="button button-clear button-sm button-block justify-content-flex-start text-align-left inner-focus display-none display-inline-flex-tablet"
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-glasses"></span>
+			</span>
+			<span>Reading mode</span>
+		</button>
+	 
+		<button
+			data-page-action-item="overflow-mobile"
+			type="button"
+			class="display-block-layout-menu-collapsed button-block button-sm inner-focus button button-clear display-none-tablet justify-content-flex-start text-align-left"
+			data-bi-name="contents-expand"
+			data-contents-button
+			data-popover-close
+		>
+			<span class="icon" aria-hidden="true"
+				><span class="docon docon-editor-list-bullet"></span
+			></span>
+			<span class="contents-expand-title">Table of contents</span>
+		</button>
+	 
+		<a
+			id="lang-link-overflow"
+			class="button-sm inner-focus button button-clear button-block justify-content-flex-start text-align-left"
+			data-bi-name="language-toggle"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-read-in-link
+			href="#"
+			hidden
+		>
+			<span class="icon" aria-hidden="true" data-read-in-link-icon>
+				<span class="docon docon-locale-globe"></span>
+			</span>
+			<span data-read-in-link-text>Read in English</span>
+		</a>
+	
+					
+		<button
+			type="button"
+			class="collection button button-clear button-sm button-block justify-content-flex-start text-align-left inner-focus"
+			data-list-type="collection"
+			data-bi-name="collection"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-popover-close
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-circle-addition"></span>
+			</span>
+			<span class="collection-status">Add</span>
+		</button>
+	 
+		<button
+			type="button"
+			class="collection button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+			data-list-type="plan"
+			data-bi-name="plan"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-popover-close
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-circle-addition"></span>
+			</span>
+			<span class="plan-status">Add to Plans</span>
+		</button>
+	 
+					
+		<a
+			data-contenteditbtn
+			class="button button-clear button-block button-sm inner-focus justify-content-flex-start text-align-left text-decoration-none"
+			data-bi-name="edit"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			
+			href="https://github.com/microsoftdocs/architecture-center/blob/main/docs/best-practices/transient-faults.md"
+			data-original_content_git_url="https://github.com/MicrosoftDocs/architecture-center-pr/blob/live/docs/best-practices/transient-faults.md"
+			data-original_content_git_url_template="{repo}/blob/{branch}/docs/best-practices/transient-faults.md"
+			data-pr_repo=""
+			data-pr_branch=""
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-edit-outline"></span>
+			</span>
+			<span>Edit</span>
+		</a>
+	  
+		<hr class="margin-block-xxs" />
+		
+				<button
+					class="button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+					type="button"
+					data-bi-name="copy-markdown"
+					data-page-action-item="overflow-all"
+					data-copy-markdown
+					data-copy-state="idle"
+					data-check-hidden="true"
+				>
+					<span class="icon color-primary" aria-hidden="true">
+						<span data-show-when="idle" class="docon docon-code-lang"></span>
+						<span data-show-when="loading" class="loader" hidden></span>
+						<span data-show-when="success" class="docon docon-check-mark" hidden></span>
+					</span>
+					<span>Copy Markdown</span>
+				</button>
+		   
+				<button
+					class="button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+					type="button"
+					data-bi-name="print"
+					data-page-action-item="overflow-all"
+					data-popover-close
+					data-print-page
+					data-check-hidden="true"
+				>
+					<span class="icon color-primary" aria-hidden="true">
+						<span class="docon docon-print"></span>
+					</span>
+					<span>Print</span>
+				</button>
+		  
+	
+				</div>
+			</details>
+		</div>
+	
+			</div>
+		</div>
+	  
+		<!-- privateUnauthorizedTemplate is hidden by default -->
+		<div unauthorized-private-section data-bi-name="permission-content-unauthorized-private" hidden>
+			<hr class="hr margin-top-xs margin-bottom-sm" />
+			<div class="notification notification-info">
+				<div class="notification-content">
+					<p class="margin-top-none notification-title">
+						<span class="icon" aria-hidden="true"
+							><span class="docon docon-exclamation-circle-solid"></span
+						></span>
+						<span>Note</span>
+					</p>
+					<p class="margin-top-none authentication-determined not-authenticated">
+						Access to this page requires authorization. You can try <a class="docs-sign-in" href="#" data-bi-name="permission-content-sign-in">signing in</a> or <a  class="docs-change-directory" data-bi-name="permisson-content-change-directory">changing directories</a>.
+					</p>
+					<p class="margin-top-none authentication-determined authenticated">
+						Access to this page requires authorization. You can try <a class="docs-change-directory" data-bi-name="permisson-content-change-directory">changing directories</a>.
+					</p>
+				</div>
+			</div>
+		</div>
+	
+					<div class="content"><h1 id="best-practices-for-transient-fault-handling">Best practices for transient fault handling</h1></div>
+					
+		<div
+			id="article-metadata"
+			data-bi-name="article-metadata"
+			data-test-id="article-metadata"
+			class="page-metadata-container display-flex gap-xxs justify-content-space-between align-items-center flex-wrap-wrap"
+		>
+			 
+				<div
+					id="user-feedback"
+					class="margin-block-xxs display-none display-none-print"
+					hidden
+					data-hide-on-archived
+				>
+					
+		<button
+			id="user-feedback-button"
+			data-test-id="conceptual-feedback-button"
+			class="button button-sm button-clear button-primary display-none"
+			type="button"
+			data-bi-name="user-feedback-button"
+			data-user-feedback-button
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-like"></span>
+			</span>
+			<span>Feedback</span>
+		</button>
+	
+				</div>
+		  
+		</div>
+	 
+		<div data-id="ai-summary" class="display-none-print">
+			<div id="ms--ai-summary-cta" class="margin-top-xs display-flex align-items-center">
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-sparkle-fill gradient-text-vivid"></span>
+				</span>
+				<button
+					id="ms--ai-summary"
+					type="button"
+					class="tag tag-sm tag-suggestion margin-left-xxs"
+					data-test-id="ai-summary-cta"
+					data-bi-name="ai-summary-cta"
+					data-an="ai-summary"
+				>
+					<span class="ai-summary-cta-text">
+						Summarize this article for me
+					</span>
+				</button>
+			</div>
+			<!-- Slot where the client will render the summary card after the user clicks the CTA -->
+			<div id="ms--ai-summary-header" class="margin-top-xs"></div>
+		</div>
+	 
+		<nav
+			id="center-doc-outline"
+			class="doc-outline display-none-desktop display-none-print margin-bottom-sm"
+			data-bi-name="intopic toc"
+			aria-label="In this article"
+		>
+			<h2 id="ms--in-this-article" class="title is-6 margin-block-xs">
+				In this article
+			</h2>
+		</nav>
+	 <div class="content"><p>All applications that communicate with remote services and resources must detect and recover from transient faults. This requirement is especially true for applications that run in the cloud. Because of the nature of the cloud environment and connectivity over the internet, your application is likely to encounter transient faults more often. Transient faults include the momentary loss of network connectivity to components and services, the temporary unavailability of a service, and time-outs that occur when a service is busy. These faults typically resolve themselves without intervention, so the action is likely to succeed if the application retries it after a suitable delay.</p>
+<p><a href="/en-us/azure/well-architected/design-guides/handle-transient-faults" data-linktype="absolute-path">Transient fault handling</a> is a key resiliency technique within the <a href="/en-us/azure/well-architected/reliability/" data-linktype="absolute-path">Reliability pillar</a> of the Azure Well-Architected Framework. If you detect and recover from transient faults at the application level, you help prevent cascading failures that might trigger broader incident response or <a href="/en-us/azure/well-architected/reliability/disaster-recovery" data-linktype="absolute-path">disaster recovery (DR)</a> procedures. Effective transient fault handling helps your workload tolerate routine disruptions and maintain availability without escalation to infrastructure-level recovery procedures.</p>
+<h2 id="why-do-transient-faults-occur-in-the-cloud">Why do transient faults occur in the cloud?</h2>
+<p>Transient faults can occur in any environment, on any platform or operating system, and in any kind of application. For solutions that run on on-premises infrastructure, redundant hardware typically maintains the performance and availability of the application and its components. Components and resources are also located close to each other. This approach makes failure less probable, but transient faults can still occur. Unexpected events like external power supply or network problems, or other disaster scenarios, can cause outages. Redundant hardware can also be expensive and is often underused.</p>
+<p>Cloud environments can provide higher overall availability because they distribute workloads across many servers and use redundancy, automatic failover, and dynamic resource allocation. But the nature of cloud environments makes transient faults more likely for several reasons:</p>
+<ul>
+<li><p>Many resources in a cloud environment are shared, and access to these resources is subject to <a href="../patterns/throttling" data-linktype="relative-path">throttling</a> to protect the resources. Some services refuse connections when the load reaches a specific level or maximum throughput rate. This approach lets the service process existing requests and maintain performance for all users. Throttling helps maintain the quality of service for neighbors and other tenants that use the shared resource.</p>
+</li>
+<li><p>Cloud environments use large numbers of commodity hardware units. They deliver performance by dynamically distributing load across multiple computing units and infrastructure components. They deliver reliability by automatically recycling or replacing failed units. Because of this dynamic nature, transient faults and temporary connection failures might occasionally occur.</p>
+</li>
+<li><p>More hardware components, including network infrastructure like routers and load balancers, often exist between the application and the resources and services that it uses. This infrastructure can occasionally introduce extra connection latency and transient connection faults.</p>
+</li>
+<li><p>Network conditions between the client and server often vary, especially when communication crosses the internet. Even in on-premises locations, heavy-traffic loads can slow communication and cause intermittent connection failures.</p>
+</li>
+</ul>
+<h2 id="challenges">Challenges</h2>
+<p>Transient faults can significantly affect the perceived availability of an application, even if you test it thoroughly under expected conditions. To ensure that cloud-hosted applications operate reliably, they must address the following challenges:</p>
+<ul>
+<li><p>The application must be able to detect faults when they occur and determine whether the faults are transient, long-lasting, or terminal failures. Different resources typically return different responses when a fault occurs. These responses can also vary depending on the context of the operation. For example, the response for an error when the application reads from storage might differ from the response for an error when it writes to storage.</p>
+<p>Many resources and services have well-documented transient-failure contracts. When this information isn't available, it becomes harder to determine the nature of the fault and whether it's likely to be transient.</p>
+</li>
+<li><p>The application must be able to retry the operation if it determines that the fault is likely to be transient. It also needs to track the number of times that it retries the operation.</p>
+</li>
+<li><p>The application must use a retry strategy that fits its requirements. The strategy specifies how many times the application should retry, the delay between attempts, and the actions to take after a failed attempt. The number of attempts and the delay between each one are often difficult to determine. The strategy depends on the type of resource and on the current operating conditions of the resource and the application.</p>
+</li>
+</ul>
+<h2 id="general-guidelines">General guidelines</h2>
+<p>The following guidelines can help you design suitable transient fault handling mechanisms for your applications.</p>
+<h3 id="check-whether-a-built-in-retry-mechanism-exists">Check whether a built-in retry mechanism exists</h3>
+<p>Many services provide an SDK or client library that contains a transient fault handling mechanism. The retry policy that it uses is typically tailored to the nature and requirements of the target service. Alternatively, REST interfaces for services might return information that can help you determine whether a retry is needed and how long to wait before the next attempt.</p>
+<p>Use the built-in retry mechanism when a built-in option is available, unless you have specific and well-understood requirements that make a different retry behavior more suitable for your scenario.</p>
+<p>Azure services each handle transient faults differently. Some services provide SDK-level retry policies that include configurable back-off algorithms. Other services provide platform features like health probes and visibility timeouts that complement application-level retry logic. Check the <a href="/en-us/azure/reliability/overview-reliability-guidance" data-linktype="absolute-path">reliability guide</a> for each Azure service that you use. These guides include a dedicated section that provides service-specific recommendations for retry configuration, timeout tuning, and health monitoring.</p>
+<h3 id="check-whether-retrying-suits-the-operation">Check whether retrying suits the operation</h3>
+<p>Retry tasks only when the faults are transient, which the nature of the error typically indicates, and when the operation might succeed when retried. For HTTP-based services, status code 429 (Too Many Requests) and 5xx server errors are typical retry candidates. Most 4xx client errors, like 400, 401, 403, and 404, indicate problems that a retry doesn't resolve. Don't retry operations that can't succeed, like updating a database item that doesn't exist or calling a service that returned a fatal error.</p>
+<p>In general, implement retries only when you can determine their full effect and when you understand and can validate the conditions. Otherwise, let the calling code implement retries. Errors returned from resources and services outside your control might evolve over time, and you might need to revisit your transient fault detection logic.</p>
+<p>When you create services or components, implement error codes and messages that help clients determine whether they should retry failed operations. For example, return an <code>isTransient</code> value to indicate whether the client should retry the operation, and suggest a suitable delay before the next retry attempt. If you build a web service, return custom errors that your service contracts define. Generic clients might not be able to read these errors, but they're useful when you create custom clients.</p>
+<h3 id="determine-an-appropriate-retry-count-and-interval">Determine an appropriate retry count and interval</h3>
+<p>Optimize the retry count and the interval for the type of use case. If you don't retry enough times, the application can't complete the operation and fails. If you retry too many times or don't wait long enough between tries, the application might hold resources like threads, connections, and memory for long periods, which adversely affects application health. For more information, see <a href="../patterns/retry" data-linktype="relative-path">Retry pattern</a>.</p>
+<p>Adapt values for the time interval and the number of retry attempts to the type of operation. For example, if the operation is part of a user interaction, the interval should be short, and you should attempt only a few retries. Use this approach to avoid making users wait for a response, which holds open connections and can reduce availability for other users. If the operation is part of a long-running or critical workflow, where canceling and restarting the process is costly or time-consuming, you can wait longer between attempts and retry more times.</p>
+<p>Determining the correct intervals between retries is the most difficult part of designing a successful strategy. Typical strategies use the following types of retry interval:</p>
+<ul>
+<li><p><strong>Exponential back-off:</strong> The application waits a short time before the first retry and then exponentially increases the time between each subsequent retry. For example, it might retry the operation after two seconds, four seconds, eight seconds, and up to a set number of tries or a total duration. Add jitter, which is a small random delay, to each retry interval to prevent multiple clients from syncing their retries and creating load spikes on the target service.</p>
+</li>
+<li><p><strong>Incremental intervals:</strong> The application waits a short time before the first retry, and then incrementally increases the time between each subsequent retry. For example, it might retry the operation after 3 seconds, 7 seconds, and 11 seconds.</p>
+</li>
+<li><p><strong>Regular intervals:</strong> The application waits for the same period of time between each attempt. For example, it might retry the operation every three seconds.</p>
+</li>
+<li><p><strong>Immediate retry:</strong> Transient faults that events like a network packet collision or a spike in a hardware component cause are typically brief. In these scenarios, retrying the operation immediately can help because it might succeed if the fault clears in the time that the application takes to assemble and send the next request. Don't attempt more than one immediate retry. If the immediate retry fails, switch to alternative strategies, like exponential back-off or fallback actions.</p>
+</li>
+<li><p><strong>Randomization:</strong> Any of the retry strategies listed previously can include randomization to prevent multiple instances of the client sending subsequent retry attempts at the same time. For example, one instance might retry the operation after 3 seconds, 11 seconds, or 28 seconds, while another instance might retry the operation after 4 seconds, 12 seconds, or 26 seconds. Randomization is a useful technique that you can combine with other strategies.</p>
+</li>
+</ul>
+<p>Use an exponential back-off strategy with jitter for background operations, and use immediate or regular interval retry strategies for interactive operations. In both cases, choose the delay and the retry count so that the maximum latency for all retry attempts meets the end-to-end latency requirement.</p>
+<p>A combination of factors contribute to the overall maximum timeout for a retried operation. Consider the following factors:</p>
+<ul>
+<li><p>The time a failed connection takes to produce a response. A timeout value in the client typically sets this time.</p>
+</li>
+<li><p>The delay between retry attempts.</p>
+</li>
+<li><p>The maximum number of retries.</p>
+</li>
+</ul>
+<p>The total of these times can result in long overall operation times, especially when you use an exponential delay strategy where the interval between retries grows rapidly after each failure. If a process must meet a specific service-level objective (SLO), the overall operation time, including all timeouts and delays, must be within the limits defined in the SLO.</p>
+<p>Account for the timeout of the operations when you choose retry intervals to avoid launching a subsequent attempt immediately, like if the timeout period is similar to the retry interval. Determine whether you need to keep the total possible period, which is the timeout plus the retry intervals, under a specific total time threshold. If an operation has an unusually short or long timeout, the timeout might influence how long to wait and how often to retry the operation.</p>
+<p>Set timeouts on every outbound call before you implement retry logic. Timeouts, retries, and back-off approaches work together. A retry strategy is only as effective as the timeouts that govern each individual attempt. Timeouts that are too long cause threads and connections to accumulate during outages. Timeouts that are too short cause premature failures on operations that would otherwise succeed.</p>
+<p>Don't implement overly aggressive retry strategies. These strategies use intervals that are too short or retries that occur too frequently. They can adversely affect the target resource or service. They might also prevent the resource or service from recovering, so the resource or service continues to block or refuse requests. This scenario creates a cycle in which the application sends more requests to the resource or service, which further reduces its ability to recover.</p>
+<p>Use the exception type and any data it contains, or the error codes and messages that the service returns, to optimize the number of retries and the interval between them. Some exceptions or error codes, like HTTP 503 (Service Unavailable), might indicate that the service failed and won't respond to further attempts. When a response includes a <code>Retry-After</code> header, follow it and wait at least the specified duration before the next attempt. This server-provided signal reflects the service's recovery timeline and takes precedence over your client-side back-off calculation.</p>
+<p>Use a <em><a href="/en-us/azure/service-bus-messaging/service-bus-dead-letter-queues" data-linktype="absolute-path">dead-letter queue</a></em> approach so that the information from the incoming request isn't lost after you use all retry attempts. This technique defers failed work for later processing instead of discarding it.</p>
+<h3 id="avoid-antipatterns">Avoid antipatterns</h3>
+<p>In most cases, avoid implementations that include duplicated layers of retry code. Avoid designs that use cascading retry mechanisms or that apply retries at every stage of an operation that involves a hierarchy of requests, unless you have specific requirements. In these exceptional cases, use policies that limit the number of retries and delay periods, and make sure that you understand the consequences.</p>
+<p>For example, consider one component that makes a request to another, which then accesses the target service. A retry with a count of three on both calls adds up to nine retry attempts in total against the service.</p>
+<p>Many services and resources implement a built-in retry mechanism. Turn off or modify these mechanisms if you need to implement retries at a higher level. For more information about the risks of uncoordinated retries, see <a href="../antipatterns/retry-storm/" data-linktype="relative-path">Retry Storm antipattern</a>.</p>
+<p>Never implement an endless retry mechanism. This approach typically prevents the resource or service from recovering from overload situations and causes throttling and refused connections to continue for a longer time. Use a finite number of retries, or implement a pattern like <a href="../patterns/circuit-breaker" data-linktype="relative-path">Circuit Breaker</a> to allow the service to recover.</p>
+<p>Implement a retry budget to limit the total number of retries across all requests within a process or service in addition to limits for each individual request. For example, you might allow a process to do no more than 60 retries per minute against a specified dependency. If you exhaust the budget, fail the request immediately instead of retrying.</p>
+<p>Per-request retry limits alone can't prevent a scenario where many concurrent requests each retry a few times and collectively overwhelm a struggling downstream service. A retry budget limits the aggregate retry load and can make the difference between a localized capacity problem and a cascading failure.</p>
+<p>Never do an immediate retry more than once.</p>
+<p>Avoid using a regular retry interval when you access services and resources on Azure, especially when you have a high number of retry attempts. The best approach in this scenario is an exponential back-off strategy that uses a circuit-breaking capability.</p>
+<p>Prevent multiple instances of the same client, or multiple instances of different clients, from sending retries simultaneously. If this scenario is probable, introduce randomization into the retry intervals.</p>
+<h3 id="test-your-retry-strategy-and-implementation">Test your retry strategy and implementation</h3>
+<p>Test your retry strategy across a broad range of conditions, especially when the application and its target resources or services operate under extreme load. To check behavior during testing, you can take the following actions:</p>
+<ul>
+<li><p>Include transient faults in your <a href="/en-us/azure/well-architected/reliability/reliability-test#use-fault-injection-and-chaos-engineering" data-linktype="absolute-path">chaos engineering and fault injection</a> practices by purposely introducing them into your nonproduction and production environments. For example, send unsupported requests or add code that detects test requests and responds with different types of errors.</p>
+</li>
+<li><p>Create a mock version of the resource or service that returns a range of errors that the real service might return. Make sure that it covers all error types that your retry strategy detects.</p>
+</li>
+<li><p>For custom services that you create and deploy, force transient errors to occur by temporarily taking the service offline or overloading the service. Don't attempt to overload any shared resources or shared services in Azure.</p>
+</li>
+<li><p>Consider using a fault injection service to run controlled experiments against your Azure resources. For example, <a href="/en-us/azure/chaos-studio/chaos-studio-overview" data-linktype="absolute-path">Azure Chaos Studio</a> supports service-direct faults, like adding network latency or rebooting a cache cluster, and agent-based faults, like applying memory pressure or ending a process on a virtual machine (VM). You can integrate fault injection experiments into your continuous integration and continuous delivery (CI/CD) pipelines to continuously validate resilience as part of your deployment process.</p>
+</li>
+<li><p>For HTTP-based APIs, consider using a library in your automated tests to change the outcome of HTTP requests, either by adding extra roundtrip times or by changing the response, like the HTTP status code, headers, body, or other factors. This approach helps you deterministically test a subset of the failure conditions for transient faults and other types of failures.</p>
+</li>
+<li><p>Run high-load-factor and concurrent tests to ensure that the retry mechanism and strategy work correctly under these conditions. These tests also help confirm that retry attempts don't affect client operations or cause cross-contamination between requests.</p>
+</li>
+</ul>
+<h3 id="manage-retry-policy-configurations">Manage retry policy configurations</h3>
+<p>A <em>retry policy</em> is a combination of all the elements of your retry strategy. It defines the detection mechanism that determines the following factors:</p>
+<ul>
+<li>Whether a fault is likely to be transient</li>
+<li>The type of interval to use, like regular, exponential back-off, or randomization</li>
+<li>The actual interval values</li>
+<li>The number of times to retry</li>
+</ul>
+<p>Implement retries in many places, including in basic applications and at each layer of more complex applications. Instead of hard-coding policy elements in multiple locations, use a central point to store all policies. For example, store values like the interval and retry count in application configuration files, read them at runtime, and programmatically build the retry policies. This approach simplifies settings management and the modification and fine-tuning of values to respond to changing requirements and scenarios. Design the system to store the values rather than rereading a configuration file for each request, and use suitable defaults if the configuration doesn't provide the values.</p>
+<p>Store the values used to build the retry policies at runtime in the application's configuration system so that you can change them without needing to restart the application.</p>
+<p>Take advantage of built-in or default retry strategies available in the client APIs that you use, but only when they suit your scenario. These strategies are typically generic. They might be adequate in some scenarios, but in other scenarios they don't provide the full range of options to meet your specific requirements. To determine the most suitable values, test to understand how the settings affect your application. For service-specific retry defaults and configuration options, check the <a href="/en-us/azure/reliability/overview-reliability-guidance" data-linktype="absolute-path">reliability guide</a> for each Azure service in your architecture.</p>
+<h3 id="log-and-track-transient-and-nontransient-faults">Log and track transient and nontransient faults</h3>
+<p>Your retry strategy should include exception handling and other instrumentation that logs retry attempts. An occasional transient failure and retry are expected and don't indicate a problem. But regular or increasing numbers of retries usually indicate a problem that might cause a failure or reduce application performance and availability.</p>
+<p>Log transient faults as warning entries rather than as error entries so that monitoring systems don't detect them as application errors that might trigger false alerts.</p>
+<p>Store a value in your log entries that indicates whether throttling in the service or other types of faults, like connection failures, cause retries. This approach helps you differentiate the causes during data analysis. An increase in throttling errors usually indicates a design flaw in the application or the need to migrate to a premium service that provides dedicated hardware.</p>
+<p>Measure and log the overall elapsed times for operations that include a retry mechanism. This metric accurately indicates the overall effect that transient faults have on user response times, process latency, and the efficiency of application use cases. Log the number of retries that occur so that you can understand the factors that contribute to the response time.</p>
+<p>Implement a telemetry and monitoring system that raises alerts when the following metrics increase:</p>
+<ul>
+<li>The number and rate of failures</li>
+<li>The average number of retries</li>
+<li>The overall time that elapses before operations succeed</li>
+</ul>
+<h3 id="manage-operations-that-continually-fail">Manage operations that continually fail</h3>
+<p>Create a plan to handle operations that continue to fail at every attempt. These situations are inevitable.</p>
+<ul>
+<li><p>A retry strategy defines the maximum number of times that an application should retry an operation. It doesn't prevent the application from repeating the operation to start with the same number of retries. For example, if an order-processing service fails with a fatal error that takes it out of service permanently, the retry strategy might detect a connection timeout and treat it as a transient fault. The code retries the operation the specified number of times and then stops. When another customer places an order, the application attempts the operation again, retries, and fails.</p>
+</li>
+<li><p>To prevent continual retries for operations that continually fail, implement the <a href="../patterns/circuit-breaker" data-linktype="relative-path">Circuit Breaker pattern</a>. When you use this pattern, if the number of failures within a specified time window exceeds a threshold, requests return to the caller immediately as errors, and the application doesn't attempt to access the failed resource or service.</p>
+</li>
+<li><p>The application can periodically test the service, on an intermittent basis and with long intervals between requests, to detect when it becomes available. The interval depends on factors like the criticality of the operation and the nature of the service. It might range from a few minutes to several hours. When the test succeeds, the application can resume normal operations and pass requests to the newly recovered service.</p>
+</li>
+<li><p>In the meantime, you might be able to fall back to another instance of the service in a different datacenter or application. You might also use a similar service that provides compatible, but simpler, functionality, or do some alternative operations based on the hope that the service is available soon. For example, you might store requests for the service in a queue or data store and retry them later. Or you might be able to redirect the user to an alternative instance of the application, degrade the performance of the application but still provide acceptable functionality, or just return a message to the user to indicate that the application isn't currently available.</p>
+</li>
+</ul>
+<h3 id="other-considerations">Other considerations</h3>
+<p>When you determine the values for the number of retries and the retry intervals for a policy, consider whether the operation on the service or resource is part of a long-running or multistep operation. It can be difficult or costly to compensate for all the operational steps that have already succeeded when one of them fails. In this case, a long interval and a large number of retries might be acceptable as long as the strategy doesn't block other operations by holding or locking scarce resources.</p>
+<p>Consider whether retrying the same operation might cause data inconsistencies. If an application repeats parts of a multistep process and the operations aren't idempotent, inconsistencies can occur. For example, if an operation that increments a value repeats, it produces an incorrect result. A repeated operation that sends a message to a queue can also cause problems for a consumer that can't detect duplicate messages. To prevent these scenarios, design each step as an idempotent operation. For more information, see <a href="../patterns/idempotent-consumer" data-linktype="relative-path">Idempotent Consumer pattern</a>.</p>
+<p>Be intentional about the scope of operations that the application retries. For example, it might be easier to implement retry logic at a level that includes several operations and retry all of them if one fails. But this approach might lead to idempotency problems or unnecessary rollback operations.</p>
+<p>If you choose a retry scope that includes several operations, account for the total latency of all of them when you determine retry intervals, when you monitor the elapsed time of the operation, and before you raise alerts for failures.</p>
+<p>Account for how your retry strategy affects neighbors and other tenants in a shared application and when you use shared resources and services. Aggressive retry policies can increase the number of transient faults that occur for other users and for applications that share the resources and services. Retry policies that other users implement might also affect your application. For business-critical applications, use premium services that aren't shared. This approach lets you control the load and consequent throttling of resources and services, which can justify the extra cost.</p>
+<h2 id="next-step">Next step</h2>
+<div class="nextstepaction">
+<p><a href="/en-us/azure/well-architected/design-guides/handle-transient-faults" data-linktype="absolute-path">Workload design to handle transient faults</a></p>
+</div>
+</div>
+					
+		<div
+			id="ms--inline-notifications"
+			class="margin-block-xs"
+			data-bi-name="inline-notification"
+		></div>
+	 
+		<div
+			id="assertive-live-region"
+			role="alert"
+			aria-live="assertive"
+			class="visually-hidden"
+			aria-relevant="additions"
+			aria-atomic="true"
+		></div>
+		<div
+			id="polite-live-region"
+			role="status"
+			aria-live="polite"
+			class="visually-hidden"
+			aria-relevant="additions"
+			aria-atomic="true"
+		></div>
+	
+					
+		<!-- feedback section -->
+		<section
+			id="site-user-feedback-footer"
+			class="font-size-sm margin-top-md display-none-print display-none-desktop"
+			data-test-id="site-user-feedback-footer"
+			data-bi-name="site-feedback-section"
+		>
+			<hr class="hr" />
+			<h2 id="ms--feedback" class="title is-3">Feedback</h2>
+			<div class="display-flex flex-wrap-wrap align-items-center">
+				<p class="font-weight-semibold margin-xxs margin-left-none">
+					Was this page helpful?
+				</p>
+				<div class="buttons">
+					<button
+						class="thumb-rating-button like button button-primary button-sm"
+						data-test-id="footer-rating-yes"
+						data-binary-rating-response="rating-yes"
+						type="button"
+						title="This article is helpful"
+						data-bi-name="button-rating-yes"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-like"></span>
+						</span>
+						<span>Yes</span>
+					</button>
+					<button
+						class="thumb-rating-button dislike button button-primary button-sm"
+						id="standard-rating-no-button"
+						hidden
+						data-test-id="footer-rating-no"
+						data-binary-rating-response="rating-no"
+						type="button"
+						title="This article is not helpful"
+						data-bi-name="button-rating-no"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-dislike"></span>
+						</span>
+						<span>No</span>
+					</button>
+					<details
+						class="popover popover-top"
+						id="mobile-help-popover"
+						data-test-id="footer-feedback-popover"
+					>
+						<summary
+							class="thumb-rating-button dislike button button-primary button-sm"
+							data-test-id="details-footer-rating-no"
+							data-binary-rating-response="rating-no"
+							title="This article is not helpful"
+							data-bi-name="button-rating-no"
+							aria-pressed="false"
+							data-bi-an="feedback-unhelpful-popover"
+						>
+							<span class="icon" aria-hidden="true">
+								<span class="docon docon-dislike"></span>
+							</span>
+							<span>No</span>
+						</summary>
+						<div
+							class="popover-content width-200 width-300-tablet"
+							role="dialog"
+							aria-labelledby="popover-heading"
+							aria-describedby="popover-description"
+						>
+							<p id="popover-heading" class="font-size-lg margin-bottom-xxs font-weight-semibold">
+								Need help with this topic?
+							</p>
+							<p id="popover-description" class="font-size-sm margin-bottom-xs">
+								Want to try using Ask Learn to clarify or guide you through this topic?
+							</p>
+							
+		<div class="buttons flex-direction-row flex-wrap justify-content-center gap-xxs">
+			<div>
+		<button
+			class="button button-sm border inner-focus display-none margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-test-id="ask-learn-assistant-modal-entry-mobile-feedback"
+			data-ask-learn-modal-entry-feedback
+			data-bi-an=feedback-unhelpful-popover
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-inline-flex display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-modal-entry-tablet-feedback"
+			data-ask-learn-modal-entry-feedback
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-flyout-entry-feedback"
+			data-ask-learn-flyout-entry-show-only
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	</div>
+			<button
+				type="button"
+				class="button button-sm margin-right-xxs"
+				data-help-option="suggest-fix"
+				data-bi-name="feedback-suggest"
+				data-bi-an="feedback-unhelpful-popover"
+				data-test-id="suggest-fix"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-feedback"></span>
+				</span>
+				<span> Suggest a fix? </span>
+			</button>
+		</div>
+	
+						</div>
+					</details>
+				</div>
+			</div>
+		</section>
+		<!-- end feedback section -->
+	
+				</div>
+				
+		<div id="ms--additional-resources-mobile" class="display-none-print">
+			<hr class="hr" hidden />
+			<h2 id="ms--additional-resources-mobile-heading" class="title is-3" hidden>
+				Additional resources
+			</h2>
+			
+		<section
+			id="right-rail-recommendations-mobile"
+			class=""
+			data-bi-name="recommendations"
+			hidden
+		></section>
+	 
+		<section
+			id="right-rail-training-mobile"
+			class=""
+			data-bi-name="learning-resource-card"
+			hidden
+		></section>
+	 
+		<section
+			id="right-rail-events-mobile"
+			class=""
+			data-bi-name="events-card"
+			hidden
+		></section>
+	
+		</div>
+	 
+		<div
+			id="article-metadata-footer"
+			data-bi-name="article-metadata-footer"
+			data-test-id="article-metadata-footer"
+			class="page-metadata-container"
+		>
+			<hr class="hr" />
+			<ul class="metadata page-metadata" data-bi-name="page info" lang="en-us" dir="ltr">
+				<li class="visibility-hidden-visual-diff">
+			<span class="badge badge-sm text-wrap-pretty">
+				<span>Last updated on <local-time format="twoDigitNumeric"
+		datetime="2026-02-26T18:33:00.000Z"
+		data-article-date-source="calculated"
+		class="is-invisible"
+	>
+		2026-02-26
+	</local-time></span>
+			</span>
+		</li>
+			</ul>
+		</div>
+	
+			</div>
+		
+				</main>
+				<aside
+					id="layout-body-aside"
+					class="layout-body-aside  "
+					data-bi-name="aside"
+					aria-label="Additional resources"
+			  >
+					
+		<div
+			id="ms--additional-resources"
+			class="right-container padding-sm display-none display-block-desktop height-full"
+			data-bi-name="pageactions"
+		>
+			<div id="affixed-right-container" data-bi-name="right-column">
+				
+		<nav
+			id="side-doc-outline"
+			class="doc-outline border-bottom padding-bottom-xs margin-bottom-xs scrollbar-width-thin"
+			data-bi-name="intopic toc"
+			aria-label="In this article"
+		>
+			<h3>In this article</h3>
+		</nav>
+	
+				<!-- Feedback -->
+				
+		<section
+			id="ms--site-user-feedback-right-rail"
+			class="font-size-sm display-none-print"
+			data-test-id="site-user-feedback-right-rail"
+			data-bi-name="site-feedback-right-rail"
+		>
+			<div class="display-flex flex-wrap-wrap align-items-center">
+				<p class="font-weight-semibold margin-xxs margin-left-none">
+					Was this page helpful?
+				</p>
+				<div class="display-flex flex-wrap-nowrap">
+					<button
+						class="thumb-rating-button like inner-focus"
+						data-test-id="right-rail-rating-yes"
+						data-binary-rating-response="rating-yes"
+						type="button"
+						title="This article is helpful"
+						aria-label="This article is helpful"
+						data-bi-name="button-rating-yes"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-like"></span>
+						</span>
+					</button>
+					<button
+						class="thumb-rating-button dislike inner-focus"
+						id="right-rail-no-button"
+						hidden
+						data-test-id="right-rail-rating-no"
+						data-binary-rating-response="rating-no"
+						type="button"
+						title="This article is not helpful"
+						aria-label="This article is not helpful"
+						data-bi-name="button-rating-no"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-dislike"></span>
+						</span>
+					</button>
+					<details class="popover popover-right" id="help-popover" data-test-id="feedback-popover">
+						<summary
+							tabindex="0"
+							class="thumb-rating-button dislike inner-focus"
+							data-test-id="details-right-rail-rating-no"
+							data-binary-rating-response="rating-no"
+							title="This article is not helpful"
+							aria-label="This article is not helpful"
+							data-bi-name="button-rating-no"
+							aria-pressed="false"
+							data-bi-an="feedback-unhelpful-popover"
+						>
+							<span class="icon" aria-hidden="true">
+								<span class="docon docon-dislike"></span>
+							</span>
+						</summary>
+						<div
+							class="popover-content width-200 width-300-tablet"
+							role="dialog"
+							aria-labelledby="popover-heading-right-rail"
+							aria-describedby="popover-description-right-rail"
+						>
+							<p
+								id="popover-heading-right-rail"
+								class="font-size-lg margin-bottom-xxs font-weight-semibold"
+							>
+								Need help with this topic?
+							</p>
+							<p id="popover-description-right-rail" class="font-size-sm margin-bottom-xs">
+								Want to try using Ask Learn to clarify or guide you through this topic?
+							</p>
+							
+		<div class="buttons flex-direction-row flex-wrap justify-content-center gap-xxs">
+			<div>
+		<button
+			class="button button-sm border inner-focus display-none margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-test-id="ask-learn-assistant-modal-entry-mobile-feedback"
+			data-ask-learn-modal-entry-feedback
+			data-bi-an=feedback-unhelpful-popover
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-inline-flex display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-modal-entry-tablet-feedback"
+			data-ask-learn-modal-entry-feedback
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-flyout-entry-feedback"
+			data-ask-learn-flyout-entry-show-only
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	</div>
+			<button
+				type="button"
+				class="button button-sm margin-right-xxs"
+				data-help-option="suggest-fix"
+				data-bi-name="feedback-suggest"
+				data-bi-an="feedback-unhelpful-popover"
+				data-test-id="suggest-fix"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-feedback"></span>
+				</span>
+				<span> Suggest a fix? </span>
+			</button>
+		</div>
+	
+						</div>
+					</details>
+				</div>
+			</div>
+		</section>
+	
+			</div>
+		</div>
+	
+			  </aside> <section
+					id="layout-body-flyout"
+					class="layout-body-flyout "
+					data-bi-name="flyout"
+			  >
+					 <div
+	class="height-full border-left background-color-body-medium"
+	id="ask-learn-flyout"
+></div>
+			  </section> <div class="layout-body-footer " data-bi-name="layout-footer">
+		<footer
+			id="footer"
+			data-test-id="footer"
+			data-bi-name="footer"
+			class="footer-layout padding-xs padding-sm-desktop has-default-focus border-top"
+			role="contentinfo"
+		>
+			<div class="display-flex gap-xs flex-wrap-wrap is-full-height padding-right-lg-desktop">
+				
+		<a
+			data-mscc-ic="false"
+			href="#"
+			data-bi-name="select-locale"
+			class="locale-selector-link flex-shrink-0 button button-sm button-clear external-link-indicator"
+			id=""
+			title=""
+			><span class="icon" aria-hidden="true"
+				><span class="docon docon-world"></span></span
+			><span class="local-selector-link-text">en-us</span></a
+		>
+	 <div class="ccpa-privacy-link" data-ccpa-privacy-link hidden>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://aka.ms/yourcaliforniaprivacychoices"
+			data-bi-name="your-privacy-choices"
+			class="button button-sm button-clear flex-shrink-0 external-link-indicator"
+			id=""
+			title=""
+			>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 30 14"
+			xml:space="preserve"
+			height="16"
+			width="43"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<path
+				d="M7.4 12.8h6.8l3.1-11.6H7.4C4.2 1.2 1.6 3.8 1.6 7s2.6 5.8 5.8 5.8z"
+				style="fill-rule:evenodd;clip-rule:evenodd;fill:#fff"
+			></path>
+			<path
+				d="M22.6 0H7.4c-3.9 0-7 3.1-7 7s3.1 7 7 7h15.2c3.9 0 7-3.1 7-7s-3.2-7-7-7zm-21 7c0-3.2 2.6-5.8 5.8-5.8h9.9l-3.1 11.6H7.4c-3.2 0-5.8-2.6-5.8-5.8z"
+				style="fill-rule:evenodd;clip-rule:evenodd;fill:#06f"
+			></path>
+			<path
+				d="M24.6 4c.2.2.2.6 0 .8L22.5 7l2.2 2.2c.2.2.2.6 0 .8-.2.2-.6.2-.8 0l-2.2-2.2-2.2 2.2c-.2.2-.6.2-.8 0-.2-.2-.2-.6 0-.8L20.8 7l-2.2-2.2c-.2-.2-.2-.6 0-.8.2-.2.6-.2.8 0l2.2 2.2L23.8 4c.2-.2.6-.2.8 0z"
+				style="fill:#fff"
+			></path>
+			<path
+				d="M12.7 4.1c.2.2.3.6.1.8L8.6 9.8c-.1.1-.2.2-.3.2-.2.1-.5.1-.7-.1L5.4 7.7c-.2-.2-.2-.6 0-.8.2-.2.6-.2.8 0L8 8.6l3.8-4.5c.2-.2.6-.2.9 0z"
+				style="fill:#06f"
+			></path>
+		</svg>
+	
+			<span>Your Privacy Choices</span></a
+		>
+	
+	</div>
+				<div class="flex-shrink-0">
+		<div class="dropdown has-caret-up">
+			<button
+				data-test-id="theme-selector-button"
+				class="dropdown-trigger button button-clear button-sm inner-focus theme-dropdown-trigger"
+				aria-controls="{{ themeMenuId }}"
+				aria-haspopup="true"
+				aria-expanded="false"
+				data-bi-name="theme"
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-sun"></span></span>
+				<span>Theme</span>
+				<span class="icon expanded-indicator" aria-hidden="true">
+					<span class="docon docon-chevron-down-light"></span>
+				</span>
+			</button>
+			<div class="dropdown-menu" id="{{ themeMenuId }}" role="menu">
+				<ul class="theme-selector padding-xxs" data-test-id="theme-dropdown-menu" role="none">
+					<li class="theme display-block" role="none">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							role="menuitemradio"
+							aria-checked="false"
+							data-theme-to="light"
+							tabindex="-1"
+						>
+							<span class="theme-light margin-right-xxs">
+								<span
+									class="theme-selector-icon border display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span> Light </span>
+						</button>
+					</li>
+					<li class="theme display-block" role="none">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							role="menuitemradio"
+							aria-checked="false"
+							data-theme-to="dark"
+							tabindex="-1"
+						>
+							<span class="theme-dark margin-right-xxs">
+								<span
+									class="border theme-selector-icon display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span> Dark </span>
+						</button>
+					</li>
+					<li class="theme display-block" role="none">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							role="menuitemradio"
+							aria-checked="false"
+							data-theme-to="high-contrast"
+							tabindex="-1"
+						>
+							<span class="theme-high-contrast margin-right-xxs">
+								<span
+									class="border theme-selector-icon display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span> High contrast </span>
+						</button>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+			</div>
+			<ul class="links" data-bi-name="footerlinks">
+				<li class="manage-cookies-holder" hidden=""></li>
+				<li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/principles-for-ai-generated-content"
+			data-bi-name="aiDisclaimer"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>AI Disclaimer</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/previous-versions/"
+			data-bi-name="archivelink"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Previous Versions</a
+		>
+	
+	</li> <li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://techcommunity.microsoft.com/t5/microsoft-learn-blog/bg-p/MicrosoftLearnBlog"
+			data-bi-name="bloglink"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Blog</a
+		>
+	
+	</li> <li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/contribute"
+			data-bi-name="contributorGuide"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Contribute</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://go.microsoft.com/fwlink/?LinkId=521839"
+			data-bi-name="privacy"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Privacy</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://go.microsoft.com/fwlink/?linkid=2259814"
+			data-bi-name="consumer-health-privacy"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Consumer Health Privacy</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/legal/termsofuse"
+			data-bi-name="termsofuse"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Terms of Use</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://www.microsoft.com/legal/intellectualproperty/Trademarks/"
+			data-bi-name="trademarks"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Trademarks</a
+		>
+	
+	</li>
+				<li>&copy; Microsoft 2026</li>
+			</ul>
+		</footer>
+	</footer>
+			<noscript><img src="https://learn.microsoft.com/akam/13/pixel_31306b96?a=dD0wMTg4ZDM0NzBiNjI4MzJhZmEzNTAzNGFjYWZhZjNjYzZlM2U2NzA1JmpzPW9mZg==" style="visibility: hidden; position: absolute; left: -999px; top: -999px;" /></noscript></body>
+		</html>

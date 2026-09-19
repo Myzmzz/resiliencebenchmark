@@ -1,0 +1,821 @@
+<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content="width=device-width"><link rel=icon href=https://nodejs.org/favicon.ico><meta name=nodejs.org:node-version content=v26.9.0><title>Global objects | Node.js v26.9.0 Documentation</title><link rel=stylesheet href="https://fonts.googleapis.com/css?family=Lato:400,700,400italic&display=fallback"><link rel=stylesheet href=assets/style.css><link rel=canonical href=https://nodejs.org/api/globals.html><script async defer src=assets/api.js></script><script>("dark"===localStorage.getItem("theme")||null===localStorage.getItem("theme")&&window.matchMedia?.("(prefers-color-scheme: dark)").matches)&&document.documentElement.classList.add("dark-mode")</script><body class="alt apidoc" id=api-section-globals><a href=#apicontent class=skip-to-content>Skip to content</a>
+    <div id=content class=clearfix>
+      <div role=navigation id=column2 class=interior>
+        <div id=intro class=interior>
+          <a href=/ title="Go back to the home page"> Node.js </a>
+        </div>
+        <hr class=line>
+        <ul>
+<li><a class=nav-documentation href=documentation.html>About this documentation</a></li>
+<li><a class=nav-synopsis href=synopsis.html>Usage and example</a></li>
+<li><a class=nav-assert href=assert.html>Assertion testing</a></li>
+<li><a class=nav-async_context href=async_context.html>Asynchronous context tracking</a></li>
+<li><a class=nav-async_hooks href=async_hooks.html>Async hooks</a></li>
+<li><a class=nav-bench href=bench.html>Benchmark runner</a></li>
+<li><a class=nav-buffer href=buffer.html>Buffer</a></li>
+<li><a class=nav-addons href=addons.html>C++ addons</a></li>
+<li><a class=nav-n-api href=n-api.html>C/C++ addons with Node-API</a></li>
+<li><a class=nav-embedding href=embedding.html>C++ embedder API</a></li>
+<li><a class=nav-child_process href=child_process.html>Child processes</a></li>
+<li><a class=nav-cluster href=cluster.html>Cluster</a></li>
+<li><a class=nav-cli href=cli.html>Command-line options</a></li>
+<li><a class=nav-console href=console.html>Console</a></li>
+<li><a class=nav-crypto href=crypto.html>Crypto</a></li>
+<li><a class=nav-debugger href=debugger.html>Debugger</a></li>
+<li><a class=nav-deprecations href=deprecations.html>Deprecated APIs</a></li>
+<li><a class=nav-diagnostics_channel href=diagnostics_channel.html>Diagnostics Channel</a></li>
+<li><a class=nav-dns href=dns.html>DNS</a></li>
+<li><a class=nav-domain href=domain.html>Domain</a></li>
+<li><a class=nav-environment_variables href=environment_variables.html>Environment Variables</a></li>
+<li><a class=nav-errors href=errors.html>Errors</a></li>
+<li><a class=nav-events href=events.html>Events</a></li>
+<li><a class=nav-fs href=fs.html>File system</a></li>
+<li><a class=nav-ffi href=ffi.html>FFI</a></li>
+<li><a class="active nav-globals" href=globals.html>Globals</a></li>
+<li><a class=nav-http href=http.html>HTTP</a></li>
+<li><a class=nav-http2 href=http2.html>HTTP/2</a></li>
+<li><a class=nav-https href=https.html>HTTPS</a></li>
+<li><a class=nav-inspector href=inspector.html>Inspector</a></li>
+<li><a class=nav-intl href=intl.html>Internationalization</a></li>
+<li><a class=nav-stream_iter href=stream_iter.html>Iterable Streams API</a></li>
+<li><a class=nav-modules href=modules.html>Modules: CommonJS modules</a></li>
+<li><a class=nav-esm href=esm.html>Modules: ECMAScript modules</a></li>
+<li><a class=nav-module href=module.html>Modules: <code>node:module</code> API</a></li>
+<li><a class=nav-packages href=packages.html>Modules: Packages</a></li>
+<li><a class=nav-typescript href=typescript.html>Modules: TypeScript</a></li>
+<li><a class=nav-net href=net.html>Net</a></li>
+<li><a class=nav-os href=os.html>OS</a></li>
+<li><a class=nav-path href=path.html>Path</a></li>
+<li><a class=nav-perf_hooks href=perf_hooks.html>Performance hooks</a></li>
+<li><a class=nav-permissions href=permissions.html>Permissions</a></li>
+<li><a class=nav-process href=process.html>Process</a></li>
+<li><a class=nav-punycode href=punycode.html>Punycode</a></li>
+<li><a class=nav-querystring href=querystring.html>Query strings</a></li>
+<li><a class=nav-readline href=readline.html>Readline</a></li>
+<li><a class=nav-repl href=repl.html>REPL</a></li>
+<li><a class=nav-report href=report.html>Report</a></li>
+<li><a class=nav-single-executable-applications href=single-executable-applications.html>Single executable applications</a></li>
+<li><a class=nav-sqlite href=sqlite.html>SQLite</a></li>
+<li><a class=nav-stream href=stream.html>Stream</a></li>
+<li><a class=nav-string_decoder href=string_decoder.html>String decoder</a></li>
+<li><a class=nav-test href=test.html>Test runner</a></li>
+<li><a class=nav-timers href=timers.html>Timers</a></li>
+<li><a class=nav-tls href=tls.html>TLS/SSL</a></li>
+<li><a class=nav-tracing href=tracing.html>Trace events</a></li>
+<li><a class=nav-tty href=tty.html>TTY</a></li>
+<li><a class=nav-dgram href=dgram.html>UDP/datagram</a></li>
+<li><a class=nav-url href=url.html>URL</a></li>
+<li><a class=nav-util href=util.html>Utilities</a></li>
+<li><a class=nav-v8 href=v8.html>V8</a></li>
+<li><a class=nav-vfs href=vfs.html>Virtual File System</a></li>
+<li><a class=nav-vm href=vm.html>VM</a></li>
+<li><a class=nav-wasi href=wasi.html>WASI</a></li>
+<li><a class=nav-webcrypto href=webcrypto.html>Web Crypto API</a></li>
+<li><a class=nav-webstreams href=webstreams.html>Web Streams API</a></li>
+<li><a class=nav-worker_threads href=worker_threads.html>Worker threads</a></li>
+<li><a class=nav-zlib href=zlib.html>Zlib</a></li>
+</ul>
+        <hr class=line>
+        <ul>
+          <li>
+            <a href=https://github.com/nodejs/node class=nav-https-github-com-nodejs-node>Code repository and issue tracker</a>
+          </li>
+        </ul>
+      </div>
+      <div id=column1 data-id=globals class=interior>
+        <header class=header>
+          <div class=header-container>
+            <h1>Node.js v26.9.0 documentation</h1>
+            <button class=theme-toggle-btn id=theme-toggle-btn title="Toggle dark mode/light mode" aria-label="Toggle dark mode/light mode" hidden>
+              <svg class="dark-icon icon" height=24 width=24>
+                <path fill=none d="M0 0h24v24H0z"/>
+                <path d="M11.1 12.08c-2.33-4.51-.5-8.48.53-10.07C6.27 2.2 1.98 6.59 1.98 12c0 .14.02.28.02.42.62-.27 1.29-.42 2-.42 1.66 0 3.18.83 4.1 2.15A4.01 4.01 0 0111 18c0 1.52-.87 2.83-2.12 3.51.98.32 2.03.5 3.11.5 3.5 0 6.58-1.8 8.37-4.52-2.36.23-6.98-.97-9.26-5.41z"/>
+                <path d="M7 16h-.18C6.4 14.84 5.3 14 4 14c-1.66 0-3 1.34-3 3s1.34 3 3 3h3c1.1 0 2-.9 2-2s-.9-2-2-2z"/>
+              </svg>
+              <svg class="icon light-icon" height=24 width=24>
+                <path d="M0 0h24v24H0z" fill=none />
+                <path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/>
+              </svg>
+            </button>
+          </div>
+          <div id=gtoc>
+            <ul>
+              <li class=pinned-header>Node.js v26.9.0</li>
+              <li class=picker-header><a href=#toc-picker aria-controls=toc-picker><span class=picker-arrow></span>Table of contents</a><div class=picker><div class=toc tabindex=-1><ul id=toc-picker>
+<li><span class=stability_2><a href=globals.html#global-objects>Global objects</a></span>
+<ul>
+<li><a href=globals.html#__dirname><code>__dirname</code></a></li>
+<li><a href=globals.html#__filename><code>__filename</code></a></li>
+<li><a href=globals.html#class-abortcontroller>Class: <code>AbortController</code></a>
+<ul>
+<li><a href=globals.html#abortcontrollerabortreason><code>abortController.abort([reason])</code></a></li>
+<li><a href=globals.html#abortcontrollersignal><code>abortController.signal</code></a></li>
+</ul>
+</li>
+<li><a href=globals.html#class-abortsignal>Class: <code>AbortSignal</code></a>
+<ul>
+<li><a href=globals.html#static-method-abortsignalabortreason>Static method: <code>AbortSignal.abort([reason])</code></a></li>
+<li><a href=globals.html#static-method-abortsignaltimeoutdelay>Static method: <code>AbortSignal.timeout(delay)</code></a></li>
+<li><a href=globals.html#static-method-abortsignalanysignals>Static method: <code>AbortSignal.any(signals)</code></a></li>
+<li><a href=globals.html#event-abort>Event: <code>'abort'</code></a></li>
+<li><a href=globals.html#abortsignalaborted><code>abortSignal.aborted</code></a></li>
+<li><a href=globals.html#abortsignalonabort><code>abortSignal.onabort</code></a></li>
+<li><a href=globals.html#abortsignalreason><code>abortSignal.reason</code></a></li>
+<li><a href=globals.html#abortsignalthrowifaborted><code>abortSignal.throwIfAborted()</code></a></li>
+</ul>
+</li>
+<li><span class=stability_3><a href=globals.html#atobdata><code>atob(data)</code></a></span></li>
+<li><a href=globals.html#class-blob>Class: <code>Blob</code></a></li>
+<li><a href=globals.html#class-broadcastchannel>Class: <code>BroadcastChannel</code></a></li>
+<li><span class=stability_3><a href=globals.html#btoadata><code>btoa(data)</code></a></span></li>
+<li><a href=globals.html#class-buffer>Class: <code>Buffer</code></a></li>
+<li><a href=globals.html#class-bytelengthqueuingstrategy>Class: <code>ByteLengthQueuingStrategy</code></a></li>
+<li><a href=globals.html#clearimmediateimmediateobject><code>clearImmediate(immediateObject)</code></a></li>
+<li><a href=globals.html#clearintervalintervalobject><code>clearInterval(intervalObject)</code></a></li>
+<li><a href=globals.html#cleartimeouttimeoutobject><code>clearTimeout(timeoutObject)</code></a></li>
+<li><a href=globals.html#class-closeevent>Class: <code>CloseEvent</code></a></li>
+<li><a href=globals.html#class-compressionstream>Class: <code>CompressionStream</code></a></li>
+<li><a href=globals.html#console><code>console</code></a></li>
+<li><a href=globals.html#class-countqueuingstrategy>Class: <code>CountQueuingStrategy</code></a></li>
+<li><a href=globals.html#class-crypto>Class: <code>Crypto</code></a></li>
+<li><a href=globals.html#crypto><code>crypto</code></a></li>
+<li><a href=globals.html#class-cryptokey>Class: <code>CryptoKey</code></a></li>
+<li><a href=globals.html#class-customevent>Class: <code>CustomEvent</code></a></li>
+<li><a href=globals.html#class-decompressionstream>Class: <code>DecompressionStream</code></a></li>
+<li><a href=globals.html#class-domexception>Class: <code>DOMException</code></a></li>
+<li><a href=globals.html#errorevent><code>ErrorEvent</code></a></li>
+<li><a href=globals.html#class-event>Class: <code>Event</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-eventsource>Class: <code>EventSource</code></a></span></li>
+<li><a href=globals.html#class-eventtarget>Class: <code>EventTarget</code></a></li>
+<li><a href=globals.html#exports><code>exports</code></a></li>
+<li><a href=globals.html#fetch><code>fetch</code></a>
+<ul>
+<li><a href=globals.html#custom-dispatcher>Custom dispatcher</a></li>
+<li><a href=globals.html#related-classes>Related classes</a></li>
+</ul>
+</li>
+<li><a href=globals.html#class-file>Class: <code>File</code></a></li>
+<li><a href=globals.html#class-formdata>Class: <code>FormData</code></a></li>
+<li><span class=stability_3><a href=globals.html#global><code>global</code></a></span></li>
+<li><a href=globals.html#class-headers>Class: <code>Headers</code></a></li>
+<li><span class=stability_1><a href=globals.html#localstorage><code>localStorage</code></a></span></li>
+<li><a href=globals.html#class-messagechannel>Class: <code>MessageChannel</code></a></li>
+<li><a href=globals.html#class-messageevent>Class: <code>MessageEvent</code></a></li>
+<li><a href=globals.html#class-messageport>Class: <code>MessagePort</code></a></li>
+<li><a href=globals.html#module><code>module</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-navigator>Class: <code>Navigator</code></a></span></li>
+<li><span class=stability_1><a href=globals.html#navigator><code>navigator</code></a></span>
+<ul>
+<li><a href=globals.html#navigatorhardwareconcurrency><code>navigator.hardwareConcurrency</code></a></li>
+<li><a href=globals.html#navigatorlanguage><code>navigator.language</code></a></li>
+<li><a href=globals.html#navigatorlanguages><code>navigator.languages</code></a></li>
+<li><span class=stability_1><a href=globals.html#navigatorlocks><code>navigator.locks</code></a></span></li>
+<li><a href=globals.html#navigatorplatform><code>navigator.platform</code></a></li>
+<li><a href=globals.html#navigatoruseragent><code>navigator.userAgent</code></a></li>
+</ul>
+</li>
+<li><a href=globals.html#performance><code>performance</code></a></li>
+<li><a href=globals.html#class-performanceentry>Class: <code>PerformanceEntry</code></a></li>
+<li><a href=globals.html#class-performancemark>Class: <code>PerformanceMark</code></a></li>
+<li><a href=globals.html#class-performancemeasure>Class: <code>PerformanceMeasure</code></a></li>
+<li><a href=globals.html#class-performanceobserver>Class: <code>PerformanceObserver</code></a></li>
+<li><a href=globals.html#class-performanceobserverentrylist>Class: <code>PerformanceObserverEntryList</code></a></li>
+<li><a href=globals.html#class-performanceresourcetiming>Class: <code>PerformanceResourceTiming</code></a></li>
+<li><a href=globals.html#process><code>process</code></a></li>
+<li><a href=globals.html#queuemicrotaskcallback><code>queueMicrotask(callback)</code></a></li>
+<li><a href=globals.html#class-quotaexceedederror>Class: <code>QuotaExceededError</code></a></li>
+<li><a href=globals.html#class-readablebytestreamcontroller>Class: <code>ReadableByteStreamController</code></a></li>
+<li><a href=globals.html#class-readablestream>Class: <code>ReadableStream</code></a></li>
+<li><a href=globals.html#class-readablestreambyobreader>Class: <code>ReadableStreamBYOBReader</code></a></li>
+<li><a href=globals.html#class-readablestreambyobrequest>Class: <code>ReadableStreamBYOBRequest</code></a></li>
+<li><a href=globals.html#class-readablestreamdefaultcontroller>Class: <code>ReadableStreamDefaultController</code></a></li>
+<li><a href=globals.html#class-readablestreamdefaultreader>Class: <code>ReadableStreamDefaultReader</code></a></li>
+<li><a href=globals.html#class-request>Class: <code>Request</code></a></li>
+<li><a href=globals.html#require><code>require()</code></a></li>
+<li><a href=globals.html#class-response>Class: <code>Response</code></a></li>
+<li><span class=stability_1><a href=globals.html#sessionstorage><code>sessionStorage</code></a></span></li>
+<li><a href=globals.html#setimmediatecallback-args><code>setImmediate(callback[, ...args])</code></a></li>
+<li><a href=globals.html#setintervalcallback-delay-args><code>setInterval(callback, delay[, ...args])</code></a></li>
+<li><a href=globals.html#settimeoutcallback-delay-args><code>setTimeout(callback, delay[, ...args])</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-storage>Class: <code>Storage</code></a></span></li>
+<li><a href=globals.html#structuredclonevalue-options><code>structuredClone(value[, options])</code></a></li>
+<li><a href=globals.html#class-subtlecrypto>Class: <code>SubtleCrypto</code></a></li>
+<li><a href=globals.html#class-textdecoder>Class: <code>TextDecoder</code></a></li>
+<li><a href=globals.html#class-textdecoderstream>Class: <code>TextDecoderStream</code></a></li>
+<li><a href=globals.html#class-textencoder>Class: <code>TextEncoder</code></a></li>
+<li><a href=globals.html#class-textencoderstream>Class: <code>TextEncoderStream</code></a></li>
+<li><a href=globals.html#class-transformstream>Class: <code>TransformStream</code></a></li>
+<li><a href=globals.html#class-transformstreamdefaultcontroller>Class: <code>TransformStreamDefaultController</code></a></li>
+<li><a href=globals.html#class-url>Class: <code>URL</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-urlpattern>Class: <code>URLPattern</code></a></span></li>
+<li><a href=globals.html#class-urlsearchparams>Class: <code>URLSearchParams</code></a></li>
+<li><a href=globals.html#class-webassembly>Class: <code>WebAssembly</code></a></li>
+<li><a href=globals.html#class-websocket>Class: <code>WebSocket</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-worker>Class: <code>Worker</code></a></span>
+<ul>
+<li><a href=globals.html#loading-worker-scripts>Loading worker scripts</a></li>
+<li><a href=globals.html#differences-from-the-html-standard>Differences from the HTML Standard</a></li>
+<li><a href=globals.html#web-workers-and-nodeworker_threads>Web Workers and <code>node:worker_threads</code></a></li>
+</ul>
+</li>
+<li><a href=globals.html#class-writablestream>Class: <code>WritableStream</code></a></li>
+<li><a href=globals.html#class-writablestreamdefaultcontroller>Class: <code>WritableStreamDefaultController</code></a></li>
+<li><a href=globals.html#class-writablestreamdefaultwriter>Class: <code>WritableStreamDefaultWriter</code></a></li>
+</ul>
+</li>
+</ul></div></div></li> <li class=picker-header><a href=#gtoc-picker aria-controls=gtoc-picker><span class=picker-arrow></span>Index</a><div class=picker tabindex=-1 id=gtoc-picker><ul><li><a href=index.html>Index</a></ul><hr class=line><ul>
+<li><a class=nav-documentation href=documentation.html>About this documentation</a></li>
+<li><a class=nav-synopsis href=synopsis.html>Usage and example</a></li>
+<li><a class=nav-assert href=assert.html>Assertion testing</a></li>
+<li><a class=nav-async_context href=async_context.html>Asynchronous context tracking</a></li>
+<li><a class=nav-async_hooks href=async_hooks.html>Async hooks</a></li>
+<li><a class=nav-bench href=bench.html>Benchmark runner</a></li>
+<li><a class=nav-buffer href=buffer.html>Buffer</a></li>
+<li><a class=nav-addons href=addons.html>C++ addons</a></li>
+<li><a class=nav-n-api href=n-api.html>C/C++ addons with Node-API</a></li>
+<li><a class=nav-embedding href=embedding.html>C++ embedder API</a></li>
+<li><a class=nav-child_process href=child_process.html>Child processes</a></li>
+<li><a class=nav-cluster href=cluster.html>Cluster</a></li>
+<li><a class=nav-cli href=cli.html>Command-line options</a></li>
+<li><a class=nav-console href=console.html>Console</a></li>
+<li><a class=nav-crypto href=crypto.html>Crypto</a></li>
+<li><a class=nav-debugger href=debugger.html>Debugger</a></li>
+<li><a class=nav-deprecations href=deprecations.html>Deprecated APIs</a></li>
+<li><a class=nav-diagnostics_channel href=diagnostics_channel.html>Diagnostics Channel</a></li>
+<li><a class=nav-dns href=dns.html>DNS</a></li>
+<li><a class=nav-domain href=domain.html>Domain</a></li>
+<li><a class=nav-environment_variables href=environment_variables.html>Environment Variables</a></li>
+<li><a class=nav-errors href=errors.html>Errors</a></li>
+<li><a class=nav-events href=events.html>Events</a></li>
+<li><a class=nav-fs href=fs.html>File system</a></li>
+<li><a class=nav-ffi href=ffi.html>FFI</a></li>
+<li><a class="active nav-globals" href=globals.html>Globals</a></li>
+<li><a class=nav-http href=http.html>HTTP</a></li>
+<li><a class=nav-http2 href=http2.html>HTTP/2</a></li>
+<li><a class=nav-https href=https.html>HTTPS</a></li>
+<li><a class=nav-inspector href=inspector.html>Inspector</a></li>
+<li><a class=nav-intl href=intl.html>Internationalization</a></li>
+<li><a class=nav-stream_iter href=stream_iter.html>Iterable Streams API</a></li>
+<li><a class=nav-modules href=modules.html>Modules: CommonJS modules</a></li>
+<li><a class=nav-esm href=esm.html>Modules: ECMAScript modules</a></li>
+<li><a class=nav-module href=module.html>Modules: <code>node:module</code> API</a></li>
+<li><a class=nav-packages href=packages.html>Modules: Packages</a></li>
+<li><a class=nav-typescript href=typescript.html>Modules: TypeScript</a></li>
+<li><a class=nav-net href=net.html>Net</a></li>
+<li><a class=nav-os href=os.html>OS</a></li>
+<li><a class=nav-path href=path.html>Path</a></li>
+<li><a class=nav-perf_hooks href=perf_hooks.html>Performance hooks</a></li>
+<li><a class=nav-permissions href=permissions.html>Permissions</a></li>
+<li><a class=nav-process href=process.html>Process</a></li>
+<li><a class=nav-punycode href=punycode.html>Punycode</a></li>
+<li><a class=nav-querystring href=querystring.html>Query strings</a></li>
+<li><a class=nav-readline href=readline.html>Readline</a></li>
+<li><a class=nav-repl href=repl.html>REPL</a></li>
+<li><a class=nav-report href=report.html>Report</a></li>
+<li><a class=nav-single-executable-applications href=single-executable-applications.html>Single executable applications</a></li>
+<li><a class=nav-sqlite href=sqlite.html>SQLite</a></li>
+<li><a class=nav-stream href=stream.html>Stream</a></li>
+<li><a class=nav-string_decoder href=string_decoder.html>String decoder</a></li>
+<li><a class=nav-test href=test.html>Test runner</a></li>
+<li><a class=nav-timers href=timers.html>Timers</a></li>
+<li><a class=nav-tls href=tls.html>TLS/SSL</a></li>
+<li><a class=nav-tracing href=tracing.html>Trace events</a></li>
+<li><a class=nav-tty href=tty.html>TTY</a></li>
+<li><a class=nav-dgram href=dgram.html>UDP/datagram</a></li>
+<li><a class=nav-url href=url.html>URL</a></li>
+<li><a class=nav-util href=util.html>Utilities</a></li>
+<li><a class=nav-v8 href=v8.html>V8</a></li>
+<li><a class=nav-vfs href=vfs.html>Virtual File System</a></li>
+<li><a class=nav-vm href=vm.html>VM</a></li>
+<li><a class=nav-wasi href=wasi.html>WASI</a></li>
+<li><a class=nav-webcrypto href=webcrypto.html>Web Crypto API</a></li>
+<li><a class=nav-webstreams href=webstreams.html>Web Streams API</a></li>
+<li><a class=nav-worker_threads href=worker_threads.html>Worker threads</a></li>
+<li><a class=nav-zlib href=zlib.html>Zlib</a></li>
+</ul></div></li> <li class=picker-header><a href=#alt-docs aria-controls=alt-docs><span class=picker-arrow></span>Other versions</a><div class=picker tabindex=-1><ol id=alt-docs><li><a href=https://nodejs.org/docs/latest-v26.x/api/globals.html>26.x </a><li><a href=https://nodejs.org/docs/latest-v25.x/api/globals.html>25.x </a><li><a href=https://nodejs.org/docs/latest-v24.x/api/globals.html>24.x <b>LTS</b></a><li><a href=https://nodejs.org/docs/latest-v23.x/api/globals.html>23.x </a><li><a href=https://nodejs.org/docs/latest-v22.x/api/globals.html>22.x <b>LTS</b></a><li><a href=https://nodejs.org/docs/latest-v21.x/api/globals.html>21.x </a><li><a href=https://nodejs.org/docs/latest-v20.x/api/globals.html>20.x </a><li><a href=https://nodejs.org/docs/latest-v19.x/api/globals.html>19.x </a><li><a href=https://nodejs.org/docs/latest-v18.x/api/globals.html>18.x </a><li><a href=https://nodejs.org/docs/latest-v17.x/api/globals.html>17.x </a><li><a href=https://nodejs.org/docs/latest-v16.x/api/globals.html>16.x </a><li><a href=https://nodejs.org/docs/latest-v15.x/api/globals.html>15.x </a><li><a href=https://nodejs.org/docs/latest-v14.x/api/globals.html>14.x </a><li><a href=https://nodejs.org/docs/latest-v13.x/api/globals.html>13.x </a><li><a href=https://nodejs.org/docs/latest-v12.x/api/globals.html>12.x </a><li><a href=https://nodejs.org/docs/latest-v11.x/api/globals.html>11.x </a><li><a href=https://nodejs.org/docs/latest-v10.x/api/globals.html>10.x </a><li><a href=https://nodejs.org/docs/latest-v9.x/api/globals.html>9.x </a><li><a href=https://nodejs.org/docs/latest-v8.x/api/globals.html>8.x </a><li><a href=https://nodejs.org/docs/latest-v7.x/api/globals.html>7.x </a><li><a href=https://nodejs.org/docs/latest-v6.x/api/globals.html>6.x </a><li><a href=https://nodejs.org/docs/latest-v5.x/api/globals.html>5.x </a><li><a href=https://nodejs.org/docs/latest-v4.x/api/globals.html>4.x </a><li><a href=https://nodejs.org/docs/latest-v0.12.x/api/globals.html>0.12.x </a><li><a href=https://nodejs.org/docs/latest-v0.10.x/api/globals.html>0.10.x </a></ol></div></li>
+              <li class=picker-header>
+                <a href=#options-picker aria-controls=options-picker>
+                  <span class=picker-arrow></span>
+                  Options
+                </a>
+                <div class=picker tabindex=-1>
+                  <ul id=options-picker>
+                    <li>
+                      <a href=all.html>View on single page</a>
+                    </li>
+                    <li>
+                      <a href=globals.json>View as JSON</a>
+                    </li>
+                    <li class=edit_on_github><a href=https://github.com/nodejs/node/edit/main/doc/api/globals.md>Edit on GitHub</a></li>
+                  </ul>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <hr>
+        </header>
+        <details role=navigation id=toc open><summary>Table of contents</summary><ul>
+<li><span class=stability_2><a href=globals.html#global-objects>Global objects</a></span>
+<ul>
+<li><a href=globals.html#__dirname><code>__dirname</code></a></li>
+<li><a href=globals.html#__filename><code>__filename</code></a></li>
+<li><a href=globals.html#class-abortcontroller>Class: <code>AbortController</code></a>
+<ul>
+<li><a href=globals.html#abortcontrollerabortreason><code>abortController.abort([reason])</code></a></li>
+<li><a href=globals.html#abortcontrollersignal><code>abortController.signal</code></a></li>
+</ul>
+</li>
+<li><a href=globals.html#class-abortsignal>Class: <code>AbortSignal</code></a>
+<ul>
+<li><a href=globals.html#static-method-abortsignalabortreason>Static method: <code>AbortSignal.abort([reason])</code></a></li>
+<li><a href=globals.html#static-method-abortsignaltimeoutdelay>Static method: <code>AbortSignal.timeout(delay)</code></a></li>
+<li><a href=globals.html#static-method-abortsignalanysignals>Static method: <code>AbortSignal.any(signals)</code></a></li>
+<li><a href=globals.html#event-abort>Event: <code>'abort'</code></a></li>
+<li><a href=globals.html#abortsignalaborted><code>abortSignal.aborted</code></a></li>
+<li><a href=globals.html#abortsignalonabort><code>abortSignal.onabort</code></a></li>
+<li><a href=globals.html#abortsignalreason><code>abortSignal.reason</code></a></li>
+<li><a href=globals.html#abortsignalthrowifaborted><code>abortSignal.throwIfAborted()</code></a></li>
+</ul>
+</li>
+<li><span class=stability_3><a href=globals.html#atobdata><code>atob(data)</code></a></span></li>
+<li><a href=globals.html#class-blob>Class: <code>Blob</code></a></li>
+<li><a href=globals.html#class-broadcastchannel>Class: <code>BroadcastChannel</code></a></li>
+<li><span class=stability_3><a href=globals.html#btoadata><code>btoa(data)</code></a></span></li>
+<li><a href=globals.html#class-buffer>Class: <code>Buffer</code></a></li>
+<li><a href=globals.html#class-bytelengthqueuingstrategy>Class: <code>ByteLengthQueuingStrategy</code></a></li>
+<li><a href=globals.html#clearimmediateimmediateobject><code>clearImmediate(immediateObject)</code></a></li>
+<li><a href=globals.html#clearintervalintervalobject><code>clearInterval(intervalObject)</code></a></li>
+<li><a href=globals.html#cleartimeouttimeoutobject><code>clearTimeout(timeoutObject)</code></a></li>
+<li><a href=globals.html#class-closeevent>Class: <code>CloseEvent</code></a></li>
+<li><a href=globals.html#class-compressionstream>Class: <code>CompressionStream</code></a></li>
+<li><a href=globals.html#console><code>console</code></a></li>
+<li><a href=globals.html#class-countqueuingstrategy>Class: <code>CountQueuingStrategy</code></a></li>
+<li><a href=globals.html#class-crypto>Class: <code>Crypto</code></a></li>
+<li><a href=globals.html#crypto><code>crypto</code></a></li>
+<li><a href=globals.html#class-cryptokey>Class: <code>CryptoKey</code></a></li>
+<li><a href=globals.html#class-customevent>Class: <code>CustomEvent</code></a></li>
+<li><a href=globals.html#class-decompressionstream>Class: <code>DecompressionStream</code></a></li>
+<li><a href=globals.html#class-domexception>Class: <code>DOMException</code></a></li>
+<li><a href=globals.html#errorevent><code>ErrorEvent</code></a></li>
+<li><a href=globals.html#class-event>Class: <code>Event</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-eventsource>Class: <code>EventSource</code></a></span></li>
+<li><a href=globals.html#class-eventtarget>Class: <code>EventTarget</code></a></li>
+<li><a href=globals.html#exports><code>exports</code></a></li>
+<li><a href=globals.html#fetch><code>fetch</code></a>
+<ul>
+<li><a href=globals.html#custom-dispatcher>Custom dispatcher</a></li>
+<li><a href=globals.html#related-classes>Related classes</a></li>
+</ul>
+</li>
+<li><a href=globals.html#class-file>Class: <code>File</code></a></li>
+<li><a href=globals.html#class-formdata>Class: <code>FormData</code></a></li>
+<li><span class=stability_3><a href=globals.html#global><code>global</code></a></span></li>
+<li><a href=globals.html#class-headers>Class: <code>Headers</code></a></li>
+<li><span class=stability_1><a href=globals.html#localstorage><code>localStorage</code></a></span></li>
+<li><a href=globals.html#class-messagechannel>Class: <code>MessageChannel</code></a></li>
+<li><a href=globals.html#class-messageevent>Class: <code>MessageEvent</code></a></li>
+<li><a href=globals.html#class-messageport>Class: <code>MessagePort</code></a></li>
+<li><a href=globals.html#module><code>module</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-navigator>Class: <code>Navigator</code></a></span></li>
+<li><span class=stability_1><a href=globals.html#navigator><code>navigator</code></a></span>
+<ul>
+<li><a href=globals.html#navigatorhardwareconcurrency><code>navigator.hardwareConcurrency</code></a></li>
+<li><a href=globals.html#navigatorlanguage><code>navigator.language</code></a></li>
+<li><a href=globals.html#navigatorlanguages><code>navigator.languages</code></a></li>
+<li><span class=stability_1><a href=globals.html#navigatorlocks><code>navigator.locks</code></a></span></li>
+<li><a href=globals.html#navigatorplatform><code>navigator.platform</code></a></li>
+<li><a href=globals.html#navigatoruseragent><code>navigator.userAgent</code></a></li>
+</ul>
+</li>
+<li><a href=globals.html#performance><code>performance</code></a></li>
+<li><a href=globals.html#class-performanceentry>Class: <code>PerformanceEntry</code></a></li>
+<li><a href=globals.html#class-performancemark>Class: <code>PerformanceMark</code></a></li>
+<li><a href=globals.html#class-performancemeasure>Class: <code>PerformanceMeasure</code></a></li>
+<li><a href=globals.html#class-performanceobserver>Class: <code>PerformanceObserver</code></a></li>
+<li><a href=globals.html#class-performanceobserverentrylist>Class: <code>PerformanceObserverEntryList</code></a></li>
+<li><a href=globals.html#class-performanceresourcetiming>Class: <code>PerformanceResourceTiming</code></a></li>
+<li><a href=globals.html#process><code>process</code></a></li>
+<li><a href=globals.html#queuemicrotaskcallback><code>queueMicrotask(callback)</code></a></li>
+<li><a href=globals.html#class-quotaexceedederror>Class: <code>QuotaExceededError</code></a></li>
+<li><a href=globals.html#class-readablebytestreamcontroller>Class: <code>ReadableByteStreamController</code></a></li>
+<li><a href=globals.html#class-readablestream>Class: <code>ReadableStream</code></a></li>
+<li><a href=globals.html#class-readablestreambyobreader>Class: <code>ReadableStreamBYOBReader</code></a></li>
+<li><a href=globals.html#class-readablestreambyobrequest>Class: <code>ReadableStreamBYOBRequest</code></a></li>
+<li><a href=globals.html#class-readablestreamdefaultcontroller>Class: <code>ReadableStreamDefaultController</code></a></li>
+<li><a href=globals.html#class-readablestreamdefaultreader>Class: <code>ReadableStreamDefaultReader</code></a></li>
+<li><a href=globals.html#class-request>Class: <code>Request</code></a></li>
+<li><a href=globals.html#require><code>require()</code></a></li>
+<li><a href=globals.html#class-response>Class: <code>Response</code></a></li>
+<li><span class=stability_1><a href=globals.html#sessionstorage><code>sessionStorage</code></a></span></li>
+<li><a href=globals.html#setimmediatecallback-args><code>setImmediate(callback[, ...args])</code></a></li>
+<li><a href=globals.html#setintervalcallback-delay-args><code>setInterval(callback, delay[, ...args])</code></a></li>
+<li><a href=globals.html#settimeoutcallback-delay-args><code>setTimeout(callback, delay[, ...args])</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-storage>Class: <code>Storage</code></a></span></li>
+<li><a href=globals.html#structuredclonevalue-options><code>structuredClone(value[, options])</code></a></li>
+<li><a href=globals.html#class-subtlecrypto>Class: <code>SubtleCrypto</code></a></li>
+<li><a href=globals.html#class-textdecoder>Class: <code>TextDecoder</code></a></li>
+<li><a href=globals.html#class-textdecoderstream>Class: <code>TextDecoderStream</code></a></li>
+<li><a href=globals.html#class-textencoder>Class: <code>TextEncoder</code></a></li>
+<li><a href=globals.html#class-textencoderstream>Class: <code>TextEncoderStream</code></a></li>
+<li><a href=globals.html#class-transformstream>Class: <code>TransformStream</code></a></li>
+<li><a href=globals.html#class-transformstreamdefaultcontroller>Class: <code>TransformStreamDefaultController</code></a></li>
+<li><a href=globals.html#class-url>Class: <code>URL</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-urlpattern>Class: <code>URLPattern</code></a></span></li>
+<li><a href=globals.html#class-urlsearchparams>Class: <code>URLSearchParams</code></a></li>
+<li><a href=globals.html#class-webassembly>Class: <code>WebAssembly</code></a></li>
+<li><a href=globals.html#class-websocket>Class: <code>WebSocket</code></a></li>
+<li><span class=stability_1><a href=globals.html#class-worker>Class: <code>Worker</code></a></span>
+<ul>
+<li><a href=globals.html#loading-worker-scripts>Loading worker scripts</a></li>
+<li><a href=globals.html#differences-from-the-html-standard>Differences from the HTML Standard</a></li>
+<li><a href=globals.html#web-workers-and-nodeworker_threads>Web Workers and <code>node:worker_threads</code></a></li>
+</ul>
+</li>
+<li><a href=globals.html#class-writablestream>Class: <code>WritableStream</code></a></li>
+<li><a href=globals.html#class-writablestreamdefaultcontroller>Class: <code>WritableStreamDefaultController</code></a></li>
+<li><a href=globals.html#class-writablestreamdefaultwriter>Class: <code>WritableStreamDefaultWriter</code></a></li>
+</ul>
+</li>
+</ul></details>
+        <div role=main id=apicontent>
+          <section><h2>Global objects<span><a id=globals_global_objects></a></span><span><a class=mark id=global-objects href=#global-objects>#</a></span></h2><div class=api_metadata></div><div class="api_stability api_stability_2"><p><a href=documentation.html#stability-index>Stability: 2</a> - Stable</div><p>These objects are available in all modules.<p>The following variables may appear to be global but are not. They exist only in
+the scope of <a href=modules.html>CommonJS modules</a>:<ul>
+<li><a href=modules.html#__dirname><code>__dirname</code></a></li>
+<li><a href=modules.html#__filename><code>__filename</code></a></li>
+<li><a href=modules.html#exports><code>exports</code></a></li>
+<li><a href=modules.html#module><code>module</code></a></li>
+<li><a href=modules.html#requireid><code>require()</code></a></li>
+</ul><p>The objects listed here are specific to Node.js. There are <a href=https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects>built-in objects</a>
+that are part of the JavaScript language itself, which are also globally
+accessible.</section>
+<section><h3><code>__dirname</code><span><a id=globals_dirname></a></span><span><a class=mark id=__dirname href=#__dirname>#</a></span></h3><div class=api_metadata></div><p>This variable may appear to be global but is not. See <a href=modules.html#__dirname><code>__dirname</code></a>.</section>
+<section><h3><code>__filename</code><span><a id=globals_filename></a></span><span><a class=mark id=__filename href=#__filename>#</a></span></h3><div class=api_metadata></div><p>This variable may appear to be global but is not. See <a href=modules.html#__filename><code>__filename</code></a>.</section>
+<section><h3>Class: <code>AbortController</code><span><a id=globals_class_abortcontroller></a></span><span><a class=mark id=class-abortcontroller href=#class-abortcontroller>#</a></span></h3><div class=api_metadata><span>Added in: v15.0.0, v14.17.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v15.4.0<td><p>No longer experimental.</table></details></div><p>A utility class used to signal cancelation in selected <code>Promise</code>-based APIs.
+The API is based on the Web API <a href=globals.html#class-abortcontroller><code>&lt;AbortController></code></a>.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> ac </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#8839EF;--shiki-light-font-weight:bold;--shiki-dark:#CBA6F7;--shiki-dark-font-weight:bold> new</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> AbortController</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>()</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>signal</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>addEventListener</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'abort'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> ()</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'Aborted!'</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>                           {</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> once</span><span style=color:#179299;--shiki-dark:#94E2D5>:</span><span style=color:#FE640B;--shiki-dark:#FAB387> true</span><span style=color:#7C7F93;--shiki-dark:#9399B2> }</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>abort</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>()</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>signal</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>aborted)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // Prints true</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h4><code>abortController.abort([reason])</code><span><a id=globals_abortcontroller_abort_reason></a></span><span><a class=mark id=abortcontrollerabortreason href=#abortcontrollerabortreason>#</a></span></h4><div class=api_metadata><span>Added in: v15.0.0, v14.17.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v17.2.0, v16.14.0<td><p>Added the new optional reason argument.</table></details></div><ul>
+<li><code>reason</code> <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#Data_types><code>&lt;any></code></a> An optional reason, retrievable on the <code>AbortSignal</code>'s
+<code>reason</code> property.</li>
+</ul><p>Triggers the abort signal, causing the <code>abortController.signal</code> to emit
+the <code>'abort'</code> event.</section>
+<section><h4><code>abortController.signal</code><span><a id=globals_abortcontroller_signal></a></span><span><a class=mark id=abortcontrollersignal href=#abortcontrollersignal>#</a></span></h4><div class=api_metadata><span>Added in: v15.0.0, v14.17.0</span></div><ul>
+<li>Type: <a href=globals.html#class-abortsignal><code>&lt;AbortSignal></code></a></li>
+</ul></section>
+<section><h3>Class: <code>AbortSignal</code><span><a id=globals_class_abortsignal></a></span><span><a class=mark id=class-abortsignal href=#class-abortsignal>#</a></span></h3><div class=api_metadata><span>Added in: v15.0.0, v14.17.0</span></div><ul>
+<li>Extends: <a href=events.html#class-eventtarget><code>&lt;EventTarget></code></a></li>
+</ul><p>The <code>AbortSignal</code> is used to notify observers when the
+<code>abortController.abort()</code> method is called.</section>
+<section><h4>Static method: <code>AbortSignal.abort([reason])</code><span><a id=globals_static_method_abortsignal_abort_reason></a></span><span><a class=mark id=static-method-abortsignalabortreason href=#static-method-abortsignalabortreason>#</a></span></h4><div class=api_metadata><span>Added in: v15.12.0, v14.17.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v17.2.0, v16.14.0<td><p>Added the new optional reason argument.</table></details></div><ul>
+<li><code>reason</code> <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#Data_types><code>&lt;any></code></a></li>
+<li>Returns: <a href=globals.html#class-abortsignal><code>&lt;AbortSignal></code></a></li>
+</ul><p>Returns a new already aborted <code>AbortSignal</code>.</section>
+<section><h4>Static method: <code>AbortSignal.timeout(delay)</code><span><a id=globals_static_method_abortsignal_timeout_delay></a></span><span><a class=mark id=static-method-abortsignaltimeoutdelay href=#static-method-abortsignaltimeoutdelay>#</a></span></h4><div class=api_metadata><span>Added in: v17.3.0, v16.14.0</span></div><ul>
+<li><code>delay</code> <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#number_type><code>&lt;number></code></a> The number of milliseconds to wait before triggering
+the AbortSignal.</li>
+</ul><p>Returns a new <code>AbortSignal</code> which will be aborted in <code>delay</code> milliseconds.</section>
+<section><h4>Static method: <code>AbortSignal.any(signals)</code><span><a id=globals_static_method_abortsignal_any_signals></a></span><span><a class=mark id=static-method-abortsignalanysignals href=#static-method-abortsignalanysignals>#</a></span></h4><div class=api_metadata><span>Added in: v20.3.0, v18.17.0</span></div><ul>
+<li><code>signals</code> <a href=globals.html#class-abortsignal><code>&lt;AbortSignal></code></a>[] The <code>AbortSignal</code>s of which to compose a new <code>AbortSignal</code>.</li>
+</ul><p>Returns a new <code>AbortSignal</code> which will be aborted if any of the provided
+signals are aborted. Its <a href=#abortsignalreason><code>abortSignal.reason</code></a> will be set to whichever
+one of the <code>signals</code> caused it to be aborted.</section>
+<section><h4>Event: <code>'abort'</code><span><a id=globals_event_abort></a></span><span><a class=mark id=event-abort href=#event-abort>#</a></span></h4><div class=api_metadata><span>Added in: v15.0.0, v14.17.0</span></div><p>The <code>'abort'</code> event is emitted when the <code>abortController.abort()</code> method
+is called. The callback is invoked with a single object argument with a
+single <code>type</code> property set to <code>'abort'</code>:<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> ac </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#8839EF;--shiki-light-font-weight:bold;--shiki-dark:#CBA6F7;--shiki-dark-font-weight:bold> new</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> AbortController</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>()</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// Use either the onabort property...</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>signal</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>onabort</span><span style=color:#179299;--shiki-dark:#94E2D5> =</span><span style=color:#7C7F93;--shiki-dark:#9399B2> ()</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'aborted!'</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// Or the EventTarget API...</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>signal</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>addEventListener</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'abort'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> (</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>event</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(event</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>type)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // Prints 'abort'</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>},</span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> once</span><span style=color:#179299;--shiki-dark:#94E2D5>:</span><span style=color:#FE640B;--shiki-dark:#FAB387> true</span><span style=color:#7C7F93;--shiki-dark:#9399B2> }</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>abort</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>()</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre><p>The <code>AbortController</code> with which the <code>AbortSignal</code> is associated will only
+ever trigger the <code>'abort'</code> event once. We recommended that code check
+that the <code>abortSignal.aborted</code> attribute is <code>false</code> before adding an <code>'abort'</code>
+event listener.<p>Any event listeners attached to the <code>AbortSignal</code> should use the
+<code>{ once: true }</code> option (or, if using the <code>EventEmitter</code> APIs to attach a
+listener, use the <code>once()</code> method) to ensure that the event listener is
+removed as soon as the <code>'abort'</code> event is handled. Failure to do so may
+result in memory leaks.</section>
+<section><h4><code>abortSignal.aborted</code><span><a id=globals_abortsignal_aborted></a></span><span><a class=mark id=abortsignalaborted href=#abortsignalaborted>#</a></span></h4><div class=api_metadata><span>Added in: v15.0.0, v14.17.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#boolean_type><code>&lt;boolean></code></a></li>
+</ul><p>True after the <code>AbortController</code> has been aborted.</section>
+<section><h4><code>abortSignal.onabort</code><span><a id=globals_abortsignal_onabort></a></span><span><a class=mark id=abortsignalonabort href=#abortsignalonabort>#</a></span></h4><div class=api_metadata><span>Added in: v15.0.0, v14.17.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Function><code>&lt;Function></code></a></li>
+</ul><p>An optional callback function that may be set by user code to be notified
+when the <code>abortController.abort()</code> function has been called.</section>
+<section><h4><code>abortSignal.reason</code><span><a id=globals_abortsignal_reason></a></span><span><a class=mark id=abortsignalreason href=#abortsignalreason>#</a></span></h4><div class=api_metadata><span>Added in: v17.2.0, v16.14.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#Data_types><code>&lt;any></code></a></li>
+</ul><p>An optional reason specified when the <code>AbortSignal</code> was triggered.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> ac </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#8839EF;--shiki-light-font-weight:bold;--shiki-dark:#CBA6F7;--shiki-dark-font-weight:bold> new</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> AbortController</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>()</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>abort</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#8839EF;--shiki-light-font-weight:bold;--shiki-dark:#CBA6F7;--shiki-dark-font-weight:bold>new</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> Error</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'boom!'</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>))</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(ac</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>signal</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>reason)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // Error: boom!</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h4><code>abortSignal.throwIfAborted()</code><span><a id=globals_abortsignal_throwifaborted></a></span><span><a class=mark id=abortsignalthrowifaborted href=#abortsignalthrowifaborted>#</a></span></h4><div class=api_metadata><span>Added in: v17.3.0, v16.17.0</span></div><p>If <code>abortSignal.aborted</code> is <code>true</code>, throws <code>abortSignal.reason</code>.</section>
+<section><h3><code>atob(data)</code><span><a id=globals_atob_data></a></span><span><a class=mark id=atobdata href=#atobdata>#</a></span></h3><div class=api_metadata><span>Added in: v16.0.0</span></div><div class="api_stability api_stability_3"><p>Stability: 3 - Legacy. Use <code>Buffer.from(data, 'base64')</code> instead.</div><p>Global alias for <a href=buffer.html#bufferatobdata><code>buffer.atob()</code></a>.<p>An automated migration is available (<a href=https://github.com/nodejs/userland-migrations/tree/main/recipes/buffer-atob-btoa>source</a>):<pre class="catppuccin-latte catppuccin-mocha language-bash shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>npx</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> codemod@latest</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> @nodejs/buffer-atob-btoa</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>bash</span><button class=copy-button>copy</button></div></pre></section>
+<section><h3>Class: <code>Blob</code><span><a id=globals_class_blob></a></span><span><a class=mark id=class-blob href=#class-blob>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span></div><p>See <a href=buffer.html#class-blob><code>&lt;Blob></code></a>.</section>
+<section><h3>Class: <code>BroadcastChannel</code><span><a id=globals_class_broadcastchannel></a></span><span><a class=mark id=class-broadcastchannel href=#class-broadcastchannel>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span></div><p>See <a href=worker_threads.html#class-broadcastchannel-extends-eventtarget><code>&lt;BroadcastChannel></code></a>.</section>
+<section><h3><code>btoa(data)</code><span><a id=globals_btoa_data></a></span><span><a class=mark id=btoadata href=#btoadata>#</a></span></h3><div class=api_metadata><span>Added in: v16.0.0</span></div><div class="api_stability api_stability_3"><p>Stability: 3 - Legacy. Use <code>buf.toString('base64')</code> instead.</div><p>Global alias for <a href=buffer.html#bufferbtoadata><code>buffer.btoa()</code></a>.<p>An automated migration is available (<a href=https://github.com/nodejs/userland-migrations/tree/main/recipes/buffer-atob-btoa>source</a>):<pre class="catppuccin-latte catppuccin-mocha language-bash shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>npx</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> codemod@latest</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> @nodejs/buffer-atob-btoa</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>bash</span><button class=copy-button>copy</button></div></pre></section>
+<section><h3>Class: <code>Buffer</code><span><a id=globals_class_buffer></a></span><span><a class=mark id=class-buffer href=#class-buffer>#</a></span></h3><div class=api_metadata><span>Added in: v0.1.103</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Function><code>&lt;Function></code></a></li>
+</ul><p>Used to handle binary data. See the <a href=buffer.html>buffer section</a>.</section>
+<section><h3>Class: <code>ByteLengthQueuingStrategy</code><span><a id=globals_class_bytelengthqueuingstrategy></a></span><span><a class=mark id=class-bytelengthqueuingstrategy href=#class-bytelengthqueuingstrategy>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-bytelengthqueuingstrategy><code>ByteLengthQueuingStrategy</code></a>.</section>
+<section><h3><code>clearImmediate(immediateObject)</code><span><a id=globals_clearimmediate_immediateobject></a></span><span><a class=mark id=clearimmediateimmediateobject href=#clearimmediateimmediateobject>#</a></span></h3><div class=api_metadata><span>Added in: v0.9.1</span></div><p><a href=timers.html#clearimmediateimmediate><code>clearImmediate</code></a> is described in the <a href=timers.html>timers</a> section.</section>
+<section><h3><code>clearInterval(intervalObject)</code><span><a id=globals_clearinterval_intervalobject></a></span><span><a class=mark id=clearintervalintervalobject href=#clearintervalintervalobject>#</a></span></h3><div class=api_metadata><span>Added in: v0.0.1</span></div><p><a href=timers.html#clearintervaltimeout><code>clearInterval</code></a> is described in the <a href=timers.html>timers</a> section.</section>
+<section><h3><code>clearTimeout(timeoutObject)</code><span><a id=globals_cleartimeout_timeoutobject></a></span><span><a class=mark id=cleartimeouttimeoutobject href=#cleartimeouttimeoutobject>#</a></span></h3><div class=api_metadata><span>Added in: v0.0.1</span></div><p><a href=timers.html#cleartimeouttimeout><code>clearTimeout</code></a> is described in the <a href=timers.html>timers</a> section.</section>
+<section><h3>Class: <code>CloseEvent</code><span><a id=globals_class_closeevent></a></span><span><a class=mark id=class-closeevent href=#class-closeevent>#</a></span></h3><div class=api_metadata><span>Added in: v23.0.0</span></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/CloseEvent><code>&lt;CloseEvent></code></a>. Disable this API
+with the <a href=cli.html#--no-experimental-websocket><code>--no-experimental-websocket</code></a> CLI flag.</section>
+<section><h3>Class: <code>CompressionStream</code><span><a id=globals_class_compressionstream></a></span><span><a class=mark id=class-compressionstream href=#class-compressionstream>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v24.7.0, v22.20.0<td><p>format now accepts <code>brotli</code> value.<tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-compressionstream><code>CompressionStream</code></a>.</section>
+<section><h3><code>console</code><span><a id=globals_console></a></span><span><a class=mark id=console href=#console>#</a></span></h3><div class=api_metadata><span>Added in: v0.1.100</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object><code>&lt;Object></code></a></li>
+</ul><p>Used to print to stdout and stderr. See the <a href=console.html><code>console</code></a> section.</section>
+<section><h3>Class: <code>CountQueuingStrategy</code><span><a id=globals_class_countqueuingstrategy></a></span><span><a class=mark id=class-countqueuingstrategy href=#class-countqueuingstrategy>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-countqueuingstrategy><code>CountQueuingStrategy</code></a>.</section>
+<section><h3>Class: <code>Crypto</code><span><a id=globals_class_crypto></a></span><span><a class=mark id=class-crypto href=#class-crypto>#</a></span></h3><div class=api_metadata><span>Added in: v17.6.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.0.0<td><p>No longer experimental.<tr><td>v19.0.0<td><p>No longer behind <code>--experimental-global-webcrypto</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=webcrypto.html#class-crypto><code>&lt;Crypto></code></a>. This global is available
+only if the Node.js binary was compiled with including support for the <code>node:crypto</code> module.</section>
+<section><h3><code>crypto</code><span><a id=globals_crypto></a></span><span><a class=mark id=crypto href=#crypto>#</a></span></h3><div class=api_metadata><span>Added in: v17.6.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.0.0<td><p>No longer experimental.<tr><td>v19.0.0<td><p>No longer behind <code>--experimental-global-webcrypto</code> CLI flag.</table></details></div><p>A browser-compatible implementation of the <a href=webcrypto.html>Web Crypto API</a>.</section>
+<section><h3>Class: <code>CryptoKey</code><span><a id=globals_class_cryptokey></a></span><span><a class=mark id=class-cryptokey href=#class-cryptokey>#</a></span></h3><div class=api_metadata><span>Added in: v17.6.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.0.0<td><p>No longer experimental.<tr><td>v19.0.0<td><p>No longer behind <code>--experimental-global-webcrypto</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=webcrypto.html#class-cryptokey><code>&lt;CryptoKey></code></a>. This global is available
+only if the Node.js binary was compiled with including support for the <code>node:crypto</code> module.</section>
+<section><h3>Class: <code>CustomEvent</code><span><a id=globals_class_customevent></a></span><span><a class=mark id=class-customevent href=#class-customevent>#</a></span></h3><div class=api_metadata><span>Added in: v18.7.0, v16.17.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.0.0<td><p>No longer experimental.<tr><td>v22.1.0, v20.13.0<td><p>CustomEvent is now stable.<tr><td>v19.0.0<td><p>No longer behind <code>--experimental-global-customevent</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=events.html#class-customevent><code>&lt;CustomEvent></code></a>.</section>
+<section><h3>Class: <code>DecompressionStream</code><span><a id=globals_class_decompressionstream></a></span><span><a class=mark id=class-decompressionstream href=#class-decompressionstream>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v24.7.0, v22.20.0<td><p>format now accepts <code>brotli</code> value.<tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-decompressionstream><code>DecompressionStream</code></a>.</section>
+<section><h3>Class: <code>DOMException</code><span><a id=globals_class_domexception></a></span><span><a class=mark id=class-domexception href=#class-domexception>#</a></span></h3><div class=api_metadata><span>Added in: v17.0.0</span></div><p>The WHATWG <a href=https://developer.mozilla.org/docs/Web/API/DOMException><code>&lt;DOMException></code></a> class.</section>
+<section><h3><code>ErrorEvent</code><span><a id=globals_errorevent></a></span><span><a class=mark id=errorevent href=#errorevent>#</a></span></h3><div class=api_metadata><span>Added in: v25.0.0</span></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/ErrorEvent><code>&lt;ErrorEvent></code></a>.</section>
+<section><h3>Class: <code>Event</code><span><a id=globals_class_event></a></span><span><a class=mark id=class-event href=#class-event>#</a></span></h3><div class=api_metadata><span>Added in: v15.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v15.4.0<td><p>No longer experimental.</table></details></div><p>A browser-compatible implementation of the <code>Event</code> class. See
+<a href=events.html#eventtarget-and-event-api><code>EventTarget</code> and <code>Event</code> API</a> for more details.</section>
+<section><h3>Class: <code>EventSource</code><span><a id=globals_class_eventsource></a></span><span><a class=mark id=class-eventsource href=#class-eventsource>#</a></span></h3><div class=api_metadata><span>Added in: v22.3.0, v20.18.0</span></div><div class="api_stability api_stability_1"><p>Stability: 1 - Experimental. Enable this API with the <a href=cli.html#--experimental-eventsource><code>--experimental-eventsource</code></a>
+CLI flag.</div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/EventSource><code>&lt;EventSource></code></a>.</section>
+<section><h3>Class: <code>EventTarget</code><span><a id=globals_class_eventtarget></a></span><span><a class=mark id=class-eventtarget href=#class-eventtarget>#</a></span></h3><div class=api_metadata><span>Added in: v15.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v15.4.0<td><p>No longer experimental.</table></details></div><p>A browser-compatible implementation of the <code>EventTarget</code> class. See
+<a href=events.html#eventtarget-and-event-api><code>EventTarget</code> and <code>Event</code> API</a> for more details.</section>
+<section><h3><code>exports</code><span><a id=globals_exports></a></span><span><a class=mark id=exports href=#exports>#</a></span></h3><div class=api_metadata></div><p>This variable may appear to be global but is not. See <a href=modules.html#exports><code>exports</code></a>.</section>
+<section><h3><code>fetch</code><span><a id=globals_fetch></a></span><span><a class=mark id=fetch href=#fetch>#</a></span></h3><div class=api_metadata><span>Added in: v17.5.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v21.0.0<td><p>No longer experimental.<tr><td>v18.0.0<td><p>No longer behind <code>--experimental-fetch</code> CLI flag.</table></details></div><p>A browser-compatible implementation of the <a href=https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch><code>fetch()</code></a> function.<pre class="catppuccin-latte catppuccin-mocha language-mjs shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code class="catppuccin-latte catppuccin-mocha language-mjs mjs shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 language=mjs><span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> res </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> await</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> fetch</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'https://nodejs.org/api/documentation.json'</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>if</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> (res</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>ok) </span><span style=color:#7C7F93;--shiki-dark:#9399B2>{</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>  const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> data </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> await</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> res</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>json</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>()</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(data)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>mjs</span><button class=copy-button>copy</button></div></pre><p>The implementation is based upon <a href=https://undici.nodejs.org>undici</a>, an HTTP/1.1 client
+written from scratch for Node.js. You can figure out which version of <code>undici</code> is bundled
+in your Node.js process reading the <code>process.versions.undici</code> property.</section>
+<section><h4>Custom dispatcher<span><a id=globals_custom_dispatcher></a></span><span><a class=mark id=custom-dispatcher href=#custom-dispatcher>#</a></span></h4><div class=api_metadata></div><p>You can use a custom dispatcher to dispatch requests passing it in fetch's options object.
+The dispatcher must be compatible with <code>undici</code>'s
+<a href=https://undici.nodejs.org/api/Dispatcher><code>Dispatcher</code> class</a>.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>fetch</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(url</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> dispatcher</span><span style=color:#179299;--shiki-dark:#94E2D5>:</span><span style=color:#8839EF;--shiki-light-font-weight:bold;--shiki-dark:#CBA6F7;--shiki-dark-font-weight:bold> new</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> MyAgent</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>() </span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre><p>It is possible to change the global dispatcher in Node.js by installing <code>undici</code> and using
+the <code>setGlobalDispatcher()</code> method. Calling this method will affect both <code>undici</code> and
+Node.js.<pre class="catppuccin-latte catppuccin-mocha language-mjs shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code class="catppuccin-latte catppuccin-mocha language-mjs mjs shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 language=mjs><span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>import</span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> setGlobalDispatcher </span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> from</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> 'undici'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>setGlobalDispatcher</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#8839EF;--shiki-light-font-weight:bold;--shiki-dark:#CBA6F7;--shiki-dark-font-weight:bold>new</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> MyAgent</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>())</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>mjs</span><button class=copy-button>copy</button></div></pre></section>
+<section><h4>Related classes<span><a id=globals_related_classes></a></span><span><a class=mark id=related-classes href=#related-classes>#</a></span></h4><div class=api_metadata></div><p>The following globals are available to use with <code>fetch</code>:<ul>
+<li><a href=#class-formdata><code>FormData</code></a></li>
+<li><a href=#class-headers><code>Headers</code></a></li>
+<li><a href=#class-request><code>Request</code></a></li>
+<li><a href=#class-response><code>Response</code></a></li>
+</ul></section>
+<section><h3>Class: <code>File</code><span><a id=globals_class_file></a></span><span><a class=mark id=class-file href=#class-file>#</a></span></h3><div class=api_metadata><span>Added in: v20.0.0</span></div><p>See <a href=buffer.html#class-file><code>&lt;File></code></a>.</section>
+<section><h3>Class: <code>FormData</code><span><a id=globals_class_formdata></a></span><span><a class=mark id=class-formdata href=#class-formdata>#</a></span></h3><div class=api_metadata><span>Added in: v17.6.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v21.0.0<td><p>No longer experimental.<tr><td>v18.0.0<td><p>No longer behind <code>--experimental-fetch</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/FormData><code>&lt;FormData></code></a>.</section>
+<section><h3><code>global</code><span><a id=globals_global></a></span><span><a class=mark id=global href=#global>#</a></span></h3><div class=api_metadata><span>Added in: v0.1.27</span></div><div class="api_stability api_stability_3"><p>Stability: 3 - Legacy. Use <a href=https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis><code>globalThis</code></a> instead.</div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object><code>&lt;Object></code></a> The global namespace object.</li>
+</ul><p>In browsers, the top-level scope has traditionally been the global scope. This
+means that <code>var something</code> will define a new global variable, except within
+ECMAScript modules. In Node.js, this is different. The top-level scope is not
+the global scope; <code>var something</code> inside a Node.js module will be local to that
+module, regardless of whether it is a <a href=modules.html>CommonJS module</a> or an
+<a href=esm.html>ECMAScript module</a>.</section>
+<section><h3>Class: <code>Headers</code><span><a id=globals_class_headers></a></span><span><a class=mark id=class-headers href=#class-headers>#</a></span></h3><div class=api_metadata><span>Added in: v17.5.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v21.0.0<td><p>No longer experimental.<tr><td>v18.0.0<td><p>No longer behind <code>--experimental-fetch</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/Headers><code>&lt;Headers></code></a>.</section>
+<section><h3><code>localStorage</code><span><a id=globals_localstorage></a></span><span><a class=mark id=localstorage href=#localstorage>#</a></span></h3><div class=api_metadata><span>Added in: v22.4.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v26.0.0<td><p>Accessing the <code>localStorage</code> global without providing <code>--localstorage-file</code> now throws a <code>DOMException</code>, for compliance with the Web Storage specification.<tr><td>v25.0.0<td><p>When webstorage is enabled and <code>--localstorage-file</code> is not provided, accessing the <code>localStorage</code> global now returns an empty object.<tr><td>v25.0.0<td><p>This API is no longer behind <code>--experimental-webstorage</code> runtime flag.</table></details></div><div class="api_stability api_stability_1"><p>Stability: 1.2 - Release candidate. Disable this API with <a href=cli.html#--no-experimental-webstorage><code>--no-experimental-webstorage</code></a>.</div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage><code>localStorage</code></a>. Data is stored
+unencrypted in the file specified by the <a href=cli.html#--localstorage-filefile><code>--localstorage-file</code></a> CLI flag.
+The maximum amount of data that can be stored is 10 MB.
+Any modification of this data outside of the Web Storage API is not supported.
+<code>localStorage</code> data is not stored per user or per request when used in the context
+of a server, it is shared across all users and requests.</section>
+<section><h3>Class: <code>MessageChannel</code><span><a id=globals_class_messagechannel></a></span><span><a class=mark id=class-messagechannel href=#class-messagechannel>#</a></span></h3><div class=api_metadata><span>Added in: v15.0.0</span></div><p>The <code>MessageChannel</code> class. See <a href=worker_threads.html#class-messagechannel><code>MessageChannel</code></a> for more details.</section>
+<section><h3>Class: <code>MessageEvent</code><span><a id=globals_class_messageevent></a></span><span><a class=mark id=class-messageevent href=#class-messageevent>#</a></span></h3><div class=api_metadata><span>Added in: v15.0.0</span></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/MessageEvent><code>&lt;MessageEvent></code></a>.</section>
+<section><h3>Class: <code>MessagePort</code><span><a id=globals_class_messageport></a></span><span><a class=mark id=class-messageport href=#class-messageport>#</a></span></h3><div class=api_metadata><span>Added in: v15.0.0</span></div><p>The <code>MessagePort</code> class. See <a href=worker_threads.html#class-messageport><code>MessagePort</code></a> for more details.</section>
+<section><h3><code>module</code><span><a id=globals_module></a></span><span><a class=mark id=module href=#module>#</a></span></h3><div class=api_metadata></div><p>This variable may appear to be global but is not. See <a href=modules.html#module><code>module</code></a>.</section>
+<section><h3>Class: <code>Navigator</code><span><a id=globals_class_navigator></a></span><span><a class=mark id=class-navigator href=#class-navigator>#</a></span></h3><div class=api_metadata><span>Added in: v21.0.0</span></div><div class="api_stability api_stability_1"><p>Stability: 1.1 - Active development. Disable this API with the
+<a href=cli.html#--no-experimental-global-navigator><code>--no-experimental-global-navigator</code></a> CLI flag.</div><p>A partial implementation of the <a href=https://html.spec.whatwg.org/multipage/system-state.html#the-navigator-object>Navigator API</a>.</section>
+<section><h3><code>navigator</code><span><a id=globals_navigator></a></span><span><a class=mark id=navigator href=#navigator>#</a></span></h3><div class=api_metadata><span>Added in: v21.0.0</span></div><div class="api_stability api_stability_1"><p>Stability: 1.1 - Active development. Disable this API with the
+<a href=cli.html#--no-experimental-global-navigator><code>--no-experimental-global-navigator</code></a> CLI flag.</div><p>A partial implementation of <a href=https://developer.mozilla.org/en-US/docs/Web/API/Window/navigator><code>window.navigator</code></a>.</section>
+<section><h4><code>navigator.hardwareConcurrency</code><span><a id=globals_navigator_hardwareconcurrency></a></span><span><a class=mark id=navigatorhardwareconcurrency href=#navigatorhardwareconcurrency>#</a></span></h4><div class=api_metadata><span>Added in: v21.0.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#number_type><code>&lt;number></code></a></li>
+</ul><p>The <code>navigator.hardwareConcurrency</code> read-only property returns the number of
+logical processors available to the current Node.js instance.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`This process is running on </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>hardwareConcurrency</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> logical processors`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h4><code>navigator.language</code><span><a id=globals_navigator_language></a></span><span><a class=mark id=navigatorlanguage href=#navigatorlanguage>#</a></span></h4><div class=api_metadata><span>Added in: v21.2.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#string_type><code>&lt;string></code></a></li>
+</ul><p>The <code>navigator.language</code> read-only property returns a string representing the
+preferred language of the Node.js instance. The language will be determined by
+the ICU library used by Node.js at runtime based on the
+default language of the operating system.<p>The value is representing the language version as defined in <a href=https://www.rfc-editor.org/rfc/rfc5646.txt>RFC 5646</a>.<p>The fallback value on builds without ICU is <code>'en-US'</code>.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`The preferred language of the Node.js instance has the tag '</span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>language</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h4><code>navigator.languages</code><span><a id=globals_navigator_languages></a></span><span><a class=mark id=navigatorlanguages href=#navigatorlanguages>#</a></span></h4><div class=api_metadata><span>Added in: v21.2.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#string_type><code>&lt;string></code></a>[]</li>
+</ul><p>The <code>navigator.languages</code> read-only property returns an array of strings
+representing the preferred languages of the Node.js instance.
+By default <code>navigator.languages</code> contains only the value of
+<code>navigator.language</code>, which will be determined by the ICU library used by
+Node.js at runtime based on the default language of the operating system.<p>The fallback value on builds without ICU is <code>['en-US']</code>.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`The preferred languages are '</span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>languages</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h4><code>navigator.locks</code><span><a id=globals_navigator_locks></a></span><span><a class=mark id=navigatorlocks href=#navigatorlocks>#</a></span></h4><div class=api_metadata><span>Added in: v24.5.0</span></div><div class="api_stability api_stability_1"><p>Stability: 1 - Experimental</div><p>The <code>navigator.locks</code> read-only property returns a <a href=worker_threads.html#class-lockmanager><code>LockManager</code></a> instance that
+can be used to coordinate access to resources that may be shared across multiple
+threads within the same process. This global implementation matches the semantics
+of the <a href=https://developer.mozilla.org/en-US/docs/Web/API/LockManager>browser <code>LockManager</code></a> API.<pre style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 class=shiki><input class=js-flavor-toggle type=checkbox><code class="catppuccin-latte catppuccin-mocha language-mjs mjs shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 language=mjs><span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// Request an exclusive lock</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>await</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>locks</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>request</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'my_resource'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> async</span><span style=color:#7C7F93;--shiki-dark:#9399B2> (</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>lock</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // The lock has been acquired.</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`Lock acquired: </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>lock</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>name</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // Lock is automatically released when the function returns</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// Request a shared lock</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>await</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>locks</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>request</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'shared_resource'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> mode</span><span style=color:#179299;--shiki-dark:#94E2D5>:</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> 'shared'</span><span style=color:#7C7F93;--shiki-dark:#9399B2> },</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> async</span><span style=color:#7C7F93;--shiki-dark:#9399B2> (</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>lock</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // Multiple shared locks can be held simultaneously</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`Shared lock acquired: </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>lock</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>name</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><code class="catppuccin-latte catppuccin-mocha cjs language-cjs shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 language=cjs><span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// Request an exclusive lock</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>locks</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>request</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'my_resource'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> async</span><span style=color:#7C7F93;--shiki-dark:#9399B2> (</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>lock</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // The lock has been acquired.</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`Lock acquired: </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>lock</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>name</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // Lock is automatically released when the function returns</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>then</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#7C7F93;--shiki-dark:#9399B2>()</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'Lock released'</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// Request a shared lock</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>locks</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>request</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'shared_resource'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> mode</span><span style=color:#179299;--shiki-dark:#94E2D5>:</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> 'shared'</span><span style=color:#7C7F93;--shiki-dark:#9399B2> },</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> async</span><span style=color:#7C7F93;--shiki-dark:#9399B2> (</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>lock</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>  // Multiple shared locks can be held simultaneously</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`Shared lock acquired: </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>lock</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>name</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>then</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#7C7F93;--shiki-dark:#9399B2>()</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'Shared lock released'</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>javascript</span><button class=copy-button>copy</button></div></pre><p>See <a href=worker_threads.html#worker_threadslocks><code>worker_threads.locks</code></a> for detailed API documentation.</section>
+<section><h4><code>navigator.platform</code><span><a id=globals_navigator_platform></a></span><span><a class=mark id=navigatorplatform href=#navigatorplatform>#</a></span></h4><div class=api_metadata><span>Added in: v21.2.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#string_type><code>&lt;string></code></a></li>
+</ul><p>The <code>navigator.platform</code> read-only property returns a string identifying the
+platform on which the Node.js instance is running.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`This process is running on </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>platform</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h4><code>navigator.userAgent</code><span><a id=globals_navigator_useragent></a></span><span><a class=mark id=navigatoruseragent href=#navigatoruseragent>#</a></span></h4><div class=api_metadata><span>Added in: v21.1.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Data_structures#string_type><code>&lt;string></code></a></li>
+</ul><p>The <code>navigator.userAgent</code> read-only property returns user agent
+consisting of the runtime name and major version number.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`The user-agent is </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>navigator</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>userAgent</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic> // Prints "Node.js/21"</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h3><code>performance</code><span><a id=globals_performance></a></span><span><a class=mark id=performance href=#performance>#</a></span></h3><div class=api_metadata><span>Added in: v16.0.0</span></div><p>The <a href=perf_hooks.html#perf_hooksperformance><code>perf_hooks.performance</code></a> object.</section>
+<section><h3>Class: <code>PerformanceEntry</code><span><a id=globals_class_performanceentry></a></span><span><a class=mark id=class-performanceentry href=#class-performanceentry>#</a></span></h3><div class=api_metadata><span>Added in: v19.0.0</span></div><p>The <code>PerformanceEntry</code> class. See <a href=perf_hooks.html#class-performanceentry><code>PerformanceEntry</code></a> for more details.</section>
+<section><h3>Class: <code>PerformanceMark</code><span><a id=globals_class_performancemark></a></span><span><a class=mark id=class-performancemark href=#class-performancemark>#</a></span></h3><div class=api_metadata><span>Added in: v19.0.0</span></div><p>The <code>PerformanceMark</code> class. See <a href=perf_hooks.html#class-performancemark><code>PerformanceMark</code></a> for more details.</section>
+<section><h3>Class: <code>PerformanceMeasure</code><span><a id=globals_class_performancemeasure></a></span><span><a class=mark id=class-performancemeasure href=#class-performancemeasure>#</a></span></h3><div class=api_metadata><span>Added in: v19.0.0</span></div><p>The <code>PerformanceMeasure</code> class. See <a href=perf_hooks.html#class-performancemeasure><code>PerformanceMeasure</code></a> for more details.</section>
+<section><h3>Class: <code>PerformanceObserver</code><span><a id=globals_class_performanceobserver></a></span><span><a class=mark id=class-performanceobserver href=#class-performanceobserver>#</a></span></h3><div class=api_metadata><span>Added in: v19.0.0</span></div><p>The <code>PerformanceObserver</code> class. See <a href=perf_hooks.html#class-performanceobserver><code>PerformanceObserver</code></a> for more details.</section>
+<section><h3>Class: <code>PerformanceObserverEntryList</code><span><a id=globals_class_performanceobserverentrylist></a></span><span><a class=mark id=class-performanceobserverentrylist href=#class-performanceobserverentrylist>#</a></span></h3><div class=api_metadata><span>Added in: v19.0.0</span></div><p>The <code>PerformanceObserverEntryList</code> class. See
+<a href=perf_hooks.html#class-performanceobserverentrylist><code>PerformanceObserverEntryList</code></a> for more details.</section>
+<section><h3>Class: <code>PerformanceResourceTiming</code><span><a id=globals_class_performanceresourcetiming></a></span><span><a class=mark id=class-performanceresourcetiming href=#class-performanceresourcetiming>#</a></span></h3><div class=api_metadata><span>Added in: v19.0.0</span></div><p>The <code>PerformanceResourceTiming</code> class. See <a href=perf_hooks.html#class-performanceresourcetiming><code>PerformanceResourceTiming</code></a> for
+more details.</section>
+<section><h3><code>process</code><span><a id=globals_process></a></span><span><a class=mark id=process href=#process>#</a></span></h3><div class=api_metadata><span>Added in: v0.1.7</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object><code>&lt;Object></code></a></li>
+</ul><p>The process object. See the <a href=process.html#process><code>process</code> object</a> section.</section>
+<section><h3><code>queueMicrotask(callback)</code><span><a id=globals_queuemicrotask_callback></a></span><span><a class=mark id=queuemicrotaskcallback href=#queuemicrotaskcallback>#</a></span></h3><div class=api_metadata><span>Added in: v11.0.0</span></div><ul>
+<li><code>callback</code> <a href=https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Function><code>&lt;Function></code></a> Function to be queued.</li>
+</ul><p>The <code>queueMicrotask()</code> method queues a microtask to invoke <code>callback</code>. If
+<code>callback</code> throws an exception, the <a href=process.html#process><code>process</code> object</a> <code>'uncaughtException'</code>
+event will be emitted.<p>The microtask queue is managed by V8 and may be used in a similar manner to
+the <a href=process.html#processnexttickcallback-args><code>process.nextTick()</code></a> queue, which is managed by Node.js. The
+<code>process.nextTick()</code> queue is always processed before the microtask queue
+within each turn of the Node.js event loop.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// Here, `queueMicrotask()` is used to ensure the 'load' event is always</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// emitted asynchronously, and therefore consistently. Using</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// `process.nextTick()` here would result in the 'load' event always emitting</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// before any other promise jobs.</span></span>
+<span class=line></span>
+<span class=line><span style=color:#DF8E1D;--shiki-light-font-style:italic;--shiki-dark:#F9E2AF;--shiki-dark-font-style:italic>DataHandler</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>prototype</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>load</span><span style=color:#179299;--shiki-dark:#94E2D5> =</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> async</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> function</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> load</span><span style=color:#7C7F93;--shiki-dark:#9399B2>(</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>key</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>  const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> hit </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#D20F39;--shiki-dark:#F38BA8> this</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>_cache</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>get</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(key)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>  if</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> (hit </span><span style=color:#179299;--shiki-dark:#94E2D5>!==</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> undefined</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>) </span><span style=color:#7C7F93;--shiki-dark:#9399B2>{</span></span>
+<span class=line><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>    queueMicrotask</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#7C7F93;--shiki-dark:#9399B2>()</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#D20F39;--shiki-dark:#F38BA8>      this</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>emit</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'load'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> hit)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>    }</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>    return</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>  }</span></span>
+<span class=line></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>  const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> data </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> await</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> fetchData</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(key)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#D20F39;--shiki-dark:#F38BA8>  this</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>_cache</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>set</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(key</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> data)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#D20F39;--shiki-dark:#F38BA8>  this</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>emit</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'load'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> data)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>};</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre></section>
+<section><h3>Class: <code>QuotaExceededError</code><span><a id=globals_class_quotaexceedederror></a></span><span><a class=mark id=class-quotaexceedederror href=#class-quotaexceedederror>#</a></span></h3><div class=api_metadata><span>Added in: v26.0.0</span></div><p>The WHATWG <a href=https://developer.mozilla.org/docs/Web/API/QuotaExceededError><code>&lt;QuotaExceededError></code></a> class. Extends <a href=https://developer.mozilla.org/docs/Web/API/DOMException><code>&lt;DOMException></code></a>.</section>
+<section><h3>Class: <code>ReadableByteStreamController</code><span><a id=globals_class_readablebytestreamcontroller></a></span><span><a class=mark id=class-readablebytestreamcontroller href=#class-readablebytestreamcontroller>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-readablebytestreamcontroller><code>ReadableByteStreamController</code></a>.</section>
+<section><h3>Class: <code>ReadableStream</code><span><a id=globals_class_readablestream></a></span><span><a class=mark id=class-readablestream href=#class-readablestream>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-readablestream><code>ReadableStream</code></a>.</section>
+<section><h3>Class: <code>ReadableStreamBYOBReader</code><span><a id=globals_class_readablestreambyobreader></a></span><span><a class=mark id=class-readablestreambyobreader href=#class-readablestreambyobreader>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-readablestreambyobreader><code>ReadableStreamBYOBReader</code></a>.</section>
+<section><h3>Class: <code>ReadableStreamBYOBRequest</code><span><a id=globals_class_readablestreambyobrequest></a></span><span><a class=mark id=class-readablestreambyobrequest href=#class-readablestreambyobrequest>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-readablestreambyobrequest><code>ReadableStreamBYOBRequest</code></a>.</section>
+<section><h3>Class: <code>ReadableStreamDefaultController</code><span><a id=globals_class_readablestreamdefaultcontroller></a></span><span><a class=mark id=class-readablestreamdefaultcontroller href=#class-readablestreamdefaultcontroller>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-readablestreamdefaultcontroller><code>ReadableStreamDefaultController</code></a>.</section>
+<section><h3>Class: <code>ReadableStreamDefaultReader</code><span><a id=globals_class_readablestreamdefaultreader></a></span><span><a class=mark id=class-readablestreamdefaultreader href=#class-readablestreamdefaultreader>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-readablestreamdefaultreader><code>ReadableStreamDefaultReader</code></a>.</section>
+<section><h3>Class: <code>Request</code><span><a id=globals_class_request></a></span><span><a class=mark id=class-request href=#class-request>#</a></span></h3><div class=api_metadata><span>Added in: v17.5.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v21.0.0<td><p>No longer experimental.<tr><td>v18.0.0<td><p>No longer behind <code>--experimental-fetch</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/Request><code>&lt;Request></code></a>.</section>
+<section><h3><code>require()</code><span><a id=globals_require></a></span><span><a class=mark id=require href=#require>#</a></span></h3><div class=api_metadata></div><p>This variable may appear to be global but is not. See <a href=modules.html#requireid><code>require()</code></a>.</section>
+<section><h3>Class: <code>Response</code><span><a id=globals_class_response></a></span><span><a class=mark id=class-response href=#class-response>#</a></span></h3><div class=api_metadata><span>Added in: v17.5.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v21.0.0<td><p>No longer experimental.<tr><td>v18.0.0<td><p>No longer behind <code>--experimental-fetch</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/Response><code>&lt;Response></code></a>.</section>
+<section><h3><code>sessionStorage</code><span><a id=globals_sessionstorage></a></span><span><a class=mark id=sessionstorage href=#sessionstorage>#</a></span></h3><div class=api_metadata><span>Added in: v22.4.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v25.0.0<td><p>This API is no longer behind <code>--experimental-webstorage</code> runtime flag.</table></details></div><div class="api_stability api_stability_1"><p>Stability: 1.2 - Release candidate. Disable this API with <a href=cli.html#--no-experimental-webstorage><code>--no-experimental-webstorage</code></a>.</div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage><code>sessionStorage</code></a>. Data is stored in
+memory, with a storage quota of 10 MB. <code>sessionStorage</code> data persists only within
+the currently running process, and is not shared between workers.</section>
+<section><h3><code>setImmediate(callback[, ...args])</code><span><a id=globals_setimmediate_callback_args></a></span><span><a class=mark id=setimmediatecallback-args href=#setimmediatecallback-args>#</a></span></h3><div class=api_metadata><span>Added in: v0.9.1</span></div><p><a href=timers.html#setimmediatecallback-args><code>setImmediate</code></a> is described in the <a href=timers.html>timers</a> section.</section>
+<section><h3><code>setInterval(callback, delay[, ...args])</code><span><a id=globals_setinterval_callback_delay_args></a></span><span><a class=mark id=setintervalcallback-delay-args href=#setintervalcallback-delay-args>#</a></span></h3><div class=api_metadata><span>Added in: v0.0.1</span></div><p><a href=timers.html#setintervalcallback-delay-args><code>setInterval</code></a> is described in the <a href=timers.html>timers</a> section.</section>
+<section><h3><code>setTimeout(callback, delay[, ...args])</code><span><a id=globals_settimeout_callback_delay_args></a></span><span><a class=mark id=settimeoutcallback-delay-args href=#settimeoutcallback-delay-args>#</a></span></h3><div class=api_metadata><span>Added in: v0.0.1</span></div><p><a href=timers.html#settimeoutcallback-delay-args><code>setTimeout</code></a> is described in the <a href=timers.html>timers</a> section.</section>
+<section><h3>Class: <code>Storage</code><span><a id=globals_class_storage></a></span><span><a class=mark id=class-storage href=#class-storage>#</a></span></h3><div class=api_metadata><span>Added in: v22.4.0</span></div><div class="api_stability api_stability_1"><p>Stability: 1.2 - Release candidate. Disable this API with <a href=cli.html#--no-experimental-webstorage><code>--no-experimental-webstorage</code></a>.</div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/Storage><code>&lt;Storage></code></a>.</section>
+<section><h3><code>structuredClone(value[, options])</code><span><a id=globals_structuredclone_value_options></a></span><span><a class=mark id=structuredclonevalue-options href=#structuredclonevalue-options>#</a></span></h3><div class=api_metadata><span>Added in: v17.0.0</span></div><p>The WHATWG <a href=https://developer.mozilla.org/en-US/docs/Web/API/Window/structuredClone><code>structuredClone</code></a> method.</section>
+<section><h3>Class: <code>SubtleCrypto</code><span><a id=globals_class_subtlecrypto></a></span><span><a class=mark id=class-subtlecrypto href=#class-subtlecrypto>#</a></span></h3><div class=api_metadata><span>Added in: v17.6.0, v16.15.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v19.0.0<td><p>No longer behind <code>--experimental-global-webcrypto</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=webcrypto.html#class-subtlecrypto><code>&lt;SubtleCrypto></code></a>. This global is available
+only if the Node.js binary was compiled with including support for the <code>node:crypto</code> module.</section>
+<section><h3>Class: <code>TextDecoder</code><span><a id=globals_class_textdecoder></a></span><span><a class=mark id=class-textdecoder href=#class-textdecoder>#</a></span></h3><div class=api_metadata><span>Added in: v11.0.0</span></div><p>The WHATWG <code>TextDecoder</code> class. See the <a href=util.html#class-utiltextdecoder><code>TextDecoder</code></a> section.</section>
+<section><h3>Class: <code>TextDecoderStream</code><span><a id=globals_class_textdecoderstream></a></span><span><a class=mark id=class-textdecoderstream href=#class-textdecoderstream>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-textdecoderstream><code>TextDecoderStream</code></a>.</section>
+<section><h3>Class: <code>TextEncoder</code><span><a id=globals_class_textencoder></a></span><span><a class=mark id=class-textencoder href=#class-textencoder>#</a></span></h3><div class=api_metadata><span>Added in: v11.0.0</span></div><p>The WHATWG <code>TextEncoder</code> class. See the <a href=util.html#class-utiltextencoder><code>TextEncoder</code></a> section.</section>
+<section><h3>Class: <code>TextEncoderStream</code><span><a id=globals_class_textencoderstream></a></span><span><a class=mark id=class-textencoderstream href=#class-textencoderstream>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-textencoderstream><code>TextEncoderStream</code></a>.</section>
+<section><h3>Class: <code>TransformStream</code><span><a id=globals_class_transformstream></a></span><span><a class=mark id=class-transformstream href=#class-transformstream>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-transformstream><code>TransformStream</code></a>.</section>
+<section><h3>Class: <code>TransformStreamDefaultController</code><span><a id=globals_class_transformstreamdefaultcontroller></a></span><span><a class=mark id=class-transformstreamdefaultcontroller href=#class-transformstreamdefaultcontroller>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-transformstreamdefaultcontroller><code>TransformStreamDefaultController</code></a>.</section>
+<section><h3>Class: <code>URL</code><span><a id=globals_class_url></a></span><span><a class=mark id=class-url href=#class-url>#</a></span></h3><div class=api_metadata><span>Added in: v10.0.0</span></div><p>The WHATWG <code>URL</code> class. See the <a href=url.html#class-url><code>URL</code></a> section.</section>
+<section><h3>Class: <code>URLPattern</code><span><a id=globals_class_urlpattern></a></span><span><a class=mark id=class-urlpattern href=#class-urlpattern>#</a></span></h3><div class=api_metadata><span>Added in: v24.0.0</span></div><div class="api_stability api_stability_1"><p>Stability: 1 - Experimental</div><p>The WHATWG <code>URLPattern</code> class. See the <a href=url.html#class-urlpattern><code>URLPattern</code></a> section.</section>
+<section><h3>Class: <code>URLSearchParams</code><span><a id=globals_class_urlsearchparams></a></span><span><a class=mark id=class-urlsearchparams href=#class-urlsearchparams>#</a></span></h3><div class=api_metadata><span>Added in: v10.0.0</span></div><p>The WHATWG <code>URLSearchParams</code> class. See the <a href=url.html#class-urlsearchparams><code>URLSearchParams</code></a> section.</section>
+<section><h3>Class: <code>WebAssembly</code><span><a id=globals_class_webassembly></a></span><span><a class=mark id=class-webassembly href=#class-webassembly>#</a></span></h3><div class=api_metadata><span>Added in: v8.0.0</span></div><ul>
+<li>Type: <a href=https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object><code>&lt;Object></code></a></li>
+</ul><p>The object that acts as the namespace for all W3C
+<a href=https://webassembly.org>WebAssembly</a> related functionality. See the
+<a href=https://developer.mozilla.org/en-US/docs/WebAssembly>Mozilla Developer Network</a> for usage and compatibility.</section>
+<section><h3>Class: <code>WebSocket</code><span><a id=globals_class_websocket></a></span><span><a class=mark id=class-websocket href=#class-websocket>#</a></span></h3><div class=api_metadata><span>Added in: v21.0.0, v20.10.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v22.4.0<td><p>No longer experimental.<tr><td>v22.0.0<td><p>No longer behind <code>--experimental-websocket</code> CLI flag.</table></details></div><p>A browser-compatible implementation of <a href=https://developer.mozilla.org/docs/Web/API/WebSocket><code>&lt;WebSocket></code></a>. Disable this API
+with the <a href=cli.html#--no-experimental-websocket><code>--no-experimental-websocket</code></a> CLI flag.</section>
+<section><h3>Class: <code>Worker</code><span><a id=globals_class_worker></a></span><span><a class=mark id=class-worker href=#class-worker>#</a></span></h3><div class=api_metadata><span>Added in: v26.9.0</span></div><div class="api_stability api_stability_1"><p>Stability: 1 - Experimental. Enable this API with the
+<a href=cli.html#--experimental-web-worker><code>--experimental-web-worker</code></a> CLI flag.</div><p>A mostly browser-compatible implementation of Web Workers of the <a href=https://html.spec.whatwg.org/multipage/workers.html>HTML Standard</a>,
+implemented on top of <a href=worker_threads.html><code>node:worker_threads</code></a>. Threads created with it
+are given the <a href=https://developer.mozilla.org/docs/Web/API/DedicatedWorkerGlobalScope><code>&lt;DedicatedWorkerGlobalScope></code></a> API (<code>self</code>,
+<code>name</code>, <code>location</code>, <code>navigator</code>, <code>postMessage()</code>, <code>close()</code>, and
+<code>importScripts()</code>), in addition to the usual Node.js globals, such as <code>process</code>.<pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// worker.js</span></span>
+<span class=line><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>addEventListener</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'message'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> (</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>event</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>  postMessage</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>`</span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>event</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>data</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> from </span><span style=color:#7C7F93;--shiki-dark:#9399B2>${</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>name</span><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>!`</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre><pre class="catppuccin-latte catppuccin-mocha language-js shiki shiki-themes" style=background-color:#eff1f5;--shiki-dark-bg:#1e1e2e;color:#4c4f69;--shiki-dark:#cdd6f4 tabindex=0><code><span class=line><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic>// main.js</span></span>
+<span class=line><span style=color:#8839EF;--shiki-dark:#CBA6F7>const</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> worker </span><span style=color:#179299;--shiki-dark:#94E2D5>=</span><span style=color:#8839EF;--shiki-light-font-weight:bold;--shiki-dark:#CBA6F7;--shiki-dark-font-weight:bold> new</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic> Worker</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'./worker.js'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4> name</span><span style=color:#179299;--shiki-dark:#94E2D5>:</span><span style=color:#40A02B;--shiki-dark:#A6E3A1> 'greeter'</span><span style=color:#7C7F93;--shiki-dark:#9399B2> }</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>worker</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>addEventListener</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'message'</span><span style=color:#7C7F93;--shiki-dark:#9399B2>,</span><span style=color:#7C7F93;--shiki-dark:#9399B2> (</span><span style=color:#E64553;--shiki-light-font-style:italic;--shiki-dark:#EBA0AC;--shiki-dark-font-style:italic>event</span><span style=color:#7C7F93;--shiki-dark:#9399B2>)</span><span style=color:#8839EF;--shiki-dark:#CBA6F7> =></span><span style=color:#7C7F93;--shiki-dark:#9399B2> {</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  console</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>log</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(event</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>data)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span><span style=color:#7C7F93;--shiki-light-font-style:italic;--shiki-dark:#9399B2;--shiki-dark-font-style:italic> // Prints: Hello from greeter!</span></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>  worker</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>terminate</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>()</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line><span style=color:#7C7F93;--shiki-dark:#9399B2>}</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span>
+<span class=line><span style=color:#4C4F69;--shiki-dark:#CDD6F4>worker</span><span style=color:#179299;--shiki-dark:#94E2D5>.</span><span style=color:#1E66F5;--shiki-light-font-style:italic;--shiki-dark:#89B4FA;--shiki-dark-font-style:italic>postMessage</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>(</span><span style=color:#40A02B;--shiki-dark:#A6E3A1>'Hello'</span><span style=color:#4C4F69;--shiki-dark:#CDD6F4>)</span><span style=color:#7C7F93;--shiki-dark:#9399B2>;</span></span>
+<span class=line></span></code><div class=code-toolbar><span class=code-language>js</span><button class=copy-button>copy</button></div></pre><p>Because their lifetime and sharing model depend on origins and
+browsing contexts, Node.js does not currently implement <code>SharedWorker</code>.</section>
+<section><h4>Loading worker scripts<span><a id=globals_loading_worker_scripts></a></span><span><a class=mark id=loading-worker-scripts href=#loading-worker-scripts>#</a></span></h4><div class=api_metadata></div><p>Worker scripts are read synchronously from the local file system or from
+memory rather than fetched over the network, which changes which URLs are
+accepted and how failures are reported:<ul>
+<li><code>new Worker()</code> and <code>importScripts()</code> accept only <code>file:</code>, <code>data:</code>, and
+<code>blob:</code> URLs. Any other scheme makes <code>new Worker()</code> throw a
+<code>NotSupportedError</code> and <code>importScripts()</code> throw a <code>NetworkError</code>.</li>
+<li>A script that cannot be read makes <code>importScripts()</code> throw a <code>NetworkError</code>;
+for <code>new Worker()</code> it fires an <code>error</code> event at the <code>Worker</code> object.</li>
+<li>Redirects, the <code>nosniff</code> check, and HTTP MIME type validation do not apply.
+MIME types are validated only for <code>data:</code> and <code>blob:</code> URLs. The
+<code>credentials</code> option is validated for API compatibility but has no effect,
+since no network request is made.</li>
+<li>On the main thread, relative script URLs are resolved against the current
+working directory, because there is no document base URL. Within a worker
+they are resolved against the worker's own URL (as is done in the spec).</li>
+<li>For <code>blob:</code> URLs, the script must be held in memory, so blobs backed by a file,
+such as those returned by <a href=fs.html#fsopenasblobpath-options><code>fs.openAsBlob()</code></a>, cannot be used.</li>
+</ul></section>
+<section><h4>Differences from the HTML Standard<span><a id=globals_differences_from_the_html_standard></a></span><span><a class=mark id=differences-from-the-html-standard href=#differences-from-the-html-standard>#</a></span></h4><div class=api_metadata></div><p>Besides script loading, mentioned above:<ul>
+<li>Node.js has no origin model, so same-origin and cross-origin distinctions do
+not exist and <code>location.origin</code> is <code>'null'</code> for every supported scheme.</li>
+<li><code>close()</code> terminates the worker immediately instead of following the
+specification's "closing flag" algorithm, so code remaining in the current
+task after <code>close()</code> is not executed.</li>
+<li>The worker global is the normal Node.js global object with
+<code>DedicatedWorkerGlobalScope</code> inserted into its prototype chain, rather than
+a fresh global created from the interface. Node.js globals such as
+<code>process</code>, <code>Buffer</code>, and <code>require()</code> remain available to worker scripts.</li>
+<li><code>ErrorEvent</code>s dispatched at <code>Worker</code> instances include <code>message</code> and
+<code>error</code>, but <code>filename</code>, <code>lineno</code>, and <code>colno</code> are always <code>''</code>, <code>0</code>, and
+<code>0</code>. An uncaught exception terminates the worker thread, and an unhandled
+<code>error</code> event is not propagated further: it neither reaches the parent's
+global scope nor affects the exit code of the process.</li>
+<li>The following <a href=https://developer.mozilla.org/docs/Web/API/WorkerGlobalScope><code>&lt;WorkerGlobalScope></code></a> events are never dispatched, although
+their handler properties exist: <code>languagechange</code>, <code>online</code>, and <code>offline</code>,
+since these concepts do not exist in Node.js; <code>rejectionhandled</code> and
+<code>unhandledrejection</code>, since Node.js exposes the equivalent does not
+implement the <code>PromiseRejectionEvent</code> interface or the per-rejection
+<code>preventDefault()</code> behavior required by the HTML Standard.</li>
+</ul></section>
+<section><h4>Web Workers and <code>node:worker_threads</code><span><a id=globals_web_workers_and_node_worker_threads></a></span><span><a class=mark id=web-workers-and-nodeworker_threads href=#web-workers-and-nodeworker_threads>#</a></span></h4><div class=api_metadata></div><p>Every Web Worker is backed by a <a href=worker_threads.html><code>node:worker_threads</code></a> <a href=worker_threads.html#class-worker><code>&lt;Worker></code></a>, so the
+two APIs share their threading, structured clone, and transfer semantics.
+Inside a worker, [<code>worker_threads.parentPort</code>][] is the port behind
+<code>self.postMessage()</code> and the worker's <code>message</code> events, <code>isMainThread</code> is
+<code>false</code>, and <code>workerData</code> is <code>undefined</code>.<p>Web Workers, like <code>node:worker_threads</code> workers, keep the event loop alive by
+default. In Node.js, Web Workers implement the <a href=process.html#processrefmayberefable>Refable protocol</a>, and can be
+ref'd and unref'd using <code>process.ref(worker)</code> and <code>process.unref(worker)</code>.<p>As a rule of thumb, use <a href=worker_threads.html><code>node:worker_threads</code></a> directly when a program
+needs <code>workerData</code>, a custom <code>env</code> or <code>execArgv</code>, resource limits, stdio
+redirection, the <code>'online'</code> and <code>'exit'</code> events, or <code>worker.threadId</code>;
+<code>Worker</code> accepts only the <code>name</code>, <code>type</code>, and <code>credentials</code> options and,
+per the specification, its <code>terminate()</code> returns <code>undefined</code>, rather than
+a promise. Threads started through <a href=worker_threads.html><code>node:worker_threads</code></a> are ordinary
+Node.js threads and do not get the worker global scope APIs.</section>
+<section><h3>Class: <code>WritableStream</code><span><a id=globals_class_writablestream></a></span><span><a class=mark id=class-writablestream href=#class-writablestream>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-writablestream><code>WritableStream</code></a>.</section>
+<section><h3>Class: <code>WritableStreamDefaultController</code><span><a id=globals_class_writablestreamdefaultcontroller></a></span><span><a class=mark id=class-writablestreamdefaultcontroller href=#class-writablestreamdefaultcontroller>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-writablestreamdefaultcontroller><code>WritableStreamDefaultController</code></a>.</section>
+<section><h3>Class: <code>WritableStreamDefaultWriter</code><span><a id=globals_class_writablestreamdefaultwriter></a></span><span><a class=mark id=class-writablestreamdefaultwriter href=#class-writablestreamdefaultwriter>#</a></span></h3><div class=api_metadata><span>Added in: v18.0.0</span><details class=changelog><summary>History</summary><table><thead><tr><th>Version<th>Changes<tbody><tr><td>v23.11.0, v22.15.0<td><p>Marking the API stable.</table></details></div><p>A browser-compatible implementation of <a href=webstreams.html#class-writablestreamdefaultwriter><code>WritableStreamDefaultWriter</code></a>.</section>
+          
+        </div>
+      </div>
+    </div>

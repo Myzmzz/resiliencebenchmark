@@ -1,0 +1,1974 @@
+# 用途：文档清单——每份韧性相关官方文档/准则页面的来源、版本线索、取回日期、抓取状态与本地副本路径。
+# 由第 2 步产生，内容由 tools/gen_tables.py 依据 tools/sources.tsv 与 tools/fetch-log.json 生成，请勿手改。
+# version 字段是页面/URL 自报的版本线索；unstated-on-page 表示页面未标版本，不臆造。
+documents:
+- doc_id: DOC-APISIX-APIBREAKER
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: APISIX
+  title: api-breaker plugin
+  url: https://apisix.apache.org/docs/apisix/plugins/api-breaker/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-APISIX-APIBREAKER.txt
+  chars: 7455
+  http_last_modified: Tue, 01 Sep 2026 05:07:46 GMT
+- doc_id: DOC-APISIX-LIMITREQ
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: APISIX
+  title: limit-req plugin
+  url: https://apisix.apache.org/docs/apisix/plugins/limit-req/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-APISIX-LIMITREQ.txt
+  chars: 21681
+  http_last_modified: Tue, 01 Sep 2026 05:07:46 GMT
+- doc_id: DOC-APISIX-UPSTREAM
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: APISIX
+  title: Upstream (health checks, timeout, retries)
+  url: https://apisix.apache.org/docs/apisix/terminology/upstream/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-APISIX-UPSTREAM.txt
+  chars: 8087
+  http_last_modified: Tue, 01 Sep 2026 05:07:46 GMT
+- doc_id: DOC-AWS-FALLBACK
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: AWS Builders Library
+  title: Avoiding fallback in distributed systems
+  url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AWS-FALLBACK.txt
+  chars: 19703
+  final_url: https://web.archive.org/web/20250119023338/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
+- doc_id: DOC-AWS-HEALTHCHECKS
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: AWS Builders Library
+  title: Implementing health checks
+  url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/implementing-health-checks/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AWS-HEALTHCHECKS.txt
+  chars: 33156
+  final_url: https://web.archive.org/web/20241224144628/https://aws.amazon.com/builders-library/implementing-health-checks/
+- doc_id: DOC-AWS-LOADSHED
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: AWS Builders Library
+  title: Using load shedding to avoid overload
+  url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AWS-LOADSHED.txt
+  chars: 34694
+  final_url: https://web.archive.org/web/20250113051047/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
+- doc_id: DOC-AWS-RETRY-IDEMPOTENT
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: AWS Builders Library
+  title: Making retries safe with idempotent APIs
+  url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AWS-RETRY-IDEMPOTENT.txt
+  chars: 18967
+  final_url: https://web.archive.org/web/20241129033912/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
+- doc_id: DOC-AWS-TIMEOUTS
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: AWS Builders Library
+  title: Timeouts, retries and backoff with jitter
+  url: https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AWS-TIMEOUTS.txt
+  chars: 14494
+  final_url: https://web.archive.org/web/20241229100910/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+- doc_id: DOC-AWS-WAF-REL
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: AWS Well-Architected
+  title: Reliability Pillar - Design interactions to prevent failures
+  url: https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/rel_mitigate_interaction_failure_graceful_degradation.html
+  source_type: curated-guideline
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AWS-WAF-REL.txt
+  chars: 8238
+  http_last_modified: Sat, 19 Sep 2026 02:35:22 GMT
+- doc_id: DOC-AZ-PATTERN-BULKHEAD
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Bulkhead pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-BULKHEAD.txt
+  chars: 9476
+  http_last_modified: Sat, 19 Sep 2026 05:04:44 GMT
+- doc_id: DOC-AZ-PATTERN-CACHEASIDE
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Cache-Aside pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-CACHEASIDE.txt
+  chars: 13528
+  http_last_modified: Wed, 05 Aug 2026 07:31:51 GMT
+- doc_id: DOC-AZ-PATTERN-CB
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Circuit Breaker pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-CB.txt
+  chars: 24140
+  http_last_modified: Sat, 19 Sep 2026 05:04:44 GMT
+- doc_id: DOC-AZ-PATTERN-COMPENSATE
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Compensating Transaction pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-COMPENSATE.txt
+  chars: 15418
+  http_last_modified: Mon, 24 Aug 2026 17:31:52 GMT
+- doc_id: DOC-AZ-PATTERN-HEM
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Health Endpoint Monitoring pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/health-endpoint-monitoring
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-HEM.txt
+  chars: 17015
+  http_last_modified: Sat, 19 Sep 2026 05:02:53 GMT
+- doc_id: DOC-AZ-PATTERN-LEADER
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Leader Election pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/leader-election
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-LEADER.txt
+  chars: 15675
+  http_last_modified: Wed, 05 Aug 2026 07:31:51 GMT
+- doc_id: DOC-AZ-PATTERN-QBLL
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Queue-Based Load Leveling pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/queue-based-load-leveling
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-QBLL.txt
+  chars: 12127
+  http_last_modified: Mon, 24 Aug 2026 17:31:52 GMT
+- doc_id: DOC-AZ-PATTERN-RATELIMIT
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Rate Limiting pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/rate-limiting-pattern
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-RATELIMIT.txt
+  chars: 19927
+  http_last_modified: Wed, 16 Sep 2026 17:34:00 GMT
+- doc_id: DOC-AZ-PATTERN-RETRY
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Retry pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/retry
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-RETRY.txt
+  chars: 11610
+  http_last_modified: Sat, 15 Aug 2026 05:01:34 GMT
+- doc_id: DOC-AZ-PATTERN-SAGA
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Saga distributed transactions pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/saga
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-SAGA.txt
+  chars: 10796
+  http_last_modified: Sat, 15 Aug 2026 05:01:34 GMT
+- doc_id: DOC-AZ-PATTERN-THROTTLE
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Throttling pattern
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERN-THROTTLE.txt
+  chars: 17764
+  http_last_modified: Sat, 19 Sep 2026 05:04:44 GMT
+- doc_id: DOC-AZ-PATTERNS-INDEX
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Cloud Design Patterns index (reliability category)
+  url: https://learn.microsoft.com/en-us/azure/architecture/patterns/
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-PATTERNS-INDEX.txt
+  chars: 13053
+  http_last_modified: Mon, 24 Aug 2026 17:31:52 GMT
+- doc_id: DOC-AZ-TRANSIENT
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Architecture Center
+  title: Transient fault handling best practices
+  url: https://learn.microsoft.com/en-us/azure/architecture/best-practices/transient-faults
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-TRANSIENT.txt
+  chars: 26717
+  http_last_modified: Thu, 27 Aug 2026 05:04:10 GMT
+- doc_id: DOC-AZ-WAF-BACKGROUND
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Well-Architected
+  title: Recommendations for handling transient faults
+  url: https://learn.microsoft.com/en-us/azure/well-architected/reliability/handle-transient-faults
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-WAF-BACKGROUND.txt
+  chars: 29650
+  http_last_modified: Mon, 31 Aug 2026 17:11:10 GMT
+  final_url: https://learn.microsoft.com/en-us/azure/well-architected/design-guides/handle-transient-faults
+- doc_id: DOC-AZ-WAF-REDUNDANCY
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Well-Architected
+  title: Recommendations for designing for redundancy
+  url: https://learn.microsoft.com/en-us/azure/well-architected/reliability/redundancy
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-WAF-REDUNDANCY.txt
+  chars: 24831
+  http_last_modified: Mon, 31 Aug 2026 17:11:10 GMT
+- doc_id: DOC-AZ-WAF-REL-CHECKLIST
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Well-Architected
+  title: Reliability design review checklist
+  url: https://learn.microsoft.com/en-us/azure/well-architected/reliability/checklist
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-WAF-REL-CHECKLIST.txt
+  chars: 3949
+  http_last_modified: Mon, 31 Aug 2026 17:11:10 GMT
+- doc_id: DOC-AZ-WAF-SELFPRES
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Azure Well-Architected
+  title: Recommendations for self-preservation and self-healing
+  url: https://learn.microsoft.com/en-us/azure/well-architected/reliability/self-preservation
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-AZ-WAF-SELFPRES.txt
+  chars: 12628
+  http_last_modified: Mon, 31 Aug 2026 17:11:10 GMT
+- doc_id: DOC-BOOT-ACTUATOR
+  layer: 9
+  layer_name: 健康端点与应用框架
+  component: Spring Boot Actuator
+  title: Actuator endpoints (health groups, Kubernetes probes)
+  url: https://docs.spring.io/spring-boot/reference/actuator/endpoints.html
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-BOOT-ACTUATOR.txt
+  chars: 54276
+  http_last_modified: Thu, 03 Sep 2026 17:45:33 GMT
+- doc_id: DOC-BOOT-HEALTH-API
+  layer: 9
+  layer_name: 健康端点与应用框架
+  component: Spring Boot Actuator
+  title: Actuator health endpoint API
+  url: https://docs.spring.io/spring-boot/api/rest/actuator/health.html
+  source_type: official-doc
+  version: meta:1.0.2
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-BOOT-HEALTH-API.txt
+  chars: 4073
+  http_last_modified: Thu, 03 Sep 2026 17:45:33 GMT
+- doc_id: DOC-CHAOSBLADE
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: ChaosBlade
+  title: ChaosBlade 文档
+  url: https://chaosblade.io/docs/
+  source_type: curated-guideline
+  version: meta:1.7.4
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-CHAOSBLADE.txt
+  chars: 1676
+  http_last_modified: Wed, 20 May 2026 07:26:45 GMT
+- doc_id: DOC-CONSUL-CHECKS
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Consul
+  title: Define health checks
+  url: https://developer.hashicorp.com/consul/docs/register/health-check/vm
+  source_type: official-doc
+  version: meta:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-CONSUL-CHECKS.txt
+  chars: 22417
+- doc_id: DOC-CONSUL-SESSIONS
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Consul
+  title: Sessions
+  url: https://developer.hashicorp.com/consul/docs/automate/session
+  source_type: official-doc
+  version: meta:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-CONSUL-SESSIONS.txt
+  chars: 7482
+- doc_id: DOC-DOTNET-CANCEL
+  layer: 8
+  layer_name: 语言运行时
+  component: .NET
+  title: Cancellation in managed threads
+  url: https://learn.microsoft.com/en-us/dotnet/standard/threading/cancellation-in-managed-threads
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DOTNET-CANCEL.txt
+  chars: 23450
+  http_last_modified: Mon, 24 Aug 2026 13:25:43 GMT
+- doc_id: DOC-DOTNET-HTTPCLIENT
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: .NET HttpClient
+  title: HttpClient guidelines for .NET
+  url: https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/http/httpclient-guidelines
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DOTNET-HTTPCLIENT.txt
+  chars: 7111
+  http_last_modified: Mon, 24 Aug 2026 13:25:46 GMT
+- doc_id: DOC-DOTNET-HTTPFACTORY
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: .NET HttpClient
+  title: IHttpClientFactory with .NET
+  url: https://learn.microsoft.com/en-us/dotnet/core/extensions/httpclient-factory
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DOTNET-HTTPFACTORY.txt
+  chars: 29821
+  http_last_modified: Mon, 24 Aug 2026 13:25:50 GMT
+- doc_id: DOC-DUBBO-CONFIG
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Dubbo
+  title: Dubbo 配置项参考手册
+  url: https://cn.dubbo.apache.org/zh-cn/overview/mannual/java-sdk/reference-manual/config/properties/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DUBBO-CONFIG.txt
+  chars: 61152
+  http_last_modified: Thu, 13 Aug 2026 01:21:00 GMT
+- doc_id: DOC-DUBBO-XML-CONSUMER
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Dubbo
+  title: dubbo:consumer 配置项
+  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-consumer/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DUBBO-XML-CONSUMER.txt
+  chars: 2317
+  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
+- doc_id: DOC-DUBBO-XML-METHOD
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Dubbo
+  title: dubbo:method 配置项（方法级 timeout/retries）
+  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-method/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DUBBO-XML-METHOD.txt
+  chars: 2218
+  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
+- doc_id: DOC-DUBBO-XML-PROVIDER
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Dubbo
+  title: dubbo:provider 配置项（线程池/accepts/executes）
+  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-provider/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DUBBO-XML-PROVIDER.txt
+  chars: 4623
+  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
+- doc_id: DOC-DUBBO-XML-REFERENCE
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Dubbo
+  title: dubbo:reference 配置项（timeout/retries/cluster/actives 默认值）
+  url: https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-reference/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-DUBBO-XML-REFERENCE.txt
+  chars: 3136
+  http_last_modified: Mon, 11 May 2026 02:56:32 GMT
+- doc_id: DOC-ENVOY-CB
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Envoy
+  title: Circuit breaking
+  url: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ENVOY-CB.txt
+  chars: 4978
+- doc_id: DOC-ENVOY-CLUSTER-PROTO
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Envoy
+  title: Cluster configuration (circuit breakers thresholds)
+  url: https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ENVOY-CLUSTER-PROTO.txt
+  chars: 4669
+- doc_id: DOC-ENVOY-HEALTHCHECK
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Envoy
+  title: Health checking
+  url: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/health_checking
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ENVOY-HEALTHCHECK.txt
+  chars: 8048
+- doc_id: DOC-ENVOY-OUTLIER
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Envoy
+  title: Outlier detection
+  url: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/outlier
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ENVOY-OUTLIER.txt
+  chars: 13653
+- doc_id: DOC-ENVOY-OVERLOAD
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Envoy
+  title: Overload manager
+  url: https://www.envoyproxy.io/docs/envoy/latest/configuration/operations/overload_manager/overload_manager
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ENVOY-OVERLOAD.txt
+  chars: 23524
+- doc_id: DOC-ENVOY-ROUTE-PROTO
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Envoy
+  title: HTTP route components (timeout, retry_policy)
+  url: https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ENVOY-ROUTE-PROTO.txt
+  chars: 127989
+- doc_id: DOC-ENVOY-TIMEOUTS
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Envoy
+  title: Envoy FAQ - Timeouts
+  url: https://www.envoyproxy.io/docs/envoy/latest/faq/configuration/timeouts
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ENVOY-TIMEOUTS.txt
+  chars: 11163
+- doc_id: DOC-ETCD-API
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: etcd
+  title: etcd API (lease, leader election)
+  url: https://etcd.io/docs/v3.5/learning/api/
+  source_type: official-doc
+  version: url:v3.5
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ETCD-API.txt
+  chars: 20856
+- doc_id: DOC-ETCD-FAQ
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: etcd
+  title: etcd FAQ (quorum, heartbeat)
+  url: https://etcd.io/docs/v3.5/faq/
+  source_type: official-doc
+  version: url:v3.5
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ETCD-FAQ.txt
+  chars: 16620
+- doc_id: DOC-EUREKA
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Eureka
+  title: Spring Cloud Netflix (Eureka self-preservation)
+  url: https://docs.spring.io/spring-cloud-netflix/reference/spring-cloud-netflix.html
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-EUREKA.txt
+  chars: 28165
+  http_last_modified: Thu, 17 Sep 2026 20:47:01 GMT
+- doc_id: DOC-FAILSAFE-CB
+  layer: 4
+  layer_name: 容错库
+  component: Failsafe
+  title: Circuit Breaker
+  url: https://failsafe.dev/circuit-breaker/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-FAILSAFE-CB.txt
+  chars: 5606
+  http_last_modified: Tue, 12 Nov 2024 16:46:43 GMT
+- doc_id: DOC-FAILSAFE-RETRY
+  layer: 4
+  layer_name: 容错库
+  component: Failsafe
+  title: Retry
+  url: https://failsafe.dev/retry/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-FAILSAFE-RETRY.txt
+  chars: 3192
+  http_last_modified: Tue, 12 Nov 2024 16:46:43 GMT
+- doc_id: DOC-FAILSAFE-TIMEOUT
+  layer: 4
+  layer_name: 容错库
+  component: Failsafe
+  title: Timeout
+  url: https://failsafe.dev/timeout/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-FAILSAFE-TIMEOUT.txt
+  chars: 2044
+  http_last_modified: Tue, 12 Nov 2024 16:46:43 GMT
+- doc_id: DOC-GCP-AF-RELIABILITY
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Google Cloud Architecture Framework
+  title: Reliability pillar
+  url: https://cloud.google.com/architecture/framework/reliability
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GCP-AF-RELIABILITY.txt
+  chars: 6794
+  http_last_modified: Mon, 30 Dec 2024 08:00:00 GMT
+  final_url: https://docs.cloud.google.com/architecture/framework/reliability
+- doc_id: DOC-GO-CONTEXT
+  layer: 8
+  layer_name: 语言运行时
+  component: Go context
+  title: context package
+  url: https://pkg.go.dev/context
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GO-CONTEXT.txt
+  chars: 22314
+- doc_id: DOC-GO-DATABASESQL
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: Go database/sql
+  title: database/sql package
+  url: https://pkg.go.dev/database/sql
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GO-DATABASESQL.txt
+  chars: 63654
+- doc_id: DOC-GO-NETHTTP-CLIENT
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Go net/http
+  title: net/http Client and Transport
+  url: https://pkg.go.dev/net/http
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GO-NETHTTP-CLIENT.txt
+  chars: 157746
+- doc_id: DOC-GOBREAKER
+  layer: 4
+  layer_name: 容错库
+  component: gobreaker
+  title: sony/gobreaker package docs
+  url: https://pkg.go.dev/github.com/sony/gobreaker
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GOBREAKER.txt
+  chars: 10997
+- doc_id: DOC-GOREDIS
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: go-redis
+  title: go-redis v9 package (Options)
+  url: https://pkg.go.dev/github.com/redis/go-redis/v9
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GOREDIS.txt
+  chars: 2356796
+- doc_id: DOC-GRPC-CANCELLATION
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: gRPC
+  title: Cancellation
+  url: https://grpc.io/docs/guides/cancellation/
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GRPC-CANCELLATION.txt
+  chars: 2857
+- doc_id: DOC-GRPC-DEADLINES
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: gRPC
+  title: Deadlines
+  url: https://grpc.io/docs/guides/deadlines/
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GRPC-DEADLINES.txt
+  chars: 4505
+- doc_id: DOC-GRPC-HEALTH
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: gRPC
+  title: Health Checking
+  url: https://grpc.io/docs/guides/health-checking/
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GRPC-HEALTH.txt
+  chars: 4377
+- doc_id: DOC-GRPC-HEDGING
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: gRPC
+  title: gRFC A6 client retries (hedging)
+  url: https://raw.githubusercontent.com/grpc/proposal/master/A6-client-retries.md
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GRPC-HEDGING.txt
+  chars: 32464
+- doc_id: DOC-GRPC-KEEPALIVE
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: gRPC
+  title: Keepalive
+  url: https://grpc.io/docs/guides/keepalive/
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GRPC-KEEPALIVE.txt
+  chars: 6139
+- doc_id: DOC-GRPC-RETRY
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: gRPC
+  title: Retry
+  url: https://grpc.io/docs/guides/retry/
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GRPC-RETRY.txt
+  chars: 6013
+- doc_id: DOC-GRPC-WAITFORREADY
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: gRPC
+  title: Wait-for-Ready
+  url: https://grpc.io/docs/guides/wait-for-ready/
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-GRPC-WAITFORREADY.txt
+  chars: 3246
+- doc_id: DOC-HAPROXY-INTRO
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: HAProxy
+  title: HAProxy configuration manual (timeouts, health checks)
+  url: https://docs.haproxy.org/2.8/configuration.html
+  source_type: official-doc
+  version: url:2.8;page:2.8.28-29
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-HAPROXY-INTRO.txt
+  chars: 1252177
+  http_last_modified: Sat, 19 Sep 2026 02:24:51 GMT
+- doc_id: DOC-HIKARICP
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: HikariCP
+  title: HikariCP README (pool configuration)
+  url: https://raw.githubusercontent.com/brettwooldridge/HikariCP/dev/README.md
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-HIKARICP.txt
+  chars: 36042
+- doc_id: DOC-HYSTRIX-HOWITWORKS
+  layer: 4
+  layer_name: 容错库
+  component: Hystrix
+  title: Hystrix How it Works (archived)
+  url: https://github.com/Netflix/Hystrix/wiki/How-it-Works
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-HYSTRIX-HOWITWORKS.txt
+  chars: 27205
+- doc_id: DOC-INGRESSNGINX-ANNOT
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: ingress-nginx
+  title: NGINX Ingress annotations
+  url: https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-INGRESSNGINX-ANNOT.txt
+  chars: 58668
+  http_last_modified: Thu, 19 Mar 2026 21:21:50 GMT
+- doc_id: DOC-IOREDIS
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: ioredis
+  title: ioredis README
+  url: https://raw.githubusercontent.com/redis/ioredis/main/README.md
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-IOREDIS.txt
+  chars: 68674
+- doc_id: DOC-ISTIO-ANALYZERS
+  layer: 11
+  layer_name: 已有的检查规则集
+  component: Istio
+  title: Istio configuration analysis messages
+  url: https://istio.io/latest/docs/reference/config/analysis/
+  source_type: linter-ruleset
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ISTIO-ANALYZERS.txt
+  chars: 17432
+- doc_id: DOC-ISTIO-CB
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Istio
+  title: Circuit Breaking task
+  url: https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ISTIO-CB.txt
+  chars: 20338
+- doc_id: DOC-ISTIO-DR
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Istio
+  title: DestinationRule reference
+  url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ISTIO-DR.txt
+  chars: 61789
+- doc_id: DOC-ISTIO-TIMEOUTS
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Istio
+  title: Request Timeouts task
+  url: https://istio.io/latest/docs/tasks/traffic-management/request-timeouts/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ISTIO-TIMEOUTS.txt
+  chars: 15743
+- doc_id: DOC-ISTIO-VS
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Istio
+  title: VirtualService reference (HTTPRetry, timeout)
+  url: https://istio.io/latest/docs/reference/config/networking/virtual-service/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ISTIO-VS.txt
+  chars: 56371
+- doc_id: DOC-JAVA-CF
+  layer: 8
+  layer_name: 语言运行时
+  component: Java concurrency
+  title: CompletableFuture
+  url: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/CompletableFuture.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-JAVA-CF.txt
+  chars: 65528
+- doc_id: DOC-JAVA-LAUNCHER
+  layer: 8
+  layer_name: 语言运行时
+  component: JVM
+  title: java command (UseContainerSupport, MaxRAMPercentage)
+  url: https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-JAVA-LAUNCHER.txt
+  chars: 155185
+- doc_id: DOC-JAVA-TPE
+  layer: 8
+  layer_name: 语言运行时
+  component: Java concurrency
+  title: ThreadPoolExecutor
+  url: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-JAVA-TPE.txt
+  chars: 39488
+- doc_id: DOC-JEDIS
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: Jedis
+  title: Jedis README (pool)
+  url: https://raw.githubusercontent.com/redis/jedis/master/README.md
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-JEDIS.txt
+  chars: 6986
+- doc_id: DOC-K8S-AFFINITY
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Assigning Pods to Nodes (affinity and anti-affinity)
+  url: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-AFFINITY.txt
+  chars: 30377
+- doc_id: DOC-K8S-CONFIG-BEST
+  layer: 11
+  layer_name: 已有的检查规则集
+  component: Kubernetes
+  title: Configuration Best Practices
+  url: https://kubernetes.io/docs/concepts/configuration/overview/
+  source_type: linter-ruleset
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-CONFIG-BEST.txt
+  chars: 10222
+  final_url: https://kubernetes.io/blog/2025/11/25/configuration-good-practices/
+- doc_id: DOC-K8S-DISRUPTIONS
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Disruptions (PodDisruptionBudget)
+  url: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-DISRUPTIONS.txt
+  chars: 13715
+- doc_id: DOC-K8S-EVICTION
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Node-pressure Eviction
+  url: https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-EVICTION.txt
+  chars: 25169
+- doc_id: DOC-K8S-HPA
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Horizontal Pod Autoscaling
+  url: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-HPA.txt
+  chars: 31226
+  final_url: https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/
+- doc_id: DOC-K8S-PDB-TASK
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Specifying a Disruption Budget for your Application
+  url: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-PDB-TASK.txt
+  chars: 12962
+- doc_id: DOC-K8S-POD-LIFECYCLE
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Pod Lifecycle (container probes)
+  url: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-POD-LIFECYCLE.txt
+  chars: 50935
+- doc_id: DOC-K8S-PRIORITY
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Pod Priority and Preemption
+  url: https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-PRIORITY.txt
+  chars: 22807
+- doc_id: DOC-K8S-PROBES-TASK
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Configure Liveness, Readiness and Startup Probes
+  url: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-PROBES-TASK.txt
+  chars: 16290
+- doc_id: DOC-K8S-QOS
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Pod Quality of Service Classes
+  url: https://kubernetes.io/docs/concepts/workloads/pods/pod-qos/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-QOS.txt
+  chars: 10937
+- doc_id: DOC-K8S-RESOURCES
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Resource Management for Pods and Containers
+  url: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-RESOURCES.txt
+  chars: 31616
+- doc_id: DOC-K8S-STATEFULSET
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: StatefulSets
+  url: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-STATEFULSET.txt
+  chars: 26661
+- doc_id: DOC-K8S-STORAGE-PV
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Persistent Volumes
+  url: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-STORAGE-PV.txt
+  chars: 44053
+- doc_id: DOC-K8S-TOPOSPREAD
+  layer: 1
+  layer_name: 容器编排
+  component: Kubernetes
+  title: Pod Topology Spread Constraints
+  url: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-K8S-TOPOSPREAD.txt
+  chars: 26389
+- doc_id: DOC-KAFKA-CONSUMER-CFG
+  layer: 6
+  layer_name: 消息与流
+  component: Kafka
+  title: Consumer configs (enable.auto.commit, max.poll.interval.ms, session.timeout.ms)
+  url: https://kafka.apache.org/40/generated/consumer_config.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-KAFKA-CONSUMER-CFG.txt
+  chars: 39703
+  http_last_modified: Fri, 12 Dec 2025 04:07:23 GMT
+- doc_id: DOC-KAFKA-PRODUCER-CFG
+  layer: 6
+  layer_name: 消息与流
+  component: Kafka
+  title: Producer configs (acks, retries, enable.idempotence, delivery.timeout.ms)
+  url: https://kafka.apache.org/40/generated/producer_config.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-KAFKA-PRODUCER-CFG.txt
+  chars: 42866
+  http_last_modified: Fri, 12 Dec 2025 04:07:23 GMT
+- doc_id: DOC-KAFKA-TOPIC-CFG
+  layer: 6
+  layer_name: 消息与流
+  component: Kafka
+  title: Topic configs (min.insync.replicas, unclean.leader.election.enable)
+  url: https://kafka.apache.org/40/generated/topic_config.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-KAFKA-TOPIC-CFG.txt
+  chars: 15540
+  http_last_modified: Fri, 12 Dec 2025 04:07:23 GMT
+- doc_id: DOC-KONG-HEALTH
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Kong
+  title: Health Checks and Circuit Breakers
+  url: https://docs.konghq.com/gateway/latest/how-kong-works/health-checks/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-KONG-HEALTH.txt
+  chars: 14044
+  final_url: https://developer.konghq.com/gateway/traffic-control/health-checks-circuit-breakers/
+- doc_id: DOC-KUBELINTER-CHECKS
+  layer: 11
+  layer_name: 已有的检查规则集
+  component: kube-linter
+  title: KubeLinter generated checks
+  url: https://raw.githubusercontent.com/stackrox/kube-linter/main/docs/generated/checks.md
+  source_type: linter-ruleset
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-KUBELINTER-CHECKS.txt
+  chars: 27278
+- doc_id: DOC-KUBESCORE-CHECKS
+  layer: 11
+  layer_name: 已有的检查规则集
+  component: kube-score
+  title: kube-score checks
+  url: https://raw.githubusercontent.com/zegl/kube-score/master/README_CHECKS.md
+  source_type: linter-ruleset
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-KUBESCORE-CHECKS.txt
+  chars: 5315
+- doc_id: DOC-LINKERD-CB
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Linkerd
+  title: Circuit Breaking
+  url: https://linkerd.io/2.17/tasks/circuit-breakers/
+  source_type: official-doc
+  version: url:2.17;meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-LINKERD-CB.txt
+  chars: 11369
+  http_last_modified: Thu, 30 Jul 2026 15:18:06 GMT
+- doc_id: DOC-LINKERD-RETRY
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: Linkerd
+  title: Retries and Timeouts
+  url: https://linkerd.io/2.17/features/retries-and-timeouts/
+  source_type: official-doc
+  version: url:2.17;meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-LINKERD-RETRY.txt
+  chars: 7100
+  http_last_modified: Thu, 09 Jul 2026 21:00:56 GMT
+- doc_id: DOC-MONGO-CONNSTR
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: MongoDB driver
+  title: Connection String Options
+  url: https://www.mongodb.com/docs/manual/reference/connection-string-options/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MONGO-CONNSTR.txt
+  chars: 25536
+- doc_id: DOC-MSIO-CIRCUITBREAKER
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: microservices.io
+  title: 'Pattern: Circuit Breaker'
+  url: https://microservices.io/patterns/reliability/circuit-breaker.html
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MSIO-CIRCUITBREAKER.txt
+  chars: 7216
+  http_last_modified: Fri, 18 Sep 2026 17:03:00 GMT
+- doc_id: DOC-MSIO-HEALTHCHECK
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: microservices.io
+  title: 'Pattern: Health Check API'
+  url: https://microservices.io/patterns/observability/health-check-api.html
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MSIO-HEALTHCHECK.txt
+  chars: 6703
+  http_last_modified: Fri, 18 Sep 2026 17:03:00 GMT
+- doc_id: DOC-MSIO-IDEMPOTENT
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: microservices.io
+  title: 'Pattern: Idempotent Consumer'
+  url: https://microservices.io/patterns/communication-style/idempotent-consumer.html
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MSIO-IDEMPOTENT.txt
+  chars: 5696
+  http_last_modified: Fri, 18 Sep 2026 17:03:00 GMT
+- doc_id: DOC-MSIO-INDEX
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: microservices.io
+  title: Microservice Architecture pattern index
+  url: https://microservices.io/patterns/index.html
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MSIO-INDEX.txt
+  chars: 10215
+  http_last_modified: Fri, 18 Sep 2026 17:03:00 GMT
+- doc_id: DOC-MSIO-OUTBOX
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: microservices.io
+  title: 'Pattern: Transactional outbox'
+  url: https://microservices.io/patterns/data/transactional-outbox.html
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MSIO-OUTBOX.txt
+  chars: 8389
+  http_last_modified: Fri, 18 Sep 2026 17:03:00 GMT
+- doc_id: DOC-MSIO-SAGA
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: microservices.io
+  title: 'Pattern: Saga'
+  url: https://microservices.io/patterns/data/saga.html
+  source_type: pattern-catalog
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MSIO-SAGA.txt
+  chars: 10145
+  http_last_modified: Fri, 18 Sep 2026 17:03:00 GMT
+- doc_id: DOC-MYSQL-CONNJ-NET
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: MySQL Connector/J
+  title: Networking properties (socketTimeout)
+  url: https://web.archive.org/web/2024/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-MYSQL-CONNJ-NET.txt
+  chars: 6476
+  final_url: https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
+- doc_id: DOC-NACOS-DISCOVERY
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Nacos
+  title: 服务发现
+  url: https://nacos.io/docs/latest/manual/user/naming/overview/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NACOS-DISCOVERY.txt
+  chars: 1554
+  http_last_modified: Tue, 08 Sep 2026 03:00:04 GMT
+- doc_id: DOC-NACOS-INSTANCE-LIFECYCLE
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Nacos
+  title: 实例生命周期与健康检查
+  url: https://nacos.io/docs/latest/manual/user/naming/instance-lifecycle/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NACOS-INSTANCE-LIFECYCLE.txt
+  chars: 1436
+  http_last_modified: Tue, 08 Sep 2026 03:00:04 GMT
+- doc_id: DOC-NACOS-JAVA-FAILOVER
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Nacos
+  title: Java SDK 容灾（failover）
+  url: https://nacos.io/docs/latest/manual/user/java-sdk/failover/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NACOS-JAVA-FAILOVER.txt
+  chars: 2367
+  http_last_modified: Tue, 08 Sep 2026 03:00:03 GMT
+- doc_id: DOC-NACOS-PROTECT
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: Nacos
+  title: 保护阈值与健康检查
+  url: https://nacos.io/docs/latest/manual/user/naming/health-and-metadata/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NACOS-PROTECT.txt
+  chars: 1698
+  http_last_modified: Tue, 08 Sep 2026 03:00:04 GMT
+- doc_id: DOC-NATS-CONSUMERS
+  layer: 6
+  layer_name: 消息与流
+  component: NATS
+  title: JetStream Consumers
+  url: https://docs.nats.io/nats-concepts/jetstream/consumers
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NATS-CONSUMERS.txt
+  chars: 20151
+  http_last_modified: Thu, 17 Sep 2026 14:40:21 GMT
+  final_url: https://docs.nats.io/learn/jetstream/pull-consumers
+- doc_id: DOC-NGINX-PROXY
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: NGINX
+  title: ngx_http_proxy_module
+  url: https://nginx.org/en/docs/http/ngx_http_proxy_module.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NGINX-PROXY.txt
+  chars: 52981
+  http_last_modified: Tue, 15 Sep 2026 15:29:36 GMT
+- doc_id: DOC-NGINX-UPSTREAM
+  layer: 2
+  layer_name: 网关、代理与服务网格
+  component: NGINX
+  title: ngx_http_upstream_module
+  url: https://nginx.org/en/docs/http/ngx_http_upstream_module.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NGINX-UPSTREAM.txt
+  chars: 30128
+  http_last_modified: Tue, 15 Sep 2026 15:29:36 GMT
+- doc_id: DOC-NODE-EVENTLOOP
+  layer: 8
+  layer_name: 语言运行时
+  component: Node.js
+  title: Don't block the event loop
+  url: https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NODE-EVENTLOOP.txt
+  chars: 29370
+  http_last_modified: Thu, 10 Sep 2026 06:17:22 GMT
+  final_url: https://nodejs.org/learn/asynchronous-work/dont-block-the-event-loop
+- doc_id: DOC-NODE-GLOBALS
+  layer: 8
+  layer_name: 语言运行时
+  component: Node.js
+  title: Globals (AbortController, AbortSignal)
+  url: https://nodejs.org/api/globals.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NODE-GLOBALS.txt
+  chars: 27423
+  http_last_modified: Wed, 16 Sep 2026 09:41:27 GMT
+- doc_id: DOC-NODE-HTTP
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Node.js http
+  title: HTTP (timeouts, agent)
+  url: https://nodejs.org/api/http.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-NODE-HTTP.txt
+  chars: 122373
+  http_last_modified: Wed, 16 Sep 2026 09:41:27 GMT
+- doc_id: DOC-PGJDBC
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: PostgreSQL JDBC
+  title: Connection parameters
+  url: https://jdbc.postgresql.org/documentation/use/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-PGJDBC.txt
+  chars: 36560
+  http_last_modified: Mon, 06 Jul 2026 19:35:01 GMT
+- doc_id: DOC-PGX-POOL
+  layer: 7
+  layer_name: 数据存储客户端与连接池
+  component: pgx
+  title: pgxpool package
+  url: https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-PGX-POOL.txt
+  chars: 26950
+- doc_id: DOC-POLARIS-RELIABILITY
+  layer: 11
+  layer_name: 已有的检查规则集
+  component: Polaris
+  title: Polaris Checks - Reliability
+  url: https://polaris.docs.fairwinds.com/checks/reliability/
+  source_type: linter-ruleset
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-POLARIS-RELIABILITY.txt
+  chars: 4791
+  http_last_modified: Fri, 18 Sep 2026 14:41:33 GMT
+- doc_id: DOC-POLARIS-RESOURCES
+  layer: 11
+  layer_name: 已有的检查规则集
+  component: Polaris
+  title: Polaris Checks - Efficiency (resources)
+  url: https://polaris.docs.fairwinds.com/checks/efficiency/
+  source_type: linter-ruleset
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-POLARIS-RESOURCES.txt
+  chars: 2040
+  http_last_modified: Fri, 18 Sep 2026 14:41:33 GMT
+- doc_id: DOC-POLLY-CB
+  layer: 4
+  layer_name: 容错库
+  component: Polly
+  title: Circuit breaker resilience strategy
+  url: https://www.pollydocs.org/strategies/circuit-breaker.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-POLLY-CB.txt
+  chars: 22882
+  http_last_modified: Fri, 11 Sep 2026 21:14:24 GMT
+- doc_id: DOC-POLLY-RATELIMIT
+  layer: 4
+  layer_name: 容错库
+  component: Polly
+  title: Rate limiter resilience strategy
+  url: https://www.pollydocs.org/strategies/rate-limiter.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-POLLY-RATELIMIT.txt
+  chars: 11890
+  http_last_modified: Fri, 11 Sep 2026 21:14:24 GMT
+- doc_id: DOC-POLLY-RETRY
+  layer: 4
+  layer_name: 容错库
+  component: Polly
+  title: Retry resilience strategy
+  url: https://www.pollydocs.org/strategies/retry.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-POLLY-RETRY.txt
+  chars: 23279
+  http_last_modified: Fri, 11 Sep 2026 21:14:24 GMT
+- doc_id: DOC-POLLY-TIMEOUT
+  layer: 4
+  layer_name: 容错库
+  component: Polly
+  title: Timeout resilience strategy
+  url: https://www.pollydocs.org/strategies/timeout.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-POLLY-TIMEOUT.txt
+  chars: 8513
+  http_last_modified: Fri, 11 Sep 2026 21:14:24 GMT
+- doc_id: DOC-PULSAR-MESSAGING
+  layer: 6
+  layer_name: 消息与流
+  component: Pulsar
+  title: Messaging concepts (ack, DLQ, negative ack)
+  url: https://pulsar.apache.org/docs/next/concepts-messaging/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-PULSAR-MESSAGING.txt
+  chars: 74764
+  http_last_modified: Sat, 19 Sep 2026 03:33:48 GMT
+- doc_id: DOC-PY-ASYNCIO
+  layer: 8
+  layer_name: 语言运行时
+  component: Python asyncio
+  title: Coroutines and Tasks (timeouts)
+  url: https://docs.python.org/3/library/asyncio-task.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-PY-ASYNCIO.txt
+  chars: 42489
+  http_last_modified: Fri, 18 Sep 2026 21:39:24 GMT
+- doc_id: DOC-PY-HTTPX-TIMEOUT
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Python httpx
+  title: Timeouts
+  url: https://www.python-httpx.org/advanced/timeouts/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-PY-HTTPX-TIMEOUT.txt
+  chars: 3295
+  http_last_modified: Thu, 11 Sep 2025 11:03:01 GMT
+- doc_id: DOC-PY-REQUESTS
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Python requests
+  title: Advanced Usage - Timeouts
+  url: https://requests.readthedocs.io/en/latest/user/advanced/
+  source_type: official-doc
+  version: url:latest
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-PY-REQUESTS.txt
+  chars: 35741
+  http_last_modified: Wed, 02 Sep 2026 18:16:51 GMT
+- doc_id: DOC-R4J-BULKHEAD
+  layer: 4
+  layer_name: 容错库
+  component: Resilience4j
+  title: Bulkhead
+  url: https://resilience4j.readme.io/docs/bulkhead
+  source_type: official-doc
+  version: meta:657ec24dc92cb30049ee2c79
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-R4J-BULKHEAD.txt
+  chars: 6924
+- doc_id: DOC-R4J-CB
+  layer: 4
+  layer_name: 容错库
+  component: Resilience4j
+  title: CircuitBreaker
+  url: https://resilience4j.readme.io/docs/circuitbreaker
+  source_type: official-doc
+  version: meta:657ec24dc92cb30049ee2c79
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-R4J-CB.txt
+  chars: 19349
+- doc_id: DOC-R4J-RATELIMITER
+  layer: 4
+  layer_name: 容错库
+  component: Resilience4j
+  title: RateLimiter
+  url: https://resilience4j.readme.io/docs/ratelimiter
+  source_type: official-doc
+  version: meta:657ec24dc92cb30049ee2c79
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-R4J-RATELIMITER.txt
+  chars: 6760
+- doc_id: DOC-R4J-RETRY
+  layer: 4
+  layer_name: 容错库
+  component: Resilience4j
+  title: Retry
+  url: https://resilience4j.readme.io/docs/retry
+  source_type: official-doc
+  version: meta:657ec24dc92cb30049ee2c79
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-R4J-RETRY.txt
+  chars: 7032
+- doc_id: DOC-R4J-TIMELIMITER
+  layer: 4
+  layer_name: 容错库
+  component: Resilience4j
+  title: TimeLimiter
+  url: https://resilience4j.readme.io/docs/timeout
+  source_type: official-doc
+  version: meta:657ec24dc92cb30049ee2c79
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-R4J-TIMELIMITER.txt
+  chars: 3122
+- doc_id: DOC-RABBITMQ-DLX
+  layer: 6
+  layer_name: 消息与流
+  component: RabbitMQ
+  title: Dead Letter Exchanges
+  url: https://www.rabbitmq.com/docs/dlx
+  source_type: official-doc
+  version: page:4.3
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-RABBITMQ-DLX.txt
+  chars: 13525
+- doc_id: DOC-RABBITMQ-PREFETCH
+  layer: 6
+  layer_name: 消息与流
+  component: RabbitMQ
+  title: Consumer Prefetch
+  url: https://www.rabbitmq.com/docs/consumer-prefetch
+  source_type: official-doc
+  version: page:4.3
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-RABBITMQ-PREFETCH.txt
+  chars: 3506
+- doc_id: DOC-RABBITMQ-QUORUM
+  layer: 6
+  layer_name: 消息与流
+  component: RabbitMQ
+  title: Quorum Queues
+  url: https://www.rabbitmq.com/docs/quorum-queues
+  source_type: official-doc
+  version: page:4.3
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-RABBITMQ-QUORUM.txt
+  chars: 61998
+- doc_id: DOC-RABBITMQ-RELIABILITY
+  layer: 6
+  layer_name: 消息与流
+  component: RabbitMQ
+  title: Reliability Guide
+  url: https://www.rabbitmq.com/docs/reliability
+  source_type: official-doc
+  version: page:4.3
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-RABBITMQ-RELIABILITY.txt
+  chars: 12578
+- doc_id: DOC-ROCKETMQ-RETRY
+  layer: 6
+  layer_name: 消息与流
+  component: RocketMQ
+  title: 消费重试
+  url: https://rocketmq.apache.org/docs/featureBehavior/10consumerretrypolicy/
+  source_type: official-doc
+  version: meta:5.0;page:5.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ROCKETMQ-RETRY.txt
+  chars: 11726
+  http_last_modified: Fri, 18 Sep 2026 10:34:18 GMT
+- doc_id: DOC-ROCKETMQ-TXN
+  layer: 6
+  layer_name: 消息与流
+  component: RocketMQ
+  title: 事务消息
+  url: https://rocketmq.apache.org/docs/featureBehavior/04transactionmessage/
+  source_type: official-doc
+  version: meta:5.0;page:5.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ROCKETMQ-TXN.txt
+  chars: 14666
+  http_last_modified: Fri, 18 Sep 2026 10:34:18 GMT
+- doc_id: DOC-SCA-SENTINEL
+  layer: 4
+  layer_name: 容错库
+  component: Spring Cloud Alibaba
+  title: Spring Cloud Alibaba Sentinel
+  url: https://sca.aliyun.com/docs/2023/user-guide/sentinel/overview/
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SCA-SENTINEL.txt
+  chars: 1123
+- doc_id: DOC-SCCB
+  layer: 4
+  layer_name: 容错库
+  component: Spring Cloud CircuitBreaker
+  title: Spring Cloud Circuit Breaker reference
+  url: https://docs.spring.io/spring-cloud-circuitbreaker/reference/
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SCCB.txt
+  chars: 1033
+  http_last_modified: Thu, 17 Sep 2026 20:30:55 GMT
+- doc_id: DOC-SENTINEL-CB
+  layer: 4
+  layer_name: 容错库
+  component: Sentinel
+  title: 熔断降级
+  url: https://sentinelguard.io/zh-cn/docs/circuit-breaking.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SENTINEL-CB.txt
+  chars: 3061
+  http_last_modified: Thu, 21 Sep 2023 06:24:05 GMT
+- doc_id: DOC-SENTINEL-FLOW
+  layer: 4
+  layer_name: 容错库
+  component: Sentinel
+  title: 流量控制
+  url: https://sentinelguard.io/zh-cn/docs/flow-control.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SENTINEL-FLOW.txt
+  chars: 4570
+  http_last_modified: Thu, 21 Sep 2023 06:24:07 GMT
+- doc_id: DOC-SENTINEL-SYSTEM
+  layer: 4
+  layer_name: 容错库
+  component: Sentinel
+  title: 系统自适应保护
+  url: https://sentinelguard.io/zh-cn/docs/system-adaptive-protection.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SENTINEL-SYSTEM.txt
+  chars: 2797
+  http_last_modified: Thu, 21 Sep 2023 06:24:13 GMT
+- doc_id: DOC-SENTINEL-THREADISOLATION
+  layer: 4
+  layer_name: 容错库
+  component: Sentinel
+  title: основные concepts 并发线程数限流
+  url: https://sentinelguard.io/zh-cn/docs/basic-api-resource-rule.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SENTINEL-THREADISOLATION.txt
+  chars: 10127
+  http_last_modified: Thu, 21 Sep 2023 06:24:04 GMT
+- doc_id: DOC-SPRING-RESTCLIENT
+  layer: 3
+  layer_name: RPC 与 HTTP 框架
+  component: Spring Boot
+  title: REST Clients (timeouts)
+  url: https://docs.spring.io/spring-boot/reference/io/rest-client.html
+  source_type: official-doc
+  version: meta:2024.11.0
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SPRING-RESTCLIENT.txt
+  chars: 40453
+  http_last_modified: Thu, 03 Sep 2026 17:45:33 GMT
+- doc_id: DOC-SPRING-RETRY
+  layer: 4
+  layer_name: 容错库
+  component: Spring Retry
+  title: Spring Retry README
+  url: https://raw.githubusercontent.com/spring-projects/spring-retry/main/README.md
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SPRING-RETRY.txt
+  chars: 33741
+- doc_id: DOC-SRE-BOOK-RELIABILITY
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Google SRE
+  title: SRE Book ch.20 Load Balancing in the Datacenter
+  url: https://sre.google/sre-book/load-balancing-datacenter/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SRE-BOOK-RELIABILITY.txt
+  chars: 35426
+  http_last_modified: Mon, 12 May 2025 07:08:00 GMT
+- doc_id: DOC-SRE-CASCADING
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Google SRE
+  title: SRE Book ch.22 Addressing Cascading Failures
+  url: https://sre.google/sre-book/addressing-cascading-failures/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SRE-CASCADING.txt
+  chars: 58012
+  http_last_modified: Mon, 01 Sep 2025 09:58:00 GMT
+- doc_id: DOC-SRE-OVERLOAD
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Google SRE
+  title: SRE Book ch.21 Handling Overload
+  url: https://sre.google/sre-book/handling-overload/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SRE-OVERLOAD.txt
+  chars: 30646
+  http_last_modified: Mon, 01 Sep 2025 09:58:00 GMT
+- doc_id: DOC-SRE-WORKBOOK-OVERLOAD
+  layer: 10
+  layer_name: 跨层准则与模式目录
+  component: Google SRE
+  title: SRE Workbook ch.11 Managing Load
+  url: https://sre.google/workbook/managing-load/
+  source_type: curated-guideline
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-SRE-WORKBOOK-OVERLOAD.txt
+  chars: 37128
+  http_last_modified: Wed, 28 May 2025 12:18:00 GMT
+- doc_id: DOC-ZK-PROGRAMMERS
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: ZooKeeper
+  title: ZooKeeper Programmer's Guide (sessions)
+  url: https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ZK-PROGRAMMERS.txt
+  chars: 67974
+  http_last_modified: Tue, 15 Sep 2026 15:58:33 GMT
+- doc_id: DOC-ZK-RECIPES
+  layer: 5
+  layer_name: 服务发现与配置中心
+  component: ZooKeeper
+  title: ZooKeeper Recipes (leader election, locks)
+  url: https://zookeeper.apache.org/doc/current/recipes.html
+  source_type: official-doc
+  version: unstated-on-page
+  retrieved: '2026-09-19'
+  fetch_status: ok
+  local_copy: docs-cache/DOC-ZK-RECIPES.txt
+  chars: 17617
+  http_last_modified: Tue, 15 Sep 2026 15:58:33 GMT

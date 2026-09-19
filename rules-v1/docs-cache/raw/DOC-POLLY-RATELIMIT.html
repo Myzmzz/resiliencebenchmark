@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+      <title>Rate limiter resilience strategy | Polly </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="title" content="Rate limiter resilience strategy | Polly ">
+      
+      
+      <link rel="icon" href="../icon.png">
+      <link rel="stylesheet" href="../public/docfx.min.css">
+      <link rel="stylesheet" href="../public/main.css">
+      <meta name="docfx:navrel" content="../toc.html">
+      <meta name="docfx:tocrel" content="toc.html">
+      
+      <meta name="docfx:rel" content="../">
+      
+      
+      <meta name="docfx:docurl" content="https://github.com/App-vNext/Polly/blob/main/docs/strategies/rate-limiter.md/#L1">
+      <meta name="loc:inThisArticle" content="In this article">
+      <meta name="loc:searchResultsCount" content="{count} results for &quot;{query}&quot;">
+      <meta name="loc:searchNoResults" content="No results for &quot;{query}&quot;">
+      <meta name="loc:tocFilter" content="Filter by title">
+      <meta name="loc:nextArticle" content="Next">
+      <meta name="loc:prevArticle" content="Previous">
+      <meta name="loc:themeLight" content="Light">
+      <meta name="loc:themeDark" content="Dark">
+      <meta name="loc:themeAuto" content="Auto">
+      <meta name="loc:changeTheme" content="Change theme">
+      <meta name="loc:copy" content="Copy">
+      <meta name="loc:downloadPdf" content="Download PDF">
+
+      <script type="module" src="./../public/docfx.min.js"></script>
+
+      <script>
+        const theme = localStorage.getItem('theme') || 'auto'
+        document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
+      </script>
+
+  </head>
+
+  <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
+    <header class="bg-body border-bottom">
+      <nav id="autocollapse" class="navbar navbar-expand-md" role="navigation">
+        <div class="container-xxl flex-nowrap">
+          <a class="navbar-brand" href="../index.html">
+            <img id="logo" class="svg" src="../icon.png" alt="Polly">
+            Polly
+          </a>
+          <button class="btn btn-lg d-md-none border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navpanel" aria-controls="navpanel" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <div class="collapse navbar-collapse" id="navpanel">
+            <div id="navbar">
+              <form class="search" role="search" id="search">
+                <i class="bi bi-search"></i>
+                <input class="form-control" id="search-query" type="search" disabled placeholder="Search" autocomplete="off" aria-label="Search">
+              </form>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container-xxl">
+      <div class="toc-offcanvas">
+        <div class="offcanvas-md offcanvas-start" tabindex="-1" id="tocOffcanvas" aria-labelledby="tocOffcanvasLabel">
+          <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="tocOffcanvasLabel">Table of Contents</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#tocOffcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <nav class="toc" id="toc"></nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="actionbar">
+          <button class="btn btn-lg border-0 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#tocOffcanvas" aria-controls="tocOffcanvas" aria-expanded="false" aria-label="Show table of contents">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <nav id="breadcrumb"></nav>
+        </div>
+
+        <article data-uid="">
+<h1 id="rate-limiter-resilience-strategy">Rate limiter resilience strategy</h1>
+
+<h2 id="about">About</h2>
+<ul>
+<li><strong>Option(s)</strong>:
+<ul>
+<li><a class="xref" href="../api/Polly.RateLimiting.RateLimiterStrategyOptions.html"><code>RateLimiterStrategyOptions</code></a></li>
+</ul>
+</li>
+<li><strong>Extension(s)</strong>:
+<ul>
+<li><code>AddRateLimiter</code>,</li>
+<li><code>AddConcurrencyLimiter</code></li>
+</ul>
+</li>
+<li><strong>Exception(s)</strong>:
+<ul>
+<li><a class="xref" href="../api/Polly.RateLimiting.RateLimiterRejectedException.html"><code>RateLimiterRejectedException</code></a>: Thrown when a rate limiter rejects an execution.</li>
+</ul>
+</li>
+</ul>
+<div class="NOTE">
+<h5>Note</h5>
+<p>The rate limiter strategy resides inside the <a href="https://www.nuget.org/packages/Polly.RateLimiting">Polly.RateLimiting</a> package, not in (<a href="https://www.nuget.org/packages/Polly.Core">Polly.Core</a>) like other strategies.</p>
+</div>
+<hr>
+<p>The rate limiter <strong>proactive</strong> resilience strategy controls the number of operations that can pass through it. This strategy is a thin layer over the API provided by the <a href="https://www.nuget.org/packages/System.Threading.RateLimiting"><code>System.Threading.RateLimiting</code></a> package. This strategy can be used in two flavors: to control inbound load via a rate limiter and to control outbound load via a concurrency limiter.</p>
+<p>Further reading:</p>
+<ul>
+<li><a href="https://devblogs.microsoft.com/dotnet/announcing-rate-limiting-for-dotnet/">Announcing rate limiting for .NET</a></li>
+<li><a href="https://learn.microsoft.com/dotnet/api/system.threading.ratelimiting">Rate limiting API documentation</a></li>
+</ul>
+<h2 id="usage">Usage</h2>
+<!-- snippet: rate-limiter -->
+<pre><code class="lang-cs">// Add rate limiter with default options.
+// See https://www.pollydocs.org/strategies/rate-limiter#defaults for defaults.
+new ResiliencePipelineBuilder()
+    .AddRateLimiter(new RateLimiterStrategyOptions());
+
+// Create a rate limiter to allow a maximum of 100 concurrent executions and a queue of 50.
+new ResiliencePipelineBuilder()
+    .AddConcurrencyLimiter(100, 50);
+
+// Create a rate limiter that allows 100 executions per minute.
+new ResiliencePipelineBuilder()
+    .AddRateLimiter(new SlidingWindowRateLimiter(
+        new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            SegmentsPerWindow = 4,
+            Window = TimeSpan.FromMinutes(1)
+        }));
+</code></pre>
+<!-- endSnippet -->
+<p>Example execution:</p>
+<!-- snippet: rate-limiter-execution -->
+<pre><code class="lang-cs">var pipeline = new ResiliencePipelineBuilder().AddConcurrencyLimiter(100, 50).Build();
+
+try
+{
+    // Execute an asynchronous text search operation.
+    var result = await pipeline.ExecuteAsync(
+        token =&gt; TextSearchAsync(query, token),
+        cancellationToken);
+}
+catch (RateLimiterRejectedException ex)
+{
+    // Handle RateLimiterRejectedException,
+    // that can optionally contain information about when to retry.
+    if (ex.RetryAfter is TimeSpan retryAfter)
+    {
+        Console.WriteLine($&quot;Retry After: {retryAfter}&quot;);
+    }
+}
+</code></pre>
+<!-- endSnippet -->
+<h3 id="failure-handling">Failure handling</h3>
+<p>At first glance it might not be obvious what the difference between these two techniques is:</p>
+<!-- snippet: rate-limiter-with-onrejected -->
+<pre><code class="lang-cs">var withOnRejected = new ResiliencePipelineBuilder()
+    .AddRateLimiter(new RateLimiterStrategyOptions
+    {
+        DefaultRateLimiterOptions = new ConcurrencyLimiterOptions
+        {
+            PermitLimit = 10
+        },
+        OnRejected = args =&gt;
+        {
+            Console.WriteLine(&quot;Rate limit has been exceeded&quot;);
+            return default;
+        }
+    }).Build();
+</code></pre>
+<!-- endSnippet -->
+<!-- snippet: rate-limiter-without-onrejected -->
+<pre><code class="lang-cs">var withoutOnRejected = new ResiliencePipelineBuilder()
+    .AddRateLimiter(new RateLimiterStrategyOptions
+    {
+        DefaultRateLimiterOptions = new ConcurrencyLimiterOptions
+        {
+            PermitLimit = 10
+        }
+    }).Build();
+
+try
+{
+    await withoutOnRejected.ExecuteAsync(async ct =&gt; await TextSearchAsync(query, ct), CancellationToken.None);
+}
+catch (RateLimiterRejectedException)
+{
+    Console.WriteLine(&quot;Rate limit has been exceeded&quot;);
+}
+</code></pre>
+<!-- endSnippet -->
+<p>The <code>OnRejected</code> user-provided delegate is called just before the strategy throws the <code>RateLimiterRejectedException</code>. This delegate receives a parameter which allows you to access the <code>Context</code> object as well as the <code>Lease</code>:</p>
+<ul>
+<li><code>Context</code> can be accessed via some <code>Execute{Async}</code> overloads.</li>
+<li><code>Lease</code> can be useful in advanced scenarios.</li>
+</ul>
+<p>So, what is the purpose of the <code>OnRejected</code>?</p>
+<p>The <code>OnRejected</code> delegate can be useful when you define a resilience pipeline which consists of multiple strategies. For example, you have a rate limiter as the inner strategy and a retry as the outer strategy. If the retry is defined to handle <code>RateLimiterRejectedException</code>, that means the <code>Execute{Async}</code> may or may not throw that exception depending on future attempts. So, if you want to get notification about the fact that the rate limit has been exceeded, you have to provide a delegate to the <code>OnRejected</code> property.</p>
+<p>The <code>RateLimiterRejectedException</code> has a <code>RetryAfter</code> and a <code>TelemetrySource</code> property. If the optional <code>RetryAfter</code> value is provided then this indicates that your requests are being throttled and you should retry them no sooner than the property's value.</p>
+<div class="NOTE">
+<h5>Note</h5>
+<p>The <code>RetryAfter</code> value is not available inside the <code>OnRejected</code> callback.</p>
+</div>
+<p>The <code>TelemetrySource</code> property is a <a class="xref" href="../api/Polly.Telemetry.ResilienceTelemetrySource.html"><code>ResilienceTelemetrySource</code></a> which allows you retrieve information such as the executed pipeline and strategy. These can be useful if you have multiple limiter strategies in your pipeline (for example both a rate and concurrency limiter) and you need to know which strategy caused the <code>RateLimiterRejectedException</code> to be thrown.</p>
+<h2 id="defaults">Defaults</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Default Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RateLimiter</code></td>
+<td><code>null</code></td>
+<td><strong>Dynamically</strong> creates a <code>RateLimitLease</code> for executions.</td>
+</tr>
+<tr>
+<td><code>DefaultRateLimiterOptions</code></td>
+<td><code>PermitLimit</code> set to 1000 and <code>QueueLimit</code> set to 0.</td>
+<td>If <code>RateLimiter</code> is not provided then this options object will be used for the default concurrency limiter.</td>
+</tr>
+<tr>
+<td><code>OnRejected</code></td>
+<td><code>null</code></td>
+<td>If provided then it will be invoked after the limiter rejected an execution.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="telemetry">Telemetry</h2>
+<p>The rate limiter strategy reports the following telemetry events:</p>
+<table>
+<thead>
+<tr>
+<th>Event Name</th>
+<th>Event Severity</th>
+<th>When?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnRateLimiterRejected</code></td>
+<td><code>Error</code></td>
+<td>Just before the strategy calls the <code>OnRejected</code> delegate</td>
+</tr>
+</tbody>
+</table>
+<p>Here are some sample events:</p>
+<pre><code class="lang-none">Resilience event occurred. EventName: 'OnRateLimiterRejected', Source: '(null)/(null)/RateLimiter', Operation Key: '', Result: ''
+Resilience event occurred. EventName: 'OnRateLimiterRejected', Source: 'MyPipeline/MyPipelineInstance/MyRateLimiterStrategy', Operation Key: 'MyRateLimitedOperation', Result: ''
+</code></pre>
+<div class="NOTE">
+<h5>Note</h5>
+<p>The <code>OnRateLimiterRejected</code> telemetry event will be reported <strong>only if</strong> the rate limiter strategy rejects the provided callback execution.</p>
+<p>Also remember that the <code>Result</code> will be <strong>always empty</strong> for the <code>OnRateLimiterRejected</code> telemetry event.</p>
+</div>
+<p>For further information please check out the <a href="../advanced/telemetry.html">telemetry page</a>.</p>
+<h2 id="diagrams">Diagrams</h2>
+<h3 id="rate-limiter">Rate Limiter</h3>
+<p>Let's suppose we have a rate limiter strategy with <code>PermitLimit</code> : <code>1</code> and <code>Window</code> : <code>10 seconds</code>.</p>
+<h3 id="rate-limiter-happy-path-sequence-diagram">Rate Limiter: happy path sequence diagram</h3>
+<pre><code class="lang-mermaid">sequenceDiagram
+    autonumber
+    actor C as Caller
+    participant P as Pipeline
+    participant RL as RateLimiter
+    participant D as DecoratedUserCallback
+
+    C-&gt;&gt;P: Calls ExecuteAsync
+    P-&gt;&gt;RL: Calls ExecuteCore
+    Note over RL,D: Window start
+    RL-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-RL: Returns result
+    RL-&gt;&gt;P: Returns result
+    P-&gt;&gt;C: Returns result
+    Note over C: Several seconds later...
+    Note over RL,D: Window end
+    C-&gt;&gt;P: Calls ExecuteAsync
+    P-&gt;&gt;RL: Calls ExecuteCore
+    Note over RL,D: Window start
+    RL-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-RL: Returns result
+    RL-&gt;&gt;P: Returns result
+    P-&gt;&gt;C: Returns result
+    Note over RL,D: Window end
+</code></pre>
+<h4 id="rate-limiter-unhappy-path-sequence-diagram">Rate limiter: unhappy path sequence diagram</h4>
+<pre><code class="lang-mermaid">sequenceDiagram
+    autonumber
+    actor C as Caller
+    participant P as Pipeline
+    participant RL as RateLimiter
+    participant D as DecoratedUserCallback
+
+    C-&gt;&gt;P: Calls ExecuteAsync
+    P-&gt;&gt;RL: Calls ExecuteCore
+    Note over RL,D: Window start
+    RL-&gt;&gt;+D: Invokes
+    D-&gt;&gt;-RL: Returns result
+    RL-&gt;&gt;P: Returns result
+    P-&gt;&gt;C: Returns result
+    Note over C: Few seconds later...
+    C-&gt;&gt;P: Calls ExecuteAsync
+    P-&gt;&gt;RL: Calls ExecuteCore
+    RL--&gt;&gt;RL: Rejects request
+    RL-&gt;&gt;P: Throws &lt;br/&gt;RateLimiterRejectedException
+    P-&gt;&gt;C: Propagates exception
+    Note over RL,D: Window end
+</code></pre>
+<h3 id="concurrency-limiter">Concurrency Limiter</h3>
+<p>Let's suppose we have a concurrency limiter strategy with <code>PermitLimit</code> : <code>1</code> and <code>QueueLimit</code> : <code>1</code>.</p>
+<h4 id="concurrency-limiter-happy-path-sequence-diagram">Concurrency limiter: happy path sequence diagram</h4>
+<pre><code class="lang-mermaid">sequenceDiagram
+    actor C1 as Caller1
+    actor C2 as Caller2
+    participant P as Pipeline
+    participant CL as ConcurrencyLimiter
+    participant D as DecoratedUserCallback
+
+    par
+    C1-&gt;&gt;P: Calls ExecuteAsync
+    and
+    C2-&gt;&gt;P: Calls ExecuteAsync
+    end
+
+    P-&gt;&gt;CL: Calls ExecuteCore
+    CL-&gt;&gt;+D: Invokes (C1)
+    P-&gt;&gt;CL: Calls ExecuteCore
+    CL--&gt;&gt;CL: Queues request
+
+    D-&gt;&gt;-CL: Returns result (C1)
+    CL-&gt;&gt;P: Returns result (C1)
+    CL-&gt;&gt;+D: Invokes (C2)
+    P-&gt;&gt;C1: Returns result
+    D-&gt;&gt;-CL: Returns result (C2)
+    CL-&gt;&gt;P: Returns result (C2)
+    P-&gt;&gt;C2: Returns result
+</code></pre>
+<h4 id="concurrency-limiter-unhappy-path-sequence-diagram">Concurrency Limiter: unhappy path sequence diagram</h4>
+<pre><code class="lang-mermaid">sequenceDiagram
+    actor C1 as Caller1
+    actor C2 as Caller2
+    actor C3 as Caller3
+    participant P as Pipeline
+    participant CL as ConcurrencyLimiter
+    participant D as DecoratedUserCallback
+
+    par
+    C1-&gt;&gt;P: Calls ExecuteAsync
+    and
+    C2-&gt;&gt;P: Calls ExecuteAsync
+    and
+    C3-&gt;&gt;P: Calls ExecuteAsync
+    end
+
+    P-&gt;&gt;CL: Calls ExecuteCore
+    CL-&gt;&gt;+D: Invokes (C1)
+    P-&gt;&gt;CL: Calls ExecuteCore
+    CL--&gt;&gt;CL: Queues request (C2)
+    P-&gt;&gt;CL: Calls ExecuteCore
+    CL--&gt;&gt;CL: Rejects request (C3)
+    CL-&gt;&gt;P: Throws &lt;br/&gt;RateLimiterRejectedException
+    P-&gt;&gt;C3: Propagates exception
+
+    D-&gt;&gt;-CL: Returns result (C1)
+    CL-&gt;&gt;P: Returns result (C1)
+    CL-&gt;&gt;+D: Invokes (C2)
+    P-&gt;&gt;C1: Returns result
+    D-&gt;&gt;-CL: Returns result (C2)
+    CL-&gt;&gt;P: Returns result (C2)
+    P-&gt;&gt;C2: Returns result
+</code></pre>
+<h2 id="disposal-of-rate-limiters">Disposal of rate limiters</h2>
+<p>The <code>RateLimiter</code> is a disposable resource. When you explicitly create a <code>RateLimiter</code> instance, it's good practice to dispose of it once it's no longer needed. This is usually not an issue when manually creating resilience pipelines using the <code>ResiliencePipelineBuilder</code>. However, when dynamic reloads are enabled, failing to dispose of discarded rate limiters can lead to excessive resource consumption. Fortunately, Polly provides a way to dispose of discarded rate limiters, as demonstrated in the example below:</p>
+<!-- snippet: rate-limiter-disposal -->
+<pre><code class="lang-cs">services
+    .AddResiliencePipeline(&quot;my-pipeline&quot;, (builder, context) =&gt;
+    {
+        var options = context.GetOptions&lt;ConcurrencyLimiterOptions&gt;(&quot;my-concurrency-options&quot;);
+
+        // This call enables dynamic reloading of the pipeline
+        // when the named ConcurrencyLimiterOptions change.
+        context.EnableReloads&lt;ConcurrencyLimiterOptions&gt;(&quot;my-concurrency-options&quot;);
+
+        var limiter = new ConcurrencyLimiter(options);
+
+        builder.AddRateLimiter(limiter);
+
+        // Dispose of the limiter when the pipeline is disposed.
+        context.OnPipelineDisposed(() =&gt; limiter.Dispose());
+    });
+</code></pre>
+<!-- endSnippet -->
+<p>The above example uses the <code>AddResiliencePipeline(...)</code> extension method to configure the pipeline. However, a similar approach can be taken when directly using the <code>ResiliencePipelineRegistry&lt;T&gt;</code>.</p>
+<h2 id="partitioned-rate-limiter">Partitioned rate limiter</h2>
+<p>For advanced use-cases, the partitioned rate limiter is also available. The following example illustrates how to retrieve a partition key from <code>ResilienceContext</code> using the <code>GetPartitionKey</code> method:</p>
+<!-- snippet: rate-limiter-partitioned -->
+<pre><code class="lang-cs">var partitionedLimiter = PartitionedRateLimiter.Create&lt;ResilienceContext, string&gt;(context =&gt;
+{
+    // Extract the partition key.
+    string partitionKey = GetPartitionKey(context);
+
+    return RateLimitPartition.GetConcurrencyLimiter(
+        partitionKey,
+        key =&gt; new ConcurrencyLimiterOptions
+        {
+            PermitLimit = 100
+        });
+});
+
+new ResiliencePipelineBuilder()
+    .AddRateLimiter(new RateLimiterStrategyOptions
+    {
+        // Provide a custom rate limiter delegate.
+        RateLimiter = args =&gt;
+        {
+            return partitionedLimiter.AcquireAsync(args.Context, 1, args.Context.CancellationToken);
+        }
+    });
+</code></pre>
+<!-- endSnippet -->
+<p>It is also possible to create a rate limiter strategy using <a href="https://learn.microsoft.com/aspnet/core/performance/rate-limit#create-chained-limiters">multiple chained rate limiters</a>
+to combine multiple rate-limiters with different configurations as shown below.</p>
+<p>For example, we can configure a rate limit of 100 requests per minute that also includes a rate limit of 10 requests per second.
+The rate limit is partitioned by a key which could, for example, be the user ID associated with an authenticated HTTP request to
+apply the rate limits to each user of the system individually.</p>
+<!-- snippet: rate-limiter-chained -->
+<pre><code class="lang-cs">// Use the user's ID as the partition key.
+var partitionKey = &quot;user-id&quot;;
+
+var firstSlidingWindow = PartitionedRateLimiter.Create&lt;ResilienceContext, string&gt;((context) =&gt;
+{
+    return RateLimitPartition.GetSlidingWindowLimiter(partitionKey, (partitionKey) =&gt; new()
+    {
+        PermitLimit = 100,
+        Window = TimeSpan.FromMinutes(1),
+    });
+});
+
+var secondSlidingWindow = PartitionedRateLimiter.Create&lt;ResilienceContext, string&gt;((context) =&gt;
+{
+    return RateLimitPartition.GetSlidingWindowLimiter(partitionKey, (partitionKey) =&gt; new()
+    {
+        PermitLimit = 10,
+        Window = TimeSpan.FromSeconds(1),
+    });
+});
+
+// Create a rate limiter that combines the two sliding windows.
+var chainedRateLimiter = PartitionedRateLimiter.CreateChained(firstSlidingWindow, secondSlidingWindow);
+
+// Create the pipeline using the rate limiter that chains the windows together.
+new ResiliencePipelineBuilder()
+    .AddRateLimiter(new RateLimiterStrategyOptions
+    {
+        RateLimiter = (context) =&gt; chainedRateLimiter.AcquireAsync(context.Context),
+    })
+    .Build();
+</code></pre>
+<!-- endSnippet -->
+
+</article>
+
+        <div class="contribution d-print-none">
+          <a href="https://github.com/App-vNext/Polly/blob/main/docs/strategies/rate-limiter.md/#L1" class="edit-link">Edit this page</a>
+        </div>
+
+        <div class="next-article d-print-none border-top" id="nextArticle"></div>
+
+      </div>
+
+      <div class="affix">
+        <nav id="affix"></nav>
+      </div>
+    </main>
+
+    <div class="container-xxl search-results" id="search-results"></div>
+
+    <footer class="border-top text-secondary">
+      <div class="container-xxl">
+        <div class="flex-fill">
+          <span>Made with <a href="https://dotnet.github.io/docfx">docfx</a></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,462 @@
+# doc_id: DOC-DOTNET-CANCEL
+# url: https://learn.microsoft.com/en-us/dotnet/standard/threading/cancellation-in-managed-threads
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Table of contents Exit editor mode
+Ask Learn Ask Learn
+Language
+csharp
+vb
+Reading mode Table of contents Read in English Add Add to Plans Edit
+Copy Markdown Print
+Note
+Access to this page requires authorization. You can try signing in or changing directories.
+Access to this page requires authorization. You can try changing directories.
+[[H1]] Cancellation in Managed Threads
+Feedback
+Summarize this article for me
+[[H2]] In this article
+.NET uses a unified model for cooperative cancellation of asynchronous or long-running synchronous operations. This model is based on a lightweight object called a cancellation token. The object that invokes one or more cancelable operations, for example by creating new threads or tasks, passes the token to each operation. Individual operations can in turn pass copies of the token to other operations. At some later time, the object that created the token can use it to request that the operations stop what they are doing. Only the requesting object can issue the cancellation request, and each listener is responsible for noticing the request and responding to it in an appropriate and timely manner.
+The general pattern for implementing the cooperative cancellation model is:
+Instantiate a CancellationTokenSource object, which manages and sends cancellation notification to the individual cancellation tokens.
+Pass the token returned by the CancellationTokenSource.Token property to each task or thread that listens for cancellation.
+Provide a mechanism for each task or thread to respond to cancellation.
+Call the CancellationTokenSource.Cancel method to provide notification of cancellation.
+Important
+The CancellationTokenSource class implements the IDisposable interface. You should be sure to call the CancellationTokenSource.Dispose method when you have finished using the cancellation token source to free any unmanaged resources it holds.
+The following illustration shows the relationship between a token source and all the copies of its token.
+The cooperative cancellation model makes it easier to create cancellation-aware applications and libraries, and it supports the following features:
+Cancellation is cooperative and is not forced on the listener. The listener determines how to gracefully terminate in response to a cancellation request.
+Requesting is distinct from listening. An object that invokes a cancelable operation can control when (if ever) cancellation is requested.
+The requesting object issues the cancellation request to all copies of the token by using just one method call.
+A listener can listen to multiple tokens simultaneously by joining them into one linked token.
+User code can notice and respond to cancellation requests from library code, and library code can notice and respond to cancellation requests from user code.
+Listeners can be notified of cancellation requests by polling, callback registration, or waiting on wait handles.
+[[H2]] Cancellation Types
+The cancellation framework is implemented as a set of related types, which are listed in the following table.
+Type name | Description
+CancellationTokenSource | Object that creates a cancellation token, and also issues the cancellation request for all copies of that token.
+CancellationToken | Lightweight value type passed to one or more listeners, typically as a method parameter. Listeners monitor the value of the IsCancellationRequested property of the token by polling, callback, or wait handle.
+OperationCanceledException | Overloads of this exception's constructor accept a CancellationToken as a parameter. Listeners can optionally throw this exception to verify the source of the cancellation and notify others that it has responded to a cancellation request.
+The cancellation model is integrated into .NET in several types. The most important ones are System.Threading.Tasks.Parallel, System.Threading.Tasks.Task, System.Threading.Tasks.Task<TResult> and System.Linq.ParallelEnumerable. We recommend that you use this cooperative cancellation model for all new library and application code.
+[[H2]] Code Example
+In the following example, the requesting object creates a CancellationTokenSource object, and then passes its Token property to the cancelable operation. The operation that receives the request monitors the value of the IsCancellationRequested property of the token by polling. When the value becomes true, the listener can terminate in whatever manner is appropriate. In this example, the method just exits, which is all that is required in many cases.
+Note
+The example uses the QueueUserWorkItem method to demonstrate that the cooperative cancellation framework is compatible with legacy APIs. For an example that uses the preferred System.Threading.Tasks.Task type, see How to: Cancel a Task and Its Children.
+using System;
+using System.Threading;
+public class Example
+{
+public static void Main()
+{
+// Create the token source.
+CancellationTokenSource cts = new CancellationTokenSource();
+// Pass the token to the cancelable operation.
+ThreadPool.QueueUserWorkItem(new WaitCallback(DoSomeWork), cts.Token);
+Thread.Sleep(2500);
+// Request cancellation.
+cts.Cancel();
+Console.WriteLine("Cancellation set in token source...");
+Thread.Sleep(2500);
+// Cancellation should have happened, so call Dispose.
+cts.Dispose();
+}
+// Thread 2: The listener
+static void DoSomeWork(object? obj)
+{
+if (obj is null)
+return;
+CancellationToken token = (CancellationToken)obj;
+for (int i = 0; i < 100000; i++)
+{
+if (token.IsCancellationRequested)
+{
+Console.WriteLine("In iteration {0}, cancellation has been requested...",
+i + 1);
+// Perform cleanup if necessary.
+//...
+// Terminate the operation.
+break;
+}
+// Simulate some work.
+Thread.SpinWait(500000);
+}
+}
+}
+// The example displays output like the following:
+// Cancellation set in token source...
+// In iteration 1430, cancellation has been requested...
+Imports System.Threading
+Module Example1
+Public Sub Main1()
+' Create the token source.
+Dim cts As New CancellationTokenSource()
+' Pass the token to the cancelable operation.
+ThreadPool.QueueUserWorkItem(New WaitCallback(AddressOf DoSomeWork), cts.Token)
+Thread.Sleep(2500)
+' Request cancellation by setting a flag on the token.
+cts.Cancel()
+Console.WriteLine("Cancellation set in token source...")
+Thread.Sleep(2500)
+' Cancellation should have happened, so call Dispose.
+cts.Dispose()
+End Sub
+' Thread 2: The listener
+Sub DoSomeWork(ByVal obj As Object)
+Dim token As CancellationToken = CType(obj, CancellationToken)
+For i As Integer = 0 To 1000000
+If token.IsCancellationRequested Then
+Console.WriteLine("In iteration {0}, cancellation has been requested...",
+i + 1)
+' Perform cleanup if necessary.
+'...
+' Terminate the operation.
+Exit For
+End If
+' Simulate some work.
+Thread.SpinWait(500000)
+Next
+End Sub
+End Module
+' The example displays output like the following:
+' Cancellation set in token source...
+' In iteration 1430, cancellation has been requested...
+[[H2]] Operation Cancellation Versus Object Cancellation
+In the cooperative cancellation framework, cancellation refers to operations, not objects. The cancellation request means that the operation should stop as soon as possible after any required cleanup is performed. One cancellation token should refer to one "cancelable operation," however that operation may be implemented in your program. After the IsCancellationRequested property of the token has been set to true, it cannot be reset to false. Therefore, cancellation tokens cannot be reused after they have been canceled.
+If you require an object cancellation mechanism, you can base it on the operation cancellation mechanism by calling the CancellationToken.Register method, as shown in the following example.
+using System;
+using System.Threading;
+class CancelableObject
+{
+public string id;
+public CancelableObject(string id)
+{
+this.id = id;
+}
+public void Cancel()
+{
+Console.WriteLine($"Object {id} Cancel callback");
+// Perform object cancellation here.
+}
+}
+public class Example1
+{
+public static void Main()
+{
+CancellationTokenSource cts = new CancellationTokenSource();
+CancellationToken token = cts.Token;
+// User defined Class with its own method for cancellation
+var obj1 = new CancelableObject("1");
+var obj2 = new CancelableObject("2");
+var obj3 = new CancelableObject("3");
+// Register the object's cancel method with the token's
+// cancellation request.
+token.Register(() => obj1.Cancel());
+token.Register(() => obj2.Cancel());
+token.Register(() => obj3.Cancel());
+// Request cancellation on the token.
+cts.Cancel();
+// Call Dispose when we're done with the CancellationTokenSource.
+cts.Dispose();
+}
+}
+// The example displays the following output:
+// Object 3 Cancel callback
+// Object 2 Cancel callback
+// Object 1 Cancel callback
+Imports System.Threading
+Class CancelableObject
+Public id As String
+Public Sub New(id As String)
+Me.id = id
+End Sub
+Public Sub Cancel()
+Console.WriteLine("Object {0} Cancel callback", id)
+' Perform object cancellation here.
+End Sub
+End Class
+Module ExampleOb1
+Public Sub MainOb1()
+Dim cts As New CancellationTokenSource()
+Dim token As CancellationToken = cts.Token
+' User defined Class with its own method for cancellation
+Dim obj1 As New CancelableObject("1")
+Dim obj2 As New CancelableObject("2")
+Dim obj3 As New CancelableObject("3")
+' Register the object's cancel method with the token's
+' cancellation request.
+token.Register(Sub() obj1.Cancel())
+token.Register(Sub() obj2.Cancel())
+token.Register(Sub() obj3.Cancel())
+' Request cancellation on the token.
+cts.Cancel()
+' Call Dispose when we're done with the CancellationTokenSource.
+cts.Dispose()
+End Sub
+End Module
+' The example displays output like the following:
+' Object 3 Cancel callback
+' Object 2 Cancel callback
+' Object 1 Cancel callback
+If an object supports more than one concurrent cancelable operation, pass a separate token as input to each distinct cancelable operation. That way, one operation can be cancelled without affecting the others.
+[[H2]] Listening and Responding to Cancellation Requests
+In the user delegate, the implementer of a cancelable operation determines how to terminate the operation in response to a cancellation request. In many cases, the user delegate can just perform any required cleanup and then return immediately.
+However, in more complex cases, it might be necessary for the user delegate to notify library code that cancellation has occurred. In such cases, the correct way to terminate the operation is for the delegate to call the ThrowIfCancellationRequested, method, which will cause an OperationCanceledException to be thrown. Library code can catch this exception on the user delegate thread and examine the exception's token to determine whether the exception indicates cooperative cancellation or some other exceptional situation.
+The Task class handles OperationCanceledException in this way. For more information, see Task Cancellation.
+[[H3]] Listening by Polling
+For long-running computations that loop or recurse, you can listen for a cancellation request by periodically polling the value of the CancellationToken.IsCancellationRequested property. If its value is true, the method should clean up and terminate as quickly as possible. The optimal frequency of polling depends on the type of application. It is up to the developer to determine the best polling frequency for any given program. Polling itself does not significantly impact performance. The following example shows one possible way to poll.
+static void NestedLoops(Rectangle rect, CancellationToken token)
+{
+for (int col = 0; col < rect.columns && !token.IsCancellationRequested; col++) {
+// Assume that we know that the inner loop is very fast.
+// Therefore, polling once per column in the outer loop condition
+// is sufficient.
+for (int row = 0; row < rect.rows; row++) {
+// Simulating work.
+Thread.SpinWait(5_000);
+Console.Write("{0},{1} ", col, row);
+}
+}
+if (token.IsCancellationRequested) {
+// Cleanup or undo here if necessary...
+Console.WriteLine("\r\nOperation canceled");
+Console.WriteLine("Press any key to exit.");
+// If using Task:
+// token.ThrowIfCancellationRequested();
+}
+}
+Shared Sub NestedLoops(ByVal rect As Rectangle, ByVal token As CancellationToken)
+Dim col As Integer
+For col = 0 To rect.columns - 1
+' Assume that we know that the inner loop is very fast.
+' Therefore, polling once per column in the outer loop condition
+' is sufficient.
+For row As Integer = 0 To rect.rows - 1
+' Simulating work.
+Thread.SpinWait(5000)
+Console.Write("0',1' ", col, row)
+Next
+Next
+If token.IsCancellationRequested = True Then
+' Cleanup or undo here if necessary...
+Console.WriteLine(vbCrLf + "Operation canceled")
+Console.WriteLine("Press any key to exit.")
+' If using Task:
+' token.ThrowIfCancellationRequested()
+End If
+End Sub
+For a more complete example, see How to: Listen for Cancellation Requests by Polling.
+[[H3]] Listening by Registering a Callback
+Some operations can become blocked in such a way that they cannot check the value of the cancellation token in a timely manner. For these cases, you can register a callback method that unblocks the method when a cancellation request is received.
+The Register method returns a CancellationTokenRegistration object that is used specifically for this purpose. The following example shows how to use the Register method to cancel an asynchronous web request.
+using System;
+using System.Net.Http;
+using System.Threading;
+class Example4
+{
+static void Main()
+{
+CancellationTokenSource cts = new CancellationTokenSource();
+StartWebRequest(cts.Token);
+// Cancellation will cause the web
+// request to be cancelled.
+cts.Cancel();
+}
+static void StartWebRequest(CancellationToken token)
+{
+var client = new HttpClient();
+token.Register(() =>
+{
+client.CancelPendingRequests();
+Console.WriteLine("Request cancelled!");
+});
+Console.WriteLine("Starting request.");
+client.GetStringAsync(new Uri("http://www.contoso.com"));
+}
+}
+Imports System.Net
+Imports System.Net.Http
+Imports System.Threading
+Class Example4
+Private Shared Sub Main4()
+Dim cts As New CancellationTokenSource()
+StartWebRequest(cts.Token)
+' cancellation will cause the web
+' request to be cancelled
+cts.Cancel()
+End Sub
+Private Shared Sub StartWebRequest(token As CancellationToken)
+Dim client As New HttpClient()
+token.Register(Sub()
+client.CancelPendingRequests()
+Console.WriteLine("Request cancelled!")
+End Sub)
+Console.WriteLine("Starting request.")
+client.GetStringAsync(New Uri("http://www.contoso.com"))
+End Sub
+End Class
+The CancellationTokenRegistration object manages thread synchronization and ensures that the callback will stop executing at a precise point in time.
+In order to ensure system responsiveness and to avoid deadlocks, the following guidelines must be followed when registering callbacks:
+The callback method should be fast because it is called synchronously and therefore the call to Cancel does not return until the callback returns.
+If you call Dispose while the callback is running, and you hold a lock that the callback is waiting on, your program can deadlock. After Dispose returns, you can free any resources required by the callback.
+Callbacks should not perform any manual thread or SynchronizationContext usage in a callback. If a callback must run on a particular thread, use the System.Threading.CancellationTokenRegistration constructor that enables you to specify that the target syncContext is the active SynchronizationContext.Current. Performing manual threading in a callback can cause deadlock.
+For a more complete example, see How to: Register Callbacks for Cancellation Requests.
+[[H3]] Listening by Using a Wait Handle
+When a cancelable operation can block while it waits on a synchronization primitive such as a System.Threading.ManualResetEvent or System.Threading.Semaphore, you can use the CancellationToken.WaitHandle property to enable the operation to wait on both the event and the cancellation request. The wait handle of the cancellation token will become signaled in response to a cancellation request, and the method can use the return value of the WaitAny method to determine whether it was the cancellation token that signaled. The operation can then just exit, or throw an OperationCanceledException, as appropriate.
+// Wait on the event if it is not signaled.
+int eventThatSignaledIndex =
+WaitHandle.WaitAny(new WaitHandle[] { mre, token.WaitHandle },
+new TimeSpan(0, 0, 20));
+' Wait on the event if it is not signaled.
+Dim waitHandles() As WaitHandle = {mre, token.WaitHandle}
+Dim eventThatSignaledIndex =
+WaitHandle.WaitAny(waitHandles, _
+New TimeSpan(0, 0, 20))
+System.Threading.ManualResetEventSlim and System.Threading.SemaphoreSlim both support the cancellation framework in their Wait methods. You can pass the CancellationToken to the method, and when the cancellation is requested, the event wakes up and throws an OperationCanceledException.
+try
+{
+// mres is a ManualResetEventSlim
+mres.Wait(token);
+}
+catch (OperationCanceledException)
+{
+// Throw immediately to be responsive. The
+// alternative is to do one more item of work,
+// and throw on next iteration, because
+// IsCancellationRequested will be true.
+Console.WriteLine("The wait operation was canceled.");
+throw;
+}
+Console.Write("Working...");
+// Simulating work.
+Thread.SpinWait(500000);
+Try
+' mres is a ManualResetEventSlim
+mres.Wait(token)
+Catch e As OperationCanceledException
+' Throw immediately to be responsive. The
+' alternative is to do one more item of work,
+' and throw on next iteration, because
+' IsCancellationRequested will be true.
+Console.WriteLine("Canceled while waiting.")
+Throw
+End Try
+' Simulating work.
+Console.Write("Working...")
+Thread.SpinWait(500000)
+For a more complete example, see How to: Listen for Cancellation Requests That Have Wait Handles.
+[[H3]] Listen to multiple tokens simultaneously
+In some cases, a listener might have to listen to multiple cancellation tokens simultaneously. For example, a cancelable operation might have to monitor an internal cancellation token in addition to a token passed in externally as an argument to a method parameter. To accomplish this, create a linked token source that can join two or more tokens into one token.
+The following example shows the most common use of a linked token: a child token that is cancelled when the parent token is cancelled. You can also cancel the child independently by calling Cancel on the child CancellationTokenSource.
+using System.Threading;
+// Create the parent CancellationTokenSource.
+using var parentCts = new CancellationTokenSource();
+CancellationToken parentToken = parentCts.Token;
+// Create a linked child CancellationTokenSource.
+// The child token is cancelled when the parent token is cancelled.
+using var childCts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
+CancellationToken childToken = childCts.Token;
+Console.WriteLine($"Parent is cancelled: {parentToken.IsCancellationRequested}");
+Console.WriteLine($"Child is cancelled: {childToken.IsCancellationRequested}");
+// Cancel the parent.
+parentCts.Cancel();
+Console.WriteLine($"Parent is cancelled: {parentToken.IsCancellationRequested}");
+Console.WriteLine($"Child is cancelled: {childToken.IsCancellationRequested}");
+// Output:
+// Parent is cancelled: False
+// Child is cancelled: False
+// Parent is cancelled: True
+// Child is cancelled: True
+Imports System.Threading
+Module Program
+Sub Main()
+' Create the parent CancellationTokenSource.
+Using parentCts As New CancellationTokenSource()
+Dim parentToken As CancellationToken = parentCts.Token
+' Create a linked child CancellationTokenSource.
+' The child token is cancelled when the parent token is cancelled.
+Using childCts As CancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(parentToken)
+Dim childToken As CancellationToken = childCts.Token
+Console.WriteLine($"Parent is cancelled: {parentToken.IsCancellationRequested}")
+Console.WriteLine($"Child is cancelled: {childToken.IsCancellationRequested}")
+' Cancel the parent.
+parentCts.Cancel()
+Console.WriteLine($"Parent is cancelled: {parentToken.IsCancellationRequested}")
+Console.WriteLine($"Child is cancelled: {childToken.IsCancellationRequested}")
+End Using
+End Using
+End Sub
+End Module
+' Output:
+' Parent is cancelled: False
+' Child is cancelled: False
+' Parent is cancelled: True
+' Child is cancelled: True
+A more complex scenario involves a cancelable operation that must monitor both an external token passed in from a caller and an internal token. The following example shows how to create such a linked token.
+public void DoWork(CancellationToken externalToken)
+{
+// Create a new token that combines the internal and external tokens.
+this.internalToken = internalTokenSource.Token;
+this.externalToken = externalToken;
+using (CancellationTokenSource linkedCts =
+CancellationTokenSource.CreateLinkedTokenSource(internalToken, externalToken))
+{
+try
+{
+DoWorkInternal(linkedCts.Token);
+}
+catch (OperationCanceledException)
+{
+if (internalToken.IsCancellationRequested)
+{
+Console.WriteLine("Operation timed out.");
+}
+else if (externalToken.IsCancellationRequested)
+{
+Console.WriteLine("Cancelling per user request.");
+externalToken.ThrowIfCancellationRequested();
+}
+}
+}
+}
+Public Sub DoWork(ByVal externalToken As CancellationToken)
+' Create a new token that combines the internal and external tokens.
+Dim internalToken As CancellationToken = internalTokenSource.Token
+Dim linkedCts As CancellationTokenSource =
+CancellationTokenSource.CreateLinkedTokenSource(internalToken, externalToken)
+Using (linkedCts)
+Try
+DoWorkInternal(linkedCts.Token)
+Catch e As OperationCanceledException
+If e.CancellationToken = internalToken Then
+Console.WriteLine("Operation timed out.")
+ElseIf e.CancellationToken = externalToken Then
+Console.WriteLine("Canceled by external token.")
+externalToken.ThrowIfCancellationRequested()
+End If
+End Try
+End Using
+End Sub
+Notice that you must call Dispose on the linked token source when you're done with it. For a more complete example, see How to: Listen for Multiple Cancellation Requests.
+[[H2]] Cooperation Between Library Code and User Code
+The unified cancellation framework makes it possible for library code to cancel user code, and for user code to cancel library code in a cooperative manner. Smooth cooperation depends on each side following these guidelines:
+If library code provides cancelable operations, it should also provide public methods that accept an external cancellation token so that user code can request cancellation.
+If library code calls into user code, the library code should interpret an OperationCanceledException(externalToken) as cooperative cancellation, and not necessarily as a failure exception.
+User-delegates should attempt to respond to cancellation requests from library code in a timely manner.
+System.Threading.Tasks.Task and System.Linq.ParallelEnumerable are examples of classes that follow these guidelines. For more information, see Task Cancellation and How to: Cancel a PLINQ Query.
+[[H2]] See also
+Managed Threading Basics
+Collaborate with us on GitHub
+The source for this content can be found on GitHub, where you can also create and review issues and pull requests. For more information, see our contributor guide.
+.NET
+Open a documentation issue Provide product feedback
+[[H2]] Feedback
+Was this page helpful?
+Yes No
+No
+Need help with this topic?
+Want to try using Ask Learn to clarify or guide you through this topic?
+Ask Learn Ask Learn
+Suggest a fix?
+[[H2]] Additional resources
+Last updated on 2026-03-17

@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width">
+
+    <title>A pattern language for microservices</title>
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="microservices.io" />
+
+<script type="application/ld+json">
+{ "@context" : "http://schema.org",
+  "@id": "http://microservices.io#website",
+  "url": "http://microservices.io",
+  "@type": "WebSite",
+  "name": "Microservices.io",
+  "alternateName": "Microservice Architecture",
+  "about": {
+    "@type": "Intangible",
+	"name": "Microservices",
+	"alternateName": "Microservice Architecture",
+	"sameAs": [
+	  "http://dbpedia.org/resource/Microservices",
+	  "https://www.wikidata.org/wiki/Q18344624",
+	  "https://en.wikipedia.org/wiki/Microservices"
+	]
+  },
+  "publisher": {
+    "@type": "Person",
+	"@id": "http://www.chrisrichardson.net#chris",
+	"name": "Chris Richardson",
+	"image": "https://gravatar.com/avatar/a290a8643359e2495e1c6312e662012f",
+	"sameAs": [
+	  "https://twitter.com/crichardson",
+	  "http://www.slideshare.net/chris.e.richardson",
+	  "http://www.linkedin.com/in/pojos/",
+	  "https://github.com/cer"
+	],
+	"description": "Chris Richardson is an experienced software architect, author of POJOs in Action and the creator of the original CloudFoundry.com. His latest startup is eventuate.io, a microservices application platform. Chris offers a comprehensive set of resources for learning about microservices including articles, an O'Reilly training video, and example code. Chris offers a comprehensive consulting services, workshops and hands on training classes to help you use microservices effectively.",
+	"worksFor": {
+	  "@type": "Organization",
+	  "name": "eventuate.io",
+	  "logo": {
+	    "@type": "ImageObject",
+		"url": "http://eventuate.io/i/logo.gif",
+		"height": "33",
+		"width": "92",
+		"name": "eventuate.io logo"
+	  },
+	  "url": "http://eventuate.io/"
+	},
+	"jobTitle": "Founder",
+	"affiliation": {
+	  "@type": "Organization",
+	  "name": "CloudFoundry.com",
+	  "alternateName": "CloudFoundry",
+	  "url": "http://CloudFoundry.com"
+	}
+  },
+  "copyrightYear": "2017",
+  "offers": {
+    "@type": "Offer",
+	"itemOffered": {
+	  "@type": "Service",
+	  "name": "Microservices consulting and training",
+	  "description": "Chris offers a comprehensive consulting services, workshops and hands on training classes to help you use microservices effectively.",
+	  "url": "http://www.chrisrichardson.net/microserviceslanding.html"
+	  }
+    }
+}
+</script>
+
+
+<meta property="og:title" content="Microservices Pattern: A pattern language for microservices" />
+
+
+
+<meta property="og:url" content="http://microservices.io/patterns/" />
+
+
+
+<script type="application/ld+json">
+{
+"@context": "http://schema.org",
+"@type": "WebPage",
+"@id": "http://microservices.io/patterns/#webpage",
+"isPartOf": {
+  "@id": "http://microservices.io#website"
+  },
+"headline": "A pattern language for microservices",
+"description": "A pattern language for microservices",
+
+
+
+"mainEntity": {
+  "@type": "Intangible",
+  "name": "Pattern: A pattern language for microservices"
+
+  
+
+  
+
+ },
+"url": "http://microservices.io/patterns/"
+}
+</script>
+
+
+
+
+    <!-- syntax highlighting CSS -->
+    <link rel="stylesheet" href="/css/syntax.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/bootstrap.css">
+    <link rel="stylesheet" href="/css/mystyle.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+
+
+    <meta name="google-site-verification" content="rB3uSmJcbvKTM81SmaySzRyq4bSjan7d0vZ-8rH7i4w" />
+<meta name="msvalidate.01" content="FCD5343EE325466BFFCA1D990110980F" />
+
+<!-- -->
+
+<script src="//load.sumome.com/" data-sumo-site-id="429d272781758132dd5f1fe73308c66cf5a1344b1f41666282845fcb2dab7c38" async="async"></script>
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-7DBL155M0H"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-7DBL155M0H');
+</script>
+
+
+<!-- Begin Constant Contact Active Forms -->
+<script> var _ctct_m = "173e7057e76408bde3aa3ca9eb698799"; </script>
+<script id="signupScript" src="//static.ctctcdn.com/js/signup-form-widget/current/signup-form-widget.min.js" async defer></script>
+<!-- End Constant Contact Active Forms -->
+
+</head>
+<body>
+
+<script src="/scripts/jquery.min.js"></script>
+<script src="/scripts/bootstrap.js"></script>
+<script src="/scripts/popup-anchors.js"></script>
+<script src="/scripts/rotate-ads.js"></script>
+
+<div class="site">
+
+    <div class="container-fluid">
+        <div class="row">
+    <div class="col-md-2">
+        <h4><a href="/index.html">Microservice Architecture</a></h4>
+    </div>
+    <div class="col-md-8">
+        <nav class="navbar navbar-default" role="navigation">
+            <ul class="nav navbar-nav">
+                <li><a href="/patterns/index.html">Patterns</a></li>
+                <li><a href="/articles/index.html">Articles</a></li>
+                <li><a href="/presentations/index.html">Presentations</a></li>
+                <li><a href="/adopt/index.html">Adopt</a></li>
+                <li><a href="/refactoring/index.html">Refactoring</a></li>
+                <li><a href="/testing/index.html">Testing</a></li>
+                <li><a href="https://chrisrichardson.net/">Modernization Help</a></li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                <li><a href="/about.html">About</a></li>
+            </ul>
+        </nav>
+    </div>
+</div>
+
+        <div class="row">
+            <div class="col-md-8 col-md-push-3">
+                <div class="page-content">                
+                  <h1>A pattern language for microservices</h1>             
+                  
+ 
+
+<span style="font-size: 2rem;">
+<a href="/tags/pattern">
+    <i class="bi-tags" style="font-size: 2rem; color: cornflowerblue;"></i>
+    pattern
+</a>&nbsp;
+</span>
+
+<br/>
+<hr/>
+
+
+                  <p>The beginnings of a <a href="http://en.wikipedia.org/wiki/Pattern_language">pattern language</a> for microservice architectures.</p>
+
+<p><a href="cn/index.html">点击这里，访问本系列文章的中文翻译</a></p>
+
+<p><a href="cn/index.html">Click here for Chinese translation of the patterns</a></p>
+
+<div>
+	<map name="GraffleExport">
+	<area shape="rect" coords="935,614,1060,650" href="/patterns/communication-style/idempotent-consumer.html" />
+	<area shape="rect" coords="887,437,1012,473" href="/patterns/communication-style/messaging.html" />
+	<area shape="rect" coords="382,530,466,566" href="/patterns/service-template.html" />
+	<area shape="rect" coords="319,301,433,337" href="/patterns/decomposition/service-per-team.html" />
+	<area shape="rect" coords="318,252,432,288" href="/patterns/decomposition/self-contained-service.html" />
+	<area shape="rect" coords="1378,573,1565,609" href="/patterns/observability/log-deployments-and-changes.html" />
+	<area shape="rect" coords="927,270,1012,306" href="/patterns/data/domain-event.html" />
+	<area shape="rect" coords="927,118,1012,154" href="/patterns/data/aggregate.html" />
+	<area shape="rect" coords="436,1133,561,1169" href="/patterns/deployment/service-mesh.html" />
+	<area shape="rect" coords="523,1082,648,1118" href="/patterns/deployment/sidecar.html" />
+	<area shape="rect" coords="1314,155,1428,195" href="/patterns/testing/consumer-side-constract-test.html" />
+	<area shape="rect" coords="492,265,577,301" href="/patterns/data/api-composition.html" />
+	<area shape="rect" coords="1188,481,1273,517" href="/patterns/data/polling-publisher.html" />
+	<area shape="rect" coords="1050,442,1135,478" href="/patterns/data/transactional-outbox.html" />
+	<area shape="rect" coords="1188,425,1273,461" href="/patterns/data/transaction-log-tailing.html" />
+	<area shape="rect" coords="630,265,715,301" href="/patterns/data/cqrs.html" />
+	<area shape="rect" coords="317,199,431,235" href="/patterns/decomposition/decompose-by-subdomain.html" />
+	<area shape="rect" coords="318,127,432,163" href="/patterns/decomposition/decompose-by-business-capability.html" />
+	<area shape="rect" coords="1492,163,1606,199" href="/patterns/ui/client-side-ui-composition.html" />
+	<area shape="rect" coords="1492,96,1606,145" href="/patterns/ui/server-side-page-fragment-composition.html" />
+	<area shape="rect" coords="557,924,648,982" href="/patterns/deployment/service-deployment-platform.html" />
+	<area shape="rect" coords="1480,452,1565,488" href="/patterns/observability/health-check-api.html" />
+	<area shape="rect" coords="1480,515,1565,551" href="/patterns/observability/application-logging.html" />
+	<area shape="rect" coords="1477,404,1562,440" href="/patterns/observability/application-metrics.html" />
+	<area shape="rect" coords="1373,340,1458,376" href="/patterns/observability/audit-logging.html" />
+	<area shape="rect" coords="1377,452,1462,488" href="/patterns/observability/distributed-tracing.html" />
+	<area shape="rect" coords="1377,515,1462,551" href="/patterns/observability/exception-tracking.html" />
+	<area shape="rect" coords="1314,211,1428,251" href="/patterns/testing/service-component-test.html" />
+	<area shape="rect" coords="1313,96,1427,136" href="/patterns/testing/service-integration-contract-test.html" />
+	<area shape="rect" coords="425,586,510,622" href="/patterns/externalized-configuration.html" />
+	<area shape="rect" coords="809,510,934,546" href="/patterns/communication-style/domain-specific.html" />
+	<area shape="rect" coords="573,573,658,609" href="/patterns/security/access-token.html" />
+	<area shape="rect" coords="742,614,867,650" href="/patterns/reliability/circuit-breaker.html" />
+	<area shape="rect" coords="515,759,643,795" href="/patterns/deployment/serverless-deployment.html" />
+	<area shape="rect" coords="69,633,194,669" href="/patterns/microservices.html" />
+	<area shape="rect" coords="69,475,194,511" href="/patterns/monolithic.html" />
+	<area shape="rect" coords="1050,195,1135,231" href="/patterns/data/event-sourcing.html" />
+	<area shape="rect" coords="1155,729,1280,765" href="/patterns/apigateway.html" />
+	<area shape="rect" coords="323,586,408,622" href="/patterns/microservice-chassis.html" />
+	<area shape="rect" coords="473,131,557,167" href="/patterns/data/shared-database.html" />
+	<area shape="rect" coords="800,192,885,228" href="/patterns/data/saga.html" />
+	<area shape="rect" coords="608,131,693,167" href="/patterns/data/database-per-service.html" />
+	<area shape="rect" coords="730,437,855,473" href="/patterns/communication-style/rpi.html" />
+	<area shape="rect" coords="523,1020,648,1056" href="/patterns/deployment/service-per-vm.html" />
+	<area shape="rect" coords="323,1026,448,1062" href="/patterns/deployment/service-per-container.html" />
+	<area shape="rect" coords="405,892,530,928" href="/patterns/deployment/single-service-per-host.html" />
+	<area shape="rect" coords="273,958,398,994" href="/patterns/deployment/multiple-services-per-host.html" />
+	<area shape="rect" coords="946,979,1071,1015" href="/patterns/3rd-party-registration.html" />
+	<area shape="rect" coords="945,729,1070,765" href="/patterns/self-registration.html" />
+	<area shape="rect" coords="831,885,956,921" href="/patterns/service-registry.html" />
+	<area shape="rect" coords="746,979,871,1015" href="/patterns/server-side-discovery.html" />
+	<area shape="rect" coords="746,729,871,765" href="/patterns/client-side-discovery.html" />
+	<area shape="rect" coords="1155,664,1280,700" href="/patterns/apigateway.html" />
+</map>
+
+	<img border="0" class="img-responsive" src="../i/MicroservicePatternLanguage.jpg" usemap="#GraffleExport" />
+</div>
+
+<div>
+	<a href="../i/MicroservicePatternLanguage.pdf" target="_blank">Click here for PDF</a>
+</div>
+
+<h2 id="architectural-style">Architectural style</h2>
+
+<p>Which architectural style should you choose for an application?</p>
+
+<ul>
+  <li><a href="monolithic.html">Monolithic architecture</a> - architect an application as a single deployable unit</li>
+  <li><a href="microservices.html">Microservice architecture</a> - architect an application as a collection of independently deployable, loosely coupled services</li>
+</ul>
+
+<h2 id="service-boundaries">Service boundaries</h2>
+
+<p>How to decompose an application into services?</p>
+
+<ul>
+  <li><a href="decomposition/decompose-by-business-capability.html">Decompose by business capability</a> - define services corresponding to business capabilities</li>
+  <li><a href="decomposition/decompose-by-subdomain.html">Decompose by subdomain</a> - define services corresponding to DDD subdomains</li>
+  <li><a href="decomposition/self-contained-service.html">Self-contained Service</a> - design services to handle synchronous requests without waiting for other services to respond<span class="new-marker">new</span></li>
+  <li><a href="/patterns/decomposition/service-per-team.html">Service per team</a><span class="new-marker">new</span></li>
+</ul>
+
+<h2 id="refactoring-to-services">Refactoring to services</h2>
+
+<ul>
+  <li><a href="/patterns/refactoring/strangler-application.html">Strangler Application</a></li>
+  <li><a href="/patterns/refactoring/anti-corruption-layer.html">Anti-corruption layer</a></li>
+</ul>
+
+<h2 id="service-collaboration">Service collaboration</h2>
+
+<p>How to implement operations that span multiple services?</p>
+
+<ul>
+  <li><a href="data/database-per-service.html">Database per Service</a> - each service has its own private database</li>
+  <li><a href="data/shared-database.html">Shared database</a> - services share a database</li>
+  <li><a href="data/saga.html">Saga</a> - use sagas, which a sequences of local transactions, to maintain data consistency across services</li>
+  <li><a href="data/command-side-replica.html">Command-side replica</a> - maintain a queryable replica of data in a service that implements a command</li>
+  <li><a href="data/api-composition.html">API Composition</a> - implement queries by invoking the services that own the data and performing an in-memory join</li>
+  <li><a href="data/cqrs.html">CQRS</a> - implement queries by maintaining one or more materialized views that can be efficiently queried</li>
+  <li><a href="/patterns/data/domain-event.html">Domain event</a> - publish an event whenever data changes</li>
+  <li><a href="data/event-sourcing.html">Event sourcing</a> - persist aggregates as a sequence of events</li>
+</ul>
+
+<h2 id="transactional-messaging">Transactional messaging</h2>
+
+<p>How to send messages as part of a database transaction?</p>
+
+<ul>
+  <li><a href="data/transactional-outbox.html">Transactional outbox</a></li>
+  <li><a href="data/transaction-log-tailing.html">Transaction log tailing</a></li>
+  <li><a href="data/polling-publisher.html">Polling publisher</a></li>
+</ul>
+
+<h2 id="testing">Testing</h2>
+
+<p>How to test services?</p>
+
+<ul>
+  <li><a href="testing/service-integration-contract-test.html">Consumer-driven contract test</a> - a test suite for a service that is written by the developers of another service that consumes it</li>
+  <li><a href="testing/service-integration-contract-test.html">Consumer-side contract test</a> - a test suite for a service client (e.g. another service) that verifies that it can communicate with the service</li>
+  <li><a href="testing/service-component-test.html">Service component sest</a> - a test suite that tests a service in isolation using test doubles for any services that it invokes</li>
+</ul>
+
+<h2 id="deployment">Deployment</h2>
+
+<p>How to deploy an application’s services?</p>
+
+<ul>
+  <li><a href="deployment/multiple-services-per-host.html">Multiple service instances per host</a> - deploy multiple service instances on a single host</li>
+  <li><a href="deployment/single-service-per-host.html">Service instance per host</a> - deploy each service instance in its own host</li>
+  <li><a href="deployment/service-per-vm.html">Service instance per VM</a> - deploy each service instance in its VM</li>
+  <li><a href="deployment/service-per-container.html">Service instance per Container</a> - deploy each service instance in its container</li>
+  <li><a href="/patterns/deployment/serverless-deployment.html">Serverless deployment</a> - deploy a service using serverless deployment platform</li>
+  <li><a href="/patterns/deployment/service-deployment-platform.html">Service deployment platform</a> - deploy services using a highly automated deployment platform that provides a service abstraction</li>
+</ul>
+
+<h2 id="cross-cutting-concerns">Cross-cutting concerns</h2>
+
+<p>How to handle cross cutting concerns?</p>
+
+<ul>
+  <li><a href="/patterns/microservice-chassis.html">Microservice chassis</a> - a framework that handles cross-cutting concerns and simplifies the development of services</li>
+  <li><a href="/patterns/externalized-configuration.html">Externalized configuration</a> - externalize all configuration such as database location and credentials</li>
+  <li><a href="/patterns/service-template.html">Service Template</a> - a template that implements standard cross cutting concerns and is intended to be copied by a developer in order to quickly start developing a new service</li>
+</ul>
+
+<h2 id="communication-styles">Communication styles</h2>
+
+<p>Which mechanisms do services use to communicate with each other and their external clients?</p>
+
+<ul>
+  <li><a href="communication-style/rpi.html">Remote Procedure Invocation</a> - use an RPI-based protocol for inter-service communication</li>
+  <li><a href="communication-style/messaging.html">Messaging</a> - use asynchronous messaging for inter-service communication</li>
+  <li><a href="communication-style/domain-specific.html">Domain-specific protocol</a> - use a domain-specific protocol</li>
+  <li><a href="/patterns/communication-style/idempotent-consumer.html">Idempotent Consumer</a> - ensure that message consumers can cope with being invoked multiple times with the same message</li>
+</ul>
+
+<h2 id="external-api">External API</h2>
+
+<p>How do external clients communicate with the services?</p>
+
+<ul>
+  <li><a href="apigateway.html">API gateway</a> - a service that provides each client with unified interface to services</li>
+  <li><a href="apigateway.html">Backend for front-end</a> - a separate API gateway for each kind of client</li>
+</ul>
+
+<h2 id="service-discovery">Service discovery</h2>
+
+<p>How does the client of an RPI-based service discover the network location of a service instance?</p>
+
+<ul>
+  <li><a href="client-side-discovery.html">Client-side discovery</a> - client queries a service registry to discover the locations of service instances</li>
+  <li><a href="server-side-discovery.html">Server-side discovery</a> - router queries a service registry to discover the locations of service instances</li>
+  <li><a href="service-registry.html">Service registry</a> - a database of service instance locations</li>
+  <li><a href="self-registration.html">Self registration</a> - service instance registers itself with the service registry</li>
+  <li><a href="3rd-party-registration.html">3rd party registration</a> - a 3rd party registers a service instance with the service registry</li>
+</ul>
+
+<h2 id="reliability">Reliability</h2>
+
+<p>How to prevent a network or service failure from cascading to other services?</p>
+
+<ul>
+  <li><a href="reliability/circuit-breaker.html">Circuit Breaker</a> - invoke a remote service via a proxy that fails immediately when the failure rate of the remote call exceeds a threshold</li>
+</ul>
+
+<h2 id="security">Security</h2>
+
+<p>How to communicate the identity of the requestor to the services that handle the request?</p>
+
+<ul>
+  <li><a href="security/access-token.html">Access Token</a> - a token that securely stores information about user that is exchanged between services</li>
+</ul>
+
+<h2 id="observability">Observability</h2>
+
+<p>How to understand the behavior of an application and troubleshoot problems?</p>
+
+<ul>
+  <li><a href="observability/application-logging.html">Log aggregation</a> - aggregate application logs</li>
+  <li><a href="observability/application-metrics.html">Application metrics</a> - instrument a service’s code to gather statistics about operations</li>
+  <li><a href="observability/audit-logging.html">Audit logging</a> - record user activity in a database</li>
+  <li>
+    <p><a href="observability/distributed-tracing.html">Distributed tracing</a> - instrument services with code that assigns each external request an unique identifier that is passed between services.
+Record information (e.g. start time, end time) about the work (e.g. service requests) performed when handling the external request in a centralized service</p>
+  </li>
+  <li>
+    <p><a href="observability/exception-tracking.html">Exception tracking</a> - report all exceptions to a centralized exception tracking service that aggregates and tracks exceptions and notifies developers.</p>
+  </li>
+  <li>
+    <p><a href="observability/health-check-api.html">Health check API</a> - service API (e.g. HTTP endpoint) that returns the health of the service and is intended to be pinged, for example, by a monitoring service</p>
+  </li>
+  <li><a href="/patterns/observability/log-deployments-and-changes.html">Log deployments and changes</a></li>
+</ul>
+
+<h2 id="ui-design">UI design</h2>
+
+<p>How to implement a UI screen or page that displays data from multiple services?</p>
+
+<ul>
+  <li>
+    <p><a href="ui/server-side-page-fragment-composition.html">Server-side page fragment composition</a> - build a webpage on the server by composing HTML fragments generated by multiple, business capability/subdomain-specific web applications</p>
+  </li>
+  <li>
+    <p><a href="ui/client-side-ui-composition.html">Client-side UI composition</a> - Build a UI on the client by composing UI fragments rendered by multiple, business capability/subdomain-specific UI components</p>
+  </li>
+</ul>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/image-map-resizer/1.0.3/js/imageMapResizer.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('map').imageMapResize();
+});
+</script>
+
+
+                </div>
+                <hr/>
+                
+ 
+
+<span style="font-size: 2rem;">
+<a href="/tags/pattern">
+    <i class="bi-tags" style="font-size: 2rem; color: cornflowerblue;"></i>
+    pattern
+</a>&nbsp;
+</span>
+
+<br/>
+<hr/>
+
+
+
+                <div class="row">
+    <div class="col-md-3"></div>
+    <div class="col-md-9"><hr></div>
+
+</div>
+<div class="row">
+    <div class="col-md-3">
+    </div>
+    <div class="col-md-2">
+        <a class="btn btn-info btn-xs" href="https://chrisrichardson.net/">Modernization Help</a>
+    </div>
+    <div class="col-md-1">
+    </div>
+     <div class="col-md-6">
+         <div style="text-align: center">Copyright © 2026 Chris Richardson • All rights reserved</div>
+    </div>
+</div>
+
+                
+                <div id="disqus_thread"></div>
+
+              </div>
+
+            <div class="hidden-print col-md-2 col-md-pull-8">
+                <!--- begin: About -->
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>About Microservices.io</h4>
+  </div>
+
+<div class="panel-body">
+  <img src="https://gravatar.com/avatar/a290a8643359e2495e1c6312e662012f" class="img-circle" style="float: right" />
+  <p>
+    Microservices.io is created by <a href="/about.html">Chris Richardson</a>, software architect, creator of the original CloudFoundry.com, and author of <i>Microservices Patterns</i>. Chris helps organizations modernize their architecture to enable fast flow and GenAI-powered software delivery.
+  </p>
+</div>
+
+
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>Need help modernizing your architecture?</h4>
+  </div>
+
+  <div class="panel-body">
+    <p>
+      Avoid the trap of creating a modern legacy system — a new architecture with the same old problems.<br />
+      Contact me to discuss your modernization goals.
+    </p>
+    <a class="btn btn-info btn-xs" href="https://www.linkedin.com/in/pojos/">Get Help</a>
+  </div>
+
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>Microservices Patterns, 2nd edition</h4>
+  </div>
+
+  <div class="panel-body">
+    <img src="/i/posts/mp2e-book-cover.png" style="float: right; width: 50%" />
+      <p>I am very excited to announce that the MEAP for the second edition of my book, Microservices Patterns is now available!
+      </p>
+    <a href="/post/architecture/2025/06/26/announcing-meap-microservices-patterns-2nd-edition.html">Learn more</a>
+  </div>
+
+</div>
+
+<!--
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>Latest articles</h4>
+  </div>
+
+  <div class="panel-body">
+      <p>
+        <a href="/post/misc/2022/01/19/writing-better-problem-reports.html">Writing better problem reports: 6 essential details</a>
+      </p>
+  </div>
+
+</div>
+-->
+
+<div class="panel panel-default" style="display:block">
+  <div class="panel-heading">
+     <h4>ASK CHRIS</h4>
+  </div>
+  <div class="panel-body">
+    <div style="float: right; font-size: 4em; text-align: top; font-face: bold; padding-left: 20px">?</div>
+    <p>Got a question about microservices?</p>
+    <p>Fill in <a href="https://forms.gle/ppYDAF1JxHGec8Kn9">this form</a>. If I can, I'll write a blog post that answers your question.</p>
+  </div>
+</div>
+
+<div class="panel panel-default rotating-ad" style="display:block">
+  <div class="panel-heading">
+     <h4>NEED HELP?</h4>
+  </div>
+  <div class="panel-body">
+      <img src="/i/posts/cxo-wondering.webp" style="width: 100%;margin-bottom: 1em" />
+      <p>
+      I help organizations improve agility and competitiveness through better software architecture.
+      </p>
+      
+      <p>
+      Learn more about my <a href="https://chrisrichardson.net/consulting.html">consulting engagements</a>, and <a href="https://chrisrichardson.net/training.html">training workshops</a>.
+      </p>
+
+  </div>
+</div>
+
+<div class="panel panel-default rotating-ad" style="display:none">
+  <div class="panel-heading">
+     <h4>PREMIUM CONTENT</h4>
+  </div>
+  <div class="panel-body">
+    <img src="/i/posts/premium-logo.png" style="width: 100%" />
+    Premium content now available for paid subscribers at <a href="https://premium.microservices.io">premium.microservices.io</a>.
+
+  </div>
+</div>
+
+<div class="panel panel-default rotating-ad" style="display:none">
+  <div class="panel-heading">
+     <h4>MICROSERVICES WORKSHOPS</h4>
+  </div>
+
+  <div class="panel-body">
+    <img src="/i/workshop-kata_small.jpg" style="width: 100%" />
+  <p>Chris teaches <a href="http://chrisrichardson.net/training.html">comprehensive workshops</a> for architects and developers that will enable your organization use microservices effectively.
+  </p>
+  <p>
+  Avoid the pitfalls of adopting microservices and learn essential topics, such as service decomposition and design and how to refactor a monolith to microservices.
+  </p>
+  <a class="btn btn-info btn-xs" href="http://chrisrichardson.net/training.html">Learn more</a>
+
+  </div>
+</div>
+
+<div class="panel panel-default rotating-ad" style="display:none">
+  <div class="panel-heading">
+     <h4>Remote consulting session</h4>
+  </div>
+
+  <div class="panel-body">
+      <img src="/i/posts/zoom-consulting.webp" style="width: 100%" />
+      <p>Got a specific microservice architecture-related question? For example:</p>
+      <ul>
+        <li>Wondering whether your organization should adopt microservices?</li>
+        <li>Want to know how to migrate your monolith to microservices?</li>
+        <li>Facing a tricky microservice architecture design problem?</li>
+      </ul>
+      <p>Consider signing up for a <a href="https://chrisrichardson.net/consulting-office-hours.html">two hour, highly focussed, consulting session.</a></p>
+  </div>
+</div>
+
+<div class="panel panel-default rotating-ad" style="display:none">
+  <div class="panel-heading">
+     <h4>ASSESS your architecture</h4>
+  </div>
+
+  <div class="panel-body">
+     <p>
+     Assess your application's microservice architecture and identify what needs to be improved. <a href="http://www.chrisrichardson.net/consulting.html">Engage Chris</a> to conduct an architect review.</p>
+
+  </div>
+
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>LEARN about microservices</h4>
+  </div>
+
+  <p>Chris offers numerous other resources for learning the microservice architecture.</p>
+
+  <div class="panel-body">
+
+  <h4>Get the book: Microservices Patterns</h4>
+
+  Read Chris Richardson's book:
+
+  <a href="/book">
+    <img style="width: 200px; margin-top: 20px" src="/i/Microservices-Patterns-Cover-published.png" />
+  </a>  
+  </div>
+
+  <hr />
+
+  <h4>Example microservices applications</h4>
+    <p>Want to see an example? Check out Chris Richardson's example applications.
+      <a class="btn btn-info btn-xs" href="http://eventuate.io/exampleapps.html">See code</a>
+  </p>
+
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>Virtual bootcamp: Distributed data patterns in a microservice architecture</h4>
+  </div>
+
+  <div class="panel-body">
+
+      <img src="/i/Chris_Speaking_Mucon_2018_a.jpg" class="img-responsive" style="margin-bottom: 5px" />
+
+      <p>My virtual bootcamp, distributed data patterns in a microservice architecture, is now open for enrollment!</p>
+      <p>It covers the key distributed data management patterns including Saga, API Composition, and CQRS.</p>
+      <p>It consists of video lectures, code labs, and a weekly ask-me-anything video conference repeated in multiple timezones.</p>
+      <p>The regular price is $395/person but use coupon OFFEFKCW to sign up for $95 (valid until Sept 30th, 2025).
+      There are deeper discounts for buying multiple seats.
+      </p>
+      <p><a class="btn btn-info btn-md" target="_blank" href="https://chrisrichardson.net/virtual-bootcamp-distributed-data-management.html">Learn more</a>
+      </p>
+
+  </div>
+
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>Learn how to create a service template and microservice chassis</h4>
+  </div>
+
+  <div class="panel-body">
+      <p>
+        Take a look at my <a href="/post/patterns/2022/03/15/service-template-chassis-live-project.html">Manning LiveProject</a> that teaches you how to develop a service template and microservice chassis.
+      </p>
+      <img class="img-responsive" src="/i/patterns/microservice-template-and-chassis/Microservice_chassis.png" />
+  </div>
+</div>
+
+<!-- BEGIN: Constant Contact Email List Form Button -->
+<div align="center"><a href="http://visitor.r20.constantcontact.com/d.jsp?llr=ula8akwab&amp;p=oi&amp;m=1123470377332&amp;sit=l6ktajjkb&amp;f=15d9bba9-b33d-491f-b874-73a41bba8a76" class="button" style="border: 1px solid rgb(91, 91, 91); color: rgb(91, 91, 91); display: inline-block; padding: 8px 10px; text-shadow: none; border-radius: 20px; background-color: rgb(232, 232, 232);">Signup for the newsletter</a><!-- BEGIN: Email Marketing you can trust --><div id="ctct_button_footer" align="center" style="font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#999999;margin-top: 10px;">For Email Marketing you can trust.</div></div>
+
+<p><br /></p>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+     <h4>BUILD microservices</h4>
+  </div>
+
+  <div class="panel-body">
+    Ready to start using the microservice architecture?
+
+    <h4>Consulting services</h4>
+
+    <p><a href="http://www.chrisrichardson.net/consulting.html">Engage Chris</a> to create a microservices adoption roadmap and help you define your microservice architecture, </p>
+
+    <hr />
+
+    <h4>The Eventuate platform</h4>
+
+    <p>Use the <a href="https://eventuate.io">Eventuate.io platform</a> to tackle distributed data management challenges in your microservices architecture.</p>
+
+    <a href="https://eventuate.io"><img style="width:66%" src="https://eventuate.io/i/logo.gif" /></a>
+
+    <p>Eventuate is Chris's latest startup. It makes it easy to use the Saga pattern to manage transactions and the CQRS pattern to implement queries.</p>
+
+
+  </div>
+</div>
+
+<!--- End: About -->
+
+<hr />
+
+<p>Join the <a href="https://groups.google.com/forum/#!forum/microservices">microservices google group</a></p>
+
+            </div>
+
+            <div class="hidden-print col-md-1 col-md-pull-8">
+            </div>
+
+            <div class="hidden-print col-md-1">
+
+            </div>
+
+
+        </div>
+    </div>
+
+
+</div>
+
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'microservices';
+
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+</body>
+</html>

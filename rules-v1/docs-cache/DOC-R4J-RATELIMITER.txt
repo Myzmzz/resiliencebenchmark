@@ -1,0 +1,142 @@
+# doc_id: DOC-R4J-RATELIMITER
+# url: https://resilience4j.readme.io/docs/ratelimiter
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H2]] Getting Started
+Introduction
+Comparison to Netflix Hystrix
+Maven
+Gradle
+[[H2]] Core Modules
+CircuitBreaker
+Examples
+Bulkhead
+Examples
+RateLimiter
+Examples
+Retry
+Examples
+TimeLimiter
+Cache
+[[H2]] Add-on modules
+Kotlin
+Feign
+[[H2]] RxJava 2&3
+Getting Started
+Examples
+[[H2]] Spring Reactor
+Getting Started
+Examples
+[[H2]] Spring Boot 2&3
+Getting Started
+[[H2]] Micronaut
+Getting Started
+[[H2]] Spring Cloud
+Getting Started
+[[H2]] Metrics
+Micrometer
+Grafana
+[[H2]] License
+Apache 2.0
+Powered by
+[[H1]] RateLimiter
+Getting started with resilience4j-ratelimiter
+Suggest Edits
+[[H2]] Introduction
+Rate limiting is an imperative technique to prepare your API for scale and establish high availability and reliability of your service. But also, this technique comes with a whole bunch of different options of how to handle a detected limits surplus, or what type of requests you want to limit. You can simply decline this over limit request, or build a queue to execute them later or combine these two approaches in some way.
+[[H2]] Internals
+Resilience4j provides a RateLimiter which splits all nanoseconds from the start of epoch into cycles. Each cycle has a duration configured by RateLimiterConfig.limitRefreshPeriod. At the start of each cycle, the RateLimiter sets the number of active permissions to RateLimiterConfig.limitForPeriod.
+For the RateLimiter callers it really looks like this, but for the AtomicRateLimiter implementation has some optimizations under the hood that will skip this refresh, if RateLimiter is not used actively.
+The default implementation of RateLimiter is AtomicRateLimiter which manages its state via AtomicReference. The AtomicRateLimiter.State is completely immutable and has the following fields:
+activeCycle - cycle number that was used by the last call
+activePermissions - count of available permissions after the last call.
+Can be negative if some permissions were reserved
+nanosToWait - count of nanoseconds to wait for permission for the last call
+There is also a SemaphoreBasedRateLimiter which uses Semaphores and a scheduler that will refresh permissions after each RateLimiterConfig#limitRefreshPeriod.
+[[H2]] Create a RateLimiterRegistry
+Just like the CircuitBreaker module, this module provides an in-memory RateLimiterRegistry which you can use to manage (create and retrieve) RateLimiter instances.
+Java
+RateLimiterRegistry rateLimiterRegistry = RateLimiterRegistry.ofDefaults();
+[[H2]] Create and configure a RateLimiter
+You can provide a custom global RateLimiterConfig. In order to create a custom global RateLimiterConfig, you can use the RateLimiterConfig builder. You can use the builder to configure the following properties.
+Config property | Default value | Description
+timeoutDuration | 5 [s] | The default wait time a thread waits for a permission
+limitRefreshPeriod | 500 [ns] | The period of a limit refresh. After each period the rate limiter sets its permissions count back to the limitForPeriod value
+limitForPeriod | 50 | The number of permissions available during one limit refresh period
+For example, you want to restrict the calling rate of some methods to be not higher than 10 req/ms.
+Java
+RateLimiterConfig config = RateLimiterConfig.custom()
+.limitRefreshPeriod(Duration.ofMillis(1))
+.limitForPeriod(10)
+.timeoutDuration(Duration.ofMillis(25))
+.build();
+// Create registry
+RateLimiterRegistry rateLimiterRegistry = RateLimiterRegistry.of(config);
+// Use registry
+RateLimiter rateLimiterWithDefaultConfig = rateLimiterRegistry
+.rateLimiter("name1");
+RateLimiter rateLimiterWithCustomConfig = rateLimiterRegistry
+.rateLimiter("name2", config);
+[[H2]] Decorate and execute a functional interface
+As you can guess RateLimiter has all sorts of higher-order decorator functions just like CircuitBreaker. You can decorate any Callable, Supplier, Runnable, Consumer, CheckedRunnable, CheckedSupplier, CheckedConsumer or CompletionStage with a RateLimiter .
+Java
+// Decorate your call to BackendService.doSomething()
+CheckedRunnable restrictedCall = RateLimiter
+.decorateCheckedRunnable(rateLimiter, backendService::doSomething);
+Try.run(restrictedCall)
+.andThenTry(restrictedCall)
+.onFailure((RequestNotPermitted throwable) -> LOG.info("Wait before call it again :)"));
+You can use changeTimeoutDuration and changeLimitForPeriod to change rate limiter params in runtime.
+New timeout duration won’t affect threads that are currently waiting for permission.
+The new limit won’t affect current period permissions and will apply only from the next one.
+Java
+// Decorate your call to BackendService.doSomething()
+CheckedRunnable restrictedCall = RateLimiter
+.decorateCheckedRunnable(rateLimiter, backendService::doSomething);
+// during second refresh cycle limiter will get 100 permissions
+rateLimiter.changeLimitForPeriod(100);
+[[H2]] Consume emitted RegistryEvents
+You can register event consumers on a RateLimiterRegistry and take actions whenever a RateLimiter is created, replaced, or deleted.
+Java
+RateLimiterRegistry registry = RateLimiterRegistry.ofDefaults();
+registry.getEventPublisher()
+.onEntryAdded(entryAddedEvent -> {
+RateLimiter addedRateLimiter = entryAddedEvent.getAddedEntry();
+LOG.info("RateLimiter {} added", addedRateLimiter.getName());
+})
+.onEntryRemoved(entryRemovedEvent -> {
+RateLimiter removedRateLimiter = entryRemovedEvent.getRemovedEntry();
+LOG.info("RateLimiter {} removed", removedRateLimiter.getName());
+});
+[[H2]] Consume emitted RateLimiterEvents
+The RateLimiter emits a stream of RateLimiterEvents. An event can be a successful permission acquire or acquire failure.
+All events contain additional information like event creation time and rate limiter name.
+If you want to consume events, you have to register as an event consumer.
+Java
+rateLimiter.getEventPublisher()
+.onSuccess(event -> logger.info(...))
+.onFailure(event -> logger.info(...));
+You can use RxJava, RxJava2 or Project Reactor Adapters to convert the EventPublisher into a Reactive Stream.
+Java
+ReactorAdapter.toFlux(rateLimiter.getEventPublisher())
+.filter(event -> event.getEventType() == FAILED_ACQUIRE)
+.subscribe(event -> logger.info(...))
+[[H2]] Override the RegistryStore
+You can override the in-memory RegistryStore by a custom implementation. For example, if you want to use a Cache that removes unused instances after a certain period of time.
+Java
+RateLimiterRegistry rateLimiterRegistry = RateLimiterRegistry.custom()
+.withRegistryStore(new CacheRateLimiterRegistryStore())
+.build();
+Updated over 4 years ago
+[[H3]] What’s Next
+Retry
+Copy Page
+Table of Contents
+Introduction
+Internals
+Create a RateLimiterRegistry
+Create and configure a RateLimiter
+Decorate and execute a functional interface
+Consume emitted RegistryEvents
+Consume emitted RateLimiterEvents
+Override the RegistryStore

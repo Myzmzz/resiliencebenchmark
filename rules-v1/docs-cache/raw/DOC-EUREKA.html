@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+  <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" data-domain-script="018ee325-b3a7-7753-937b-b8b3e643b1a7"></script><script>function OptanonWrapper() {}</script><script>function setGTM(w, d, s, l, i) { w[l] = w[l] || []; w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js"}); var f = d.getElementsByTagName(s)[0], j = d.createElement(s), dl = l != "dataLayer" ? "&l=" + l : ""; j.async = true; j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl; f.parentNode.insertBefore(j, f); } if (document.cookie.indexOf("OptanonConsent") > -1 && document.cookie.indexOf("groups=") > -1) { setGTM(window, document, "script", "dataLayer", "GTM-W8CQ8TL"); } else { waitForOnetrustActiveGroups(); } var timer; function waitForOnetrustActiveGroups() { if (document.cookie.indexOf("OptanonConsent") > -1 && document.cookie.indexOf("groups=") > -1) { clearTimeout(timer); setGTM(window, document, "script", "dataLayer", "GTM-W8CQ8TL"); } else { timer = setTimeout(waitForOnetrustActiveGroups, 250); }}</script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Spring Cloud Netflix Features :: Spring Cloud Netflix</title>
+    <link rel="canonical" href="https://docs.spring.io/spring-cloud-netflix/reference/spring-cloud-netflix.html">
+    <link rel="prev" href="index.html">
+    <link rel="next" href="appendix.html">
+    <meta name="generator" content="Antora 3.2.0">
+    <script>
+!function (theme, navWidth) {
+  if (theme === 'dark') document.documentElement.classList.add('dark-theme')
+  if (navWidth) document.documentElement.style.setProperty('--nav-width', `${navWidth}px`)
+}(localStorage && localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)')?.matches && 'dark'),
+  localStorage && localStorage.getItem('nav-width'))
+    </script>
+    <link rel="stylesheet" href="./_/css/site.css">
+    <link rel="stylesheet" href="./_/css/vendor/search.css">
+    <link rel="stylesheet" href="./_/css/vendor/page-search.css">
+    <link rel="stylesheet" href="./_/css/vendor/asciidoctor-tabs.css">
+
+    <meta name="antora-ui-version" content="v0.4.18"> 
+    <meta name="version" content="5.0.2">
+    <meta name="component" content="cloud-netflix">
+    <meta name="latest-version" content="true">
+    <link rel="icon" href="./_/img/favicon.ico" type="image/vnd.microsoft.icon">
+  </head>
+  <body class="article">
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="https://spring.io">
+        <img
+          id="springlogo"
+          class="block"
+          src="./_/img/spring-logo.svg"
+          alt="Spring"
+        />
+      </a>
+      <button class="navbar-burger" data-target="topbar-nav">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Why Spring</a>
+          <div class="navbar-dropdown">
+            <a
+              class="navbar-item"
+              href="https://spring.io/why-spring"
+            >Overview</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/microservices"
+            >Microservices</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/reactive"
+            >Reactive</a>
+            <a class="navbar-item" href="https://spring.io/event-driven">Event
+              Driven</a>
+            <a class="navbar-item" href="https://spring.io/cloud">Cloud</a>
+            <a class="navbar-item" href="https://spring.io/web-applications">Web
+              Applications</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/serverless"
+            >Serverless</a>
+            <a class="navbar-item" href="https://spring.io/batch">Batch</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Learn</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="https://spring.io/learn">Overview</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/quickstart"
+            >Quickstart</a>
+            <a class="navbar-item" href="https://spring.io/guides">Guides</a>
+            <a class="navbar-item" href="https://spring.io/blog">Blog</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Projects</a>
+          <div class="navbar-dropdown" style="min-width: 280px">
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects"
+            >Overview</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-boot"
+            >Spring Boot</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-framework"
+            >Spring Framework</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-cloud"
+            >Spring Cloud</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-cloud-dataflow"
+            >Spring Cloud Data Flow</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-data"
+            >Spring Data</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-integration"
+            >Spring Integration</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-batch"
+            >Spring Batch</a>
+            <a
+              class="navbar-item"
+              href="https://spring.io/projects/spring-security"
+            >Spring Security</a>
+            <a
+              class="navbar-item navbar-item-special"
+              href="https://spring.io/projects"
+            >View all projects</a>
+            <li class="navbar-item navbar-item-special-3">DEVELOPMENT TOOLS</li>
+            <a class="navbar-item" href="https://spring.io/tools">Spring Tools 4</a>
+            <a
+              class="navbar-item navbar-item-special-2"
+              href="https://start.spring.io"
+            >Spring Initializr
+              <svg
+                class="external-link-icon"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 16 16"
+              ><polyline
+                  points="15 10.94 15 15 1 15 1 1 5.06 1"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-miterlimit="10"
+                  stroke-width="2"
+                ></polyline><polyline
+                  points="8.93 1 15 1 15 7.07"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-miterlimit="10"
+                  stroke-width="2"
+                ></polyline><line
+                  x1="15"
+                  y1="1"
+                  x2="8"
+                  y2="8"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-miterlimit="10"
+                  stroke-width="2"
+                ></line></svg></a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Academy</a>
+          <div class="navbar-dropdown">
+            <a
+              class="navbar-item"
+              href="https://spring.academy/courses"
+            >Courses</a>
+            <a
+              class="navbar-item"
+              href="https://spring.academy/learning-path"
+            >Get Certified</a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Solutions</a>
+          <div class="navbar-dropdown lg">
+            <a class="navbar-item" href="https://spring.io/solutions">Overview</a>
+            <a class="navbar-item" href="https://spring.io/support">Spring Runtime</a>
+            <a class="navbar-item" href="https://spring.io/consulting">Spring Consulting</a>
+            <a class="navbar-item" href="https://spring.academy/teams">Spring Academy For Teams</a>
+            <a class="navbar-item" href="https://spring.io/security">Security Advisories</a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable is-community">
+          <a class="navbar-link" href="#">Community</a>
+          <div class="navbar-dropdown">
+            <a
+              class="navbar-item"
+              href="https://spring.io/community"
+            >Overview</a>
+            <a class="navbar-item" href="https://spring.io/events">Events</a>
+            <a class="navbar-item" href="https://spring.io/team">Team</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <label class="theme-toggler">
+      <input
+        type="checkbox"
+        type="checkbox"
+        id="switch-theme-checkbox"
+        name="switch-theme-checkbox"
+      />
+      <span class="icon"><svg
+          aria-hidden="true"
+          focusable="false"
+          data-prefix="fas"
+          data-icon="moon"
+          class="svg-inline--fa fa-moon moon"
+          role="img"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 384 512"
+        ><path
+            fill="currentColor"
+            d="M223.5 32C100 32 0 132.3 0 256S100 480 223.5 480c60.6 0 115.5-24.2 155.8-63.4c5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6c-96.9 0-175.5-78.8-175.5-176c0-65.8 36-123.1 89.3-153.3c6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"
+          ></path>
+        </svg>
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          data-prefix="fas"
+          data-icon="sun"
+          class="svg-inline--fa fa-sun sun"
+          role="img"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 512 512"
+        ><path
+            fill="currentColor"
+            d="M361.5 1.2c5 2.1 8.6 6.6 9.6 11.9L391 121l107.9 19.8c5.3 1 9.8 4.6 11.9 9.6s1.5 10.7-1.6 15.2L446.9 256l62.3 90.3c3.1 4.5 3.7 10.2 1.6 15.2s-6.6 8.6-11.9 9.6L391 391 371.1 498.9c-1 5.3-4.6 9.8-9.6 11.9s-10.7 1.5-15.2-1.6L256 446.9l-90.3 62.3c-4.5 3.1-10.2 3.7-15.2 1.6s-8.6-6.6-9.6-11.9L121 391 13.1 371.1c-5.3-1-9.8-4.6-11.9-9.6s-1.5-10.7 1.6-15.2L65.1 256 2.8 165.7c-3.1-4.5-3.7-10.2-1.6-15.2s6.6-8.6 11.9-9.6L121 121 140.9 13.1c1-5.3 4.6-9.8 9.6-11.9s10.7-1.5 15.2 1.6L256 65.1 346.3 2.8c4.5-3.1 10.2-3.7 15.2-1.6zM160 256a96 96 0 1 1 192 0 96 96 0 1 1 -192 0zm224 0a128 128 0 1 0 -256 0 128 128 0 1 0 256 0z"
+          ></path>
+        </svg></span>
+      <span class="text">light</span>
+    </label>
+  </nav>
+</header>
+<script>
+!function (theme) {
+  if (theme === 'dark') {
+    document.getElementById('switch-theme-checkbox').parentElement.classList.add('active')
+  }
+}(localStorage && localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)')?.matches && 'dark'))
+</script>
+<div class="body">
+<div class="nav-container" data-component="cloud-netflix" data-version="5.0.2">
+  <aside class="nav">
+    <div class="panels">
+      <div class="nav-panel-menu is-active" data-panel="menu">
+        <nav class="nav-menu">
+<div class="context">
+  <span class="title">Spring Cloud Netflix</span>
+  <span class="version">5.0.2</span>
+  <button class="browse-version" id="browse-version">
+    <svg
+      height="24px"
+      id="Layer_1"
+      style="enable-background:new 0 0 512 512;"
+      version="1.1"
+      viewBox="0 0 512 512"
+      width="24px"
+      xml:space="preserve"
+    ><g><path
+          d="M256,224c-17.7,0-32,14.3-32,32s14.3,32,32,32c17.7,0,32-14.3,32-32S273.7,224,256,224L256,224z"
+        ></path><path
+          d="M128.4,224c-17.7,0-32,14.3-32,32s14.3,32,32,32c17.7,0,32-14.3,32-32S146,224,128.4,224L128.4,224z"
+        ></path><path
+          d="M384,224c-17.7,0-32,14.3-32,32s14.3,32,32,32s32-14.3,32-32S401.7,224,384,224L384,224z"
+        ></path></g></svg>
+  </button>
+  <div class="search">
+  <button class="DocSearch-Button search-button">
+    <svg enable-background="new 0 0 32 32" id="Glyph" version="1.1" viewBox="0 0 32 32" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <path d="M27.414,24.586l-5.077-5.077C23.386,17.928,24,16.035,24,14c0-5.514-4.486-10-10-10S4,8.486,4,14  s4.486,10,10,10c2.035,0,3.928-0.614,5.509-1.663l5.077,5.077c0.78,0.781,2.048,0.781,2.828,0  C28.195,26.633,28.195,25.367,27.414,24.586z M7,14c0-3.86,3.14-7,7-7s7,3.14,7,7s-3.14,7-7,7S7,17.86,7,14z" id="XMLID_223_"/>
+    </svg>
+    <span>Search</span>
+    <span class="search-key"></span>
+  </button>
+</div>
+</div><ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link"  href="index.html">Introduction</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link"  href="spring-cloud-netflix.html">Spring Cloud Netflix Features</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="appendix.html">Common application properties</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="configprops.html">Configuration Properties</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+          <div class="toggle-sm">
+            <button id="nav-toggle-2" class="nav-toggle"></button>
+          </div>
+        </nav>
+      </div>
+      <div class="nav-collapse">
+        <button id="nav-collapse-toggle"><span></span></button>        
+      </div>
+    </div>
+    <div class="nav-resize"></div>
+  </aside>
+</div>
+<script>
+!function (sidebar) {
+  if (sidebar) {
+    document.body.classList.add('nav-sm')
+  }
+}(localStorage && localStorage.getItem('sidebar') === 'close')
+</script><main class="article">
+<div class="toolbar" role="navigation">
+  <button id="nav-toggle-1" class="nav-toggle"></button>
+<div class="search">
+  <button class="DocSearch-Button search-button">
+    <svg enable-background="new 0 0 32 32" id="Glyph" version="1.1" viewBox="0 0 32 32" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <path d="M27.414,24.586l-5.077-5.077C23.386,17.928,24,16.035,24,14c0-5.514-4.486-10-10-10S4,8.486,4,14  s4.486,10,10,10c2.035,0,3.928-0.614,5.509-1.663l5.077,5.077c0.78,0.781,2.048,0.781,2.828,0  C28.195,26.633,28.195,25.367,27.414,24.586z M7,14c0-3.86,3.14-7,7-7s7,3.14,7,7s-3.14,7-7,7S7,17.86,7,14z" id="XMLID_223_"/>
+    </svg>
+    <span>Search</span>
+    <span class="search-key"></span>
+  </button>
+</div>
+</div>
+  <div class="content">
+<aside class="sidebar">
+  <div class="content">
+    <div
+      class="toc"
+      data-title="Spring Cloud Netflix Features"
+      data-levels="2"
+    >
+      <div class="toc-menu"></div>
+    </div>
+    <div class="sidebar-links">
+        <a href="https://github.com/spring-cloud/spring-cloud-netflix/blob/v5.0.2/docs/modules/ROOT/pages/spring-cloud-netflix.adoc">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            height="24"
+            viewBox="0 0 24 24"
+            width="24"
+          ><path
+              d="m16 2.012 3 3L16.713 7.3l-3-3zM4 14v3h3l8.299-8.287-3-3zm0 6h16v2H4z"
+            ></path></svg>
+          Edit this Page
+        </a>
+              <a href="https://github.com/spring-cloud/spring-cloud-netflix" title="GitHub">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            height="512px"
+            id="Layer_1"
+            version="1.1"
+            viewBox="0 0 512 512"
+            width="512px"
+          ><style type="text/css"><![CDATA[
+              .st0{fill-rule:evenodd;clip-rule:evenodd;} ]]></style><g><path
+                class="st0"
+                d="M256,32C132.3,32,32,134.8,32,261.7c0,101.5,64.2,187.5,153.2,217.9c11.2,2.1,15.3-5,15.3-11.1   c0-5.5-0.2-19.9-0.3-39.1c-62.3,13.9-75.5-30.8-75.5-30.8c-10.2-26.5-24.9-33.6-24.9-33.6c-20.3-14.3,1.5-14,1.5-14   c22.5,1.6,34.3,23.7,34.3,23.7c20,35.1,52.4,25,65.2,19.1c2-14.8,7.8-25,14.2-30.7c-49.7-5.8-102-25.5-102-113.5   c0-25.1,8.7-45.6,23-61.6c-2.3-5.8-10-29.2,2.2-60.8c0,0,18.8-6.2,61.6,23.5c17.9-5.1,37-7.6,56.1-7.7c19,0.1,38.2,2.6,56.1,7.7   c42.8-29.7,61.5-23.5,61.5-23.5c12.2,31.6,4.5,55,2.2,60.8c14.3,16.1,23,36.6,23,61.6c0,88.2-52.4,107.6-102.3,113.3   c8,7.1,15.2,21.1,15.2,42.5c0,30.7-0.3,55.5-0.3,63c0,6.1,4,13.3,15.4,11C415.9,449.1,480,363.1,480,261.7   C480,134.8,379.7,32,256,32z"
+              ></path></g></svg>
+          GitHub Project
+        </a>
+        <a href="https://stackoverflow.com/tags/spring-cloud">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><path
+              d="M290.7 311L95 269.7 86.8 309l195.7 41zm51-87L188.2 95.7l-25.5 30.8 153.5 128.3zm-31.2 39.7L129.2 179l-16.7 36.5L293.7 300zM262 32l-32 24 119.3 160.3 32-24zm20.5 328h-200v39.7h200zm39.7 80H42.7V320h-40v160h359.5V320h-40z"
+            ></path></svg>
+          Stack Overflow
+        </a>
+    </div>
+  </div>
+</aside>
+<article class="doc">
+<div class="breadcrumbs-container">
+  <nav class="breadcrumbs" aria-label="breadcrumbs">
+    <ul>
+      <li><a href="index.html">Spring Cloud Netflix</a></li>
+      <li><a href="spring-cloud-netflix.html">Spring Cloud Netflix Features</a></li>
+    </ul>
+  </nav>
+</div><h1 id="page-title" class="page">Spring Cloud Netflix Features</h1>
+<div class="sect1">
+<h2 id="_service_discovery_eureka_clients"><a class="anchor" href="#_service_discovery_eureka_clients"></a>Service Discovery: Eureka Clients</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Service Discovery is one of the key tenets of a microservice-based architecture.
+Trying to hand-configure each client or some form of convention can be difficult to do and can be brittle.
+Eureka is the Netflix Service Discovery Server and Client.
+The server can be configured and deployed to be highly available, with each server replicating state about the registered services to the others.</p>
+</div>
+<div class="sect2">
+<h3 id="netflix-eureka-client-starter"><a class="anchor" href="#netflix-eureka-client-starter"></a>How to Include Eureka Client</h3>
+<div class="paragraph">
+<p>To include the Eureka Client in your project, use the starter with a group ID of <code>org.springframework.cloud</code> and an artifact ID of  <code>spring-cloud-starter-netflix-eureka-client</code>.
+See the <a href="https://projects.spring.io/spring-cloud/">Spring Cloud Project page</a> for details on setting up your build system with the current Spring Cloud Release Train.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_registering_with_eureka"><a class="anchor" href="#_registering_with_eureka"></a>Registering with Eureka</h3>
+<div class="paragraph">
+<p>When a client registers with Eureka, it provides meta-data about itself&#8201;&#8212;&#8201;such as host, port, health indicator URL, home page, and other details.
+Eureka receives heartbeat messages from each instance belonging to a service.
+If the heartbeat fails over a configurable timetable, the instance is normally removed from the registry.</p>
+</div>
+<div class="paragraph">
+<p>The following example shows a minimal Eureka client application:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@SpringBootApplication
+@RestController
+public class Application {
+
+    @RequestMapping("/")
+    public String home() {
+        return "Hello world";
+    }
+
+    public static void main(String[] args) {
+		SpringApplication.run(CustomerServiceTestApplication.class, args);
+	}
+
+
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Note that the preceding example shows a normal <a href="https://projects.spring.io/spring-boot/">Spring Boot</a> application.
+By having <code>spring-cloud-starter-netflix-eureka-client</code> on the classpath, your application automatically registers with the Eureka Server.  Configuration is required to locate the Eureka server, as shown in the following example:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre>eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In the preceding example, <code>defaultZone</code> is a magic string fallback value that provides the service URL for any client that does not express a preference (in other words, it is a useful default).</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+The <code>defaultZone</code> property is case sensitive and requires camel case because the <code>serviceUrl</code> property is a <code>Map&lt;String, String&gt;</code>. Therefore, the <code>defaultZone</code> property does not follow the normal Spring Boot snake-case convention of <code>default-zone</code>.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The default application name (that is, the service ID), virtual host, and non-secure port (taken from the <code>Environment</code>) are <code>${spring.application.name}</code>, <code>${spring.application.name}</code> and <code>${server.port}</code>, respectively.</p>
+</div>
+<div class="paragraph">
+<p>Having <code>spring-cloud-starter-netflix-eureka-client</code> on the classpath makes the app into both a Eureka &#8220;instance&#8221; (that is, it registers itself) and a &#8220;client&#8221; (it can query the registry to locate other services).
+The instance behaviour is driven by <code>eureka.instance.*</code> configuration keys, but the defaults are fine if you ensure that your application has a value for <code>spring.application.name</code> (this is the default for the Eureka service ID or VIP).</p>
+</div>
+<div class="paragraph">
+<p>See <a href="https://github.com/spring-cloud/spring-cloud-netflix/tree/docs-build/spring-cloud-netflix-eureka-client/src/main/java/org/springframework/cloud/netflix/eureka/EurekaInstanceConfigBean.java">EurekaInstanceConfigBean</a> and <a href="https://github.com/spring-cloud/spring-cloud-netflix/tree/docs-build/spring-cloud-netflix-eureka-client/src/main/java/org/springframework/cloud/netflix/eureka/EurekaClientConfigBean.java">EurekaClientConfigBean</a> for more details on the configurable options.</p>
+</div>
+<div class="paragraph">
+<p>To disable the Eureka Discovery Client, you can set <code>eureka.client.enabled</code> to <code>false</code>. Eureka Discovery Client will also be disabled when <code>spring.cloud.discovery.enabled</code> is set to <code>false</code>.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Specifying the version of the Spring Cloud Netflix Eureka server as a path parameter is not currently supported. This means you cannot set the version in the context path (<code>eurekaServerURLContext</code>). Instead, you can include the version in the server URL (for example, you can set <code>defaultZone: <a href="http://localhost:8761/eureka/v2" class="bare">localhost:8761/eureka/v2</a></code>).
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_authenticating_with_the_eureka_server"><a class="anchor" href="#_authenticating_with_the_eureka_server"></a>Authenticating with the Eureka Server</h3>
+<div class="paragraph">
+<p>HTTP basic authentication is automatically added to your eureka client if one of the <code>eureka.client.serviceUrl.defaultZone</code> URLs has credentials embedded in it (curl style, as follows: <code><a href="https://user:password@localhost:8761/eureka" class="bare">user:password@localhost:8761/eureka</a></code>).
+For more complex needs, you can create a <code>@Bean</code> of type <code>DiscoveryClientOptionalArgs</code> and inject <code>ClientFilter</code> instances into it, all of which is applied to the calls from the client to the server.</p>
+</div>
+<div class="paragraph">
+<p>When Eureka server requires client side certificate for authentication, the client side certificate and trust store can be configured via properties, as shown in following example:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">eureka:
+  client:
+    tls:
+      enabled: true
+      key-store: &lt;path-of-key-store&gt;
+      key-store-type: PKCS12
+      key-store-password: &lt;key-store-password&gt;
+      key-password: &lt;key-password&gt;
+      trust-store: &lt;path-of-trust-store&gt;
+      trust-store-type: PKCS12
+      trust-store-password: &lt;trust-store-password&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The <code>eureka.client.tls.enabled</code> needs to be true to enable Eureka client side TLS. When <code>eureka.client.tls.trust-store</code> is omitted, a JVM default trust store is used. The default value for <code>eureka.client.tls.key-store-type</code> and <code>eureka.client.tls.trust-store-type</code> is PKCS12. When password properties are omitted, empty password is assumed.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Because of a limitation in Eureka, it is not possible to support per-server basic auth credentials, so only the first set that are found is used.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>If you want to customize the <code>RestClient</code> used by the Eureka HTTP Client you may want to create a bean of <code>EurekaClientHttpRequestFactorySupplier</code> and provide your own logic for generating a <code>ClientHttpRequestFactory</code> instance.</p>
+</div>
+<div class="paragraph">
+<p>All default timeout-related properties for <code>RestClient</code> used by the Eureka HTTP Client are set to 3 minutes (in keeping with Apache HC5 default <code>RequestConfig</code> and <code>SocketConfig</code>). Therefore, to specify the timeout values, you must specify the value directly with the properties in <code>eureka.client.timeout</code>. All timeout properties are in milliseconds.</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">eureka:
+  client:
+    restclient:
+      timeout:
+        connect-timeout: 5000
+        connect-request-timeout: 8000
+        socket-timeout: 10000
+    rest-template-timeout:
+      connect-timeout: 5000
+      connect-request-timeout: 8000
+      socket-timeout: 10000</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You can also customise the <code>RequestConfig</code> for the underlying Apache HttpClient 5 by creating a bean of type <code>EurekaClientHttpRequestFactorySupplier.RequestConfigCustomizer</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@Configuration
+public class RestClientConfiguration {
+
+	@Bean
+	EurekaClientHttpRequestFactorySupplier.RequestConfigCustomizer requestConfigCustomizer() {
+		return builder -&gt; builder.setProtocolUpgradeEnabled(false);
+	}
+
+}</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_status_page_and_health_indicator"><a class="anchor" href="#_status_page_and_health_indicator"></a>Status Page and Health Indicator</h3>
+<div class="paragraph">
+<p>The status page and health indicators for a Eureka instance default to <code>/info</code> and <code>/health</code> respectively, which are the default locations of useful endpoints in a Spring Boot Actuator application.
+You need to change these, even for an Actuator application if you use a non-default context path or servlet path (such as <code>server.servletPath=/custom</code>). The following example shows the default values for the two settings:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre>eureka:
+  instance:
+    statusPageUrlPath: ${server.servletPath}/info
+    healthCheckUrlPath: ${server.servletPath}/health</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>These links show up in the metadata that is consumed by clients and are used in some scenarios to decide whether to send requests to your application, so it is helpful if they are accurate.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+In Dalston it was also required to set the status and health check URLs when changing
+that management context path.  This requirement was removed beginning in Edgware.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_registering_a_secure_application"><a class="anchor" href="#_registering_a_secure_application"></a>Registering a Secure Application</h3>
+<div class="paragraph">
+<p>If your app wants to be contacted over HTTPS, you can set two flags in the <code>EurekaInstanceConfigBean</code>:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>eureka.instance.[nonSecurePortEnabled]=[false]</code></p>
+</li>
+<li>
+<p><code>eureka.instance.[securePortEnabled]=[true]</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Doing so makes Eureka publish instance information that shows an explicit preference for secure communication.
+The Spring Cloud <code>DiscoveryClient</code> always returns a URI starting with <code>https</code> for a service configured this way.
+Similarly, when a service is configured this way, the Eureka (native) instance information has a secure health check URL.</p>
+</div>
+<div class="paragraph">
+<p>Because of the way Eureka works internally, it still publishes a non-secure URL for the status and home pages unless you also override those explicitly.
+You can use placeholders to configure the eureka instance URLs, as shown in the following example:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre>eureka:
+  instance:
+    statusPageUrl: https://${eureka.hostname}/info
+    healthCheckUrl: https://${eureka.hostname}/health
+    homePageUrl: https://${eureka.hostname}/</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>(Note that <code>${eureka.hostname}</code> is a native placeholder only available
+in later versions of Eureka. You could achieve the same thing with
+Spring placeholders as well&#8201;&#8212;&#8201;for example, by using <code>${eureka.instance.hostName}</code>.)</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+If your application runs behind a proxy, and the SSL termination is in the proxy (for example, if you run in Cloud Foundry or other platforms as a service), then you need to ensure that the proxy &#8220;forwarded&#8221; headers are intercepted and handled by the application.
+If the Tomcat container embedded in a Spring Boot application has explicit configuration for the 'X-Forwarded-\*` headers, this happens automatically.
+The links rendered by your app to itself being wrong (the wrong host, port, or protocol) is a sign that you got this configuration wrong.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_eurekas_health_checks"><a class="anchor" href="#_eurekas_health_checks"></a>Eureka&#8217;s Health Checks</h3>
+<div class="paragraph">
+<p>By default, Eureka uses the client heartbeat to determine if a client is up.
+Unless specified otherwise, the Discovery Client does not propagate the current health check status of the application, per the Spring Boot Actuator.
+Consequently, after successful registration, Eureka always announces that the application is in 'UP' state. This behavior can be altered by enabling Eureka health checks, which results in propagating application status to Eureka.
+As a consequence, every other application does not send traffic to applications in states other then 'UP'.
+The following example shows how to enable health checks for the client:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre>eureka:
+  client:
+    healthcheck:
+      enabled: true</pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<code>eureka.client.healthcheck.enabled=true</code> should only be set in <code>application.yml</code>. Setting the value in <code>bootstrap.yml</code> causes undesirable side effects, such as registering in Eureka with an <code>UNKNOWN</code> status.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>If you require more control over the health checks, consider implementing your own <code>com.netflix.appinfo.HealthCheckHandler</code>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_eureka_metadata_for_instances_and_clients"><a class="anchor" href="#_eureka_metadata_for_instances_and_clients"></a>Eureka Metadata for Instances and Clients</h3>
+<div class="paragraph">
+<p>It is worth spending a bit of time understanding how the Eureka metadata works, so you can use it in a way that makes sense in your platform.
+There is standard metadata for information such as hostname, IP address, port numbers, the status page, and health check.
+These are published in the service registry and used by clients to contact the services in a straightforward way.
+Additional metadata can be added to the instance registration in the <code>eureka.instance.metadataMap</code>, and this metadata is accessible in the remote clients.
+In general, additional metadata does not change the behavior of the client, unless the client is made aware of the meaning of the metadata.
+There are a couple of special cases, described later in this document, where Spring Cloud already assigns meaning to the metadata map.</p>
+</div>
+<div class="sect3">
+<h4 id="_using_eureka_on_cloud_foundry"><a class="anchor" href="#_using_eureka_on_cloud_foundry"></a>Using Eureka on Cloud Foundry</h4>
+<div class="paragraph">
+<p>Cloud Foundry has a global router so that all instances of the same app have the same hostname (other PaaS solutions with a similar architecture have the same arrangement).
+This is not necessarily a barrier to using Eureka.
+However, if you use the router (recommended or even mandatory, depending on the way your platform was set up), you need to explicitly set the hostname and port numbers (secure or non-secure) so that they use the router.
+You might also want to use instance metadata so that you can distinguish between the instances on the client (for example, in a custom load balancer).
+By default, the <code>eureka.instance.instanceId</code> is <code>vcap.application.instance_id</code>, as shown in the following example:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre>eureka:
+  instance:
+    hostname: ${vcap.application.uris[0]}
+    nonSecurePort: 80</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Depending on the way the security rules are set up in your Cloud Foundry instance, you might be able to register and use the IP address of the host VM for direct service-to-service calls.
+This feature is not yet available on Pivotal Web Services (<a href="https://run.pivotal.io">PWS</a>).</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_using_eureka_on_aws"><a class="anchor" href="#_using_eureka_on_aws"></a>Using Eureka on AWS</h4>
+<div class="paragraph">
+<p>If the application is planned to be deployed to an AWS cloud, the Eureka instance must be configured to be AWS-aware. You can do so by customizing the <a href="https://github.com/spring-cloud/spring-cloud-netflix/tree/docs-build/spring-cloud-netflix-eureka-client/src/main/java/org/springframework/cloud/netflix/eureka/EurekaInstanceConfigBean.java">EurekaInstanceConfigBean</a> as follows:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@Bean
+@Profile("!default")
+public EurekaInstanceConfigBean eurekaInstanceConfig(InetUtils inetUtils) {
+  EurekaInstanceConfigBean bean = new EurekaInstanceConfigBean(inetUtils);
+  AmazonInfo info = AmazonInfo.Builder.newBuilder().autoBuild("eureka");
+  bean.setDataCenterInfo(info);
+  return bean;
+}</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_changing_the_eureka_instance_id"><a class="anchor" href="#_changing_the_eureka_instance_id"></a>Changing the Eureka Instance ID</h4>
+<div class="paragraph">
+<p>A vanilla Netflix Eureka instance is registered with an ID that is equal to its host name (that is, there is only one service per host).
+Spring Cloud Eureka provides a sensible default, which is defined as follows:</p>
+</div>
+<div class="paragraph">
+<p><code>${spring.cloud.client.hostname}:${spring.application.name}:${spring.application.instance_id:${server.port}}</code></p>
+</div>
+<div class="paragraph">
+<p>An example is <code>myhost:myappname:8080</code>.</p>
+</div>
+<div class="paragraph">
+<p>By using Spring Cloud, you can override this value by providing a unique identifier in <code>eureka.instance.instanceId</code>, as shown in the following example:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre>eureka:
+  instance:
+    instanceId: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>With the metadata shown in the preceding example and multiple service instances deployed on localhost, the random value is inserted there to make the instance unique.
+In Cloud Foundry, the <code>vcap.application.instance_id</code> is populated automatically in a Spring Boot application, so the random value is not needed.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_using_the_eurekaclient"><a class="anchor" href="#_using_the_eurekaclient"></a>Using the EurekaClient</h3>
+<div class="paragraph">
+<p>Once you have an application that is a discovery client, you can use it to discover service instances from the <a href="#spring-cloud-eureka-server">Eureka Server</a>.
+One way to do so is to use the native <code>com.netflix.discovery.EurekaClient</code> (as opposed to the Spring Cloud <code>DiscoveryClient</code>), as shown in the following example:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>@Autowired
+private EurekaClient discoveryClient;
+
+public String serviceUrl() {
+    InstanceInfo instance = discoveryClient.getNextServerFromEureka("STORES", false);
+    return instance.getHomePageUrl();
+}</pre>
+</div>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Do not use the <code>EurekaClient</code> in a <code>@PostConstruct</code> method or in a <code>@Scheduled</code> method (or anywhere where the <code>ApplicationContext</code> might not be started yet).
+It is initialized in a <code>SmartLifecycle</code> (with <code>phase=0</code>), so the earliest you can rely on it being available is in another <code>SmartLifecycle</code> with a higher phase.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect3">
+<h4 id="_underlying_http_clients"><a class="anchor" href="#_underlying_http_clients"></a>Underlying HTTP clients</h4>
+<div class="paragraph">
+<p><code>EurekaClient</code> uses either <code>RestClient</code>, <code>WebClient</code> or <code>JerseyClient</code> under the hood. In order to use the <code>EurekaClient</code>, you need to have one of the supported HTTP clients on your classpath.</p>
+</div>
+<div class="paragraph">
+<p>To use <code>RestClient</code>, add <code>spring-boot-restclient</code> to your dependencies. To use <code>WebClient</code>, add <code>spring-boot-webclient</code> to your dependencies. If both <code>spring-boot-restclient</code>
+and <code>spring-boot-webclient</code> are included in the dependencies and the <code>eureka.client.webclient.enabled</code> flag is set to <code>true</code>,
+then <code>WebClient</code> will be used. If that&#8217;s not the case, <code>RestClient</code> will be used.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+For any of those client implementations, if there&#8217;s a builder bean available, it will be used to create the underlying client.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+We&#8217;re planning on changing the default client to <code>RestClient</code> with the next major release.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>If you wish to use Jersey instead, you need to add the Jersey dependencies to your classpath.
+The following example shows the dependencies you need to add:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;com.sun.jersey&lt;/groupId&gt;
+        &lt;artifactId&gt;jersey-client&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;com.sun.jersey&lt;/groupId&gt;
+        &lt;artifactId&gt;jersey-core&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;com.sun.jersey.contribs&lt;/groupId&gt;
+        &lt;artifactId&gt;jersey-apache-client4&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+&lt;/dependencies&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If you have <code>JerseyClient</code> on the classpath but do not wish to use it in your <code>EuerekaClient</code>, make sure to set <code>eureka.client.jersey.enabled</code> to <code>false</code>.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_alternatives_to_the_native_netflix_eurekaclient"><a class="anchor" href="#_alternatives_to_the_native_netflix_eurekaclient"></a>Alternatives to the Native Netflix EurekaClient</h3>
+<div class="paragraph">
+<p>You need not use the raw Netflix <code>EurekaClient</code>.
+Also, it is usually more convenient to use it behind a wrapper of some sort.
+Spring Cloud has support for <a href="#spring-cloud-feign">Feign</a> (a REST client builder) and <a href="https://docs.spring.io/spring-cloud-commons/reference/4.1/spring-cloud-commons/loadbalancer.html">Spring Cloud LoadBalancer</a> through the logical Eureka service identifiers (VIPs) instead of physical URLs.</p>
+</div>
+<div class="paragraph">
+<p>You can also use the <code>org.springframework.cloud.client.discovery.DiscoveryClient</code>, which provides a simple API (not specific to Netflix) for discovery clients, as shown in the following example:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>@Autowired
+private DiscoveryClient discoveryClient;
+
+public String serviceUrl() {
+    List&lt;ServiceInstance&gt; list = discoveryClient.getInstances("STORES");
+    if (list != null &amp;&amp; list.size() &gt; 0 ) {
+        return list.get(0).getUri();
+    }
+    return null;
+}</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_why_is_it_so_slow_to_register_a_service"><a class="anchor" href="#_why_is_it_so_slow_to_register_a_service"></a>Why Is It so Slow to Register a Service?</h3>
+<div class="paragraph">
+<p>Being an instance also involves a periodic heartbeat to the registry
+(through the client&#8217;s <code>serviceUrl</code>) with a default duration of 30 seconds.
+A service is not available for discovery by clients until the instance, the server, and the client all have the same metadata in their local
+cache (so it could take 3 heartbeats).
+You can change the period by setting <code>eureka.instance.leaseRenewalIntervalInSeconds</code>.
+Setting it to a value of less than 30 speeds up the process of getting clients connected to other services.
+In production, it is probably better to stick with the default, because of internal computations in the server that make assumptions about the lease renewal period.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_zones"><a class="anchor" href="#_zones"></a>Zones</h3>
+<div class="paragraph">
+<p>If you have deployed Eureka clients to multiple zones, you may prefer that those clients use services within the same zone before trying services in another zone.
+To set that up, you need to configure your Eureka clients correctly.</p>
+</div>
+<div class="paragraph">
+<p>First, you need to make sure you have Eureka servers deployed to each zone and that
+they are peers of each other.
+See the section on <a href="#spring-cloud-eureka-server-zones-and-regions">zones and regions</a>
+for more information.</p>
+</div>
+<div class="paragraph">
+<p>Next, you need to tell Eureka which zone your service is in.
+You can do so by using the <code>metadataMap</code> property.
+For example, if <code>service 1</code> is deployed to both <code>zone 1</code> and <code>zone 2</code>, you need to set the following Eureka properties in <code>service 1</code>:</p>
+</div>
+<div class="paragraph">
+<p><strong>Service 1 in Zone 1</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-none hljs">eureka.instance.metadataMap.zone = zone1
+eureka.client.preferSameZoneEureka = true</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Service 1 in Zone 2</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-none hljs">eureka.instance.metadataMap.zone = zone2
+eureka.client.preferSameZoneEureka = true</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_refreshing_eureka_clients"><a class="anchor" href="#_refreshing_eureka_clients"></a>Refreshing Eureka Clients</h3>
+<div class="paragraph">
+<p>By default, the <code>EurekaClient</code> bean is refreshable, meaning the Eureka client properties can be changed and refreshed.
+When a refresh occurs clients will be unregistered from the Eureka server and there might be a brief moment of time
+where all instance of a given service are not available. One way to eliminate this from happening is to disable
+the ability to refresh Eureka clients.  To do this set <code>eureka.client.refresh.enable=false</code>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_using_eureka_with_spring_cloud_loadbalancer"><a class="anchor" href="#_using_eureka_with_spring_cloud_loadbalancer"></a>Using Eureka with Spring Cloud LoadBalancer</h3>
+<div class="paragraph">
+<p>We offer support for the Spring Cloud LoadBalancer <code>ZonePreferenceServiceInstanceListSupplier</code>.
+The <code>zone</code> value from the Eureka instance metadata (<code>eureka.instance.metadataMap.zone</code>) is used for setting the
+value of <code>spring-cloud-loadbalancer-zone</code> property that is used to filter service instances by zone.</p>
+</div>
+<div class="paragraph">
+<p>If that is missing and if the <code>spring.cloud.loadbalancer.eureka.approximateZoneFromHostname</code> flag is set to <code>true</code>,
+it can use the domain name from the server hostname as a proxy for the zone.</p>
+</div>
+<div class="paragraph">
+<p>If there is no other source of zone data, then a guess is made, based on the client configuration (as opposed to the instance configuration).
+We take <code>eureka.client.availabilityZones</code>, which is a map from region name to a list of zones, and pull out the first zone for the instance&#8217;s own region (that is, the <code>eureka.client.region</code>, which defaults to "us-east-1", for compatibility with native Netflix).</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_aot_and_native_image_support"><a class="anchor" href="#_aot_and_native_image_support"></a>AOT and Native Image Support</h3>
+<div class="paragraph">
+<p>Spring Cloud Netflix Eureka Client integration supports Spring AOT transformations and native images, however, only with refresh mode disabled.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+If you want to run Eureka Client in AOT or native image modes, make sure to set <code>spring.cloud.refresh.enabled</code> to <code>false</code>.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Given the AOT and native image closed-world assumption, using random port with Eureka clients is not supported for ahead of time compilation or native images.
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="spring-cloud-eureka-server"><a class="anchor" href="#spring-cloud-eureka-server"></a>Service Discovery: Eureka Server</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section describes how to set up a Eureka server.</p>
+</div>
+<div class="sect2">
+<h3 id="netflix-eureka-server-starter"><a class="anchor" href="#netflix-eureka-server-starter"></a>How to Include Eureka Server</h3>
+<div class="paragraph">
+<p>To include Eureka Server in your project, use the starter with a group ID of <code>org.springframework.cloud</code> and an artifact ID of <code>spring-cloud-starter-netflix-eureka-server</code>.
+See the <a href="https://projects.spring.io/spring-cloud/">Spring Cloud Project page</a> for details on setting up your build system with the current Spring Cloud Release Train.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+If your project already uses Thymeleaf as its template engine, the Freemarker templates of the Eureka server may not be loaded correctly. In this case it is necessary to configure the template loader manually:
+</td>
+</tr>
+</table>
+</div>
+<div class="listingblock">
+<div class="title">application.yml</div>
+<div class="content">
+<pre>spring:
+  freemarker:
+    template-loader-path: classpath:/templates/
+    prefer-file-system-access: false</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="spring-cloud-running-eureka-server"><a class="anchor" href="#spring-cloud-running-eureka-server"></a>How to Run a Eureka Server</h3>
+<div class="paragraph">
+<p>The following example shows a minimal Eureka server:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@SpringBootApplication
+@EnableEurekaServer
+public class Application {
+
+    public static void main(String[] args) {
+		SpringApplication.run(CustomerServiceTestApplication.class, args);
+	}
+
+
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The server has a home page with a UI and HTTP API endpoints for the normal Eureka functionality under <code>/eureka/*</code>.</p>
+</div>
+<div class="paragraph">
+<p>The following links have some Eureka background reading:  <a href="https://github.com/cfregly/fluxcapacitor/wiki/NetflixOSS-FAQ#eureka-service-discovery-load-balancer">flux capacitor</a> and <a href="https://groups.google.com/forum/?fromgroups#!topic/eureka_netflix/g3p2r7gHnN0">google group discussion</a>.</p>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Due to Gradle&#8217;s dependency resolution rules and the lack of a parent bom feature, depending on <code>spring-cloud-starter-netflix-eureka-server</code> can cause failures on application startup.
+To remedy this issue, add the Spring Boot Gradle plugin and import the Spring cloud starter parent bom as follows:</p>
+</div>
+<div class="listingblock">
+<div class="title">build.gradle</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">buildscript {
+  dependencies {
+    classpath("org.springframework.boot:spring-boot-gradle-plugin:{spring-boot-docs-version}")
+  }
+}
+
+apply plugin: "spring-boot"
+
+dependencyManagement {
+  imports {
+    mavenBom "org.springframework.cloud:spring-cloud-dependencies:{spring-cloud-version}"
+  }
+}</code></pre>
+</div>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_defaultopenfortrafficcount_and_its_effect_on_eurekaserver_warmup_time"><a class="anchor" href="#_defaultopenfortrafficcount_and_its_effect_on_eurekaserver_warmup_time"></a><code>defaultOpenForTrafficCount</code> and its effect on EurekaServer warmup time</h3>
+<div class="paragraph">
+<p>Netflix Eureka&#8217;s <code>waitTimeInMsWhenSyncEmpty</code> setting is not taken into account in Spring Cloud Eureka server at the beginning. In order to enable the warmup time, set <code>eureka.server.defaultOpenForTrafficCount=0</code>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="spring-cloud-eureka-server-zones-and-regions"><a class="anchor" href="#spring-cloud-eureka-server-zones-and-regions"></a>High Availability, Zones and Regions</h3>
+<div class="paragraph">
+<p>The Eureka server does not have a back end store, but the service instances in the registry all have to send heartbeats to keep their registrations up to date (so this can be done in memory).
+Clients also have an in-memory cache of Eureka registrations (so they do not have to go to the registry for every request to a service).</p>
+</div>
+<div class="paragraph">
+<p>By default, every Eureka server is also a Eureka client and requires (at least one) service URL to locate a peer.
+If you do not provide it, the service runs and works, but it fills your logs with a lot of noise about not being able to register with the peer.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="spring-cloud-eureka-server-standalone-mode"><a class="anchor" href="#spring-cloud-eureka-server-standalone-mode"></a>Standalone Mode</h3>
+<div class="paragraph">
+<p>The combination of the two caches (client and server) and the heartbeats make a standalone Eureka server fairly resilient to failure, as long as there is some sort of monitor or elastic runtime (such as Cloud Foundry) keeping it alive.
+In standalone mode, you might prefer to switch off the client side behavior so that it does not keep trying and failing to reach its peers.
+The following example shows how to switch off the client-side behavior:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml (Standalone Eureka Server)</div>
+<div class="content">
+<pre>server:
+  port: 8761
+
+eureka:
+  instance:
+    hostname: localhost
+  client:
+    registerWithEureka: false
+    fetchRegistry: false
+    serviceUrl:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Notice that the <code>serviceUrl</code> is pointing to the same host as the local instance.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="spring-cloud-eureka-server-peer-awareness"><a class="anchor" href="#spring-cloud-eureka-server-peer-awareness"></a>Peer Awareness</h3>
+<div class="paragraph">
+<p>Eureka can be made even more resilient and available by running multiple instances and asking them to register with each other.
+In fact, this is the default behavior, so all you need to do to make it work is add a valid <code>serviceUrl</code> to a peer, as shown in the following example:</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml (Two Peer Aware Eureka Servers)</div>
+<div class="content">
+<pre>---
+spring:
+  profiles: peer1
+eureka:
+  instance:
+    hostname: peer1
+  client:
+    serviceUrl:
+      defaultZone: https://peer2/eureka/
+
+---
+spring:
+  profiles: peer2
+eureka:
+  instance:
+    hostname: peer2
+  client:
+    serviceUrl:
+      defaultZone: https://peer1/eureka/</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In the preceding example, we have a YAML file that can be used to run the same server on two hosts (<code>peer1</code> and <code>peer2</code>) by running it in different Spring profiles.
+You could use this configuration to test the peer awareness on a single host (there is not much value in doing that in production) by manipulating <code>/etc/hosts</code> to resolve the host names.
+In fact, the <code>eureka.instance.hostname</code> is not needed if you are running on a machine that knows its own hostname (by default, it is looked up by using <code>java.net.InetAddress</code>).</p>
+</div>
+<div class="paragraph">
+<p>You can add multiple peers to a system, and, as long as they are all connected to each other by at least one edge, they synchronize
+the registrations amongst themselves.
+If the peers are physically separated (inside a data center or between multiple data centers), then the system can, in principle, survive &#8220;split-brain&#8221; type failures.
+You can add multiple peers to a system, and as long as they are all
+directly connected to each other, they will synchronize
+the registrations amongst themselves.</p>
+</div>
+<div class="listingblock">
+<div class="title">application.yml (Three Peer Aware Eureka Servers)</div>
+<div class="content">
+<pre>eureka:
+  client:
+    serviceUrl:
+      defaultZone: https://peer1/eureka/,http://peer2/eureka/,http://peer3/eureka/
+
+---
+spring:
+  profiles: peer1
+eureka:
+  instance:
+    hostname: peer1
+
+---
+spring:
+  profiles: peer2
+eureka:
+  instance:
+    hostname: peer2
+
+---
+spring:
+  profiles: peer3
+eureka:
+  instance:
+    hostname: peer3</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="spring-cloud-eureka-server-prefer-ip-address"><a class="anchor" href="#spring-cloud-eureka-server-prefer-ip-address"></a>When to Prefer IP Address</h3>
+<div class="paragraph">
+<p>In some cases, it is preferable for Eureka to advertise the IP addresses of services rather than the hostname.
+Set <code>eureka.instance.preferIpAddress</code> to <code>true</code> and, when the application registers with eureka, it uses its IP address rather than its hostname.</p>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If the hostname cannot be determined by Java, then the IP address is sent to Eureka.
+Only explicit way of setting the hostname is by setting <code>eureka.instance.hostname</code> property.
+You can set your hostname at the run-time by using an environment variable&#8201;&#8212;&#8201;for example, <code>eureka.instance.hostname=${HOST_NAME}</code>.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_securing_the_eureka_server"><a class="anchor" href="#_securing_the_eureka_server"></a>Securing The Eureka Server</h3>
+<div class="paragraph">
+<p>You can secure your Eureka server simply by adding Spring Security to your
+server&#8217;s classpath via <code>spring-boot-starter-security</code>.  By default, when Spring Security is on the classpath it will require that
+a valid CSRF token be sent with every request to the app.  Eureka clients will not generally possess a valid
+cross site request forgery (CSRF) token you will need to disable this requirement for the <code>/eureka/**</code> endpoints.
+For example:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	http.authorizeHttpRequests((authz) -&gt; authz
+        .anyRequest().authenticated())
+	    .httpBasic(withDefaults());
+    http.csrf().ignoringRequestMatchers("/eureka/**");
+    return http.build();
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For more information on CSRF see the <a href="https://docs.spring.io/spring-security/site/docs/current/reference/htmlsingle/#csrf">Spring Security documentation</a>.</p>
+</div>
+<div class="paragraph">
+<p>A demo Eureka Server can be found in the Spring Cloud Samples <a href="https://github.com/spring-cloud-samples/eureka/tree/Eureka-With-Security-4.x">repo</a>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_jdk_11_support"><a class="anchor" href="#_jdk_11_support"></a>JDK 11 Support</h3>
+<div class="paragraph">
+<p>The JAXB modules which the Eureka server depends upon were removed in JDK 11.  If you intend to use JDK 11
+when running a Eureka server you must include these dependencies in your POM or Gradle file.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependency&gt;
+	&lt;groupId&gt;org.glassfish.jaxb&lt;/groupId&gt;
+	&lt;artifactId&gt;jaxb-runtime&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_aot_and_native_image_support_2"><a class="anchor" href="#_aot_and_native_image_support_2"></a>AOT and Native Image Support</h3>
+<div class="paragraph">
+<p>Spring Cloud Netflix Eureka Server does not support Spring AOT transformations or native images.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_metrics"><a class="anchor" href="#_metrics"></a>Metrics</h3>
+<div class="paragraph">
+<p><code>EurekaInstanceMonitor</code> listens to events related to Eureka instance registration and creates/updates <code>Gauge`s for Eureka instance information in Micrometer&#8217;s `MeterRegistry</code>. By default, this behavior is disabled. If you want to enable it, you need to set <code>eureka.server.metrics.enabled</code> to <code>true</code>.</p>
+</div>
+<div class="paragraph">
+<p>By default, the <code>Gauge`s are named `eureka.server.instances</code> and have the following tags:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>application</code>: application name</p>
+</li>
+<li>
+<p><code>status</code>: instance status (<code>UP</code>, <code>DOWN</code>, <code>STARTING</code>, <code>OUT_OF_SERVICE</code>, <code>UNKNOWN</code>, see: <code>com.netflix.appinfo.InstanceInfo.InstanceStatus</code>)</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>You can add additional tags by injecting your own implementation of <code>EurekaInstanceTagsProvider</code>.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_configuration_properties"><a class="anchor" href="#_configuration_properties"></a>Configuration properties</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>To see the list of all Spring Cloud Netflix related configuration properties please check <a href="appendix.html">the Appendix page</a>.</p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="index.html">Introduction</a></span>
+  <span class="next"><a href="appendix.html">Common application properties</a></span>
+</nav>
+</article>  </div>
+</main>
+<div class="modal micromodal-slide" id="modal-versions" aria-hidden="true">
+    <div class="modal__overlay" tabindex="-1" data-micromodal-close>
+        <div class="modal__container" role="dialog" aria-modal="true">
+            <main class="modal__content" id="modal-versions-content">
+              <button data-micromodal-close class="modal-versions-close">
+                <svg width="28px" height="28px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><style>.cls-1h{fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round;stroke-width:2px;}</style></defs><title/><g id="cross"><line class="cls-1h" x1="7" x2="25" y1="7" y2="25"/><line class="cls-1h" x1="7" x2="25" y1="25" y2="7"/></g></svg>
+              </button>
+              <div class="colset">
+                <div class="col-left">
+
+                  <ul class="nav-versions">
+                      <li class="component">
+                        <div>
+                          <a class="title" href="index.html">Spring Cloud Netflix</a>
+                        </div>                        <div class="version-item is-active">
+                          <div>
+                            <button class="version-toggle" type="button">
+                              <span></span>
+                              Stable
+                            </button>
+                          </div>
+                          <ul class="versions">
+  <li class="version">
+    <a href="spring-cloud-netflix.html">
+      5.0.2
+    </a>
+  </li>
+  <li class="version">
+    <a href="4.3/spring-cloud-netflix.html">
+      4.3.3
+    </a>
+  </li>
+  <li class="version">
+    <a href="4.2/spring-cloud-netflix.html">
+      4.2.3
+    </a>
+  </li>
+  <li class="version">
+    <a href="4.1/spring-cloud-netflix.html">
+      4.1.6
+    </a>
+  </li>
+</ul>                        </div>
+                        <div class="version-item">
+                          <div>
+                            <button class="version-toggle" type="button">
+                              <span></span>
+                              Snapshot
+                            </button>
+                          </div>
+                          <ul class="versions">
+  <li class="version">
+    <a href="5.1-SNAPSHOT/spring-cloud-netflix.html">
+      5.1.0-SNAPSHOT
+    </a>
+  </li>
+  <li class="version">
+    <a href="5.0-SNAPSHOT/spring-cloud-netflix.html">
+      5.0.3-SNAPSHOT
+    </a>
+  </li>
+</ul>                        </div>
+                        
+                      </li>
+                  </ul>
+                </div>
+                <div class="col-right">
+                  <ul class="projects">
+  <li>
+    Related Spring Documentation
+    <ul class="projects-list">
+        <li>
+<a href="https://docs.spring.io/spring-boot/">
+  Spring Boot
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-framework/reference/">
+  Spring Framework
+</a>
+</li>
+        <li>
+<a class="anchor"><i class="fa fa-angle-right" aria-hidden="true"></i></a>
+  Spring Cloud
+<ul>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-build/reference/">
+  Spring Cloud Build
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-bus/reference/">
+  Spring Cloud Bus
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-circuitbreaker/reference/">
+  Spring Cloud Circuit Breaker
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-commons/reference/">
+  Spring Cloud Commons
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-config/reference/">
+  Spring Cloud Config
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-consul/reference/">
+  Spring Cloud Consul
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-contract/reference/">
+  Spring Cloud Contract
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-function/reference/">
+  Spring Cloud Function
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-gateway/reference/">
+  Spring Cloud Gateway
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-kubernetes/reference/">
+  Spring Cloud Kubernetes
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-netflix/reference/">
+  Spring Cloud Netflix
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-openfeign/reference/">
+  Spring Cloud OpenFeign
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-stream/reference/">
+  Spring Cloud Stream
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-task/reference/">
+  Spring Cloud Task
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-vault/reference/">
+  Spring Cloud Vault
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-zookeeper/reference/">
+  Spring Cloud Zookeeper
+</a>
+</li>
+</ul>
+</li>
+        <li>
+<a class="anchor"><i class="fa fa-angle-right" aria-hidden="true"></i></a>
+  Spring Data
+<ul>
+    <li>
+<a href="https://docs.spring.io/spring-data/cassandra/reference/">
+  Spring Data Cassandra
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/commons/reference/">
+  Spring Data Commons
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/couchbase/reference/">
+  Spring Data Couchbase
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/elasticsearch/reference/">
+  Spring Data Elasticsearch
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/jpa/reference/">
+  Spring Data JPA
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/keyvalue/reference/">
+  Spring Data KeyValue
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/ldap/reference/">
+  Spring Data LDAP
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/mongodb/reference/">
+  Spring Data MongoDB
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/neo4j/reference/">
+  Spring Data Neo4j
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/redis/reference/">
+  Spring Data Redis
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/relational/reference/">
+  Spring Data JDBC &amp; R2DBC
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/rest/reference/">
+  Spring Data REST
+</a>
+</li>
+</ul>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-integration/reference/">
+  Spring Integration
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-batch/reference/">
+  Spring Batch
+</a>
+</li>
+        <li>
+<a class="anchor"><i class="fa fa-angle-right" aria-hidden="true"></i></a>
+<a href="https://docs.spring.io/spring-security/reference/">
+  Spring Security
+</a>
+<ul>
+    <li>
+<a href="https://docs.spring.io/spring-authorization-server/reference/">
+  Spring Authorization Server
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-ldap/reference/">
+  Spring LDAP
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-security-kerberos/reference/">
+  Spring Security Kerberos
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-session/reference/">
+  Spring Session
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-vault/reference/">
+  Spring Vault
+</a>
+</li>
+</ul>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-ai/reference/">
+  Spring AI
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-amqp/reference/">
+  Spring AMQP
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-cli/reference/">
+  Spring CLI
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-graphql/reference/">
+  Spring GraphQL
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-kafka/reference/">
+  Spring for Apache Kafka
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-modulith/reference/">
+  Spring Modulith
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-pulsar/reference/">
+  Spring for Apache Pulsar
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-shell/reference/">
+  Spring Shell
+</a>
+</li>
+    </ul>
+  </li
+  <li><a href="spring-projects.html">All Docs...</a></li>
+</ul>
+                </div>
+              </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+</div>
+<footer class="footer flex">
+    <div id="spring-links flex">
+        <img id="springlogo" src="./_/img/spring-logo.svg" alt="Spring">
+        <p class="smallest antialiased">Copyright © 2005 - <script>var d = new Date();
+        document.write(d.getFullYear());</script> Broadcom. All Rights Reserved. The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.<br /><a href="https://www.vmware.com/help/legal.html">Terms of Use</a> • <a href="https://www.vmware.com/help/privacy.html" rel="noopener noreferrer">Privacy</a> • <a href="https://spring.io/trademarks">Trademark Guidelines</a> <span id="thank-you-mobile">• <a href="https://spring.io/thank-you">Thank you</a></span> • <a href="https://www.vmware.com/help/privacy/california-privacy-rights.html">Your California Privacy Rights</a> • <a class="ot-sdk-show-settings">Cookie Settings</a> <span id="teconsent"></span></p>
+        <p class="smallest antialiased has-gray-text">Apache®, Apache Tomcat®, Apache Kafka®, Apache Cassandra&trade;, and Apache Geode&trade; are trademarks or registered trademarks of the Apache Software Foundation in the United States and/or other countries. Java&trade;, Java&trade; SE, Java&trade; EE, and OpenJDK&trade; are trademarks of Oracle and/or its affiliates. Kubernetes® is a registered trademark of the Linux Foundation in the United States and other countries. Linux® is the registered trademark of Linus Torvalds in the United States and other countries. Windows® and Microsoft® Azure are registered trademarks of Microsoft Corporation. “AWS” and “Amazon Web Services” are trademarks or registered trademarks of Amazon.com Inc. or its affiliates. All other trademarks and copyrights are property of their respective owners and are only mentioned for informative purposes. Other names may be trademarks of their respective owners.</p>
+    </div>
+    <div id="social-icons" class="flex jc-between">
+        <a href="https://www.youtube.com/user/SpringSourceDev" title="Youtube"><svg id="youtube-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle class="cls-1" cx="20" cy="20" r="20"/><path class="cls-2" d="M30.91,14.53a2.89,2.89,0,0,0-2-2C27.12,12,20,12,20,12s-7.12,0-8.9.47a2.9,2.9,0,0,0-2,2A30.56,30.56,0,0,0,8.63,20a30.44,30.44,0,0,0,.46,5.47,2.89,2.89,0,0,0,2,2C12.9,28,20,28,20,28s7.12,0,8.9-.47a2.87,2.87,0,0,0,2-2A30.56,30.56,0,0,0,31.37,20,28.88,28.88,0,0,0,30.91,14.53ZM17.73,23.41V16.59L23.65,20Z"/></svg></a>
+        <a href="https://github.com/spring-projects" title="GitHub"><svg id="github-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75.93 75.93"><path class="cls-1" d="M38,0a38,38,0,1,0,38,38A38,38,0,0,0,38,0Z"/></g><path class="cls-2" d="M38,15.59A22.95,22.95,0,0,0,30.71,60.3c1.15.21,1.57-.5,1.57-1.11s0-2,0-3.9c-6.38,1.39-7.73-3.07-7.73-3.07A6.09,6.09,0,0,0,22,48.86c-2.09-1.42.15-1.39.15-1.39a4.81,4.81,0,0,1,3.52,2.36c2,3.5,5.37,2.49,6.67,1.91a4.87,4.87,0,0,1,1.46-3.07c-5.09-.58-10.45-2.55-10.45-11.34a8.84,8.84,0,0,1,2.36-6.15,8.29,8.29,0,0,1,.23-6.07s1.92-.62,6.3,2.35a21.82,21.82,0,0,1,11.49,0c4.38-3,6.3-2.35,6.3-2.35a8.29,8.29,0,0,1,.23,6.07,8.84,8.84,0,0,1,2.36,6.15c0,8.81-5.37,10.75-10.48,11.32a5.46,5.46,0,0,1,1.56,4.25c0,3.07,0,5.54,0,6.29s.42,1.33,1.58,1.1A22.94,22.94,0,0,0,38,15.59Z"/></svg></a>
+        <a href="https://twitter.com/springcentral" title="Twitter"><svg id="twitter-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75.93 75.93"><circle class="cls-1" cx="37.97" cy="37.97" r="37.97"/><path id="Twitter-2" data-name="Twitter" class="cls-2" d="M55.2,22.73a15.43,15.43,0,0,1-4.88,1.91,7.56,7.56,0,0,0-5.61-2.49A7.78,7.78,0,0,0,37,30a7.56,7.56,0,0,0,.2,1.79,21.63,21.63,0,0,1-15.84-8.23,8,8,0,0,0,2.37,10.52,7.66,7.66,0,0,1-3.48-1v.09A7.84,7.84,0,0,0,26.45,41a7.54,7.54,0,0,1-2,.28A7.64,7.64,0,0,1,23,41.09a7.71,7.71,0,0,0,7.18,5.47,15.21,15.21,0,0,1-9.55,3.37,15.78,15.78,0,0,1-1.83-.11,21.41,21.41,0,0,0,11.78,3.54c14.13,0,21.86-12,21.86-22.42,0-.34,0-.68,0-1a15.67,15.67,0,0,0,3.83-4.08,14.9,14.9,0,0,1-4.41,1.24A7.8,7.8,0,0,0,55.2,22.73Z"/></svg></a>
+    </div>
+</footer>
+<script src="./_/js/vendor/import.js"></script>
+<script src="./_/js/site.js"></script>
+<script async src="./_/js/vendor/highlight.js"></script>
+<script async src="./_/js/vendor/asciidoctor-tabs.js" data-sync-storage-key="docs:preferred-tab"></script>
+
+<div class="modal micromodal-slide" id="modal-1" aria-hidden="true">
+    <div class="modal__overlay" tabindex="-1" data-micromodal-close>
+        <div class="modal__container" role="dialog" aria-modal="true" aria-labelledby="modal-1-title">
+            <main class="modal__content" id="modal-1-content">
+                <div id="searchbox"></div>
+                <div id="counter"></div>
+                <div class="search-link-box">
+                    <a class="search-link" href="search.html">Search in all Spring Docs</a>
+                </div>
+                <div class="search-by">
+                    <a target="_blank" rel="noopener noreferrer" href="https://www.algolia.com/" aria-label="Search by Algolia">
+                        <img class="light" width="140" src="./_/img/algolia-light.svg" />
+                        <img class="dark" width="140" src="./_/img/algolia-dark.svg" />
+                    </a>
+                </div>
+                <div id="hits"></div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/hotkeys-js/dist/hotkeys.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/algoliasearch@4.17.0/dist/algoliasearch-lite.umd.js" integrity="sha256-Lf9DrpGmcRip6OQzbcL6lnvNmoZNSKpyQX5pMlwatWE=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/instantsearch.js@4.54.1/dist/instantsearch.production.min.js" integrity="sha256-xYsZPDeNjYNTBWLvqD2Lxe98hOxcDgOHyMPfz4tVAbk=" crossorigin="anonymous"></script>
+<script async id="search-script" src="./_/js/vendor/search.js" data-app-id="WB1FQYI187" data-api-key="c2e84f15fa630d534f1c62b1c413bb77" data-index-name="springdocs" data-stylesheet="./_/css/vendor/search.css" data-page-version="5.0.2" data-page-component="cloud-netflix"></script>
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"bffcb8a918ae4755926f76178bfbd26b","spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>

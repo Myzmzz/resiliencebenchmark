@@ -1,0 +1,1680 @@
+ <!DOCTYPE html>
+		<html
+			class="layout layout-holy-grail   show-table-of-contents conceptual show-breadcrumb default-focus"
+			lang="en-us"
+			dir="ltr"
+			data-authenticated="false"
+			data-auth-status-determined="false"
+			data-target="docs"
+			x-ms-format-detection="none"
+		>
+			
+		<head>
+			<title>Architecture Strategies for Designing for Redundancy - Microsoft Azure Well-Architected Framework | Microsoft Learn</title>
+			<meta charset="utf-8" />
+			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+			<meta name="color-scheme" content="light dark" />
+
+			<meta name="description" content="Learn how to design for redundancy in your workload to meet your reliability targets and to keep problems contained to a single resource." />
+			<link rel="canonical" href="https://learn.microsoft.com/en-us/azure/well-architected/reliability/redundancy" /> 
+
+			<!-- Non-customizable open graph and sharing-related metadata -->
+			<meta name="twitter:card" content="summary_large_image" />
+			<meta name="twitter:site" content="@MicrosoftLearn" />
+			<meta property="og:type" content="website" />
+			<meta property="og:image:alt" content="Microsoft Learn" />
+			<meta property="og:image" content="https://learn.microsoft.com/en-us/media/open-graph-image.png" />
+			<!-- Page specific open graph and sharing-related metadata -->
+			<meta property="og:title" content="Architecture Strategies for Designing for Redundancy - Microsoft Azure Well-Architected Framework" />
+			<meta property="og:url" content="https://learn.microsoft.com/en-us/azure/well-architected/reliability/redundancy" />
+			<meta property="og:description" content="Learn how to design for redundancy in your workload to meet your reliability targets and to keep problems contained to a single resource." />
+			<meta name="platform_id" content="40105dd0-6fef-0d49-0d97-ee0afa957ea8" /> <meta name="scope" content="Azure,Microsoft Azure Well-Architected Framework" />
+			<meta name="locale" content="en-us" />
+			 
+			<meta name="uhfHeaderId" content="azure" />
+
+			<meta name="page_type" content="conceptual" />
+
+			<!--page specific meta tags-->
+			
+
+			<!-- custom meta tags -->
+			
+		<meta name="breadcrumb_path" content="/azure/well-architected/breadcrumb/toc.json" />
+	
+		<meta name="feedback_system" content="Standard" />
+	
+		<meta name="ms.service" content="azure-waf" />
+	
+		<meta name="ms.subservice" content="waf-pillar-reliability" />
+	
+		<meta name="author" content="claytonsiemens77" />
+	
+		<meta name="ms.author" content="csiemens" />
+	
+		<meta name="ms.date" content="2025-08-13T00:00:00Z" />
+	
+		<meta name="ms.topic" content="concept-article" />
+	
+		<meta name="document_id" content="372a1015-b1ed-3d46-8627-1c724bd6fb8f" />
+	
+		<meta name="document_version_independent_id" content="372a1015-b1ed-3d46-8627-1c724bd6fb8f" />
+	
+		<meta name="updated_at" content="2025-12-15T18:06:00Z" />
+	
+		<meta name="original_content_git_url" content="https://github.com/MicrosoftDocs/well-architected-pr/blob/live/well-architected/reliability/redundancy.md" />
+	
+		<meta name="gitcommit" content="https://github.com/MicrosoftDocs/well-architected-pr/blob/84b9446eb8fc2ce4251edf6273fe68be25f0abfe/well-architected/reliability/redundancy.md" />
+	
+		<meta name="git_commit_id" content="84b9446eb8fc2ce4251edf6273fe68be25f0abfe" />
+	
+		<meta name="site_name" content="Docs" />
+	
+		<meta name="depot_name" content="MSDN.well-architected" />
+	
+		<meta name="schema" content="Conceptual" />
+	
+		<meta name="toc_rel" content="../toc.json" />
+	
+		<meta name="pdf_url_template" content="https://learn.microsoft.com/pdfstore/en-us/MSDN.well-architected/{branchName}{pdfName}" />
+	
+		<meta name="feedback_product_url" content="" />
+	
+		<meta name="feedback_help_link_type" content="" />
+	
+		<meta name="feedback_help_link_url" content="" />
+	
+		<meta name="word_count" content="3346" />
+	
+		<meta name="asset_id" content="reliability/redundancy" />
+	
+		<meta name="moniker_range_name" content="" />
+	
+		<meta name="item_type" content="Content" />
+	
+		<meta name="source_path" content="well-architected/reliability/redundancy.md" />
+	
+		<meta name="previous_tlsh_hash" content="E3E127B2C90CC600FF936E5764979F4091F0C14DAEF479C800296A73E48E1C768B6AADABE797B300223547B303D6F89A52C7B739D17C174324A5D45D819C1292BBEA3FB6DA" />
+	
+		<meta name="github_feedback_content_git_url" content="https://github.com/MicrosoftDocs/well-architected/blob/main/well-architected/reliability/redundancy.md" />
+	
+		<meta name="markdown_url" content="https://learn.microsoft.com/en-us/azure/well-architected/reliability/redundancy?accept=text/markdown" />
+	 
+		<meta name="cmProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/68ec7f3a-2bc6-459f-b959-19beb729907d" data-source="generated" />
+	
+		<meta name="cmProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/1ae5c491-970a-4062-8301-6336e69f9026" data-source="generated" />
+	
+		<meta name="cmProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/cd668c2f-f5b3-4573-8ad1-019570e3e2db" data-source="generated" />
+	
+		<meta name="spProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/90370425-aca4-4a39-9533-d52e5e002a5d" data-source="generated" />
+	
+		<meta name="spProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/f2c3e52e-3667-4e8a-bf11-20b9eaccdc8c" data-source="generated" />
+	
+		<meta name="spProducts" content="https://authoring-docs-microsoft.poolparty.biz/devrel/cc82e69d-afbe-4554-9f4c-6705fc860c42" data-source="generated" />
+	
+
+			<!-- Apply persisted/system theme before first paint to prevent wrong-theme flash when scripts are deferred. -->
+			<script id="theme-preference">
+				(function () {
+			try {
+				var stored = localStorage.getItem('theme');
+				var theme = /^(light|dark|high-contrast)$/.test(stored)
+					? stored
+					: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				document.documentElement.classList.add('theme-' + theme);
+			} catch (e) {}
+		})();;
+			</script>
+
+			<script id="atlas-layout-preferences">
+				(function () {
+			try {
+				var state = JSON.parse(localStorage.getItem('atlas-layout-preferences') || '{}');
+				var view = state["docs-layout-persistence"] || {};
+				var excludesKey = "";
+				var blocked = {};
+				if (excludesKey) {
+					var exclusions = JSON.parse(localStorage.getItem('atlas-layout-exclusions') || '{}');
+					if (Object.prototype.hasOwnProperty.call(exclusions, excludesKey)) {
+						var scoped = exclusions[excludesKey];
+						if (scoped) {
+							if (typeof scoped === 'object') blocked = scoped;
+						}
+					}
+				}
+				var html = document.documentElement;
+				for (var c in view) {
+					if (Object.prototype.hasOwnProperty.call(blocked, c)) continue;
+					if (view[c]) html.classList.add(c);
+					else html.classList.remove(c);
+				}
+			} catch (e) {}
+		})();;
+			</script>
+
+			<!-- assets and js globals -->
+			
+			<link rel="stylesheet" href="/static/assets/0.4.03547.8249-7a3b4850/styles/site.css" />
+			
+			<script src="https://wcpstatic.microsoft.com/mscc/lib/v2/wcp-consent.js"></script>
+			<!-- Keep this URL in sync with oneDSScriptSelector in instrumentation/one-ds.ts. -->
+			<script async src="https://js.monitor.azure.com/scripts/c/ms.jsll-4.min.js"></script>
+			
+
+			<!-- msdocs global object -->
+			<script id="msdocs-script">
+		var msDocs = {
+  "environment": {
+    "accessLevel": "online",
+    "azurePortalHostname": "portal.azure.com",
+    "reviewFeatures": false,
+    "supportLevel": "production",
+    "systemContent": true,
+    "siteName": "learn",
+    "legacyHosting": false
+  },
+  "data": {
+    "contentLocale": "en-us",
+    "contentDir": "ltr",
+    "userLocale": "en-us",
+    "userDir": "ltr",
+    "pageTemplate": "Conceptual",
+    "layoutStateStorageKey": "docs-layout-persistence",
+    "brand": "azure",
+    "context": {},
+    "standardFeedback": true,
+    "showFeedbackReport": false,
+    "feedbackHelpLinkType": "",
+    "feedbackHelpLinkUrl": "",
+    "feedbackSystem": "Standard",
+    "feedbackGitHubRepo": "MicrosoftDocs/well-architected",
+    "feedbackProductUrl": "",
+    "extendBreadcrumb": false,
+    "isEditDisplayable": false,
+    "isPrivateUnauthorized": false,
+    "hideViewSource": false,
+    "isPermissioned": false,
+    "hasRecommendations": true
+  },
+  "functions": {}
+};;
+	</script>
+
+			<!-- base scripts, msdocs global should be before this -->
+			<script
+				src="/static/assets/0.4.03547.8249-7a3b4850/scripts/en-us/index-docs.js"
+				async
+			></script>
+			
+
+			<!-- json-ld -->
+			
+		<script >bazadebezolkohpepadr="825256817"</script><script type="text/javascript" src="https://learn.microsoft.com/akam/13/31306b96"  defer></script></head>
+	
+			<body
+				id="body"
+				data-bi-name="body"
+				class="layout-body "
+				lang="en-us"
+				dir="ltr"
+			>
+				<header class="layout-body-header background-color-body-medium">
+		<div class="header-holder has-default-focus">
+			
+		<a
+			href="#main"
+			
+			style="z-index: 1070"
+			class="outline-color-text visually-hidden-until-focused position-fixed inner-focus focus-visible top-0 left-0 right-0 padding-xs text-align-center background-color-body"
+			
+		>
+			Skip to main content
+		</a>
+	
+		<a
+			href="#"
+			data-skip-to-ask-learn
+			style="z-index: 1070"
+			class="outline-color-text visually-hidden-until-focused position-fixed inner-focus focus-visible top-0 left-0 right-0 padding-xs text-align-center background-color-body"
+			hidden
+		>
+			Skip to Ask Learn chat experience
+		</a>
+	
+
+			<div hidden id="cookie-consent-holder" data-test-id="cookie-consent-container"></div>
+			<!-- Unsupported browser warning -->
+			<div
+				id="unsupported-browser"
+				style="background-color: white; color: black; padding: 16px; border-bottom: 1px solid grey;"
+				hidden
+			>
+				<div style="max-width: 800px; margin: 0 auto;">
+					<p style="font-size: 24px">This browser is no longer supported.</p>
+					<p style="font-size: 16px; margin-top: 16px;">
+						Upgrade to Microsoft Edge to take advantage of the latest features, security updates, and technical support.
+					</p>
+					<div style="margin-top: 12px;">
+						<a
+							href="https://go.microsoft.com/fwlink/p/?LinkID=2092881 "
+							style="background-color: #0078d4; border: 1px solid #0078d4; color: white; padding: 6px 12px; border-radius: 2px; display: inline-block;"
+						>
+							Download Microsoft Edge
+						</a>
+						<a
+							href="https://learn.microsoft.com/en-us/lifecycle/faq/internet-explorer-microsoft-edge"
+							style="background-color: white; padding: 6px 12px; border: 1px solid #505050; color: #171717; border-radius: 2px; display: inline-block;"
+						>
+							More info about Internet Explorer and Microsoft Edge
+						</a>
+					</div>
+				</div>
+			</div>
+			<!-- site header -->
+			<div
+				id="ms--site-header"
+				data-test-id="site-header-wrapper"
+				itemscope="itemscope"
+				itemtype="http://schema.org/Organization"
+			>
+				<div
+					id="ms--mobile-nav"
+					class="site-header display-none-tablet padding-inline-none gap-none"
+					data-bi-name="mobile-header"
+					data-test-id="mobile-header"
+				></div>
+				<div
+					id="ms--primary-nav"
+					class="site-header display-none display-flex-tablet"
+					data-bi-name="L1-header"
+					data-test-id="primary-header"
+				></div>
+				<div
+					id="ms--secondary-nav"
+					class="site-header display-none display-flex-tablet"
+					data-bi-name="L2-header"
+					data-test-id="secondary-header"
+					
+				></div>
+			</div>
+			
+		<!-- banner -->
+		<div data-banner>
+			<div id="disclaimer-holder"></div>
+			
+		</div>
+		<!-- banner end -->
+	
+		</div>
+	</header>
+				 <section
+					id="layout-body-menu"
+					class="layout-body-menu border-right display-flex background-color-body-medium"
+					data-bi-name="menu"
+			  >
+					
+		<div
+			id="left-container"
+			class="left-container display-none padding-none display-block-tablet width-full display-none-until-layout-restored"
+			data-toc-container="true"
+		>
+			<div
+				id="ms--toc-content"
+				class="padding-left-sm padding-right-none padding-bottom-sm height-full"
+			>
+				<nav
+					id="affixed-left-container"
+					class="margin-top-xxs-tablet position-sticky display-flex flex-direction-column width-full"
+					aria-label="Primary"
+					data-bi-name="left-toc"
+					role="navigation"
+				>
+					<div
+						id="ms--collapsible-toc-header"
+						class="display-flex flex-direction-row-reverse justify-content-center align-items-center margin-bottom-xxs margin-right-xxs"
+					>
+						<button
+							type="button"
+							class="button button-clear button-sm inner-focus"
+							data-collapsible-toc-toggle
+							aria-expanded="true"
+							hidden
+							aria-controls="ms--toc-content"
+							aria-label="Table of contents"
+						>
+							<span class="icon icon-mirrored-rtl" aria-hidden="true">
+								<span
+									class="docon docon-panel-left-contract display-none-layout-menu-collapsed"
+								></span>
+								<span
+									class="docon docon-panel-left-expand display-none display-inline-layout-menu-collapsed"
+								></span>
+							</span>
+						</button>
+						<div
+							id="ms--collapsible-toc-moniker-slot"
+							class="flex-grow-1 display-none-layout-menu-collapsed"
+						></div>
+					</div>
+				</nav>
+			</div>
+		</div>
+	
+			  </section>
+
+				<main
+					id="main"
+					role="main"
+					class="layout-body-main "
+					data-bi-name="content"
+					lang="en-us"
+					dir="ltr"
+				>
+					
+			<div
+		id="ms--content-header"
+		class="content-header default-focus border-bottom-none"
+		data-bi-name="content-header"
+	>
+		<div class="content-header-controls margin-xxs margin-inline-sm-tablet">
+			<button
+				type="button"
+				class="contents-button button button-sm margin-right-xxs"
+				data-bi-name="contents-expand"
+				aria-haspopup="true"
+				data-contents-button
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-menu"></span></span>
+				<span class="contents-expand-title"> Table of contents </span>
+			</button>
+			<button
+				type="button"
+				class="ap-collapse-behavior ap-expanded button button-sm"
+				data-bi-name="ap-collapse"
+				aria-controls="action-panel"
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-exit-mode"></span></span>
+				<span>Exit editor mode</span>
+			</button>
+		</div>
+	</div> 
+		<div
+			id="action-panel"
+			role="region"
+			aria-label="Action Panel"
+			class="action-panel"
+			tabindex="-1"
+		></div>
+	
+			<div
+				data-main-column
+				class="reading-width margin-inline-auto layout-padding padding-top-none padding-top-sm-tablet padding-bottom-sm"
+			>
+				<div>
+					
+		<div id="article-header" class="background-color-body margin-bottom-xs display-none-print">
+			<div class="display-flex align-items-center justify-content-space-between">
+				
+		<details
+			id="article-header-breadcrumbs-overflow-popover"
+			class="popover popover-left"
+			data-for="article-header-breadcrumbs"
+		>
+			<summary
+				class="button button-clear button-primary button-sm inner-focus"
+				aria-label="All breadcrumbs"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-more"></span>
+				</span>
+			</summary>
+			<div id="article-header-breadcrumbs-overflow" class="popover-content"></div>
+		</details>
+
+		<bread-crumbs
+			id="article-header-breadcrumbs"
+			role="group"
+			aria-label="Breadcrumbs"
+			data-test-id="article-header-breadcrumbs"
+			class="overflow-hidden flex-grow-1 margin-right-sm margin-right-md-tablet margin-right-lg-desktop margin-left-negative-xxs padding-left-xxs"
+		></bread-crumbs>
+	 
+		<div
+			id="article-header-page-actions"
+			class="opacity-none margin-left-auto display-flex flex-wrap-no-wrap align-items-stretch"
+		>
+			
+		<button
+			class="button button-sm border-none inner-focus display-none-tablet flex-shrink-0 "
+			data-bi-name="ask-learn-assistant-entry"
+			data-test-id="ask-learn-assistant-modal-entry-mobile"
+			data-ask-learn-modal-entry
+			
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-none display-inline-flex-tablet display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn "
+			data-bi-name="ask-learn-assistant-entry"
+			
+			data-test-id="ask-learn-assistant-modal-entry-tablet"
+			data-ask-learn-modal-entry
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn "
+			data-bi-name="ask-learn-assistant-entry"
+			
+			data-test-id="ask-learn-assistant-flyout-entry"
+			data-ask-learn-flyout-entry
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	 
+
+			<details class="popover popover-right" id="article-header-page-actions-overflow">
+				<summary
+					class="justify-content-flex-start button button-clear button-sm button-primary inner-focus"
+					aria-label="More actions"
+					title="More actions"
+				>
+					<span class="icon" aria-hidden="true">
+						<span class="docon docon-more-vertical"></span>
+					</span>
+				</summary>
+				<div class="popover-content">
+					
+		<button
+			type="button"
+			id="ms--focus-mode-button"
+			data-focus-mode
+			data-bi-name="focus-mode-entry"
+			data-page-action-item="overflow-all"
+			data-popover-close
+			class="button button-clear button-sm button-block justify-content-flex-start text-align-left inner-focus display-none display-inline-flex-tablet"
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-glasses"></span>
+			</span>
+			<span>Reading mode</span>
+		</button>
+	 
+		<button
+			data-page-action-item="overflow-mobile"
+			type="button"
+			class="display-block-layout-menu-collapsed button-block button-sm inner-focus button button-clear display-none-tablet justify-content-flex-start text-align-left"
+			data-bi-name="contents-expand"
+			data-contents-button
+			data-popover-close
+		>
+			<span class="icon" aria-hidden="true"
+				><span class="docon docon-editor-list-bullet"></span
+			></span>
+			<span class="contents-expand-title">Table of contents</span>
+		</button>
+	 
+		<a
+			id="lang-link-overflow"
+			class="button-sm inner-focus button button-clear button-block justify-content-flex-start text-align-left"
+			data-bi-name="language-toggle"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-read-in-link
+			href="#"
+			hidden
+		>
+			<span class="icon" aria-hidden="true" data-read-in-link-icon>
+				<span class="docon docon-locale-globe"></span>
+			</span>
+			<span data-read-in-link-text>Read in English</span>
+		</a>
+	
+					
+		<button
+			type="button"
+			class="collection button button-clear button-sm button-block justify-content-flex-start text-align-left inner-focus"
+			data-list-type="collection"
+			data-bi-name="collection"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-popover-close
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-circle-addition"></span>
+			</span>
+			<span class="collection-status">Add</span>
+		</button>
+	 
+		<button
+			type="button"
+			class="collection button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+			data-list-type="plan"
+			data-bi-name="plan"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-popover-close
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-circle-addition"></span>
+			</span>
+			<span class="plan-status">Add to Plans</span>
+		</button>
+	 
+					
+		<a
+			data-contenteditbtn
+			class="button button-clear button-block button-sm inner-focus justify-content-flex-start text-align-left text-decoration-none"
+			data-bi-name="edit"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			hidden
+			href="https://github.com/MicrosoftDocs/well-architected/blob/main/well-architected/reliability/redundancy.md"
+			data-original_content_git_url="https://github.com/MicrosoftDocs/well-architected-pr/blob/live/well-architected/reliability/redundancy.md"
+			data-original_content_git_url_template="{repo}/blob/{branch}/well-architected/reliability/redundancy.md"
+			data-pr_repo=""
+			data-pr_branch=""
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-edit-outline"></span>
+			</span>
+			<span>Edit</span>
+		</a>
+	  
+		<hr class="margin-block-xxs" />
+		
+				<button
+					class="button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+					type="button"
+					data-bi-name="copy-markdown"
+					data-page-action-item="overflow-all"
+					data-copy-markdown
+					data-copy-state="idle"
+					data-check-hidden="true"
+				>
+					<span class="icon color-primary" aria-hidden="true">
+						<span data-show-when="idle" class="docon docon-code-lang"></span>
+						<span data-show-when="loading" class="loader" hidden></span>
+						<span data-show-when="success" class="docon docon-check-mark" hidden></span>
+					</span>
+					<span>Copy Markdown</span>
+				</button>
+		   
+				<button
+					class="button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+					type="button"
+					data-bi-name="print"
+					data-page-action-item="overflow-all"
+					data-popover-close
+					data-print-page
+					data-check-hidden="true"
+				>
+					<span class="icon color-primary" aria-hidden="true">
+						<span class="docon docon-print"></span>
+					</span>
+					<span>Print</span>
+				</button>
+		  
+	
+				</div>
+			</details>
+		</div>
+	
+			</div>
+		</div>
+	  
+		<!-- privateUnauthorizedTemplate is hidden by default -->
+		<div unauthorized-private-section data-bi-name="permission-content-unauthorized-private" hidden>
+			<hr class="hr margin-top-xs margin-bottom-sm" />
+			<div class="notification notification-info">
+				<div class="notification-content">
+					<p class="margin-top-none notification-title">
+						<span class="icon" aria-hidden="true"
+							><span class="docon docon-exclamation-circle-solid"></span
+						></span>
+						<span>Note</span>
+					</p>
+					<p class="margin-top-none authentication-determined not-authenticated">
+						Access to this page requires authorization. You can try <a class="docs-sign-in" href="#" data-bi-name="permission-content-sign-in">signing in</a> or <a  class="docs-change-directory" data-bi-name="permisson-content-change-directory">changing directories</a>.
+					</p>
+					<p class="margin-top-none authentication-determined authenticated">
+						Access to this page requires authorization. You can try <a class="docs-change-directory" data-bi-name="permisson-content-change-directory">changing directories</a>.
+					</p>
+				</div>
+			</div>
+		</div>
+	
+					<div class="content"><h1 id="architecture-strategies-for-designing-for-redundancy">Architecture strategies for designing for redundancy</h1></div>
+					
+		<div
+			id="article-metadata"
+			data-bi-name="article-metadata"
+			data-test-id="article-metadata"
+			class="page-metadata-container display-flex gap-xxs justify-content-space-between align-items-center flex-wrap-wrap"
+		>
+			 
+				<div
+					id="user-feedback"
+					class="margin-block-xxs display-none display-none-print"
+					hidden
+					data-hide-on-archived
+				>
+					
+		<button
+			id="user-feedback-button"
+			data-test-id="conceptual-feedback-button"
+			class="button button-sm button-clear button-primary display-none"
+			type="button"
+			data-bi-name="user-feedback-button"
+			data-user-feedback-button
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-like"></span>
+			</span>
+			<span>Feedback</span>
+		</button>
+	
+				</div>
+		  
+		</div>
+	 
+		<div data-id="ai-summary" class="display-none-print">
+			<div id="ms--ai-summary-cta" class="margin-top-xs display-flex align-items-center">
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-sparkle-fill gradient-text-vivid"></span>
+				</span>
+				<button
+					id="ms--ai-summary"
+					type="button"
+					class="tag tag-sm tag-suggestion margin-left-xxs"
+					data-test-id="ai-summary-cta"
+					data-bi-name="ai-summary-cta"
+					data-an="ai-summary"
+				>
+					<span class="ai-summary-cta-text">
+						Summarize this article for me
+					</span>
+				</button>
+			</div>
+			<!-- Slot where the client will render the summary card after the user clicks the CTA -->
+			<div id="ms--ai-summary-header" class="margin-top-xs"></div>
+		</div>
+	 
+		<nav
+			id="center-doc-outline"
+			class="doc-outline display-none-desktop display-none-print margin-bottom-sm"
+			data-bi-name="intopic toc"
+			aria-label="In this article"
+		>
+			<h2 id="ms--in-this-article" class="title is-6 margin-block-xs">
+				In this article
+			</h2>
+		</nav>
+	 <div class="content"><p><strong>Applies to this Azure Well-Architected Framework Reliability checklist recommendation:</strong></p>
+<table>
+<thead>
+<tr>
+<th><strong>RE:05</strong></th>
+<th>Add redundancy at different levels, especially for critical flows, to help meet your reliability targets. Consider redundant infrastructure components such as compute and network, and multiple instances of your solution.</th>
+</tr>
+</thead>
+</table>
+<p>This guide describes the recommendations for adding redundancy throughout critical flows at different workload layers, which optimizes resiliency. Meet the requirements of your defined reliability targets by applying the proper levels of redundancy to your compute, data, networking, and other infrastructure tiers. Apply this redundancy to give your workload a strong, reliable foundation to build on. When you build your workload without infrastructure redundancy, there's a high risk of extended downtime because of <a href="failure-mode-analysis" data-linktype="relative-path">potential failures</a>.</p>
+<p><strong>Definitions</strong></p>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Redundancy</td>
+<td>The implementation of multiple identical instances of a workload component.</td>
+</tr>
+<tr>
+<td>Region</td>
+<td>An <a href="/en-us/azure/reliability/regions-list" data-linktype="absolute-path">Azure datacenter location</a>.</td>
+</tr>
+<tr>
+<td>Polyglot persistence</td>
+<td>The concept of using different storage technologies by the same application or solution to take advantage of the best capabilities of each component.</td>
+</tr>
+<tr>
+<td>Data consistency</td>
+<td>The measure of how in sync or out of sync a given dataset is across multiple stores.</td>
+</tr>
+<tr>
+<td>Partitioning</td>
+<td>The process of physically dividing data into separate data stores.</td>
+</tr>
+<tr>
+<td>Shard</td>
+<td>A horizontal database partitioning strategy that supports multiple storage instances with a common schema. Data isn't replicated in all instances.</td>
+</tr>
+</tbody>
+</table>
+<p>In the context of reliability, use redundancy to contain problems that affect a single resource and ensure that those problems don't affect the reliability of the entire system. Use the information that you identified about your critical flows and reliability targets to make informed decisions that are required for each flow's redundancy.</p>
+<p>For example, you might have multiple web server nodes that run at once. If the flow that they support is critical, all nodes might need replicas that can accept traffic immediately if a problem affects the entire pool, such as a full datacenter outage. Alternatively, because large-scale problems are rare and it's costly to deploy an entire set of replicas, you might deploy a limited number of replicas so that the flow operates in a degraded state until you resolve the problem.</p>
+<p>When you design for redundancy in the context of performance efficiency, distribute the load across multiple redundant nodes to ensure that each node performs optimally. In the context of reliability, build in spare capacity to absorb failures or malfunctions that affect one or more nodes. Ensure that the spare capacity can absorb failures for the entire time that's needed to recover the affected nodes. With this distinction in mind, both strategies need to work together. If you spread traffic across two nodes for performance and they both run at 60% utilization and one node fails, your remaining node is at risk of becoming overwhelmed because it can't operate at 120%. Spread the load out with another node to ensure that your performance and reliability targets are upheld.</p>
+<blockquote>
+<p><img src="../_images/trade-off.svg" role="presentation" data-linktype="relative-path">
+ <strong>Trade-offs:</strong></p>
+<ul>
+<li><p>More workload redundancy equates to more costs. Carefully consider adding redundancy and regularly review your architecture to ensure that you're managing costs, especially when you use overprovisioning. When you use overprovisioning as a resiliency strategy, balance it with a well-defined <a href="scaling" data-linktype="relative-path">scaling strategy</a> to minimize cost inefficiencies.</p>
+</li>
+<li><p>There can be performance trade-offs when you build in a high degree of redundancy. For example, resources that spread across availability zones or locations can affect performance because you have to send traffic over high-latency connections between redundant resources, like web servers or database instances.</p>
+</li>
+<li><p>Different flows within the same workload might have different reliability requirements. Flow-specific redundancy designs can potentially introduce complexity into the overall design.</p>
+</li>
+<li><p>A low-latency redundancy design means that you accept the risk of losing those components in the event of a large-scale event, like a geographic disaster, that takes all instances offline. A geo-distant disaster recovery (DR) environment helps mitigate this risk but increases costs.</p>
+</li>
+</ul>
+</blockquote>
+<h2 id="prefer-serverless-and-fully-managed-services-to-reduce-operational-burden">Prefer serverless and fully managed services to reduce operational burden</h2>
+<p>Take advantage of <a href="https://azure.microsoft.com/solutions/serverless" data-linktype="external">serverless</a>, software as a service (SaaS), and platform as a service (PaaS) solutions to easily add redundancy to your workload without needing to manage data replication or failover operations. These services implement redundancy transparently, which removes the operational burden of designing and maintaining your own redundancy mechanisms. When you evaluate service options, prioritize managed services that handle redundancy automatically over infrastructure-based approaches that require manual redundancy configuration.</p>
+<p>Azure managed services provide redundancy through different models. Each model provides varying levels of abstraction and operational simplicity.</p>
+<p><strong>Global services with built-in redundancy:</strong> Services like Microsoft Entra ID, Azure DNS, and Azure Key Vault operate as global services with automatic redundancy across multiple regions. These services provide inherent resilience without requiring any redundancy configuration from you. They automatically handle failover and recovery scenarios transparently.</p>
+<p><strong>Abstracted capacity models:</strong> Offerings like Azure Cosmos DB, Azure Databricks, and Azure OpenAI managed endpoints abstract the underlying infrastructure complexity behind capacity units, DTUs, or other logical metrics. These services automatically distribute your workload across multiple instances, zones, and regions while presenting a simplified billing and management model. You specify capacity requirements instead of managing individual redundant instances.</p>
+<p>When you architect your solution, evaluate whether a managed service option exists for each component before you implement infrastructure-based redundancy. Managed services reduce your operational overhead and often provide more robust redundancy implementations than custom solutions, though they might involve trade-offs in control and potentially higher costs for each unit of capacity.</p>
+<h2 id="build-redundancy-into-your-workload-with-multiple-component-instances">Build redundancy into your workload with multiple component instances</h2>
+<p>Deploy multiple instances of your infrastructure components and services to achieve the resilience that your workload needs. This fundamental redundancy strategy ensures that if one instance fails, other instances can continue to handle the workload. You can achieve multiple instances through different approaches. Some scenarios require you to manually configure redundancy by deploying multiple resources individually, such as multiple Azure ExpressRoute circuits or configuring Azure Traffic Manager in multiple regions. Other services are designed to support multiple instances directly, such as setting Azure Virtual Machine Scale Sets to five instances or configuring Azure App Service to run 10 instances. When possible, prefer services that provide built-in support for multiple instances and autoscaling capabilities because they simplify redundancy management and can respond to both reliability and performance needs.</p>
+<p>When you deploy redundant infrastructure components, determine how many instances of each component satisfy your reliability targets. Consider whether you need multiple instances of all components or only specific critical components, and determine the geographical distribution of those instances to meet your resilience requirements. When you deploy redundant infrastructure, consider the following recommendations.</p>
+<p><strong>Compute resources:</strong></p>
+<ul>
+<li><p>Prefer services that have support for redundancy built-in. These services allow you to specify the number of instances that you need and might handle the distribution and management of those instances for you.</p>
+</li>
+<li><p>Keep your compute layer <em>clean of any state</em> because individual nodes that serve requests might be deleted, faulted, or replaced at any time.</p>
+</li>
+<li><p>Design and test your scaling strategy to match your redundancy approach.</p>
+</li>
+</ul>
+<p><strong>Data resources:</strong></p>
+<ul>
+<li><p>Replicate data across geographical regions to provide resilience to regional outages and catastrophic failures.</p>
+</li>
+<li><p>Understand the built-in <a href="#related-links" data-linktype="self-bookmark">replication and redundancy capabilities of the stateful platform services</a> that you use.</p>
+</li>
+<li><p>Determine whether synchronous or asynchronous data replication is necessary for your workload's functionality. For more information, see <a href="../design-guides/regions-availability-zones" data-linktype="relative-path">Recommendations for using availability zones and regions</a>.</p>
+</li>
+<li><p>Distribute data geographically, as supported by your service, to minimize the effect of geographically localized failures.</p>
+</li>
+<li><p>Automate failover after a database instance failure. You can configure automated failover in multiple Azure PaaS data services. Automated failover isn't required for data stores that support multi-region writes, like Azure Cosmos DB. For more information, see <a href="disaster-recovery" data-linktype="relative-path">Recommendations for designing a DR strategy</a>.</p>
+</li>
+<li><p>Use the best <a href="/en-us/azure/architecture/databases/" data-linktype="absolute-path">data store</a> for your data. Embrace polyglot persistence or solutions that use a combination of data store technologies. Data includes more than just persisted application data. It also includes application logs, events, messages, and caches.</p>
+</li>
+<li><p>Consider data consistency requirements and use <a href="/en-us/azure/architecture/guide/design-principles/minimize-coordination#recommendations" data-linktype="absolute-path">eventual consistency</a> when requirements allow it. When data is distributed, use appropriate coordination to enforce strong consistency guarantees. Coordination can reduce your throughput and make your systems tightly coupled, which can make them weaker. For example, if an operation updates two databases, instead of putting it into a single transaction scope, it's better if the system can accommodate eventual consistency.</p>
+</li>
+<li><p>Partition data for availability. <a href="/en-us/azure/architecture/best-practices/data-partitioning" data-linktype="absolute-path">Database partitioning</a> improves scalability and it can also improve availability. If one shard goes down, the other shards are still reachable. A failure in one shard only disrupts a subset of the total transactions.</p>
+</li>
+<li><p>If sharding isn't an option, you can use the <a href="/en-us/azure/architecture/patterns/cqrs" data-linktype="absolute-path">Command Query Responsibility Segregation (CQRS) pattern</a> to separate your read-write and read-only data models. Add more redundant read-only database instances to provide more resilience.</p>
+</li>
+</ul>
+<p><strong>Networking resources:</strong></p>
+<ul>
+<li><p>Decide on a reliable and scalable network topology. Use a hub-and-spoke model or an Azure Virtual WAN model to help you organize your cloud infrastructure into logical patterns that make your redundancy design easier to build and scale.</p>
+</li>
+<li><p>Select the appropriate <a href="/en-us/azure/architecture/guide/technology-choices/load-balancing-overview" data-linktype="absolute-path">network service</a> to balance and redirect requests within or across regions. Use global or zone-redundant load balancing services when possible to meet your reliability targets.</p>
+</li>
+<li><p>Ensure that you have allocated sufficient IP address space in your virtual networks and subnets to account for planned usage, including scale-out requirements.</p>
+</li>
+<li><p>Ensure that the application can scale within the port limits of the chosen application hosting platform. If an application initiates several outbound Transmission Control Protocol (TCP) or User Datagram Protocol (UDP) connections, it might exhaust all available ports and cause poor application performance.</p>
+</li>
+<li><p>Choose SKUs and configure networking services that can meet your bandwidth and availability requirements. A VPN gateway's throughput varies based on their SKU. Support for zone redundancy is only available for some load balancer SKUs.</p>
+</li>
+<li><p>Ensure that your design for handling Domain Name System (DNS) is built with a focus on resilience and supports redundant infrastructure.</p>
+</li>
+</ul>
+<h2 id="use-the-deployment-stamps-pattern-to-streamline-your-redundancy-approach">Use the Deployment Stamps pattern to streamline your redundancy approach</h2>
+<p>Beyond redundancy for individual infrastructure components and services, extend your redundancy strategy to the workload level by deploying multiple instances of your entire workload or logical groups of resources. Follow the <a href="/en-us/azure/architecture/patterns/deployment-stamp" data-linktype="absolute-path">Deployment Stamps design pattern</a> to create repeatable, self-contained units that include all the resources required to deliver your workload to a specific subset of users or requirements.</p>
+<p>Deployment stamps represent a shift from component-level to workload-level redundancy. Each stamp serves as a complete unit of scale containing all necessary resources—compute, storage, networking, and dependencies—that can operate independently. This approach provides key benefits including isolated failure domains that contain blast radius, horizontal scaling through additional stamp deployment instead of individual component scaling, flexible segmentation by geography or requirements, and simplified operations through identical repeatable units.</p>
+<p>Whether you deploy stamps in an active-active model (where all stamps actively serve traffic simultaneously) or active-passive model (where one stamp serves traffic while others remain on standby), design each stamp to be a complete, self-sufficient deployment that can handle its designated workload independently.</p>
+<h2 id="achieve-zero-downtime-through-active-active-redundancy">Achieve zero downtime through active-active redundancy</h2>
+<p>Active-active deployments maximize service availability by running multiple instances of a workload simultaneously, each actively handling traffic. This setup ensures immediate failover, eliminates downtime, and optimizes resource use by keeping all instances productive. If one instance fails, traffic is automatically rerouted to healthy instances without disrupting service.</p>
+<p>For example, an e-commerce platform during peak season can maintain seamless operations even if one deployment encounters problems. Active-active configurations are ideal for mission-critical workloads that require uninterrupted availability, but they have higher infrastructure costs and complexity. Advanced operational strategies are required to manage multiple live environments, ensure data consistency, and coordinate updates across all instances.</p>
+<p>The following sections describe configuration options for active-active deployments.</p>
+<ul>
+<li><p><strong>Active-active at capacity:</strong> Mirrored deployment stamps in two or more locations, each configured to handle production workloads for the location or locations that they serve and scalable to handle loads from other locations if a regional outage occurs.</p>
+<ul>
+<li><p><strong>Networking:</strong> Use <a href="/en-us/azure/frontdoor/routing-methods#latency" data-linktype="absolute-path">latency</a> or <a href="/en-us/azure/frontdoor/routing-methods#weighted" data-linktype="absolute-path">weighted</a> global routing to spread traffic among locations.</p>
+</li>
+<li><p><strong>Data replication and consistency:</strong> Use a globally distributed data store like <a href="/en-us/azure/cosmos-db/introduction" data-linktype="absolute-path">Azure Cosmos DB</a> for multi-region read and write capabilities. For relational databases, use <a href="/en-us/azure/azure-sql/database/read-scale-out" data-linktype="absolute-path">readable replicas</a> with read-only connection strings.</p>
+</li>
+<li><p><strong>Advantage of this design:</strong> Lower operating costs than an overprovisioned design.</p>
+</li>
+<li><p><strong>Disadvantage of this design:</strong> Possible degradation of the user experience when scaling up to meet the demands of a full load if another location experiences an outage.</p>
+</li>
+</ul>
+</li>
+<li><p><strong>Active-active overprovisioned:</strong> Mirrored deployment stamps in two or more locations, each overprovisioned to handle production workloads for the location or locations that they serve and to handle loads from other locations if a regional outage occurs.</p>
+<ul>
+<li><p><strong>Networking:</strong> Use <a href="/en-us/azure/frontdoor/routing-methods#latency" data-linktype="absolute-path">latency</a> or <a href="/en-us/azure/frontdoor/routing-methods#weighted" data-linktype="absolute-path">weighted</a> global routing to spread traffic among locations.</p>
+</li>
+<li><p><strong>Data replication and consistency:</strong> Use a globally distributed data store like <a href="/en-us/azure/cosmos-db/introduction" data-linktype="absolute-path">Azure Cosmos DB</a> for multi-region read and write capabilities. For relational databases, use <a href="/en-us/azure/azure-sql/database/read-scale-out" data-linktype="absolute-path">readable replicas</a> with read-only connection strings.</p>
+</li>
+<li><p><strong>Advantage of this design:</strong> The most resilient design possible.</p>
+</li>
+<li><p><strong>Disadvantage of this design:</strong> Higher operating costs than a scalable design.</p>
+</li>
+</ul>
+</li>
+<li><p><strong>Common advantages of both designs:</strong> High resiliency and low risk of full workload outage.</p>
+</li>
+<li><p><strong>Common disadvantages of both designs:</strong> Higher operating costs and management burden because of various factors, including the necessity of managing the synchronization of application state and data.</p>
+</li>
+</ul>
+<h2 id="use-an-active-passive-architecture-design-as-a-cost-effective-dr-approach">Use an active-passive architecture design as a cost-effective DR approach</h2>
+<p>Active-passive deployment configurations provide a cost-effective way to ensure DR by running a primary instance that handles all traffic while keeping secondary instances idle but ready. These standby instances are activated only when the primary instance fails or undergoes maintenance. This approach minimizes resource usage while providing reliable failover capabilities.</p>
+<p>For example, a financial trading platform can use this setup to maintain service continuity. The primary system manages all transactions, while the secondary system remains synchronized in the background. If the primary system goes down, the secondary system quickly takes over and restores operations with minimal disruption. This approach balances reliability and cost, which makes it ideal for workloads that can tolerate brief recovery times without the complexity or expense of active-active deployments.</p>
+<p>Consider the following configuration options for active-passive deployments.</p>
+<ul>
+<li><p><strong>Warm spare:</strong> One primary location and one or more secondary locations. The secondary location is deployed with the minimum possible compute and data sizing and runs without load. This location is known as a <em>warm spare</em> location. After failover, the compute and data resources are scaled to handle the load from the primary location.</p>
+<ul>
+<li><p><strong>Networking:</strong> Use <a href="/en-us/azure/frontdoor/routing-methods#priority" data-linktype="absolute-path">priority</a> global routing.</p>
+</li>
+<li><p><strong>Data replication and consistency:</strong> Replicate your database to your passive location and use the automatic failover capabilities of PaaS solutions like <a href="/en-us/azure/cosmos-db/how-to-manage-database-account#automatic-failover" data-linktype="absolute-path">Azure Cosmos DB</a> and <a href="/en-us/azure/azure-sql/database/auto-failover-group-sql-db" data-linktype="absolute-path">Azure SQL Database</a>.</p>
+</li>
+<li><p><strong>Advantage of this design:</strong> Shortest recovery time among the active-passive designs.</p>
+</li>
+<li><p><strong>Disadvantage of this design:</strong> Highest operating cost among the active-passive designs.</p>
+</li>
+</ul>
+</li>
+<li><p><strong>Cold spare:</strong> One primary location and one or more secondary locations. The secondary location is scaled to handle full load, but all compute resources are stopped. This location is known as a <em>cold spare</em> location. You need to start the resources before failover.</p>
+<ul>
+<li><p><strong>Networking:</strong> Use <a href="/en-us/azure/frontdoor/routing-methods#priority" data-linktype="absolute-path">priority</a> global routing.</p>
+</li>
+<li><p><strong>Data replication and consistency:</strong> Replicate your database to your passive location and use the automatic failover capabilities of PaaS solutions like <a href="/en-us/azure/cosmos-db/how-to-manage-database-account#automatic-failover" data-linktype="absolute-path">Azure Cosmos DB</a> and <a href="/en-us/azure/azure-sql/database/auto-failover-group-sql-db" data-linktype="absolute-path">SQL Database</a>.</p>
+</li>
+<li><p><strong>Advantage of this design:</strong> Lower operating costs than the warm spare design.</p>
+</li>
+<li><p><strong>Disadvantage of this design:</strong> Longer recovery time than the warm spare design.</p>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="distribute-workloads-across-proximate-independent-infrastructure">Distribute workloads across proximate independent infrastructure</h2>
+<p>Deploying workloads across nearby independent datacenters or datacenter sectors provides redundancy without compromising performance. By using geographically close but physically separate facilities, this setup ensures fault isolation with minimal latency impact. It provides the resilience of distributed infrastructure while maintaining the responsiveness of a single-site deployment. In Azure, availability zones provide this functionality. Availability zones are physically independent datacenters or datacenter sectors that are designed to let you easily deploy fault-tolerant, low-latency workloads.</p>
+<p>For latency-sensitive applications like real-time gaming, this approach enables seamless failover and uninterrupted user experience. Game servers distributed across local datacenters can instantly reroute traffic during outages, with transparent load balancing and near real-time data replication preserving gameplay continuity. However, this strategy does carry some risk because large-scale regional events can still affect all sites simultaneously.</p>
+<h2 id="strengthen-fault-tolerance-with-geo-distant-deployments">Strengthen fault tolerance with geo-distant deployments</h2>
+<p>Deploying across geographically distributed datacenters provides the strongest protection against large-scale disasters by spreading workloads across regions hundreds or thousands of miles apart. This approach ensures business continuity during events like natural disasters, infrastructure failures, or geopolitical disruptions that can affect entire metropolitan areas. In Azure, you can deploy workloads into regions, which are spread across the globe. When you use this design approach, choose regions that are close to your users but are geographically distant, such as West US and East US.</p>
+<p>For example, a global financial platform can maintain uninterrupted service by routing traffic to unaffected regions if one area experiences a major outage. This approach maximizes resilience and supports regulatory compliance across jurisdictions, but it introduces higher latency, complex data consistency requirements, and increased operational overhead. You must weigh these factors carefully against the benefits of global redundancy.</p>
+<h2 id="azure-facilitation">Azure facilitation</h2>
+<p>The Azure platform helps you optimize the resiliency of your workload and add redundancy by doing the following actions:</p>
+<ul>
+<li><p>Helps you select the best Azure regions for your multi-region architecture with the <a href="/en-us/azure/cloud-adoption-framework/ready/azure-setup-guide/regions" data-linktype="absolute-path">Select Azure Regions guide</a>.</p>
+</li>
+<li><p>Provides built-in redundancy with many PaaS and SaaS solutions, some of which are configurable.</p>
+</li>
+<li><p>Provides global managed services like Microsoft Entra ID, Azure DNS, and Key Vault that implement redundancy transparently without requiring configuration.</p>
+</li>
+<li><p>Allows you to design and implement intra-region redundancy by using <a href="/en-us/azure/reliability/availability-zones-overview" data-linktype="absolute-path">availability zones</a> and inter-region redundancy.</p>
+</li>
+<li><p>Provides zone-redundant compute solutions, like <a href="/en-us/azure/reliability/reliability-virtual-machine-scale-sets" data-linktype="absolute-path">Virtual Machine Scale Sets</a>, which can automatically spread your compute evenly across availability zones when you deploy virtual machines (VMs).</p>
+</li>
+<li><p>Provides replica-aware load balancing services like <a href="/en-us/azure/application-gateway/" data-linktype="absolute-path">Azure Application Gateway</a>, <a href="/en-us/azure/frontdoor/" data-linktype="absolute-path">Azure Front Door</a>, and <a href="/en-us/azure/load-balancer/" data-linktype="absolute-path">Azure Load Balancer</a>.</p>
+</li>
+<li><p>Provides easily implemented geo-replication solutions like <a href="/en-us/azure/azure-sql/database/active-geo-replication-overview" data-linktype="absolute-path">active geo replication</a> for SQL Database. Implement <a href="/en-us/azure/cosmos-db/distribute-data-globally" data-linktype="absolute-path">global distribution</a> and transparent replication by using Azure Cosmos DB. Azure Cosmos DB provides two options for <a href="/en-us/azure/cosmos-db/conflict-resolution-policies" data-linktype="absolute-path">handling conflicting writes</a>. Choose the best option for your workload.</p>
+</li>
+<li><p>Provides point-in-time restore (PITR) capabilities for many PaaS data services.</p>
+</li>
+<li><p>Mitigates port exhaustion via <a href="/en-us/azure/nat-gateway/nat-overview" data-linktype="absolute-path">Azure NAT Gateway</a> or <a href="/en-us/azure/firewall/overview" data-linktype="absolute-path">Azure Firewall</a>.</p>
+</li>
+</ul>
+<h3 id="dns-specific-azure-facilitation">DNS-specific Azure facilitation</h3>
+<ul>
+<li><p>For internal name resolution scenarios, use Azure DNS private zones, which have built-in zone redundancy and geo redundancy. For more information, see <a href="/en-us/azure/dns/private-dns-resiliency" data-linktype="absolute-path">Azure DNS private zone resiliency</a>.</p>
+</li>
+<li><p>For external name resolution scenarios, use Azure DNS public zones, which have built-in zone redundancy and geo redundancy.</p>
+</li>
+<li><p>The public and private Azure DNS services are global services that are resilient to regional outages because zone data is globally available.</p>
+</li>
+<li><p>For hybrid name resolution scenarios between on-premises and cloud environments, use Azure DNS Private Resolver. This service supports zone redundancy if your workload is located in a region that supports availability zones. A zone-wide outage requires no action during zone recovery. The service automatically self-heals and rebalances to take advantage of the healthy zone. For more information, see <a href="/en-us/azure/dns/private-resolver-reliability" data-linktype="absolute-path">Resiliency in Azure DNS Private Resolver</a>.</p>
+</li>
+<li><p>To eliminate a single point of failure and achieve a more resilient hybrid name resolution across regions, deploy two or more Azure DNS private resolvers across different regions. DNS failover, in a conditional forwarding scenario, is achieved by assigning a resolver as your primary DNS server. Assign the other resolver in a different region as a secondary DNS server. For more information, see <a href="/en-us/azure/dns/tutorial-dns-private-resolver-failover" data-linktype="absolute-path">Set up DNS failover by using private resolvers</a>.</p>
+</li>
+</ul>
+<h3 id="apply-delete-protection-to-preserve-redundancy">Apply delete protection to preserve redundancy</h3>
+<p>Redundancy only helps if the components that provide it stay in place. Accidental deletion of a data store, DNS zone, or traffic routing layer collapses resiliency and forces full recovery actions. Reduce human error blast radius by applying Azure resource <a href="/en-us/azure/azure-resource-manager/management/lock-resources" data-linktype="absolute-path"><em>CanNotDelete</em> locks</a>.</p>
+<blockquote>
+<p><img src="../_images/trade-off.svg" role="presentation" data-linktype="relative-path">
+ <strong>Trade-off:</strong> Applying locks slows legitimate recovery actions and can create operational friction. Locks block resource deletion, not changes or data within the resource. Treat locks as a thin safety net that complements, never replaces, backups, replication, and access governance.</p>
+</blockquote>
+<h2 id="example">Example</h2>
+<p>For an example of a multi-region redundant deployment, see <a href="/en-us/azure/architecture/web-apps/app-service/architectures/baseline-zone-redundant" data-linktype="absolute-path">Baseline highly available zone-redundant web application</a>.</p>
+<p>The following diagram shows another example.</p>
+<p><a href="media/redundancy/reliable-web-app-dotnet.png#lightbox" data-linktype="relative-path">
+<img src="media/redundancy/reliable-web-app-dotnet.png" alt="Diagram that shows the architecture of the reference implementation." data-linktype="relative-path">
+</a>
+</p>
+<h2 id="related-links">Related links</h2>
+<p>To learn more about redundancy, see the following resources:</p>
+<ul>
+<li><a href="/en-us/azure/cloud-adoption-framework/ready/azure-setup-guide/regions" data-linktype="absolute-path">Azure regions guide</a></li>
+<li><a href="/en-us/azure/storage/common/storage-redundancy" data-linktype="absolute-path">Azure Storage redundancy</a></li>
+<li><a href="/en-us/azure/storage/common/storage-redundancy#zone-redundant-storage" data-linktype="absolute-path">Zone-redundant storage</a></li>
+<li><a href="/en-us/azure/azure-sql/database/active-geo-replication-overview" data-linktype="absolute-path">SQL Database active geo-replication</a></li>
+<li><a href="/en-us/azure/azure-sql/managed-instance/replication-between-two-instances-configure-tutorial" data-linktype="absolute-path">Configure replication between two managed instances</a></li>
+</ul>
+<h2 id="reliability-checklist">Reliability checklist</h2>
+<p>Refer to the complete set of recommendations.</p>
+<div class="nextstepaction">
+<p><a href="checklist" data-linktype="relative-path">Reliability checklist</a></p>
+</div>
+</div>
+					
+		<div
+			id="ms--inline-notifications"
+			class="margin-block-xs"
+			data-bi-name="inline-notification"
+		></div>
+	 
+		<div
+			id="assertive-live-region"
+			role="alert"
+			aria-live="assertive"
+			class="visually-hidden"
+			aria-relevant="additions"
+			aria-atomic="true"
+		></div>
+		<div
+			id="polite-live-region"
+			role="status"
+			aria-live="polite"
+			class="visually-hidden"
+			aria-relevant="additions"
+			aria-atomic="true"
+		></div>
+	
+					
+		<!-- feedback section -->
+		<section
+			id="site-user-feedback-footer"
+			class="font-size-sm margin-top-md display-none-print display-none-desktop"
+			data-test-id="site-user-feedback-footer"
+			data-bi-name="site-feedback-section"
+		>
+			<hr class="hr" />
+			<h2 id="ms--feedback" class="title is-3">Feedback</h2>
+			<div class="display-flex flex-wrap-wrap align-items-center">
+				<p class="font-weight-semibold margin-xxs margin-left-none">
+					Was this page helpful?
+				</p>
+				<div class="buttons">
+					<button
+						class="thumb-rating-button like button button-primary button-sm"
+						data-test-id="footer-rating-yes"
+						data-binary-rating-response="rating-yes"
+						type="button"
+						title="This article is helpful"
+						data-bi-name="button-rating-yes"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-like"></span>
+						</span>
+						<span>Yes</span>
+					</button>
+					<button
+						class="thumb-rating-button dislike button button-primary button-sm"
+						id="standard-rating-no-button"
+						hidden
+						data-test-id="footer-rating-no"
+						data-binary-rating-response="rating-no"
+						type="button"
+						title="This article is not helpful"
+						data-bi-name="button-rating-no"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-dislike"></span>
+						</span>
+						<span>No</span>
+					</button>
+					<details
+						class="popover popover-top"
+						id="mobile-help-popover"
+						data-test-id="footer-feedback-popover"
+					>
+						<summary
+							class="thumb-rating-button dislike button button-primary button-sm"
+							data-test-id="details-footer-rating-no"
+							data-binary-rating-response="rating-no"
+							title="This article is not helpful"
+							data-bi-name="button-rating-no"
+							aria-pressed="false"
+							data-bi-an="feedback-unhelpful-popover"
+						>
+							<span class="icon" aria-hidden="true">
+								<span class="docon docon-dislike"></span>
+							</span>
+							<span>No</span>
+						</summary>
+						<div
+							class="popover-content width-200 width-300-tablet"
+							role="dialog"
+							aria-labelledby="popover-heading"
+							aria-describedby="popover-description"
+						>
+							<p id="popover-heading" class="font-size-lg margin-bottom-xxs font-weight-semibold">
+								Need help with this topic?
+							</p>
+							<p id="popover-description" class="font-size-sm margin-bottom-xs">
+								Want to try using Ask Learn to clarify or guide you through this topic?
+							</p>
+							
+		<div class="buttons flex-direction-row flex-wrap justify-content-center gap-xxs">
+			<div>
+		<button
+			class="button button-sm border inner-focus display-none margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-test-id="ask-learn-assistant-modal-entry-mobile-feedback"
+			data-ask-learn-modal-entry-feedback
+			data-bi-an=feedback-unhelpful-popover
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-inline-flex display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-modal-entry-tablet-feedback"
+			data-ask-learn-modal-entry-feedback
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-flyout-entry-feedback"
+			data-ask-learn-flyout-entry-show-only
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	</div>
+			<button
+				type="button"
+				class="button button-sm margin-right-xxs"
+				data-help-option="suggest-fix"
+				data-bi-name="feedback-suggest"
+				data-bi-an="feedback-unhelpful-popover"
+				data-test-id="suggest-fix"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-feedback"></span>
+				</span>
+				<span> Suggest a fix? </span>
+			</button>
+		</div>
+	
+						</div>
+					</details>
+				</div>
+			</div>
+		</section>
+		<!-- end feedback section -->
+	
+				</div>
+				
+		<div id="ms--additional-resources-mobile" class="display-none-print">
+			<hr class="hr" hidden />
+			<h2 id="ms--additional-resources-mobile-heading" class="title is-3" hidden>
+				Additional resources
+			</h2>
+			
+		<section
+			id="right-rail-recommendations-mobile"
+			class=""
+			data-bi-name="recommendations"
+			hidden
+		></section>
+	 
+		<section
+			id="right-rail-training-mobile"
+			class=""
+			data-bi-name="learning-resource-card"
+			hidden
+		></section>
+	 
+		<section
+			id="right-rail-events-mobile"
+			class=""
+			data-bi-name="events-card"
+			hidden
+		></section>
+	
+		</div>
+	 
+		<div
+			id="article-metadata-footer"
+			data-bi-name="article-metadata-footer"
+			data-test-id="article-metadata-footer"
+			class="page-metadata-container"
+		>
+			<hr class="hr" />
+			<ul class="metadata page-metadata" data-bi-name="page info" lang="en-us" dir="ltr">
+				<li class="visibility-hidden-visual-diff">
+			<span class="badge badge-sm text-wrap-pretty">
+				<span>Last updated on <local-time format="twoDigitNumeric"
+		datetime="2025-09-09T17:02:00.000Z"
+		data-article-date-source="calculated"
+		class="is-invisible"
+	>
+		2025-09-09
+	</local-time></span>
+			</span>
+		</li>
+			</ul>
+		</div>
+	
+			</div>
+		
+				</main>
+				<aside
+					id="layout-body-aside"
+					class="layout-body-aside  "
+					data-bi-name="aside"
+					aria-label="Additional resources"
+			  >
+					
+		<div
+			id="ms--additional-resources"
+			class="right-container padding-sm display-none display-block-desktop height-full"
+			data-bi-name="pageactions"
+		>
+			<div id="affixed-right-container" data-bi-name="right-column">
+				
+		<nav
+			id="side-doc-outline"
+			class="doc-outline border-bottom padding-bottom-xs margin-bottom-xs scrollbar-width-thin"
+			data-bi-name="intopic toc"
+			aria-label="In this article"
+		>
+			<h3>In this article</h3>
+		</nav>
+	
+				<!-- Feedback -->
+				
+		<section
+			id="ms--site-user-feedback-right-rail"
+			class="font-size-sm display-none-print"
+			data-test-id="site-user-feedback-right-rail"
+			data-bi-name="site-feedback-right-rail"
+		>
+			<div class="display-flex flex-wrap-wrap align-items-center">
+				<p class="font-weight-semibold margin-xxs margin-left-none">
+					Was this page helpful?
+				</p>
+				<div class="display-flex flex-wrap-nowrap">
+					<button
+						class="thumb-rating-button like inner-focus"
+						data-test-id="right-rail-rating-yes"
+						data-binary-rating-response="rating-yes"
+						type="button"
+						title="This article is helpful"
+						aria-label="This article is helpful"
+						data-bi-name="button-rating-yes"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-like"></span>
+						</span>
+					</button>
+					<button
+						class="thumb-rating-button dislike inner-focus"
+						id="right-rail-no-button"
+						hidden
+						data-test-id="right-rail-rating-no"
+						data-binary-rating-response="rating-no"
+						type="button"
+						title="This article is not helpful"
+						aria-label="This article is not helpful"
+						data-bi-name="button-rating-no"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-dislike"></span>
+						</span>
+					</button>
+					<details class="popover popover-right" id="help-popover" data-test-id="feedback-popover">
+						<summary
+							tabindex="0"
+							class="thumb-rating-button dislike inner-focus"
+							data-test-id="details-right-rail-rating-no"
+							data-binary-rating-response="rating-no"
+							title="This article is not helpful"
+							aria-label="This article is not helpful"
+							data-bi-name="button-rating-no"
+							aria-pressed="false"
+							data-bi-an="feedback-unhelpful-popover"
+						>
+							<span class="icon" aria-hidden="true">
+								<span class="docon docon-dislike"></span>
+							</span>
+						</summary>
+						<div
+							class="popover-content width-200 width-300-tablet"
+							role="dialog"
+							aria-labelledby="popover-heading-right-rail"
+							aria-describedby="popover-description-right-rail"
+						>
+							<p
+								id="popover-heading-right-rail"
+								class="font-size-lg margin-bottom-xxs font-weight-semibold"
+							>
+								Need help with this topic?
+							</p>
+							<p id="popover-description-right-rail" class="font-size-sm margin-bottom-xs">
+								Want to try using Ask Learn to clarify or guide you through this topic?
+							</p>
+							
+		<div class="buttons flex-direction-row flex-wrap justify-content-center gap-xxs">
+			<div>
+		<button
+			class="button button-sm border inner-focus display-none margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-test-id="ask-learn-assistant-modal-entry-mobile-feedback"
+			data-ask-learn-modal-entry-feedback
+			data-bi-an=feedback-unhelpful-popover
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-inline-flex display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-modal-entry-tablet-feedback"
+			data-ask-learn-modal-entry-feedback
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-flyout-entry-feedback"
+			data-ask-learn-flyout-entry-show-only
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	</div>
+			<button
+				type="button"
+				class="button button-sm margin-right-xxs"
+				data-help-option="suggest-fix"
+				data-bi-name="feedback-suggest"
+				data-bi-an="feedback-unhelpful-popover"
+				data-test-id="suggest-fix"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-feedback"></span>
+				</span>
+				<span> Suggest a fix? </span>
+			</button>
+		</div>
+	
+						</div>
+					</details>
+				</div>
+			</div>
+		</section>
+	
+			</div>
+		</div>
+	
+			  </aside> <section
+					id="layout-body-flyout"
+					class="layout-body-flyout "
+					data-bi-name="flyout"
+			  >
+					 <div
+	class="height-full border-left background-color-body-medium"
+	id="ask-learn-flyout"
+></div>
+			  </section> <div class="layout-body-footer " data-bi-name="layout-footer">
+		<footer
+			id="footer"
+			data-test-id="footer"
+			data-bi-name="footer"
+			class="footer-layout padding-xs padding-sm-desktop has-default-focus border-top"
+			role="contentinfo"
+		>
+			<div class="display-flex gap-xs flex-wrap-wrap is-full-height padding-right-lg-desktop">
+				
+		<a
+			data-mscc-ic="false"
+			href="#"
+			data-bi-name="select-locale"
+			class="locale-selector-link flex-shrink-0 button button-sm button-clear external-link-indicator"
+			id=""
+			title=""
+			><span class="icon" aria-hidden="true"
+				><span class="docon docon-world"></span></span
+			><span class="local-selector-link-text">en-us</span></a
+		>
+	 <div class="ccpa-privacy-link" data-ccpa-privacy-link hidden>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://aka.ms/yourcaliforniaprivacychoices"
+			data-bi-name="your-privacy-choices"
+			class="button button-sm button-clear flex-shrink-0 external-link-indicator"
+			id=""
+			title=""
+			>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 30 14"
+			xml:space="preserve"
+			height="16"
+			width="43"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<path
+				d="M7.4 12.8h6.8l3.1-11.6H7.4C4.2 1.2 1.6 3.8 1.6 7s2.6 5.8 5.8 5.8z"
+				style="fill-rule:evenodd;clip-rule:evenodd;fill:#fff"
+			></path>
+			<path
+				d="M22.6 0H7.4c-3.9 0-7 3.1-7 7s3.1 7 7 7h15.2c3.9 0 7-3.1 7-7s-3.2-7-7-7zm-21 7c0-3.2 2.6-5.8 5.8-5.8h9.9l-3.1 11.6H7.4c-3.2 0-5.8-2.6-5.8-5.8z"
+				style="fill-rule:evenodd;clip-rule:evenodd;fill:#06f"
+			></path>
+			<path
+				d="M24.6 4c.2.2.2.6 0 .8L22.5 7l2.2 2.2c.2.2.2.6 0 .8-.2.2-.6.2-.8 0l-2.2-2.2-2.2 2.2c-.2.2-.6.2-.8 0-.2-.2-.2-.6 0-.8L20.8 7l-2.2-2.2c-.2-.2-.2-.6 0-.8.2-.2.6-.2.8 0l2.2 2.2L23.8 4c.2-.2.6-.2.8 0z"
+				style="fill:#fff"
+			></path>
+			<path
+				d="M12.7 4.1c.2.2.3.6.1.8L8.6 9.8c-.1.1-.2.2-.3.2-.2.1-.5.1-.7-.1L5.4 7.7c-.2-.2-.2-.6 0-.8.2-.2.6-.2.8 0L8 8.6l3.8-4.5c.2-.2.6-.2.9 0z"
+				style="fill:#06f"
+			></path>
+		</svg>
+	
+			<span>Your Privacy Choices</span></a
+		>
+	
+	</div>
+				<div class="flex-shrink-0">
+		<div class="dropdown has-caret-up">
+			<button
+				data-test-id="theme-selector-button"
+				class="dropdown-trigger button button-clear button-sm inner-focus theme-dropdown-trigger"
+				aria-controls="{{ themeMenuId }}"
+				aria-haspopup="true"
+				aria-expanded="false"
+				data-bi-name="theme"
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-sun"></span></span>
+				<span>Theme</span>
+				<span class="icon expanded-indicator" aria-hidden="true">
+					<span class="docon docon-chevron-down-light"></span>
+				</span>
+			</button>
+			<div class="dropdown-menu" id="{{ themeMenuId }}" role="menu">
+				<ul class="theme-selector padding-xxs" data-test-id="theme-dropdown-menu" role="none">
+					<li class="theme display-block" role="none">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							role="menuitemradio"
+							aria-checked="false"
+							data-theme-to="light"
+							tabindex="-1"
+						>
+							<span class="theme-light margin-right-xxs">
+								<span
+									class="theme-selector-icon border display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span> Light </span>
+						</button>
+					</li>
+					<li class="theme display-block" role="none">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							role="menuitemradio"
+							aria-checked="false"
+							data-theme-to="dark"
+							tabindex="-1"
+						>
+							<span class="theme-dark margin-right-xxs">
+								<span
+									class="border theme-selector-icon display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span> Dark </span>
+						</button>
+					</li>
+					<li class="theme display-block" role="none">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							role="menuitemradio"
+							aria-checked="false"
+							data-theme-to="high-contrast"
+							tabindex="-1"
+						>
+							<span class="theme-high-contrast margin-right-xxs">
+								<span
+									class="border theme-selector-icon display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span> High contrast </span>
+						</button>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+			</div>
+			<ul class="links" data-bi-name="footerlinks">
+				<li class="manage-cookies-holder" hidden=""></li>
+				<li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/principles-for-ai-generated-content"
+			data-bi-name="aiDisclaimer"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>AI Disclaimer</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/previous-versions/"
+			data-bi-name="archivelink"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Previous Versions</a
+		>
+	
+	</li> <li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://techcommunity.microsoft.com/t5/microsoft-learn-blog/bg-p/MicrosoftLearnBlog"
+			data-bi-name="bloglink"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Blog</a
+		>
+	
+	</li> <li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/contribute"
+			data-bi-name="contributorGuide"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Contribute</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://go.microsoft.com/fwlink/?LinkId=521839"
+			data-bi-name="privacy"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Privacy</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://go.microsoft.com/fwlink/?linkid=2259814"
+			data-bi-name="consumer-health-privacy"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Consumer Health Privacy</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/legal/termsofuse"
+			data-bi-name="termsofuse"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Terms of Use</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://www.microsoft.com/legal/intellectualproperty/Trademarks/"
+			data-bi-name="trademarks"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Trademarks</a
+		>
+	
+	</li>
+				<li>&copy; Microsoft 2026</li>
+			</ul>
+		</footer>
+	</footer>
+			<noscript><img src="https://learn.microsoft.com/akam/13/pixel_31306b96?a=dD0wMTg4ZDM0NzBiNjI4MzJhZmEzNTAzNGFjYWZhZjNjYzZlM2U2NzA1JmpzPW9mZg==" style="visibility: hidden; position: absolute; left: -999px; top: -999px;" /></noscript></body>
+		</html>

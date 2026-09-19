@@ -1,0 +1,108 @@
+# doc_id: DOC-MSIO-HEALTHCHECK
+# url: https://microservices.io/patterns/observability/health-check-api.html
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H4]] Microservice Architecture
+Patterns
+Articles
+Presentations
+Adopt
+Refactoring
+Testing
+Modernization Help
+About
+[[H1]] Pattern: Health Check API
+pattern observability service design
+[[H2]] Context
+You have applied the Microservice architecture pattern. Sometimes a service instance can be incapable of handling requests yet still be running. For example, it might have ran out of database connections. When this occurs, the monitoring system should generate a alert. Also, the load balancer or service registry should not route requests to the failed service instance.
+[[H2]] Problem
+How to detect that a running service instance is unable to handle requests?
+[[H2]] Forces
+An alert should be generated when a service instance fails
+Requests should be routed to working service instances
+[[H2]] Solution
+A service has an health check API endpoint (e.g. HTTP /health) that returns the health of the service. The API endpoint handler performs various checks, such as
+the status of the connections to the infrastructure services used by the service instance
+the status of the host, e.g. disk space
+application specific logic
+A health check client - a monitoring service, service registry or load balancer - periodically invokes the endpoint to check the health of the service instance.
+[[H2]] Examples
+The Microservices Example application is an example on an application implements a health check API. It is written in Scala and uses Spring Boot and Spring Cloud as the Microservice chassis. They provide various capabilities including a health check endpoint. The endpoint is implemented by the Spring Boot Actuator module. It configures a /health HTTP endpoint that invokes extensible health check logic.
+To enable a /health endpoint, first define actuator as a dependency:
+dependencies {
+compile "org.springframework.boot:spring-boot-starter-actuator"
+Second, enable Spring Boot autoconfiguration:
+@SpringBootApplication
+class UserRegistrationConfiguration {
+At this point, your application will have a health check endpoint with default behavior.
+You can customize this behavior by defining one or more Spring beans that implement the HealthIndicator interface:
+class UserRegistrationConfiguration {
+@Bean
+def discoveryHealthIndicator(discoveryClient : EurekaClient ) : HealthIndicator = new DiscoveryHealthIndicator(discoveryClient)
+A HealthIndicator must implement a health() method, which returns a Health value.
+[[H2]] Resulting Context
+This pattern has the following benefits:
+The health check endpoint enables the health of a service instance to be periodically tested
+This pattern has the following drawbacks:
+The health check might not sufficiently comprehensive or the service instance might fail between health checks and so requests might still be routed to a failed service instance
+[[H2]] Related patterns
+Service registry - the service registry invokes the health check endpoint
+pattern observability service design
+Modernization Help
+Copyright © 2026 Chris Richardson • All rights reserved
+[[H4]] About Microservices.io
+Microservices.io is created by Chris Richardson, software architect, creator of the original CloudFoundry.com, and author of Microservices Patterns. Chris helps organizations modernize their architecture to enable fast flow and GenAI-powered software delivery.
+[[H4]] Need help modernizing your architecture?
+Avoid the trap of creating a modern legacy system — a new architecture with the same old problems.
+Contact me to discuss your modernization goals.
+Get Help
+[[H4]] Microservices Patterns, 2nd edition
+I am very excited to announce that the MEAP for the second edition of my book, Microservices Patterns is now available!
+Learn more
+Writing better problem reports: 6 essential details
+-->
+[[H4]] ASK CHRIS
+?
+Got a question about microservices?
+Fill in this form. If I can, I'll write a blog post that answers your question.
+[[H4]] NEED HELP?
+I help organizations improve agility and competitiveness through better software architecture.
+Learn more about my consulting engagements, and training workshops.
+[[H4]] PREMIUM CONTENT
+Premium content now available for paid subscribers at premium.microservices.io.
+[[H4]] MICROSERVICES WORKSHOPS
+Chris teaches comprehensive workshops for architects and developers that will enable your organization use microservices effectively.
+Avoid the pitfalls of adopting microservices and learn essential topics, such as service decomposition and design and how to refactor a monolith to microservices.
+Learn more
+[[H4]] Remote consulting session
+Got a specific microservice architecture-related question? For example:
+Wondering whether your organization should adopt microservices?
+Want to know how to migrate your monolith to microservices?
+Facing a tricky microservice architecture design problem?
+Consider signing up for a two hour, highly focussed, consulting session.
+[[H4]] ASSESS your architecture
+Assess your application's microservice architecture and identify what needs to be improved. Engage Chris to conduct an architect review.
+[[H4]] LEARN about microservices
+Chris offers numerous other resources for learning the microservice architecture.
+[[H4]] Get the book: Microservices Patterns
+Read Chris Richardson's book:
+[[H4]] Example microservices applications
+Want to see an example? Check out Chris Richardson's example applications. See code
+[[H4]] Virtual bootcamp: Distributed data patterns in a microservice architecture
+My virtual bootcamp, distributed data patterns in a microservice architecture, is now open for enrollment!
+It covers the key distributed data management patterns including Saga, API Composition, and CQRS.
+It consists of video lectures, code labs, and a weekly ask-me-anything video conference repeated in multiple timezones.
+The regular price is $395/person but use coupon OFFEFKCW to sign up for $95 (valid until Sept 30th, 2025). There are deeper discounts for buying multiple seats.
+Learn more
+[[H4]] Learn how to create a service template and microservice chassis
+Take a look at my Manning LiveProject that teaches you how to develop a service template and microservice chassis.
+Signup for the newsletter
+For Email Marketing you can trust.
+[[H4]] BUILD microservices
+Ready to start using the microservice architecture?
+[[H4]] Consulting services
+Engage Chris to create a microservices adoption roadmap and help you define your microservice architecture,
+[[H4]] The Eventuate platform
+Use the Eventuate.io platform to tackle distributed data management challenges in your microservices architecture.
+Eventuate is Chris's latest startup. It makes it easy to use the Saga pattern to manage transactions and the CQRS pattern to implement queries.
+Join the microservices google group

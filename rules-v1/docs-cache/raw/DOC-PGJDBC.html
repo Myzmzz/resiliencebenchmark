@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <meta charset="utf-8">
+
+    <link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-100.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-100italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-200.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-200italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-300.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-300italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-400.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-400italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-500.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-500italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-600.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-600italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-700.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-700italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-800.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-800italic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-900.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="https://jdbc.postgresql.org/fonts/barlow-latin-900italic.woff" as="font" type="font/woff" crossorigin>
+
+
+    <title>Initializing the Driver | pgJDBC</title>
+
+    <meta name="viewport" content="width=device-width,minimum-scale=1">
+
+    
+    
+    <link rel="stylesheet" href="https://jdbc.postgresql.org/sass/main.ac11a2944099801b67fe46a8d704f5fb62b1df6923838efd1fe00898854a619f.css" integrity="sha256-rBGilECZgBtn/kao1wT1&#43;2Kx32kjg479H&#43;AImIVKYZ8=">
+    <link rel="icon" href="/favicon.ico">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lunr.js/2.3.9/lunr.min.js"
+    integrity="sha512-4xUl/d6D6THrAnXAwGajXkoWaeMNwEKK4iNfq5DotEbLPAfk6FSxSP3ydNxqDgCw1c/0Z1Jg6L8h2j+++9BZmg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script defer language="javascript" type="module" src="/js/index.js"></script>
+
+
+</head>
+
+<body>
+    
+
+<nav class="navbar" role="navigation">
+
+    <a href="/" id="host">
+        <img class="logo" src="/icons/postgreslogo.svg"  alt="logo" />
+    </a>
+
+    <div class="navbar__item">
+        
+        <a href="/download/" title="" class="navbar__item__link ">Download</a>
+        
+        <a href="/documentation/" title="" class="navbar__item__link  navbar__item__link--active ">Documentation</a>
+        
+        <a href="/community/" title="" class="navbar__item__link ">Community</a>
+        
+        <a href="/development/" title="" class="navbar__item__link ">Development</a>
+        
+        <a href="/changelogs/" title="" class="navbar__item__link ">Changelogs</a>
+        
+        <a href="/security/" title="" class="navbar__item__link ">Security</a>
+        
+    </div>
+
+    <form id="search" class="searchBox" role="search">
+    <input class="searchInput" type="search" name="" placeholder="Search" id="search-input" autocomplete="off">
+    <button class="searchButton" for="search-input">
+        <svg fill="#ffffff" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="24px" height="24px">
+            <path
+                d="M 24 2.8886719 C 12.365714 2.8886719 2.8886719 12.365723 2.8886719 24 C 2.8886719 35.634277 12.365714 45.111328 24 45.111328 C 29.036552 45.111328 33.664698 43.331333 37.298828 40.373047 L 52.130859 58.953125 C 52.130859 58.953125 55.379484 59.435984 57.396484 57.333984 C 59.427484 55.215984 58.951172 52.134766 58.951172 52.134766 L 40.373047 37.298828 C 43.331332 33.664697 45.111328 29.036548 45.111328 24 C 45.111328 12.365723 35.634286 2.8886719 24 2.8886719 z M 24 7.1113281 C 33.352549 7.1113281 40.888672 14.647457 40.888672 24 C 40.888672 33.352543 33.352549 40.888672 24 40.888672 C 14.647451 40.888672 7.1113281 33.352543 7.1113281 24 C 7.1113281 14.647457 14.647451 7.1113281 24 7.1113281 z" />
+        </svg>
+    </button>
+</form>
+
+<template id="search-result" hidden>
+    <article class="search-list container flow">
+        <h2><a class="summary-title-link"></a></h2>
+        <summary class="summary"></summary>
+        <div class="read-more-container">
+            <a class="read-more-link">Read More »</a>
+        </div>
+    </article>
+</template>
+
+
+</nav>
+
+    <main role="main" class="main-inner">
+        
+<div class="doc">
+    
+
+<nav role="navigation" class="sidebar">
+  <ul role="list" class="flow sidebar__wrapper">
+    
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/setup/" class="sidebar__links__link">
+        Getting Started
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/use/" class="sidebar__links__link--active">
+        Initializing the Driver
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/ssl/" class="sidebar__links__link">
+        Using SSL
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/query/" class="sidebar__links__link">
+        Issuing a Query and Processing the Result
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/callproc/" class="sidebar__links__link">
+        Calling Stored Functions and Procedures
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/binary-data/" class="sidebar__links__link">
+        Storing Binary Data
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/escapes/" class="sidebar__links__link">
+        JDBC escapes
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/server-prepare/" class="sidebar__links__link">
+        PostgreSQL™ Extensions to the JDBC API
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/thread/" class="sidebar__links__link">
+        Using the Driver in a Multithreaded or a Servlet Environment
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/datasource/" class="sidebar__links__link">
+        Connection Pools and Data Sources
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/logging/" class="sidebar__links__link">
+        Logging using java.util.logging
+      </a>
+    </li>
+    <li role="listitem" class="sidebar__links">
+      <a href="/documentation/reading/" class="sidebar__links__link">
+        Further Reading
+      </a>
+    </li>
+  </ul>
+</nav>
+
+    <article class="article">
+    <h1>
+        
+        Initializing the Driver
+    </h1>
+    <p>This section describes how to load and initialize the JDBC driver in your programs.</p>
+<h2 id="importing-jdbc" class="self-link">Importing JDBC <a class="header-link" href="#importing-jdbc">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            style="fill: #0093AF;">
+            <path
+                d="M8.465 11.293c1.133-1.133 3.109-1.133 4.242 0l.707.707 1.414-1.414-.707-.707c-.943-.944-2.199-1.465-3.535-1.465s-2.592.521-3.535 1.465L4.929 12a5.008 5.008 0 0 0 0 7.071 4.983 4.983 0 0 0 3.535 1.462A4.982 4.982 0 0 0 12 19.071l.707-.707-1.414-1.414-.707.707a3.007 3.007 0 0 1-4.243 0 3.005 3.005 0 0 1 0-4.243l2.122-2.121z">
+            </path>
+            <path
+                d="m12 4.929-.707.707 1.414 1.414.707-.707a3.007 3.007 0 0 1 4.243 0 3.005 3.005 0 0 1 0 4.243l-2.122 2.121c-1.133 1.133-3.109 1.133-4.242 0L10.586 12l-1.414 1.414.707.707c.943.944 2.199 1.465 3.535 1.465s2.592-.521 3.535-1.465L19.071 12a5.008 5.008 0 0 0 0-7.071 5.006 5.006 0 0 0-7.071 0z">
+            </path>
+        </svg>
+    </a></h2>
+<p>Any source file that uses JDBC needs to import the <code>java.sql</code> package, using:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-java" data-lang="java"><span class="line"><span class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">java.sql.*</span><span class="p">;</span><span class="w">
+</span></span></span></code></pre></div><blockquote>
+<p><strong>NOTE</strong></p>
+<p>You should not import the <code>org.postgresql</code> package unless you are using PostgreSQL® extensions to the JDBC API.</p>
+</blockquote>
+<h2 id="loading-the-driver" class="self-link">Loading the Driver <a class="header-link" href="#loading-the-driver">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            style="fill: #0093AF;">
+            <path
+                d="M8.465 11.293c1.133-1.133 3.109-1.133 4.242 0l.707.707 1.414-1.414-.707-.707c-.943-.944-2.199-1.465-3.535-1.465s-2.592.521-3.535 1.465L4.929 12a5.008 5.008 0 0 0 0 7.071 4.983 4.983 0 0 0 3.535 1.462A4.982 4.982 0 0 0 12 19.071l.707-.707-1.414-1.414-.707.707a3.007 3.007 0 0 1-4.243 0 3.005 3.005 0 0 1 0-4.243l2.122-2.121z">
+            </path>
+            <path
+                d="m12 4.929-.707.707 1.414 1.414.707-.707a3.007 3.007 0 0 1 4.243 0 3.005 3.005 0 0 1 0 4.243l-2.122 2.121c-1.133 1.133-3.109 1.133-4.242 0L10.586 12l-1.414 1.414.707.707c.943.944 2.199 1.465 3.535 1.465s2.592-.521 3.535-1.465L19.071 12a5.008 5.008 0 0 0 0-7.071 5.006 5.006 0 0 0-7.071 0z">
+            </path>
+        </svg>
+    </a></h2>
+<p>Applications do not need to explicitly load the <code>org.postgresql.Driver</code> class because the pgJDBC driver jar supports the Java Service Provider mechanism. The driver will be loaded by the JVM when the application connects to PostgreSQL® (as long as the driver&rsquo;s jar file is on the classpath).</p>
+<blockquote>
+<p><strong>NOTE</strong></p>
+<p>Prior to Java 1.6, the driver had to be loaded by the application: either by calling <code>Class.forName(&quot;org.postgresql.Driver&quot;);</code> or by passing the driver class name as a JVM parameter <code>java -Djdbc.drivers=org.postgresql.Driver example.ImageViewer</code></p>
+</blockquote>
+<p>These older methods of loading the driver are still supported, but they are no longer necessary.</p>
+<h2 id="connecting-to-the-database" class="self-link">Connecting to the Database <a class="header-link" href="#connecting-to-the-database">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            style="fill: #0093AF;">
+            <path
+                d="M8.465 11.293c1.133-1.133 3.109-1.133 4.242 0l.707.707 1.414-1.414-.707-.707c-.943-.944-2.199-1.465-3.535-1.465s-2.592.521-3.535 1.465L4.929 12a5.008 5.008 0 0 0 0 7.071 4.983 4.983 0 0 0 3.535 1.462A4.982 4.982 0 0 0 12 19.071l.707-.707-1.414-1.414-.707.707a3.007 3.007 0 0 1-4.243 0 3.005 3.005 0 0 1 0-4.243l2.122-2.121z">
+            </path>
+            <path
+                d="m12 4.929-.707.707 1.414 1.414.707-.707a3.007 3.007 0 0 1 4.243 0 3.005 3.005 0 0 1 0 4.243l-2.122 2.121c-1.133 1.133-3.109 1.133-4.242 0L10.586 12l-1.414 1.414.707.707c.943.944 2.199 1.465 3.535 1.465s2.592-.521 3.535-1.465L19.071 12a5.008 5.008 0 0 0 0-7.071 5.006 5.006 0 0 0-7.071 0z">
+            </path>
+        </svg>
+    </a></h2>
+<p>With JDBC, a database is represented by a URL (Uniform Resource Locator). With PostgreSQL®, this takes one of the following forms:</p>
+<ul>
+<li>jdbc:postgresql:database</li>
+<li>jdbc:postgresql://</li>
+<li>jdbc:postgresql://host/database</li>
+<li>jdbc:postgresql://host/</li>
+<li>jdbc:postgresql://host:port/database</li>
+<li>jdbc:postgresql://host:port/</li>
+</ul>
+<p>The parameters have the following meanings:</p>
+<ul>
+<li>
+<p><strong><code>host</code></strong> = The host name of the server. Defaults to <code>localhost</code> . To specify an IPv6 address your must enclose the <code>host</code> parameter with square brackets, for example: <code>jdbc:postgresql://[::1]:5740/accounting</code></p>
+</li>
+<li>
+<p><strong><code>port</code></strong> = The port number the server is listening on. Defaults to the PostgreSQL® standard port number (5432).</p>
+</li>
+<li>
+<p><strong><code>database</code></strong> = The database name. The default is to connect to a database with the same name as the user name used to connect to the server.</p>
+</li>
+</ul>
+<p>To connect, you need to get a <code>Connection</code> instance from JDBC. To do this, you use the <code>DriverManager.getConnection()</code> method:
+<code>Connection db = DriverManager.getConnection(url, username, password)</code></p>
+<blockquote>
+<p><strong>Important</strong></p>
+<p>Any reserved characters for URLs (for example, /, :, @, (, ), [, ], &amp;, #, =, ?, and space) that appear in any part of the connection URL must be percent encoded. See <a href="https://www.rfc-editor.org/rfc/rfc3986#section-2">RFC 3986</a> for details.</p>
+</blockquote>
+<h3 id="system-properties" class="self-link">System Properties <a class="header-link" href="#system-properties">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            style="fill: #0093AF;">
+            <path
+                d="M8.465 11.293c1.133-1.133 3.109-1.133 4.242 0l.707.707 1.414-1.414-.707-.707c-.943-.944-2.199-1.465-3.535-1.465s-2.592.521-3.535 1.465L4.929 12a5.008 5.008 0 0 0 0 7.071 4.983 4.983 0 0 0 3.535 1.462A4.982 4.982 0 0 0 12 19.071l.707-.707-1.414-1.414-.707.707a3.007 3.007 0 0 1-4.243 0 3.005 3.005 0 0 1 0-4.243l2.122-2.121z">
+            </path>
+            <path
+                d="m12 4.929-.707.707 1.414 1.414.707-.707a3.007 3.007 0 0 1 4.243 0 3.005 3.005 0 0 1 0 4.243l-2.122 2.121c-1.133 1.133-3.109 1.133-4.242 0L10.586 12l-1.414 1.414.707.707c.943.944 2.199 1.465 3.535 1.465s2.592-.521 3.535-1.465L19.071 12a5.008 5.008 0 0 0 0-7.071 5.006 5.006 0 0 0-7.071 0z">
+            </path>
+        </svg>
+    </a></h3>
+<p><code>pgjdbc.config.cleanup.thread.ttl</code> (milliseconds, default: 30000). The driver has an internal cleanup thread which monitors and cleans up unclosed connections. This property sets the duration the cleanup thread will keep running if there is nothing to clean up.</p>
+<h3 id="connection-parameters" class="self-link">Connection Parameters <a class="header-link" href="#connection-parameters">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            style="fill: #0093AF;">
+            <path
+                d="M8.465 11.293c1.133-1.133 3.109-1.133 4.242 0l.707.707 1.414-1.414-.707-.707c-.943-.944-2.199-1.465-3.535-1.465s-2.592.521-3.535 1.465L4.929 12a5.008 5.008 0 0 0 0 7.071 4.983 4.983 0 0 0 3.535 1.462A4.982 4.982 0 0 0 12 19.071l.707-.707-1.414-1.414-.707.707a3.007 3.007 0 0 1-4.243 0 3.005 3.005 0 0 1 0-4.243l2.122-2.121z">
+            </path>
+            <path
+                d="m12 4.929-.707.707 1.414 1.414.707-.707a3.007 3.007 0 0 1 4.243 0 3.005 3.005 0 0 1 0 4.243l-2.122 2.121c-1.133 1.133-3.109 1.133-4.242 0L10.586 12l-1.414 1.414.707.707c.943.944 2.199 1.465 3.535 1.465s2.592-.521 3.535-1.465L19.071 12a5.008 5.008 0 0 0 0-7.071 5.006 5.006 0 0 0-7.071 0z">
+            </path>
+        </svg>
+    </a></h3>
+<p>In addition to the standard connection parameters the driver supports a number of additional properties which can be used to specify additional driver behaviour specific to PostgreSQL®. These properties may be specified in either the connection
+URL or an additional <code>Properties</code> object parameter to <code>DriverManager.getConnection</code> . The following examples illustrate the use of both methods to establish an SSL connection.</p>
+<p>If a property is specified both in URL and in <code>Properties</code> object, the value from <code>Properties</code> object is ignored.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-java" data-lang="java"><span class="line"><span class="cl"><span class="n">String</span><span class="w"> </span><span class="n">url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#34;jdbc:postgresql://localhost/test&#34;</span><span class="p">;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">Properties</span><span class="w"> </span><span class="n">props</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Properties</span><span class="p">();</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">props</span><span class="p">.</span><span class="na">setProperty</span><span class="p">(</span><span class="s">&#34;user&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;fred&#34;</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">props</span><span class="p">.</span><span class="na">setProperty</span><span class="p">(</span><span class="s">&#34;password&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;secret&#34;</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">props</span><span class="p">.</span><span class="na">setProperty</span><span class="p">(</span><span class="s">&#34;ssl&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;true&#34;</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">Connection</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DriverManager</span><span class="p">.</span><span class="na">getConnection</span><span class="p">(</span><span class="n">url</span><span class="p">,</span><span class="w"> </span><span class="n">props</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">String</span><span class="w"> </span><span class="n">url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#34;jdbc:postgresql://localhost/test?user=fred&amp;password=secret&amp;ssl=true&#34;</span><span class="p">;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">Connection</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DriverManager</span><span class="p">.</span><span class="na">getConnection</span><span class="p">(</span><span class="n">url</span><span class="p">);</span><span class="w">
+</span></span></span></code></pre></div><ul>
+<li>
+<p><strong><code>user</code></strong> = String
+The database user on whose behalf the connection is being made.</p>
+</li>
+<li>
+<p><strong><code>password</code></strong> = String
+The database user&rsquo;s password.</p>
+</li>
+<li>
+<p><strong><code>options</code></strong> = String
+Specify &lsquo;options&rsquo; connection initialization parameter sent to the PostgreSQL server. For example setting this to <code>-c statement_timeout=5min</code> would set the statement timeout parameter for this session to 5 minutes.
+see <a href="https://www.postgresql.org/docs/current/runtime-config-client.html">Client Connection Defaults</a> for details.</p>
+</li>
+</ul>
+<p>The value of this property may contain spaces or other special characters, and it should be properly encoded if provided in the connection URL. Spaces are considered to separate command-line arguments, unless escaped with a backslash ( <code>\</code> ); <code>\\</code> represents a literal backslash.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-java" data-lang="java"><span class="line"><span class="cl"><span class="n">Properties</span><span class="w"> </span><span class="n">props</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Properties</span><span class="p">();</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">props</span><span class="p">.</span><span class="na">setProperty</span><span class="p">(</span><span class="s">&#34;options&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;-c search_path=test,public,pg_catalog -c statement_timeout=90000&#34;</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">Connection</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DriverManager</span><span class="p">.</span><span class="na">getConnection</span><span class="p">(</span><span class="n">url</span><span class="p">,</span><span class="w"> </span><span class="n">props</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">String</span><span class="w"> </span><span class="n">url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#34;jdbc:postgresql://localhost:5432/postgres?options=-c%20search_path=test,public,pg_catalog%20-c%20statement_timeout=90000&#34;</span><span class="p">;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="n">Connection</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DriverManager</span><span class="p">.</span><span class="na">getConnection</span><span class="p">(</span><span class="n">url</span><span class="p">);</span><span class="w">
+</span></span></span></code></pre></div><ul>
+<li>
+<p><strong><code>ssl (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Connect using SSL. The server must have been compiled with SSL support. This property does not need a value associated with it. The mere presence of it specifies an SSL connection.
+However, for compatibility with future versions, the value &ldquo;true&rdquo; is preferred. For more information see <a href="/documentation/ssl/">Using SSL</a>.<br>
+Setting up the certificates and keys for ssl connection can be tricky see <a href="https://github.com/pgjdbc/pgjdbc/blob/master/certdir/README.md">The test documentation</a> for detailed examples.</p>
+</li>
+<li>
+<p><strong><code>sslfactory(</code><em>String</em><code>)</code></strong> <em>Default <code>org.postgresql.ssl.LibPQFactory</code></em><br>
+The provided value is a class name to use as the <code>SSLSocketFactory</code> when establishing an SSL connection.
+For more information see the section called <a href="/documentation/ssl/#custom-sslsocketfactory">Custom SSLSocketFactory</a> defaults to LibPQFactory</p>
+</li>
+<li>
+<p><strong><code>sslfactoryarg (</code><em>String</em><code>)</code></strong> : (deprecated)<br>
+This value is an optional argument to the constructor of the sslfactory class provided above. For more information see the section called <a href="/documentation/ssl/#custom-sslsocketfactory">Custom SSLSocketFactory</a>.</p>
+</li>
+<li>
+<p><strong><code>sslmode (</code><em>String</em><code>)</code></strong> <em>Default <code>prefer</code></em><br>
+possible values include <code>disable</code> , <code>allow</code> , <code>prefer</code> , <code>require</code> , <code>verify-ca</code> and <code>verify-full</code> . <code>require</code> , <code>allow</code> and <code>prefer</code> all default to a non-validating SSL factory and do not check the validity of the certificate or the host name. <code>verify-ca</code> validates the certificate, but does not verify the hostname. <code>verify-full</code> will validate that the certificate is correct and verify the host connected to has the same hostname as the certificate. Default is <code>prefer</code> Setting these will necessitate storing the server certificate on the client machine see <a href="/documentation/ssl/#configuring-the-client">Configuring the client</a> for details.</p>
+</li>
+<li>
+<p><strong><code>sslNegotiation (</code><em>String</em><code>)</code></strong> <em>Default <code>postgres</code></em><br>
+possible values include <code>postgres</code> and <code>direct</code>. <code>postgres</code> is the default and traditional SSL negotiation is performed where GSS is requested, then SSL is requested. If set to <code>direct</code> then SSL is assumed and an SSL packed is sent without requesting if the server supports it. This avoids one round trip to the server and is only available for server version 17 or higher.</p>
+</li>
+<li>
+<p><strong><code>sslcert (</code><em>String</em><code>)</code></strong> <em>Default <code>defaultdir/postgresql.crt</code></em><br>
+Provide the full path for the certificate file. Defaults to <code>defaultdir/postgresql.crt</code>, where defaultdir is <code>${user.home}/.postgresql/</code> in *nix systems and <code>%appdata%/postgresql/</code> on windows.<br>
+It can be a PEM encoded X509v3 certificate</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>NOTE</strong></p>
+<p>This parameter is ignored when using PKCS-12 keys, since in that case the certificate is also retrieved from the same keyfile.</p>
+</blockquote>
+<ul>
+<li><strong><code>sslkey (</code><em>String</em><code>)</code></strong> <em>Default <code>defaultdir/postgresql.pk8</code></em><br>
+Provide the full path for the key file. Defaults to <code>defaultdir/postgresql.pk8</code>. See sslcert for defaultdir.</li>
+</ul>
+<p>The driver selects the key format from the file extension (case-insensitive) where it recognises one, and otherwise from the file content:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Extension</th>
+					<th>Format</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>.p12</code>, <code>.pfx</code></td>
+					<td><a href="https://en.wikipedia.org/wiki/PKCS_12">PKCS-12</a> (42.2.9+ / 42.2.16+)</td>
+			</tr>
+			<tr>
+					<td><code>.pem</code></td>
+					<td>PEM-encoded <a href="https://en.wikipedia.org/wiki/PKCS_8">PKCS-8</a></td>
+			</tr>
+			<tr>
+					<td><code>.der</code></td>
+					<td><a href="https://wiki.openssl.org/index.php/DER">DER</a>-encoded PKCS-8</td>
+			</tr>
+			<tr>
+					<td>anything else (e.g. <code>.key</code>)</td>
+					<td>Detected from the first 64 KiB: read as PEM if that prefix contains the <code>-----BEGIN PRIVATE KEY-----</code> header, otherwise as DER/PKCS-8</td>
+			</tr>
+	</tbody>
+</table>
+<p>The auto-detection scan is bounded to avoid excessive work on malformed files. This preserves libpq&rsquo;s preference for PEM before DER, although libpq attempts to load the key as PEM before falling back to DER.</p>
+<blockquote>
+<p><strong>NOTE</strong></p>
+<p>When you create a PKCS-12 key the <code>alias</code> or the <code>name</code> must be <em>user</em>. The test codes uses the following to create a .p12 key <code>openssl pkcs12 -export -in $&lt; -inkey $*.key -out $@ -name user -CAfile $(SERVER_CRT_DIR)root.crt -caname local -passout pass:$(P12_PASSWORD)</code>
+A PEM key can be converted to DER format using the openssl command: <code>openssl pkcs8 -topk8 -inform PEM -in postgresql.key -outform DER -out postgresql.pk8 -v1 PBE-MD5-DES</code></p>
+</blockquote>
+<blockquote>
+<p><strong>NOTE</strong></p>
+<p>The <code>.p12</code> archive must hold the full client certificate chain. When the client certificate is signed by one or more intermediate CAs, add <code>-certfile &lt;intermediate-chain&gt;.crt</code> to the <code>openssl pkcs12 -export</code> command. Without the intermediates the server rejects the connection with <code>connection requires a valid client certificate</code>. The example above needs no <code>-certfile</code> because the test certificate is signed directly by the root CA.</p>
+</blockquote>
+<p>If your key has a password, provide it using the <code>sslpassword</code> connection parameter described below. Otherwise, you can add the flag <code>-nocrypt</code> to the above command to prevent the driver from requesting a password.</p>
+<blockquote>
+<p><strong>NOTE</strong></p>
+<p>The use of -v1 PBE-MD5-DES might be inadequate in environments where high level of security is needed and the key is not protected by other means (e.g. access control of the OS),
+or the key file is transmitted in untrusted channels. We are depending on the cryptography providers provided by the java runtime. The solution documented here is known to work at the time of writing. If you have stricter security needs, please see <a href="https://stackoverflow.com/questions/58488774/configure-tomcat-hibernate-to-have-a-cryptographic-provider-supporting-1-2-840-1">here</a> for a discussion of the problem and information on choosing a better cipher suite.</p>
+</blockquote>
+<ul>
+<li>
+<p><strong><code>sslrootcert (</code><em>String</em><code>)</code></strong> <em>Default <code>defaultdir/root.crt</code></em><br>
+File name of the SSL root certificate. It can be a PEM encoded X509v3 certificate.</p>
+</li>
+<li>
+<p><strong><code>sslhostnameverifier (</code><em>String</em><code>)</code></strong> <em>Default <code>org.postgresql.ssl.PGjdbcHostnameVerifier</code></em><br>
+Class name of hostname verifier.</p>
+</li>
+<li>
+<p><strong><code>sslpasswordcallback (</code><em>String</em><code>)</code></strong> <em>Default <code>org.postgresql.ssl.jdbc4.LibPQFactory.ConsoleCallbackHandler</code></em><br>
+Class name of the SSL password provider.</p>
+</li>
+<li>
+<p><strong><code>sslpassword (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+If provided will be used by ConsoleCallbackHandler</p>
+</li>
+<li>
+<p><strong><code>sslResponseTimeout (</code><em>Integer</em><code>)</code></strong> <em>Default <code>5000</code></em><br>
+Time in milliseconds to wait for a response after requesting an SSL encrypted connection from the server. If this is greater than the current connectTimeout then connectTimeout will be used.</p>
+</li>
+<li>
+<p><strong><code>protocolVersion (</code><em>int</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+The driver supports the V3 frontend/backend protocols. The V3 protocol was introduced in 7.4 and the driver will by default try to connect using the V3 protocol.</p>
+</li>
+<li>
+<p><strong><code>loggerLevel (</code><em>String</em><code>)</code></strong><br>
+This property is no longer used by the driver and will be ignored. All logging configuration is handled by java.util.logging.</p>
+</li>
+<li>
+<p><strong><code>loggerFile (</code><em>String</em><code>)</code></strong><br>
+This property is no longer used by the driver and will be ignored. All logging configuration is handled by java.util.logging.</p>
+</li>
+<li>
+<p><strong><code>allowEncodingChanges (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+When using the V3 protocol the driver monitors changes in certain server configuration parameters that should not be touched by end users.
+The <code>client_encoding</code> setting is set by the driver and should not be altered. If the driver detects a change it will abort the connection.
+There is one legitimate exception to this behaviour though, using the <code>COPY</code> command on a file residing on the server&rsquo;s filesystem.
+The only means of specifying the encoding of this file is by altering the <code>client_encoding</code> setting.
+The JDBC team considers this a failing of the <code>COPY</code> command and hopes to provide an alternate means of specifying the encoding in the future, but for now there is this URL parameter.
+Enable this only if you need to override the client encoding when doing a copy.</p>
+</li>
+<li>
+<p><strong><code>logUnclosedConnections (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Clients may leak <code>Connection</code> objects by failing to call its <code>close()</code> method. Eventually these objects will be garbage collected and the <code>finalize()</code> method will be called which will close the <code>Connection</code>
+if caller has neglected to do this himself. The usage of a finalizer is just a stopgap solution. To help developers detect and correct the source of these leaks the <code>logUnclosedConnections</code>
+URL parameter has been added. It captures a stacktrace at each <code>Connection</code> opening and if the <code>finalize()</code> method is reached without having been closed the stacktrace is printed to the log.</p>
+</li>
+<li>
+<p><strong><code>autosave (</code><em>String</em><code>)</code></strong> <em>Default <code>never</code></em><br>
+Specifies what the driver should do if a query fails. In <code>autosave=always</code> mode, JDBC driver sets a savepoint before each query, and rolls back to that savepoint in case of failure.
+In <code>autosave=never</code> mode (default), no savepoint dance is made ever.
+In <code>autosave=conservative</code> mode, savepoint is set for each query, however the rollback is done only for rare cases like &lsquo;cached statement cannot change return type&rsquo;
+or &lsquo;statement XXX is not valid&rsquo; so JDBC driver rolls back and retries</p>
+</li>
+<li>
+<p><strong><code>cleanupSavepoints (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Determines if the SAVEPOINT created in autosave mode is released prior to the statement. This is done to avoid running out of shared buffers on the server in the case where 1000&rsquo;s of queries are performed.</p>
+</li>
+<li>
+<p><strong><code>convertBooleanToNumeric (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Enable automatic conversion of PostgreSQL boolean values (&rsquo;t&rsquo;/&lsquo;f&rsquo;) to numeric types (1/0) when using numeric getters (<code>getByte</code>, <code>getShort</code>, <code>getInt</code>, <code>getLong</code>, <code>getFloat</code>, <code>getDouble</code>, <code>getBigDecimal</code>) on ResultSet.
+When enabled, boolean columns containing &rsquo;t&rsquo; will return 1, and &lsquo;f&rsquo; will return 0 instead of throwing a conversion exception.</p>
+</li>
+<li>
+<p><strong><code>channelBinding (</code><em>String</em><code>)</code></strong> <em>Default <code>prefer</code></em><br>
+This option controls the client&rsquo;s use of channel binding. A setting of <code>require</code> means that the connection must employ channel binding, <code>prefer</code> means that the client will choose channel binding if available, and <code>disable</code> prevents the use of channel binding. The default is <code>prefer</code> if PostgreSQL is compiled with SSL support; otherwise the default is <code>disable</code>.</p>
+</li>
+</ul>
+<p>Channel binding is a method for the server to authenticate itself to the client. It is only supported over SSL connections with PostgreSQL 11 or later servers using the SCRAM authentication method.</p>
+<ul>
+<li>
+<p><strong><code>binaryTransfer (</code><em>boolean</em><code>)</code></strong> <em>Default <code>true</code></em><br>
+Enable binary transfer for supported built-in types if possible.
+Setting this to false disables any binary transfer unless it&rsquo;s individually activated for each type with <code>binaryTransferEnable</code>.
+Whether it is possible to use binary transfer at all depends on server side prepared statements (see <code>prepareThreshold</code> ).</p>
+</li>
+<li>
+<p><strong><code>binaryTransferEnable (</code><em>String</em><code>)</code></strong> <em>Default <code>empty string</code></em><br>
+Comma separated list of types to enable binary transfer. Either OID numbers or names.</p>
+</li>
+<li>
+<p><strong><code>binaryTransferDisable (</code><em>String</em><code>)</code></strong> <em>Default <code>empty string</code></em><br>
+Comma separated list of types to disable binary transfer. Either OID numbers or names.
+Overrides values in the driver default set and values set with binaryTransferEnable.</p>
+</li>
+<li>
+<p><strong><code>databaseMetadataCacheFields (</code><em>int</em><code>)</code></strong> <em>Default <code>65536</code></em><br>
+Specifies the maximum number of fields to be cached per connection.
+A value of <code>0</code> disables the cache.</p>
+</li>
+<li>
+<p><strong><code>databaseMetadataCacheFieldsMiB (</code><em>int</em><code>)</code></strong> <em>Default <code>5</code></em><br>
+Specifies the maximum size (in megabytes) of fields to be cached per connection.
+A value of <code>0</code> disables the cache.</p>
+</li>
+<li>
+<p><strong><code>prepareThreshold (</code><em>int</em><code>)</code></strong> <em>Default <code>5</code></em><br>
+Determine the number of <code>PreparedStatement</code> executions required before switching over to use server side prepared statements.
+The default is five, meaning start using server side prepared statements on the fifth execution of the same <code>PreparedStatement</code> object.
+A value of <code>-1</code> activates server side prepared statements and forces binary transfer for enabled types (see <code>binaryTransfer</code> ).
+More information on server side prepared statements is available in the section called <a href="/documentation/server-prepare/#server-prepared-statements">Server Prepared Statements</a>.</p>
+</li>
+<li>
+<p><strong><code>preparedStatementCacheQueries (</code><em>int</em><code>)</code></strong> <em>Default <code>256</code></em><br>
+Determine the number of queries that are cached in each connection.
+The default is 256, meaning if you use more than 256 different queries in <code>prepareStatement()</code> calls, the least recently used ones will be discarded.
+The cache allows application to benefit from <a href="/documentation/server-prepare/#server-prepared-statements">Server Prepared Statements</a> (see <code>prepareThreshold</code> ) even if the prepared statement is closed after each execution.
+The value of 0 disables the cache. N. B. Each connection has its own statement cache.</p>
+</li>
+<li>
+<p><strong><code>preparedStatementCacheSizeMiB (</code><em>int</em><code>)</code></strong> <em>Default <code>5</code></em><br>
+Determine the maximum size (in mebibytes) of the prepared queries cache (see <code>preparedStatementCacheQueries</code> ).
+The default is 5, meaning if you happen to cache more than 5 MiB of queries the least recently used ones will be discarded.
+The main aim of this setting is to prevent <code>OutOfMemoryError</code> . The value of 0 disables the cache.</p>
+</li>
+<li>
+<p><strong><code>preferQueryMode (</code><em>String</em><code>)</code></strong> <em>Default <code>extended</code></em><br>
+Specifies which mode is used to execute queries to database: simple means (&lsquo;Q&rsquo; execute, no parse, no bind, text mode only),
+extended means always use bind/execute messages, extendedForPrepared means extended for prepared statements only, endedCacheEverything means use extended protocol and try cache every statement (including Statement.execute(String sql))
+in a query cache.
+extended | extendedForPrepared | extendedCacheEverything | simple</p>
+</li>
+<li>
+<p><strong><code>defaultRowFetchSize (</code><em>int</em><code>)</code></strong> <em>Default <code>0</code></em><br>
+Determine the number of rows fetched in <code>ResultSet</code> by one fetch with trip to the database.
+Limiting the number of rows are fetch with each trip to the database allow avoids unnecessary memory consumption and as a consequence <code>OutOfMemoryError</code> .
+The default is zero, meaning that <code>ResultSet</code> will fetch all rows at once. Must be &gt; 0.</p>
+</li>
+<li>
+<p><strong><code>queryTimeout (</code><em>int</em><code>)</code></strong> <em>Default <code>0</code></em><br>
+The timeout value in seconds that the driver will wait for a query to execute if not explicitly set by <a href="https://docs.oracle.com/javase/6/docs/api/java/sql/Statement.html#setQueryTimeout%28int%29">Statement.setQueryTimeout(int)</a>). A value of 0 means no timeout.</p>
+</li>
+<li>
+<p><strong><code>loginTimeout (</code><em>int</em><code>)</code></strong> <em>Default <code>0</code></em><br>
+Specify how long to wait for establishment of a database connection. The timeout is specified in seconds max(2147484).</p>
+</li>
+<li>
+<p><strong><code>connectExecutor (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+The fully qualified name of a class implementing <code>java.util.concurrent.Executor</code>. When <code>loginTimeout</code> is in effect, <code>Driver.connect(...)</code> hands the worker task that runs the connection attempt to the configured <code>Executor</code>.
+If the value is null, the driver runs the connection attempt on its own daemon thread named <code>&quot;PostgreSQL JDBC driver connection thread&quot;</code> (the name may change in future releases).
+Running the attempt on a named thread lets applications that monitor driver-created threads identify it.
+The executor <strong>must</strong> run the submitted task on a thread other than the caller&rsquo;s and it must support thread interruption.</p>
+</li>
+<li>
+<p><strong><code>connectExecutorArg (</code><em>String</em><code>)</code></strong> <br>
+An optional String argument passed to the constructor of the <code>connectExecutor</code> class.</p>
+</li>
+<li>
+<p><strong><code>connectTimeout (</code><em>int</em><code>)</code></strong> <em>Default <code>10</code></em><br>
+The timeout value used for socket connect operations. If connecting to the server takes longer than this value, the connection is broken.
+The timeout is specified in seconds max(2147484) and a value of zero means that it is disabled.</p>
+</li>
+<li>
+<p><strong><code>socketTimeout (</code><em>int</em><code>)</code></strong> <em>Default <code>0</code></em><br>
+The timeout value used for socket read operations. If reading from the server takes longer than this value, the connection is closed.
+This can be used as both a brute force global query timeout and a method of detecting network problems. The timeout is specified in seconds max(2147484) and a value of zero means that it is disabled.</p>
+</li>
+<li>
+<p><strong><code>cancelSignalTimeout (</code><em>int</em><code>)</code></strong> <em>Default <code>10</code></em><br>
+Cancel command is sent out of band over its own connection, so cancel message can itself get stuck. This property controls &ldquo;connect timeout&rdquo; and &ldquo;socket timeout&rdquo; used for cancel commands.
+The timeout is specified in seconds.</p>
+</li>
+<li>
+<p><strong><code>tcpKeepAlive (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Enable or disable TCP keep-alive probe.</p>
+</li>
+<li>
+<p><strong><code>tcpNoDelay (</code><em>boolean</em><code>)</code></strong> <em>Default <code>true</code></em><br>
+Enable or disable TCP nodelay.</p>
+</li>
+<li>
+<p><strong><code>unknownLength (</code><em>int</em><code>)</code></strong> <em>Default <code>Integer.MAX_VALUE</code></em><br>
+Certain postgresql types such as <code>TEXT</code> do not have a well-defined length.
+When returning meta-data about these types through functions like <code>ResultSetMetaData.getColumnDisplaySize</code> and <code>ResultSetMetaData.getPrecision</code>
+we must provide a value and various client tools have different ideas about what they would like to see.
+This parameter specifies the length to return for types of unknown length.</p>
+</li>
+<li>
+<p><strong><code>stringtype (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+Specify the type to use when binding <code>PreparedStatement</code> parameters set via <code>setString()</code> .
+If <code>stringtype</code> is set to <code>VARCHAR</code> (the default), such parameters will be sent to the server as varchar parameters.
+If <code>stringtype</code> is set to <code>unspecified</code> , parameters will be sent to the server as untyped values, and the server will attempt to infer an appropriate type.
+This is useful if you have an existing application that uses <code>setString()</code> to set parameters that are actually some other type, such as integers,
+and you are unable to change the application to use an appropriate method such as <code>setInt()</code> .</p>
+</li>
+<li>
+<p><strong><code>ApplicationName (</code><em>String</em><code>)</code></strong> <em>Default <code>PostgreSQL JDBC Driver</code></em><br>
+Specifies the name of the application that is using the connection.
+This allows a database administrator to see what applications are connected to the server and what resources they are using through views like pg_stat_activity.</p>
+</li>
+<li>
+<p><strong><code>kerberosServerName (</code><em>String</em><code>)</code></strong> <em>Default <code>postgres</code></em><br>
+The Kerberos service name to use when authenticating with GSSAPI. This is equivalent to libpq&rsquo;s PGKRBSRVNAME environment variable and defaults to &ldquo;postgres&rdquo;.</p>
+</li>
+<li>
+<p><strong><code>jaasApplicationName (</code><em>String</em><code>)</code></strong> <em>Default <code>pgjdbc</code></em><br>
+Specifies the name of the JAAS system or application login configuration.</p>
+</li>
+<li>
+<p><strong><code>jaasLogin (</code><em>boolean</em><code>)</code></strong> <em>Default <code>true</code></em><br>
+Specifies whether to perform a JAAS login before authenticating with GSSAPI.
+If set to <code>true</code> (the default), the driver will attempt to obtain GSS credentials using the configured JAAS login module(s) (e.g. <code>Krb5LoginModule</code> ) before authenticating.
+To skip the JAAS login, for example if the native GSS implementation is being used to obtain credentials, set this to <code>false</code> .</p>
+</li>
+<li>
+<p><strong><code>gssUseDefaultCreds (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Specifies whether to use the default system GSS credentials, rather than using JAAS.
+If set to <code>false</code> (the default), the driver will attempt to use GSS credentials matching <code>user</code>@DEFAULT_REALM.  If true, the
+driver will use the default system GSS credentials.  This is useful in cases where the default credentials are named differently,
+or CCACHE sources like KCM are used, which JAAS does not support on all platforms.</p>
+</li>
+<li>
+<p><strong><code>gssEncMode (</code><em>String</em><code>)</code></strong> <em>Default <code>allow</code></em><br>
+PostgreSQL® 12 and later now allow GSSAPI encrypted connections. This parameter controls whether to enforce using GSSAPI encryption or not. The options are <code>disable</code> , <code>allow</code> , <code>prefer</code> and <code>require</code></p>
+<ul>
+<li><code>disable</code> is obvious and disables any attempt to connect using GSS encrypted mode</li>
+<li><code>allow</code> will connect in plain text then if the server requests it will switch to encrypted mode</li>
+<li><code>prefer</code> will attempt to connect in encrypted mode and fall back to plain text if it fails to acquire an encrypted connection</li>
+<li><code>require</code> attempts to connect in encrypted mode and will fail to connect if that is not possible.</li>
+</ul>
+</li>
+<li>
+<p><strong><code>gsslib (</code><em>String</em><code>)</code></strong> <em>Default <code>auto</code></em><br>
+Force either SSPI (Windows transparent single-sign-on) or GSSAPI (Kerberos, via JSSE) to be used when the server requests Kerberos or SSPI authentication.
+Permissible values are auto (default, see below), sspi (force SSPI) or gssapi (force GSSAPI-JSSE).
+If this parameter is auto, SSPI is attempted if the server requests SSPI authentication, the JDBC client is running on Windows, and the Waffle libraries required for SSPI are on the CLASSPATH.
+Otherwise Kerberos/GSSAPI via JSSE is used.</p>
+<blockquote>
+<p><strong>Note</strong></p>
+<p>This behaviour does not exactly match that of libpq, which uses Windows&rsquo; SSPI libraries for Kerberos (GSSAPI) requests by default when on Windows.</p>
+</blockquote>
+<p>gssapi mode forces JSSE&rsquo;s GSSAPI to be used even if SSPI is available, matching the pre-9.4 behaviour. On non-Windows platforms or where SSPI is unavailable, forcing sspi mode will fail with a PSQLException.</p>
+<p>To use SSPI with PgJDBC you must ensure that <a href="https://mvnrepository.com/artifact/com.github.waffle/waffle-jna/">the <code>waffle-jna</code> library</a> and its dependencies are present on the <code>CLASSPATH</code>. pgJDBC does <strong>not</strong> bundle <code>waffle-jna</code> in the pgJDBC jar.</p>
+<p>Compatibility matrix:</p>
+<table>
+	<thead>
+			<tr>
+					<th>pgjdbc</th>
+					<th>waffle-jna</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>&lt; 42.7.1</td>
+					<td>&lt; 2.0.0</td>
+			</tr>
+			<tr>
+					<td>≥ 42.7.1</td>
+					<td>≥ 1.0.0</td>
+			</tr>
+	</tbody>
+</table>
+</li>
+<li>
+<p><strong><code>gssResponseTimeout (</code><em>Integer</em><code>)</code></strong> <em>Default <code>5000</code></em><br>
+Time in milliseconds to wait for a response after requesting a GSS encrypted connection from the server. If this is greater than the current connectTimeout then connectTimeout will be used.
+Since: 9.4</p>
+</li>
+<li>
+<p><strong><code>sspiServiceClass (</code><em>String</em><code>)</code></strong> <em>Default <code>POSTGRES</code></em><br>
+Specifies the name of the Windows SSPI service class that forms the service class part of the SPN. The default, POSTGRES, is almost always correct.
+See: SSPI authentication (Pg docs) Service Principal Names (MSDN), DsMakeSpn (MSDN) Configuring SSPI (Pg wiki).
+This parameter is ignored on non-Windows platforms.</p>
+</li>
+<li>
+<p><strong><code>useSpnego (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Use SPNEGO in SSPI authentication requests</p>
+</li>
+<li>
+<p><strong><code>sendBufferSize (</code><em>int</em><code>)</code></strong> <em>Default <code>-1</code></em><br>
+Sets SO_SNDBUF on the connection stream</p>
+</li>
+<li>
+<p><strong><code>maxSendBufferSize (</code><em>int</em><code>)</code></strong> <em>Default <code>8192</code></em><br>
+Configures the maximum amount of bytes buffered before sending to the backend. pgjdbc uses
+<code>least(maxSendBufferSize, greatest(8192, SO_SNDBUF))</code> to determine the buffer size.
+Since: 42.7.4</p>
+</li>
+<li>
+<p><strong><code>receiveBufferSize (</code><em>int</em><code>)</code></strong> <em>Default <code>-1</code></em><br>
+Sets SO_RCVBUF on the connection stream</p>
+</li>
+<li>
+<p><strong><code>readOnly (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Put the connection in read-only mode</p>
+</li>
+<li>
+<p><strong><code>readOnlyMode (</code><em>String</em><code>)</code></strong> <em>Default <code>transaction</code></em><br>
+One of <code>ignore</code>, <code>transaction</code>, or <code>always</code>.  Controls the behaviour when a connection is set to read only,
+When set to <code>ignore</code> then the <code>readOnly</code> setting has no effect.  When set to <code>transaction</code> and <code>readOnly</code> is set to <code>true</code>
+and autocommit is <code>false</code> the driver will set the transaction to readonly by sending <code>BEGIN READ ONLY</code>.
+When set to <code>always</code> and <code>readOnly</code> is set to <code>true</code> the session will be set to READ ONLY if autoCommit is <code>true</code>.
+If autocommit is <code>false</code> the driver will set the transaction to read only by sending <code>BEGIN READ ONLY</code>.
+The default the value is <code>transaction</code></p>
+</li>
+<li>
+<p><strong><code>disableColumnSanitiser (</code><em>boolean</em><code>)</code></strong> <em>Default <code>off</code></em><br>
+Setting this to <code>true</code> disables column name sanitiser. The sanitiser folds columns in the ResultSet to lowercase.
+The default is to sanitise the columns (off).</p>
+</li>
+<li>
+<p><strong><code>assumeMinServerVersion (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+Assume that the server is at least the given version, thus enabling to some optimization at connection time instead of
+trying to be version blind.</p>
+<ul>
+<li>This allows the application name to be sent on startup instead of as a separate post-connection query.  In addition
+to optimizing the initial connection, this allows the application name to be logged on the server earlier in the connection process.</li>
+</ul>
+</li>
+<li>
+<p><strong><code>currentSchema (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+Specify the schema (or several schema separated by commas) to be set in the search-path.
+This schema will be used to resolve unqualified object names used in statements over this connection.</p>
+</li>
+<li>
+<p><strong><code>targetServerType (</code><em>String</em><code>)</code></strong> <em>Default <code>any</code></em><br>
+Allows opening connections to only servers with required state, the allowed values are <code>any</code>, <code>primary</code>, <code>master</code>,
+<code>slave</code>, <code>secondary</code>, <code>preferSlave</code>, <code>preferSecondary</code> and <code>preferPrimary</code>.
+The primary/secondary distinction is currently done by observing if the server allows writes.
+The value <code>preferSecondary</code> tries to connect to secondary if any are available, otherwise allows falls back to connecting also to <code>primary</code>.
+The value <code>preferPrimary</code> tries to connect to primary if it is available, otherwise allows falls back to connecting to secondaries available.</p>
+<ul>
+<li><strong>N. B.</strong> the words master and slave are being deprecated. We will silently accept them, but primary and secondary are encouraged.</li>
+</ul>
+</li>
+<li>
+<p><strong><code>hostRecheckSeconds (</code><em>int</em><code>)</code></strong> <em>Default <code>10</code></em><br>
+Controls how long in seconds the knowledge about a host state is cached in JVM wide global cache. The default value is 10 seconds.</p>
+</li>
+<li>
+<p><strong><code>loadBalanceHosts (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+In default mode (<code>disabled</code>) hosts are connected in the given order. If enabled hosts are chosen randomly from the set
+of suitable candidates.</p>
+</li>
+<li>
+<p><strong><code>socketFactory (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+The provided value is a class name to use as the <code>SocketFactory</code> when establishing a socket connection.
+This may be used to create unix sockets instead of normal sockets. The class name specified by <code>socketFactory</code> must extend
+<code>javax.net.SocketFactory</code> and be reachable through one of the classloaders selected by <code>classLoaderStrategy</code>. This class must have a zero-argument constructor,
+a single-argument constructor taking a String argument, or a single-argument constructor taking a Properties argument.
+The Properties object will contain all the connection parameters. The String argument will have the value of the <code>socketFactoryArg</code>
+connection parameter.</p>
+</li>
+<li>
+<p><strong><code>socketFactoryArg (</code><em>String</em><code>)</code></strong> : (deprecated)<br>
+This value is an optional argument to the constructor of the socket factory class provided above.</p>
+</li>
+<li>
+<p><strong><code>classLoaderStrategy (</code><em>String</em><code>)</code></strong> <em>Default <code>driver-first</code></em><br>
+Order in which the driver searches classloaders when loading a class named by a connection property, for example <code>socketFactory</code>.
+The driver&rsquo;s own classloader sees only what is on its classpath, so in a non-flat class path (an application server or an OSGi
+container) a user-supplied class may be reachable only through the thread context classloader.
+<code>driver-first</code> tries the driver&rsquo;s classloader and then falls back to the thread context classloader.
+<code>driver</code> uses the driver&rsquo;s classloader only, which matches the behaviour from before this property existed.
+<code>context-first</code> tries the thread context classloader first; use it in containers that expect their own classloader to take
+precedence even when the driver&rsquo;s classloader could resolve a class of the same name.</p>
+</li>
+<li>
+<p><strong><code>reWriteBatchedInserts (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+This will change batch inserts from insert into foo (col1, col2, col3) values (1, 2, 3) into insert into foo (col1, col2, col3) values (1, 2, 3), (4, 5, 6) this provides 2-3x performance improvement</p>
+</li>
+<li>
+<p><strong><code>reWriteBatchedInsertsSize (</code><em>int</em><code>)</code></strong> <em>Default <code>0</code></em><br>
+Caps how many rows <code>reWriteBatchedInserts</code> merges into a single multi-values INSERT. The merge size is rounded down to a power of two and never exceeds 32768 rows. With the extended query protocol a statement is limited to 65535 bind parameters, so the cap is <code>min(65535 / parametersPerRow, 32768)</code>; the simple query protocol (<code>preferQueryMode=simple</code>) inlines parameters and has no such limit, so the cap is 32768. A value of <code>0</code>, the default, uses that maximum; a positive value lowers it.</p>
+</li>
+<li>
+<p><strong><code>replication (</code><em>String</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Connection parameter passed in the startup message. This parameter accepts two values; <code>true</code> and <code>database</code> .
+Passing <code>true</code> tells the backend to go into walsender mode, wherein a small set of replication commands can be issued instead of SQL statements.
+Only the simple query protocol can be used in walsender mode. Passing &ldquo;database&rdquo; as the value instructs walsender to connect to the database specified in the dbname parameter,
+which will allow the connection to be used for logical replication from that database.
+Parameter should be use together with <code>assumeMinServerVersion</code> with parameter &gt;= 9.4 (backend &gt;= 9.4)</p>
+</li>
+<li>
+<p><strong><code>escapeSyntaxCallMode (</code><em>String</em><code>)</code></strong> <em>Default <code>select</code></em><br>
+Specifies how the driver transforms JDBC escape call syntax into underlying SQL, for invoking procedures or functions.
+In <code>escapeSyntaxCallMode=select</code> mode (the default), the driver always uses a SELECT statement (allowing function invocation only).
+In <code>escapeSyntaxCallMode=callIfNoReturn</code> mode, the driver uses a CALL statement (allowing procedure invocation) if there
+is no return parameter specified, otherwise the driver uses a SELECT statement. In <code>escapeSyntaxCallMode=call</code> mode,
+the driver always uses a CALL statement (allowing procedure invocation only).</p>
+</li>
+<li>
+<p><strong><code>maxResultBuffer (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+Specifies size of result buffer in bytes, which can&rsquo;t be exceeded during reading result set. Property can be specified in two styles:</p>
+<ul>
+<li>as size of bytes (i.e. 100, 150M, 300K, 400G, 1T);</li>
+<li>as percent of max heap memory (i.e. 10p, 15pct, 20percent);
+A limit during setting of property is 90% of max heap memory. All given values, which are going to be higher than the limit,
+will be lowered to the limit. By default, maxResultBuffer is not set (is null), which means that reading of results will
+be performed without limits.</li>
+</ul>
+</li>
+<li>
+<p><strong><code>adaptiveFetch (</code><em>boolean</em><code>)</code></strong> <em>Default <code>false</code></em><br>
+Specifies if the number of rows, fetched in <code>ResultSet</code> per request from the database, should be dynamic.
+Using dynamic number of rows, computed by adaptive fetch, will attempt to use maximize the use of the buffer declared in
+<code>maxResultBuffer</code> property. Number of rows would be calculated by dividing <code>maxResultBuffer</code> size into max row size observed
+so far, rounded down. First fetch will have number of rows declared in <code>defaultRowFetchSize</code>. Number of rows can be limited
+by <code>adaptiveFetchMinimum</code> and <code>adaptiveFetchMaximum</code>. Requires declaring of <code>maxResultBuffer</code> and <code>defaultRowFetchSize</code> to work.
+By default, <code>adaptiveFetch</code> is <code>false</code>.</p>
+</li>
+<li>
+<p><strong><code>adaptiveFetchMinimum (</code><em>int</em><code>)</code></strong> <em>Default <code>0</code></em><br>
+Specifies the lowest number of rows which can be calculated by <code>adaptiveFetch</code>. Requires <code>adaptiveFetch</code> set to <code>true</code> to work.
+By default, minimum of rows calculated by <code>adaptiveFetch</code> is 0.</p>
+</li>
+<li>
+<p><strong><code>adaptiveFetchMaximum (</code><em>int</em><code>)</code></strong> <em>Default <code>-1</code></em><br>
+Specifies the highest number of rows which can be calculated by <code>adaptiveFetch</code>. Requires <code>adaptiveFetch</code> set to <code>true</code> to work.
+By default, maximum of rows calculated by <code>adaptiveFetch</code> is -1, which is understood as infinite.</p>
+</li>
+<li>
+<p><strong><code>logServerErrorDetail (</code><em>boolean</em><code>)</code></strong> <em>Default <code>true</code></em><br>
+Whether to include server error details in exceptions and log messages (for example inlined query parameters).
+Setting to <code>false</code> will only include minimal, not sensitive messages.
+By default, this is set to <code>true</code>, server error details are propagated. This may include sensitive details such as query parameters.</p>
+</li>
+<li>
+<p><strong><code>quoteReturningIdentifiers (</code><em>boolean</em><code>)</code></strong> <em>Default <code>true</code></em><br>
+Quote returning columns. There are some ORM&rsquo;s that quote everything, including returning columns
+If we quote them, then we end up sending &ldquo;&ldquo;colname&rdquo;&rdquo; to the backend instead of &ldquo;colname&rdquo; which will not be found.</p>
+</li>
+<li>
+<p><strong><code>authenticationPluginClassName (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+Fully qualified class name of the class implementing the AuthenticationPlugin interface. If this is null, the password
+value in the connection properties will be used.</p>
+</li>
+<li>
+<p><strong><code>requireAuth (</code><em>String</em><code>)</code></strong> <em>Default <code>null</code></em><br>
+Comma-separated list of acceptable authentication methods. Use &lsquo;!&rsquo; prefix to reject methods (e.g., &lsquo;!password&rsquo; to reject cleartext).
+Supported methods: <code>password</code>, <code>md5</code>, <code>gss</code>, <code>sspi</code>, <code>scram-sha-256</code>, <code>none</code>. Cannot mix positive and negative options.
+Examples: <code>requireAuth=md5,scram-sha-256</code> (allow only MD5 or SCRAM-SHA-256), <code>requireAuth=!password,!none</code> (reject cleartext and trust authentication).</p>
+</li>
+<li>
+<p><strong><code>scramMaxIterations (</code><em>int</em><code>)</code></strong> <em>Default <code>100000</code></em><br>
+Maximum PBKDF2 iteration count that pgjdbc will accept from the server during SCRAM authentication.
+During SCRAM-SHA-256 authentication, the server sends the iteration count used to derive the salted password. If the server advertises a value higher than <code>scramMaxIterations</code>, the driver rejects authentication before starting the PBKDF2 computation.
+This limits client CPU exposure if a malicious or compromised server sends an excessively large iteration count.
+A value of zero disables this check.</p>
+</li>
+</ul>
+<h3 id="unix-sockets" class="self-link">Unix sockets <a class="header-link" href="#unix-sockets">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            style="fill: #0093AF;">
+            <path
+                d="M8.465 11.293c1.133-1.133 3.109-1.133 4.242 0l.707.707 1.414-1.414-.707-.707c-.943-.944-2.199-1.465-3.535-1.465s-2.592.521-3.535 1.465L4.929 12a5.008 5.008 0 0 0 0 7.071 4.983 4.983 0 0 0 3.535 1.462A4.982 4.982 0 0 0 12 19.071l.707-.707-1.414-1.414-.707.707a3.007 3.007 0 0 1-4.243 0 3.005 3.005 0 0 1 0-4.243l2.122-2.121z">
+            </path>
+            <path
+                d="m12 4.929-.707.707 1.414 1.414.707-.707a3.007 3.007 0 0 1 4.243 0 3.005 3.005 0 0 1 0 4.243l-2.122 2.121c-1.133 1.133-3.109 1.133-4.242 0L10.586 12l-1.414 1.414.707.707c.943.944 2.199 1.465 3.535 1.465s2.592-.521 3.535-1.465L19.071 12a5.008 5.008 0 0 0 0-7.071 5.006 5.006 0 0 0-7.071 0z">
+            </path>
+        </svg>
+    </a></h3>
+<p>By adding junixsocket you can obtain a socket factory that works with the driver.
+Code can be found <a href="https://github.com/kohlschutter/junixsocket">here</a> and instructions
+<a href="https://kohlschutter.github.io/junixsocket/dependency.html">here</a></p>
+<p>Dependencies for junixsocket are :</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-xml" data-lang="xml"><span class="line"><span class="cl"><span class="nt">&lt;dependency&gt;</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&lt;groupId&gt;</span>com.kohlschutter.junixsocket<span class="nt">&lt;/groupId&gt;</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&lt;artifactId&gt;</span>junixsocket-core<span class="nt">&lt;/artifactId&gt;</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&lt;version&gt;</span>2.5.1<span class="nt">&lt;/version&gt;</span>
+</span></span><span class="line"><span class="cl"><span class="nt">&lt;/dependency&gt;</span>
+</span></span></code></pre></div><p>Simply add  <code>?socketFactory=org.newsclub.net.unix.AFUNIXSocketFactory$FactoryArg&amp;socketFactoryArg=[path-to-the-unix-socket]</code>
+to the connection URL.</p>
+<p>For many distros the default path is /var/run/postgresql/.s.PGSQL.5432</p>
+<h3 id="connection-fail-over" class="self-link">Connection Fail-over <a class="header-link" href="#connection-fail-over">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            style="fill: #0093AF;">
+            <path
+                d="M8.465 11.293c1.133-1.133 3.109-1.133 4.242 0l.707.707 1.414-1.414-.707-.707c-.943-.944-2.199-1.465-3.535-1.465s-2.592.521-3.535 1.465L4.929 12a5.008 5.008 0 0 0 0 7.071 4.983 4.983 0 0 0 3.535 1.462A4.982 4.982 0 0 0 12 19.071l.707-.707-1.414-1.414-.707.707a3.007 3.007 0 0 1-4.243 0 3.005 3.005 0 0 1 0-4.243l2.122-2.121z">
+            </path>
+            <path
+                d="m12 4.929-.707.707 1.414 1.414.707-.707a3.007 3.007 0 0 1 4.243 0 3.005 3.005 0 0 1 0 4.243l-2.122 2.121c-1.133 1.133-3.109 1.133-4.242 0L10.586 12l-1.414 1.414.707.707c.943.944 2.199 1.465 3.535 1.465s2.592-.521 3.535-1.465L19.071 12a5.008 5.008 0 0 0 0-7.071 5.006 5.006 0 0 0-7.071 0z">
+            </path>
+        </svg>
+    </a></h3>
+<p>To support simple connection fail-over it is possible to define multiple endpoints (host and port pairs) in the connection
+url separated by commas. The driver will try once to connect to each of them in order until the connection succeeds.
+If none succeeds a normal connection exception is thrown.</p>
+<p>The syntax for the connection url is: <code>jdbc:postgresql://host1:port1,host2:port2/database</code></p>
+<p>The simple connection fail-over is useful when running against a high availability postgres installation that has identical
+data on each node. For example streaming replication postgres or postgres-xc cluster.</p>
+<p>For example an application can create two connection pools.
+One data source is for writes, another for reads. The write pool limits connections only to a primary node:<code>jdbc:postgresql://node1,node2,node3/accounting?targetServerType=primary</code> .</p>
+<p>And the read pool balances connections between secondary nodes, but allows connections also to a primary if no secondaries
+are available: <code>jdbc:postgresql://node1,node2,node3/accounting?targetServerType=preferSecondary&amp;loadBalanceHosts=true</code></p>
+<p>If a secondary fails, all secondaries in the list will be tried first. In the case that there are no available secondaries
+the primary will be tried. If all the servers are marked as &ldquo;can&rsquo;t connect&rdquo; in the cache then an attempt
+will be made to connect to all the hosts in the URL, in order.</p>
+
+
+<div class="pagination">
+	<div class="pagination__left">
+		
+		<a class="pagination__left__link" title="Previous page" href="https://jdbc.postgresql.org/documentation/setup/">
+			Setting up the JDBC Driver
+		</a>
+		
+	</div>
+
+	<div class="pagination__right">
+		
+		<a class="pagination__right__link" title="Next page" href="https://jdbc.postgresql.org/documentation/ssl/">
+			Using SSL
+		</a>
+		
+	</div>
+</div>
+</article>
+
+<aside class="toc">
+    <div class="toc__head">Initializing the Driver</div>
+    <nav id="TableOfContents">
+  <ul>
+    <li><a href="#importing-jdbc">Importing JDBC</a></li>
+    <li><a href="#loading-the-driver">Loading the Driver</a></li>
+    <li><a href="#connecting-to-the-database">Connecting to the Database</a>
+      <ul>
+        <li><a href="#system-properties">System Properties</a></li>
+        <li><a href="#connection-parameters">Connection Parameters</a></li>
+        <li><a href="#unix-sockets">Unix sockets</a></li>
+        <li><a href="#connection-fail-over">Connection Fail-over</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+</aside>
+
+</div>
+
+    </main>
+    <footer class="footer" role="contentinfo">
+    <div class="footer__item">
+        
+        <ul role="list" class="list">
+            <li class="list__head">pgJDBC</li>
+            
+            
+            <li><a href="/documentation/publicapi/index.html" class="list__link">Public API</a></li>
+            
+            <li><a href="https://www.postgresql.org/" class="list__link">About PostgreSQL</a></li>
+            
+        </ul>
+        
+        <ul role="list" class="list">
+            <li class="list__head">Community</li>
+            
+            
+            <li><a href="https://github.com/pgjdbc/pgjdbc" class="list__link">Github</a></li>
+            
+            <li><a href="https://postgresteam.slack.com/" class="list__link">Slack</a></li>
+            
+            <li><a href="https://twitter.com/PostgreSQL" class="list__link">Twitter</a></li>
+            
+            <li><a href="https://www.postgresql.org/list/pgsql-jdbc/" class="list__link">Mailing List</a></li>
+            
+        </ul>
+        
+        <ul role="list" class="list">
+            <li class="list__head">More</li>
+            
+            
+            <li><a href="/faq/" class="list__link">FAQ</a></li>
+            
+            <li><a href="https://www.postgresql.org/about/policies/privacy/" class="list__link">Privacy</a></li>
+            
+            <li><a href="/license/" class="list__link">License</a></li>
+            
+        </ul>
+        
+    </div>
+    <div class="copyrights">
+        Copyright © 1996-2023 The PostgreSQL Global Development Group
+    </div>
+</footer>
+
+    <div class="nav-mob"><div class="globalmenu mobilemenu dn">
+    <ul role="list">
+        
+        <li role="listitem" class="hover-bg-black">
+            <a href="/download/" title="">
+                Download</a>
+        </li>
+        
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/" title="">
+                Documentation</a>
+        </li>
+        
+        <li role="listitem" class="hover-bg-black">
+            <a href="/community/" title="">
+                Community</a>
+        </li>
+        
+        <li role="listitem" class="hover-bg-black">
+            <a href="/development/" title="">
+                Development</a>
+        </li>
+        
+        <li role="listitem" class="hover-bg-black">
+            <a href="/changelogs/" title="">
+                Changelogs</a>
+        </li>
+        
+        <li role="listitem" class="hover-bg-black">
+            <a href="/security/" title="">
+                Security</a>
+        </li>
+        
+    </ul>
+</div>
+<div class="docsmenu mobilemenu dn">
+    <ul role="list">
+        
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/setup/">
+                Getting Started
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/use/">
+                Initializing the Driver
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/ssl/">
+                Using SSL
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/query/">
+                Issuing a Query and Processing the Result
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/callproc/">
+                Calling Stored Functions and Procedures
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/binary-data/">
+                Storing Binary Data
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/escapes/">
+                JDBC escapes
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/server-prepare/">
+                PostgreSQL™ Extensions to the JDBC API
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/thread/">
+                Using the Driver in a Multithreaded or a Servlet Environment
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/datasource/">
+                Connection Pools and Data Sources
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/logging/">
+                Logging using java.util.logging
+            </a>
+        </li>
+        <li role="listitem" class="hover-bg-black">
+            <a href="/documentation/reading/">
+                Further Reading
+            </a>
+        </li>
+    </ul>
+</div>
+<div class="nav-inside">
+    <button class="js-toggle db btn" data-target=".globalmenu">Main Menu</button>
+    <button class="js-toggle db btn" data-target=".docsmenu">Docs Menu</button>
+</div>
+</div>
+</body>
+
+</html>

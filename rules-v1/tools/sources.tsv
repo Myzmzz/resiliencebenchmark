@@ -1,0 +1,157 @@
+# 用途：待抓取文档清单，fetch.py 的输入。列：doc_id / 层 / 组件 / 来源类型 / 标题 / 网址。由第 2 步维护。
+DOC-K8S-CONFIG-BEST	11	Kubernetes	linter-ruleset	Configuration Best Practices	https://kubernetes.io/docs/concepts/configuration/overview/
+DOC-POLARIS-RELIABILITY	11	Polaris	linter-ruleset	Polaris Checks - Reliability	https://polaris.docs.fairwinds.com/checks/reliability/
+DOC-POLARIS-RESOURCES	11	Polaris	linter-ruleset	Polaris Checks - Efficiency (resources)	https://polaris.docs.fairwinds.com/checks/efficiency/
+DOC-KUBESCORE-CHECKS	11	kube-score	linter-ruleset	kube-score checks	https://raw.githubusercontent.com/zegl/kube-score/master/README_CHECKS.md
+DOC-KUBELINTER-CHECKS	11	kube-linter	linter-ruleset	KubeLinter generated checks	https://raw.githubusercontent.com/stackrox/kube-linter/main/docs/generated/checks.md
+DOC-ISTIO-ANALYZERS	11	Istio	linter-ruleset	Istio configuration analysis messages	https://istio.io/latest/docs/reference/config/analysis/
+DOC-SRE-OVERLOAD	10	Google SRE	curated-guideline	SRE Book ch.21 Handling Overload	https://sre.google/sre-book/handling-overload/
+DOC-SRE-CASCADING	10	Google SRE	curated-guideline	SRE Book ch.22 Addressing Cascading Failures	https://sre.google/sre-book/addressing-cascading-failures/
+DOC-SRE-WORKBOOK-OVERLOAD	10	Google SRE	curated-guideline	SRE Workbook ch.11 Managing Load	https://sre.google/workbook/managing-load/
+DOC-AWS-TIMEOUTS	10	AWS Builders Library	curated-guideline	Timeouts, retries and backoff with jitter	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+DOC-AWS-HEALTHCHECKS	10	AWS Builders Library	curated-guideline	Implementing health checks	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/implementing-health-checks/
+DOC-AWS-FALLBACK	10	AWS Builders Library	curated-guideline	Avoiding fallback in distributed systems	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/avoiding-fallback-in-distributed-systems/
+DOC-AWS-LOADSHED	10	AWS Builders Library	curated-guideline	Using load shedding to avoid overload	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
+DOC-AWS-RETRY-IDEMPOTENT	10	AWS Builders Library	curated-guideline	Making retries safe with idempotent APIs	https://web.archive.org/web/2024/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
+DOC-AWS-WAF-REL	10	AWS Well-Architected	curated-guideline	Reliability Pillar - Design interactions to prevent failures	https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/rel_mitigate_interaction_failure_graceful_degradation.html
+DOC-AZ-PATTERN-RETRY	10	Azure Architecture Center	pattern-catalog	Retry pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/retry
+DOC-AZ-PATTERN-CB	10	Azure Architecture Center	pattern-catalog	Circuit Breaker pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker
+DOC-AZ-PATTERN-BULKHEAD	10	Azure Architecture Center	pattern-catalog	Bulkhead pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead
+DOC-AZ-PATTERN-HEM	10	Azure Architecture Center	pattern-catalog	Health Endpoint Monitoring pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/health-endpoint-monitoring
+DOC-AZ-PATTERN-THROTTLE	10	Azure Architecture Center	pattern-catalog	Throttling pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling
+DOC-AZ-PATTERN-QBLL	10	Azure Architecture Center	pattern-catalog	Queue-Based Load Leveling pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/queue-based-load-leveling
+DOC-AZ-PATTERN-SAGA	10	Azure Architecture Center	pattern-catalog	Saga distributed transactions pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/saga
+DOC-AZ-PATTERN-LEADER	10	Azure Architecture Center	pattern-catalog	Leader Election pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/leader-election
+DOC-AZ-TRANSIENT	10	Azure Architecture Center	curated-guideline	Transient fault handling best practices	https://learn.microsoft.com/en-us/azure/architecture/best-practices/transient-faults
+DOC-AZ-WAF-REL-CHECKLIST	10	Azure Well-Architected	curated-guideline	Reliability design review checklist	https://learn.microsoft.com/en-us/azure/well-architected/reliability/checklist
+DOC-AZ-WAF-SELFPRES	10	Azure Well-Architected	curated-guideline	Recommendations for self-preservation and self-healing	https://learn.microsoft.com/en-us/azure/well-architected/reliability/self-preservation
+DOC-AZ-WAF-BACKGROUND	10	Azure Well-Architected	curated-guideline	Recommendations for handling transient faults	https://learn.microsoft.com/en-us/azure/well-architected/reliability/handle-transient-faults
+DOC-AZ-WAF-REDUNDANCY	10	Azure Well-Architected	curated-guideline	Recommendations for designing for redundancy	https://learn.microsoft.com/en-us/azure/well-architected/reliability/redundancy
+DOC-GCP-AF-RELIABILITY	10	Google Cloud Architecture Framework	curated-guideline	Reliability pillar	https://cloud.google.com/architecture/framework/reliability
+DOC-MSIO-CIRCUITBREAKER	10	microservices.io	pattern-catalog	Pattern: Circuit Breaker	https://microservices.io/patterns/reliability/circuit-breaker.html
+DOC-MSIO-SAGA	10	microservices.io	pattern-catalog	Pattern: Saga	https://microservices.io/patterns/data/saga.html
+DOC-MSIO-OUTBOX	10	microservices.io	pattern-catalog	Pattern: Transactional outbox	https://microservices.io/patterns/data/transactional-outbox.html
+DOC-MSIO-HEALTHCHECK	10	microservices.io	pattern-catalog	Pattern: Health Check API	https://microservices.io/patterns/observability/health-check-api.html
+DOC-MSIO-IDEMPOTENT	10	microservices.io	pattern-catalog	Pattern: Idempotent Consumer	https://microservices.io/patterns/communication-style/idempotent-consumer.html
+DOC-K8S-PROBES-TASK	1	Kubernetes	official-doc	Configure Liveness, Readiness and Startup Probes	https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+DOC-K8S-POD-LIFECYCLE	1	Kubernetes	official-doc	Pod Lifecycle (container probes)	https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/
+DOC-K8S-DISRUPTIONS	1	Kubernetes	official-doc	Disruptions (PodDisruptionBudget)	https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+DOC-K8S-PDB-TASK	1	Kubernetes	official-doc	Specifying a Disruption Budget for your Application	https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+DOC-K8S-RESOURCES	1	Kubernetes	official-doc	Resource Management for Pods and Containers	https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+DOC-K8S-QOS	1	Kubernetes	official-doc	Pod Quality of Service Classes	https://kubernetes.io/docs/concepts/workloads/pods/pod-qos/
+DOC-K8S-HPA	1	Kubernetes	official-doc	Horizontal Pod Autoscaling	https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+DOC-K8S-TOPOSPREAD	1	Kubernetes	official-doc	Pod Topology Spread Constraints	https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+DOC-K8S-AFFINITY	1	Kubernetes	official-doc	Assigning Pods to Nodes (affinity and anti-affinity)	https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+DOC-K8S-PRIORITY	1	Kubernetes	official-doc	Pod Priority and Preemption	https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/
+DOC-K8S-EVICTION	1	Kubernetes	official-doc	Node-pressure Eviction	https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
+DOC-K8S-STATEFULSET	1	Kubernetes	official-doc	StatefulSets	https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/
+DOC-K8S-STORAGE-PV	1	Kubernetes	official-doc	Persistent Volumes	https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+DOC-ENVOY-TIMEOUTS	2	Envoy	official-doc	Envoy FAQ - Timeouts	https://www.envoyproxy.io/docs/envoy/latest/faq/configuration/timeouts
+DOC-ENVOY-CB	2	Envoy	official-doc	Circuit breaking	https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
+DOC-ENVOY-OUTLIER	2	Envoy	official-doc	Outlier detection	https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/outlier
+DOC-ENVOY-HEALTHCHECK	2	Envoy	official-doc	Health checking	https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/health_checking
+DOC-ENVOY-ROUTE-PROTO	2	Envoy	official-doc	HTTP route components (timeout, retry_policy)	https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto
+DOC-ENVOY-CLUSTER-PROTO	2	Envoy	official-doc	Cluster configuration (circuit breakers thresholds)	https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/circuit_breaker.proto
+DOC-ENVOY-OVERLOAD	2	Envoy	official-doc	Overload manager	https://www.envoyproxy.io/docs/envoy/latest/configuration/operations/overload_manager/overload_manager
+DOC-ISTIO-TIMEOUTS	2	Istio	official-doc	Request Timeouts task	https://istio.io/latest/docs/tasks/traffic-management/request-timeouts/
+DOC-ISTIO-CB	2	Istio	official-doc	Circuit Breaking task	https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
+DOC-ISTIO-DR	2	Istio	official-doc	DestinationRule reference	https://istio.io/latest/docs/reference/config/networking/destination-rule/
+DOC-ISTIO-VS	2	Istio	official-doc	VirtualService reference (HTTPRetry, timeout)	https://istio.io/latest/docs/reference/config/networking/virtual-service/
+DOC-LINKERD-RETRY	2	Linkerd	official-doc	Retries and Timeouts	https://linkerd.io/2.17/features/retries-and-timeouts/
+DOC-LINKERD-CB	2	Linkerd	official-doc	Circuit Breaking	https://linkerd.io/2.17/tasks/circuit-breakers/
+DOC-NGINX-PROXY	2	NGINX	official-doc	ngx_http_proxy_module	https://nginx.org/en/docs/http/ngx_http_proxy_module.html
+DOC-NGINX-UPSTREAM	2	NGINX	official-doc	ngx_http_upstream_module	https://nginx.org/en/docs/http/ngx_http_upstream_module.html
+DOC-INGRESSNGINX-ANNOT	2	ingress-nginx	official-doc	NGINX Ingress annotations	https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/
+DOC-KONG-HEALTH	2	Kong	official-doc	Health Checks and Circuit Breakers	https://docs.konghq.com/gateway/latest/how-kong-works/health-checks/
+DOC-APISIX-UPSTREAM	2	APISIX	official-doc	Upstream (health checks, timeout, retries)	https://apisix.apache.org/docs/apisix/terminology/upstream/
+DOC-APISIX-APIBREAKER	2	APISIX	official-doc	api-breaker plugin	https://apisix.apache.org/docs/apisix/plugins/api-breaker/
+DOC-APISIX-LIMITREQ	2	APISIX	official-doc	limit-req plugin	https://apisix.apache.org/docs/apisix/plugins/limit-req/
+DOC-HAPROXY-INTRO	2	HAProxy	official-doc	HAProxy configuration manual (timeouts, health checks)	https://docs.haproxy.org/2.8/configuration.html
+DOC-GRPC-DEADLINES	3	gRPC	official-doc	Deadlines	https://grpc.io/docs/guides/deadlines/
+DOC-GRPC-RETRY	3	gRPC	official-doc	Retry	https://grpc.io/docs/guides/retry/
+DOC-GRPC-CANCELLATION	3	gRPC	official-doc	Cancellation	https://grpc.io/docs/guides/cancellation/
+DOC-GRPC-HEALTH	3	gRPC	official-doc	Health Checking	https://grpc.io/docs/guides/health-checking/
+DOC-GRPC-KEEPALIVE	3	gRPC	official-doc	Keepalive	https://grpc.io/docs/guides/keepalive/
+DOC-GRPC-WAITFORREADY	3	gRPC	official-doc	Wait-for-Ready	https://grpc.io/docs/guides/wait-for-ready/
+DOC-GRPC-HEDGING	3	gRPC	official-doc	gRFC A6 client retries (hedging)	https://raw.githubusercontent.com/grpc/proposal/master/A6-client-retries.md
+DOC-DUBBO-CONFIG	3	Dubbo	official-doc	Dubbo 配置项参考手册	https://cn.dubbo.apache.org/zh-cn/overview/mannual/java-sdk/reference-manual/config/properties/
+DOC-SPRING-RESTCLIENT	3	Spring Boot	official-doc	REST Clients (timeouts)	https://docs.spring.io/spring-boot/reference/io/rest-client.html
+DOC-GO-NETHTTP-CLIENT	3	Go net/http	official-doc	net/http Client and Transport	https://pkg.go.dev/net/http
+DOC-NODE-HTTP	3	Node.js http	official-doc	HTTP (timeouts, agent)	https://nodejs.org/api/http.html
+DOC-PY-REQUESTS	3	Python requests	official-doc	Advanced Usage - Timeouts	https://requests.readthedocs.io/en/latest/user/advanced/
+DOC-PY-HTTPX-TIMEOUT	3	Python httpx	official-doc	Timeouts	https://www.python-httpx.org/advanced/timeouts/
+DOC-DOTNET-HTTPCLIENT	3	.NET HttpClient	official-doc	HttpClient guidelines for .NET	https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/http/httpclient-guidelines
+DOC-DOTNET-HTTPFACTORY	3	.NET HttpClient	official-doc	IHttpClientFactory with .NET	https://learn.microsoft.com/en-us/dotnet/core/extensions/httpclient-factory
+DOC-R4J-CB	4	Resilience4j	official-doc	CircuitBreaker	https://resilience4j.readme.io/docs/circuitbreaker
+DOC-R4J-TIMELIMITER	4	Resilience4j	official-doc	TimeLimiter	https://resilience4j.readme.io/docs/timeout
+DOC-R4J-BULKHEAD	4	Resilience4j	official-doc	Bulkhead	https://resilience4j.readme.io/docs/bulkhead
+DOC-R4J-RETRY	4	Resilience4j	official-doc	Retry	https://resilience4j.readme.io/docs/retry
+DOC-R4J-RATELIMITER	4	Resilience4j	official-doc	RateLimiter	https://resilience4j.readme.io/docs/ratelimiter
+DOC-SENTINEL-FLOW	4	Sentinel	official-doc	流量控制	https://sentinelguard.io/zh-cn/docs/flow-control.html
+DOC-SENTINEL-CB	4	Sentinel	official-doc	熔断降级	https://sentinelguard.io/zh-cn/docs/circuit-breaking.html
+DOC-SENTINEL-SYSTEM	4	Sentinel	official-doc	系统自适应保护	https://sentinelguard.io/zh-cn/docs/system-adaptive-protection.html
+DOC-SENTINEL-THREADISOLATION	4	Sentinel	official-doc	основные concepts 并发线程数限流	https://sentinelguard.io/zh-cn/docs/basic-api-resource-rule.html
+DOC-POLLY-RETRY	4	Polly	official-doc	Retry resilience strategy	https://www.pollydocs.org/strategies/retry.html
+DOC-POLLY-CB	4	Polly	official-doc	Circuit breaker resilience strategy	https://www.pollydocs.org/strategies/circuit-breaker.html
+DOC-POLLY-TIMEOUT	4	Polly	official-doc	Timeout resilience strategy	https://www.pollydocs.org/strategies/timeout.html
+DOC-POLLY-RATELIMIT	4	Polly	official-doc	Rate limiter resilience strategy	https://www.pollydocs.org/strategies/rate-limiter.html
+DOC-FAILSAFE-CB	4	Failsafe	official-doc	Circuit Breaker	https://failsafe.dev/circuit-breaker/
+DOC-FAILSAFE-RETRY	4	Failsafe	official-doc	Retry	https://failsafe.dev/retry/
+DOC-FAILSAFE-TIMEOUT	4	Failsafe	official-doc	Timeout	https://failsafe.dev/timeout/
+DOC-SPRING-RETRY	4	Spring Retry	official-doc	Spring Retry README	https://raw.githubusercontent.com/spring-projects/spring-retry/main/README.md
+DOC-SCCB	4	Spring Cloud CircuitBreaker	official-doc	Spring Cloud Circuit Breaker reference	https://docs.spring.io/spring-cloud-circuitbreaker/reference/
+DOC-GOBREAKER	4	gobreaker	official-doc	sony/gobreaker package docs	https://pkg.go.dev/github.com/sony/gobreaker
+DOC-HYSTRIX-HOWITWORKS	4	Hystrix	official-doc	Hystrix How it Works (archived)	https://github.com/Netflix/Hystrix/wiki/How-it-Works
+DOC-SCA-SENTINEL	4	Spring Cloud Alibaba	official-doc	Spring Cloud Alibaba Sentinel	https://sca.aliyun.com/docs/2023/user-guide/sentinel/overview/
+DOC-NACOS-DISCOVERY	5	Nacos	official-doc	服务发现	https://nacos.io/docs/latest/manual/user/naming/overview/
+DOC-NACOS-PROTECT	5	Nacos	official-doc	保护阈值与健康检查	https://nacos.io/docs/latest/manual/user/naming/health-and-metadata/
+DOC-CONSUL-CHECKS	5	Consul	official-doc	Define health checks	https://developer.hashicorp.com/consul/docs/register/health-check/vm
+DOC-CONSUL-SESSIONS	5	Consul	official-doc	Sessions	https://developer.hashicorp.com/consul/docs/automate/session
+DOC-EUREKA	5	Eureka	official-doc	Spring Cloud Netflix (Eureka self-preservation)	https://docs.spring.io/spring-cloud-netflix/reference/spring-cloud-netflix.html
+DOC-ETCD-API	5	etcd	official-doc	etcd API (lease, leader election)	https://etcd.io/docs/v3.5/learning/api/
+DOC-ETCD-FAQ	5	etcd	official-doc	etcd FAQ (quorum, heartbeat)	https://etcd.io/docs/v3.5/faq/
+DOC-ZK-PROGRAMMERS	5	ZooKeeper	official-doc	ZooKeeper Programmer's Guide (sessions)	https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html
+DOC-ZK-RECIPES	5	ZooKeeper	official-doc	ZooKeeper Recipes (leader election, locks)	https://zookeeper.apache.org/doc/current/recipes.html
+DOC-RABBITMQ-RELIABILITY	6	RabbitMQ	official-doc	Reliability Guide	https://www.rabbitmq.com/docs/reliability
+DOC-RABBITMQ-DLX	6	RabbitMQ	official-doc	Dead Letter Exchanges	https://www.rabbitmq.com/docs/dlx
+DOC-RABBITMQ-PREFETCH	6	RabbitMQ	official-doc	Consumer Prefetch	https://www.rabbitmq.com/docs/consumer-prefetch
+DOC-RABBITMQ-QUORUM	6	RabbitMQ	official-doc	Quorum Queues	https://www.rabbitmq.com/docs/quorum-queues
+DOC-ROCKETMQ-RETRY	6	RocketMQ	official-doc	消费重试	https://rocketmq.apache.org/docs/featureBehavior/10consumerretrypolicy/
+DOC-ROCKETMQ-TXN	6	RocketMQ	official-doc	事务消息	https://rocketmq.apache.org/docs/featureBehavior/04transactionmessage/
+DOC-PULSAR-MESSAGING	6	Pulsar	official-doc	Messaging concepts (ack, DLQ, negative ack)	https://pulsar.apache.org/docs/next/concepts-messaging/
+DOC-NATS-CONSUMERS	6	NATS	official-doc	JetStream Consumers	https://docs.nats.io/nats-concepts/jetstream/consumers
+DOC-HIKARICP	7	HikariCP	official-doc	HikariCP README (pool configuration)	https://raw.githubusercontent.com/brettwooldridge/HikariCP/dev/README.md
+DOC-GO-DATABASESQL	7	Go database/sql	official-doc	database/sql package	https://pkg.go.dev/database/sql
+DOC-PGX-POOL	7	pgx	official-doc	pgxpool package	https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool
+DOC-GOREDIS	7	go-redis	official-doc	go-redis v9 package (Options)	https://pkg.go.dev/github.com/redis/go-redis/v9
+DOC-JEDIS	7	Jedis	official-doc	Jedis README (pool)	https://raw.githubusercontent.com/redis/jedis/master/README.md
+DOC-MYSQL-CONNJ-NET	7	MySQL Connector/J	official-doc	Networking properties (socketTimeout)	https://web.archive.org/web/2024/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html
+DOC-PGJDBC	7	PostgreSQL JDBC	official-doc	Connection parameters	https://jdbc.postgresql.org/documentation/use/
+DOC-MONGO-CONNSTR	7	MongoDB driver	official-doc	Connection String Options	https://www.mongodb.com/docs/manual/reference/connection-string-options/
+DOC-IOREDIS	7	ioredis	official-doc	ioredis README	https://raw.githubusercontent.com/redis/ioredis/main/README.md
+DOC-GO-CONTEXT	8	Go context	official-doc	context package	https://pkg.go.dev/context
+DOC-JAVA-TPE	8	Java concurrency	official-doc	ThreadPoolExecutor	https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html
+DOC-JAVA-CF	8	Java concurrency	official-doc	CompletableFuture	https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/CompletableFuture.html
+DOC-JAVA-LAUNCHER	8	JVM	official-doc	java command (UseContainerSupport, MaxRAMPercentage)	https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html
+DOC-NODE-GLOBALS	8	Node.js	official-doc	Globals (AbortController, AbortSignal)	https://nodejs.org/api/globals.html
+DOC-NODE-EVENTLOOP	8	Node.js	official-doc	Don't block the event loop	https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop
+DOC-PY-ASYNCIO	8	Python asyncio	official-doc	Coroutines and Tasks (timeouts)	https://docs.python.org/3/library/asyncio-task.html
+DOC-DOTNET-CANCEL	8	.NET	official-doc	Cancellation in managed threads	https://learn.microsoft.com/en-us/dotnet/standard/threading/cancellation-in-managed-threads
+DOC-BOOT-ACTUATOR	9	Spring Boot Actuator	official-doc	Actuator endpoints (health groups, Kubernetes probes)	https://docs.spring.io/spring-boot/reference/actuator/endpoints.html
+DOC-BOOT-HEALTH-API	9	Spring Boot Actuator	official-doc	Actuator health endpoint API	https://docs.spring.io/spring-boot/api/rest/actuator/health.html
+DOC-CHAOSBLADE	10	ChaosBlade	curated-guideline	ChaosBlade 文档	https://chaosblade.io/docs/
+DOC-AZ-PATTERNS-INDEX	10	Azure Architecture Center	pattern-catalog	Cloud Design Patterns index (reliability category)	https://learn.microsoft.com/en-us/azure/architecture/patterns/
+DOC-MSIO-INDEX	10	microservices.io	pattern-catalog	Microservice Architecture pattern index	https://microservices.io/patterns/index.html
+DOC-AZ-PATTERN-COMPENSATE	10	Azure Architecture Center	pattern-catalog	Compensating Transaction pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction
+DOC-AZ-PATTERN-RATELIMIT	10	Azure Architecture Center	pattern-catalog	Rate Limiting pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/rate-limiting-pattern
+DOC-AZ-PATTERN-CACHEASIDE	10	Azure Architecture Center	pattern-catalog	Cache-Aside pattern	https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside
+DOC-SRE-BOOK-RELIABILITY	10	Google SRE	curated-guideline	SRE Book ch.20 Load Balancing in the Datacenter	https://sre.google/sre-book/load-balancing-datacenter/
+DOC-DUBBO-XML-REFERENCE	3	Dubbo	official-doc	dubbo:reference 配置项（timeout/retries/cluster/actives 默认值）	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-reference/
+DOC-DUBBO-XML-CONSUMER	3	Dubbo	official-doc	dubbo:consumer 配置项	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-consumer/
+DOC-DUBBO-XML-PROVIDER	3	Dubbo	official-doc	dubbo:provider 配置项（线程池/accepts/executes）	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-provider/
+DOC-DUBBO-XML-METHOD	3	Dubbo	official-doc	dubbo:method 配置项（方法级 timeout/retries）	https://cn.dubbo.apache.org/zh-cn/docs/references/xml/dubbo-method/
+DOC-NACOS-INSTANCE-LIFECYCLE	5	Nacos	official-doc	实例生命周期与健康检查	https://nacos.io/docs/latest/manual/user/naming/instance-lifecycle/
+DOC-NACOS-JAVA-FAILOVER	5	Nacos	official-doc	Java SDK 容灾（failover）	https://nacos.io/docs/latest/manual/user/java-sdk/failover/
+DOC-KAFKA-PRODUCER-CFG	6	Kafka	official-doc	Producer configs (acks, retries, enable.idempotence, delivery.timeout.ms)	https://kafka.apache.org/40/generated/producer_config.html
+DOC-KAFKA-TOPIC-CFG	6	Kafka	official-doc	Topic configs (min.insync.replicas, unclean.leader.election.enable)	https://kafka.apache.org/40/generated/topic_config.html
+DOC-KAFKA-CONSUMER-CFG	6	Kafka	official-doc	Consumer configs (enable.auto.commit, max.poll.interval.ms, session.timeout.ms)	https://kafka.apache.org/40/generated/consumer_config.html

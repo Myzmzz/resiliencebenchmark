@@ -1,0 +1,67 @@
+# doc_id: DOC-FAILSAFE-RETRY
+# url: https://failsafe.dev/retry/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+[[H1]] Retry Policy
+Max Attempts
+Max Duration
+Delays
+Jitter
+Aborts
+Failure Handling
+Event Listeners
+Retry policies will retry failed executions a certain number of times, with an optional delay between attempts. If an execution fails after retries have been exceeded, the last result or exception is returned or thrown. If additional handling or an alternative result is needed, additional policies, such as a fallbacks, can be composed around a RetryPolicy.
+Creating a RetryPolicy is straightforward, for example:
+// Retry on a ConnectException up to 3 times with a 1 second delay between attempts
+RetryPolicy<Object> retryPolicy = RetryPolicy.builder()
+.handle(ConnectException.class)
+.withDelay(Duration.ofSeconds(1))
+.withMaxRetries(3)
+.build();
+[[H2]] Max Attempts
+By default, a RetryPolicy will allow a maximum of 3 execution attempts. You can configure a different max number of attempts:
+builder.withMaxAttempts(3);
+Or a max number of retries:
+builder.withMaxRetries(2);
+You can also disable the default max attempt limit:
+builder.withMaxAttempts(-1);
+[[H2]] Max Duration
+In addition to max attempts, you can also add a max duration for an execution, after which retries will stop if the max attempts haven’t already been reached.
+builder.withMaxDuration(Duration.ofMinutes(5));
+[[H2]] Delays
+By default, a RetryPolicy has no delay between attempts. You can configure a fixed delay:
+builder.withDelay(Duration.ofSeconds(1));
+Or a delay that backs off exponentially:
+builder.withBackoff(1, 30, ChronoUnit.SECONDS);
+A random delay for some range:
+builder.withDelay(1, 10, ChronoUnit.SECONDS);
+Or a computed delay based on an execution result or exception.
+[[H3]] Jitter
+You can also combine a random jitter factor with a delay:
+builder.withJitter(.1);
+Or a time based jitter:
+builder.withJitter(Duration.ofMillis(100));
+To cancel or interrupt running executions, see the Timeout policy.
+[[H2]] Aborts
+You can also specify which results, exceptions, or conditions to abort retries on:
+builder
+.abortWhen(true)
+.abortOn(NoRouteToHostException.class)
+.abortIf(result -> result == true)
+[[H2]] Failure Handling
+A RetryPolicy can be configured to handle only certain results or exceptions, in combination with any of the configuration described above:
+builder
+.handle(ConnectException.class)
+.handleResult(null);
+[[H2]] Event Listeners
+In addition to the standard policy listeners, a RetryPolicy can notify you when an execution attempt fails or before a retry is to be attempted:
+builder
+.onFailedAttempt(e -> log.error("Connection attempt failed", e.getLastException()))
+.onRetry(e -> log.warn("Failure #{}. Retrying.", e.getAttemptCount()));
+It can notify you when an execution fails and the max retries are exceeded:
+builder.onRetriesExceeded(e -> log.warn("Failed to connect. Max retries exceeded."));
+When an async retry is scheduled to be attempted after the configured delay:
+builder.onRetryScheduled(e -> log.info("Connection retry scheduled {}.", e.getException()));
+Or when retries have been aborted:
+builder.onAbort(e -> log.warn("Connection aborted due to {}.", e.getException()));
+Copyright © 2015-present Jonathan Halterman and friends. Released under the Apache 2.0 license.

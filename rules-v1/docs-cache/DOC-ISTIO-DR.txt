@@ -1,0 +1,1225 @@
+# doc_id: DOC-ISTIO-DR
+# url: https://istio.io/latest/docs/reference/config/networking/destination-rule/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Overview
+What is Istio?
+Why choose Istio?
+Sidecar or ambient?
+Quickstart
+Concepts
+Traffic Management
+Security
+Observability
+Extensibility
+Sidecar Mode
+Getting Started
+Platform Setup
+Alibaba Cloud
+Amazon EKS
+Azure
+Docker Desktop
+Google Kubernetes Engine
+Huawei Cloud
+IBM Cloud
+k3d
+kind
+Kops
+Kubernetes Gardener
+KubeSphere Container Platform
+MicroK8s
+Minikube
+OpenShift
+Oracle Cloud Infrastructure
+Tencent Cloud
+Install
+Install with Istioctl
+Install with Helm
+Install Multicluster
+Before you begin
+Install Multi-Primary
+Install Primary-Remote
+Install Multi-Primary on different networks
+Install Primary-Remote on different networks
+Verify the installation
+Install Istio with an External Control Plane
+Install Multiple Istio Control Planes in a Single Cluster
+Virtual Machine Installation
+Upgrade
+Canary Upgrades
+In-place Upgrades
+Upgrade with Helm
+More Guides
+Download the Istio release
+Installation Configuration Profiles
+Compatibility Versions
+Installing Gateways
+Installing the Sidecar
+Customizing the installation configuration
+Advanced Helm Chart Customization
+Install Istio in Dual-Stack mode
+Install Istio with Pod Security Admission
+Install the Istio CNI node agent
+NetworkPolicy
+Getting Started without the Gateway API
+Ambient Mode
+Overview
+Getting Started
+Deploy a sample application
+Secure and visualize the application
+Enforce authorization policies
+Manage traffic
+Clean up
+Install
+Platform-Specific Prerequisites
+Install with Helm
+Install with istioctl
+Install Multicluster
+Before you begin
+Install ambient multi-primary on different networks
+Verify the ambient installation
+Configure failover behavior in multicluster ambient installation
+Kiali Dashboard for Ambient Multi-network
+Upgrade
+Upgrade with Helm
+Migrate from Sidecar to Ambient
+Before you begin
+Install ambient components
+Migrate policies
+Enable ambient mode
+User Guides
+Add workloads to the mesh
+Verify mutual TLS is enabled
+Ambient and Kubernetes NetworkPolicy
+Use Layer 4 security policy
+Configure waypoint proxies
+Traffic Distribution
+ServiceEntry visibility
+Use agentgateway
+Use Layer 7 features
+Extend waypoints with WebAssembly plugins *
+Extend waypoints with Lua scripts *
+Troubleshoot connectivity issues with ztunnel
+Troubleshoot issues with waypoints
+Architecture
+Ambient and the Istio control plane
+Ambient data plane
+HBONE
+Ztunnel traffic redirection
+Tasks
+Traffic Management
+Request Routing
+Fault Injection
+Traffic Shifting
+TCP Traffic Shifting
+Request Timeouts
+Circuit Breaking
+Mirroring
+Locality Load Balancing
+Before you begin
+Locality failover
+Locality weighted distribution
+Cleanup
+Ingress
+Ingress Gateways
+Secure Gateways
+Ingress Gateway without TLS Termination
+Ingress Sidecar TLS Termination
+Kubernetes Ingress
+Kubernetes Gateway API
+Kubernetes Gateway API Inference Extension
+Egress
+Accessing External Services
+Egress TLS Origination
+Egress Gateways
+Egress Gateways with TLS Origination
+Egress using Wildcard Hosts
+Kubernetes Services for Egress Traffic
+Using an External HTTPS Proxy
+Security
+Certificate Management
+Plug in CA Certificates
+Custom CA Integration using Kubernetes CSR *
+Authentication
+Authentication Policy
+JWT claim based routing *
+Copy JWT Claims to HTTP Headers *
+Mutual TLS Migration
+Authorization
+HTTP Traffic
+TCP Traffic
+JWT Token
+External Authorization
+Explicit Deny
+Ingress Access Control
+Trust Domain Migration
+Dry Run *
+TLS Configuration
+Istio Workload Minimum TLS Version Configuration
+Policy Enforcement
+Enabling Rate Limits using Envoy
+Observability
+Telemetry API
+Metrics
+Customizing Istio Metrics with Telemetry API
+Collecting Metrics for TCP Services
+Customizing Istio Metrics
+Classifying Metrics Based on Request or Response
+Querying Metrics from Prometheus
+Visualizing Metrics with Grafana
+Securing Prometheus Scraping for Istio Sidecar and Gateway
+Logs
+Configure access logs with Telemetry API
+Envoy Access Logs
+OpenTelemetry
+Distributed Tracing
+Overview
+Configure tracing with Telemetry API
+Configure tracing using MeshConfig and pod annotations
+Configure trace sampling
+OpenTelemetry
+Jaeger
+Zipkin
+Apache SkyWalking
+Visualizing Your Mesh
+Remotely Accessing Telemetry Addons
+Extensibility
+Executing WebAssembly Modules *
+Executing Lua Scripts *
+Examples
+Bookinfo Application
+Bookinfo with a Virtual Machine
+Learn Microservices using Kubernetes and Istio
+Prerequisites
+Set up a Kubernetes Cluster
+Set up a Local Computer
+Run a Microservice Locally
+Run ratings in Docker
+Run Bookinfo with Kubernetes
+Test in production
+Add a new version of reviews
+Enable Istio on productpage
+Enable Istio on all the microservices
+Configure Istio Ingress Gateway
+Monitoring with Istio
+Operations
+Deployment
+Platform Requirements
+Architecture
+Security Model
+Deployment Models
+Virtual Machine Architecture
+Ambient Multicluster Performance
+Performance and Scalability
+Application Requirements
+Configuration
+Mesh Configuration
+Dynamic Admission Webhooks Overview
+Health Checking of Istio Services
+Configuration Scoping
+Traffic Management
+Protocol Selection
+Managing In-Mesh Certificates
+TLS Configuration
+Traffic Routing
+DNS
+Configuring Gateway Network Topology *
+DNS Proxying
+Multi-cluster Traffic Management
+Security
+Security policy examples
+Harden Docker Container Images
+Observability
+Envoy Statistics
+Monitoring Multicluster Istio with Prometheus
+Extensibility
+Pull Policy for WebAssembly Modules *
+Best Practices
+Deployment Best Practices
+Traffic Management Best Practices
+Security Best Practices
+Image Signing and Validation
+Observability Best Practices
+Common Problems
+Traffic Management Problems
+Security Problems
+Observability Problems
+Sidecar Injection Problems
+Configuration Validation Problems
+Upgrade Problems
+Diagnostic Tools
+Using the Istioctl Command-line Tool
+Debugging Envoy and Istiod
+Understand your Mesh with Istioctl Describe
+Diagnose your Configuration with Istioctl Analyze
+Verifying Istio Sidecar Injection with Istioctl Check-Inject
+Istiod Introspection
+Component Logging
+Debugging Virtual Machines
+Troubleshooting Multicluster
+Troubleshooting the Istio CNI plugin
+Integrations
+cert-manager
+Grafana
+Integration Guide
+Debug Endpoints
+Jaeger
+Kiali
+Prometheus
+SPIRE
+Apache SkyWalking
+Zipkin
+Third Party Load Balancers
+Releases
+Feature Status
+Reporting Bugs
+Security Vulnerabilities
+Supported Releases
+Contribute Documentation
+Work with GitHub
+Add New Documentation
+Remove Retired Documentation
+Build and serve the website locally
+Front matter
+Documentation Review Process
+Add Code Blocks
+Use Shortcodes
+Follow Formatting Standards
+Style Guide
+Terminology Standards
+Diagram Creation Guidelines
+Website Content Changes
+Reference
+Configuration
+Analysis Messages
+Global Mesh Options
+IstioOperator Options
+Proxy Extensions
+Traffic Extension
+Wasm Plugin
+Traffic Management
+Destination Rule
+Envoy Filter
+Gateway
+ProxyConfig
+Service Entry
+Sidecar
+Virtual Service
+Workload Entry
+Workload Group
+Security
+PeerAuthentication
+RequestAuthentication
+Authorization Policy
+Authorization Policy Conditions
+Authorization Policy Normalization
+Telemetry
+Common Types
+Workload Selector
+Istio Standard Metrics
+Resource Annotations
+Resource Labels
+Configuration Analysis Messages
+AlphaAnnotation
+Analyzer Message Format
+ConflictingMeshGatewayVirtualServiceHosts
+ConflictingSidecarWorkloadSelectors
+ConflictingTelemetryWorkloadSelectors
+DeploymentAssociatedToMultipleServices
+DeploymentConflictingPorts
+Deprecated
+DeprecatedAnnotation
+EnvoyFilterUsesAddOperationIncorrectly
+EnvoyFilterUsesRelativeOperation
+EnvoyFilterUsesRelativeOperationWithProxyVersion
+EnvoyFilterUsesRemoveOperationIncorrectly
+EnvoyFilterUsesReplaceOperationIncorrectly
+ExternalControlPlaneAddressIsNotAHostname
+ExternalNameServiceTypeInvalidPortName
+GatewayPortNotDefinedOnService
+IneffectivePolicy
+IneffectiveSelector
+InternalError
+InvalidAnnotation
+InvalidApplicationUID
+InvalidExternalControlPlaneConfig
+InvalidGatewayCredential
+InvalidTelemetryProvider
+LocalhostListener
+MisplacedAnnotation
+MultipleSidecarsWithoutWorkloadSelectors
+MultipleTelemetriesWithoutWorkloadSelectors
+NamespaceMultipleInjectionLabels
+NamespaceNotInjected
+NoMatchingWorkloadsFound
+NoServerCertificateVerificationDestinationLevel
+NoServerCertificateVerificationPortLevel
+PodMissingProxy
+PodsIstioProxyImageMismatchInNamespace
+PortNameIsNotUnderNamingConvention
+ReferencedResourceNotFound
+SchemaValidationError
+ServiceEntryAddressesRequired
+UnknownAnnotation
+VirtualServiceDestinationPortSelectorRequired
+VirtualServiceHostNotFoundInGateway
+VirtualServiceIneffectiveMatch
+VirtualServiceUnreachableRule
+Commands
+install-cni
+istioctl
+pilot-agent
+pilot-discovery
+Glossary
+Contents
+Documentation
+Reference
+Configuration
+Traffic Management
+Destination Rule
+[[H1]] Destination Rule
+35 minute read
+DestinationRule
+TrafficPolicy
+PortTrafficPolicy
+TunnelSettings
+ProxyProtocol
+VERSION
+RetryBudget
+Subset
+LoadBalancerSettings
+ConsistentHashLB
+RingHash
+MagLev
+HTTPCookie
+Attribute
+SimpleLB
+WarmupConfiguration
+ConnectionPoolSettings
+TCPSettings
+TcpKeepalive
+HTTPSettings
+ConnectionKeepalive
+H2UpgradePolicy
+OutlierDetection
+ClientTLSSettings
+TLSmode
+LocalityLoadBalancerSetting
+Distribute
+Failover
+ZoneAwareLoadBalancerSetting
+Failover
+UInt32Value
+DestinationRule defines policies that apply to traffic intended for a service after routing has occurred. These rules specify configuration for load balancing, connection pool size from the sidecar, and outlier detection settings to detect and evict unhealthy hosts from the load balancing pool. For example, a simple load balancing policy for the ratings service would look as follows:
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: bookinfo-ratings
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+loadBalancer:
+simple: LEAST_REQUEST
+Version specific policies can be specified by defining a named subset and overriding the settings specified at the service level. The following rule uses a round robin load balancing policy for all traffic going to a subset named testversion that is composed of endpoints (e.g., pods) with labels (version:v3).
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: bookinfo-ratings
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+loadBalancer:
+simple: LEAST_REQUEST
+subsets:
+- name: testversion
+labels:
+version: v3
+trafficPolicy:
+loadBalancer:
+simple: ROUND_ROBIN
+Note: Policies specified for subsets will not take effect until a route rule explicitly sends traffic to this subset.
+Traffic policies can be customized to specific ports as well. The following rule uses the least connection load balancing policy for all traffic to port 80, while uses a round robin load balancing setting for traffic to the port 9080.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: bookinfo-ratings-port
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy: # Apply to all ports
+portLevelSettings:
+- port:
+number: 80
+loadBalancer:
+simple: LEAST_REQUEST
+- port:
+number: 9080
+loadBalancer:
+simple: ROUND_ROBIN
+Destination Rules can be customized to specific workloads as well. The following example shows how a destination rule can be applied to a specific workload using the workloadSelector configuration.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: configure-client-mtls-dr-with-workloadselector
+spec:
+host: example.com
+workloadSelector:
+matchLabels:
+app: ratings
+trafficPolicy:
+loadBalancer:
+simple: ROUND_ROBIN
+portLevelSettings:
+- port:
+number: 31443
+tls:
+credentialName: client-credential
+mode: MUTUAL
+[[H2]] DestinationRule
+DestinationRule defines policies that apply to traffic intended for a service after routing has occurred.
+Field | Description
+host
+string
+Required
+The name of a service from the service registry. Service names are looked up from the platform’s service registry (e.g., Kubernetes services, Consul services, etc.) and from the hosts declared by ServiceEntries. Rules defined for services that do not exist in the service registry will be ignored.
+Note for Kubernetes users: When short names are used (e.g. “reviews” instead of “reviews.default.svc.cluster.local”), Istio will interpret the short name based on the namespace of the rule, not the service. A rule in the “default” namespace containing a host “reviews” will be interpreted as “reviews.default.svc.cluster.local”, irrespective of the actual namespace associated with the reviews service. To avoid potential misconfigurations, it is recommended to always use fully qualified domain names over short names.
+Note that the host field applies to both HTTP and TCP services.
+trafficPolicy
+TrafficPolicy
+Traffic policies to apply (load balancing policy, connection pool sizes, outlier detection).
+subsets
+Subset[]
+One or more named sets that represent individual versions of a service. Traffic policies can be overridden at subset level.
+exportTo
+string[]
+A list of namespaces to which this destination rule is exported. The resolution of a destination rule to apply to a service occurs in the context of a hierarchy of namespaces. Exporting a destination rule allows it to be included in the resolution hierarchy for services in other namespaces. This feature provides a mechanism for service owners and mesh administrators to control the visibility of destination rules across namespace boundaries.
+If no namespaces are specified then the destination rule is exported to all namespaces by default.
+The value “.” is reserved and defines an export to the same namespace that the destination rule is declared in. Similarly, the value “*” is reserved and defines an export to all namespaces.
+workloadSelector
+WorkloadSelector
+Criteria used to select the specific set of pods/VMs on which this DestinationRule configuration should be applied. If specified, the DestinationRule configuration will be applied only to the workload instances matching the workload selector label in the same namespace. Workload selectors do not apply across namespace boundaries. If omitted, the DestinationRule falls back to its default behavior. For example, if specific sidecars need to have egress TLS settings for services outside of the mesh, instead of every sidecar in the mesh needing to have the configuration (which is the default behaviour), a workload selector can be specified.
+[[H2]] TrafficPolicy
+Traffic policies to apply for a specific destination, across all destination ports. See DestinationRule for examples.
+Field | Description
+loadBalancer
+LoadBalancerSettings
+Settings controlling the load balancer algorithms.
+connectionPool
+ConnectionPoolSettings
+Settings controlling the volume of connections to an upstream service
+outlierDetection
+OutlierDetection
+Settings controlling eviction of unhealthy hosts from the load balancing pool
+tls
+ClientTLSSettings
+TLS related settings for connections to the upstream service.
+portLevelSettings
+PortTrafficPolicy[]
+Traffic policies specific to individual ports. Note that port level settings will override the destination-level settings. Traffic settings specified at the destination-level will not be inherited when overridden by port-level settings, i.e. default values will be applied to fields omitted in port-level traffic policies.
+tunnel
+TunnelSettings
+Configuration of tunneling TCP over other transport or application layers for the host configured in the DestinationRule. Tunnel settings can be applied to TCP or TLS routes and can’t be applied to HTTP routes.
+proxyProtocol
+ProxyProtocol
+The upstream PROXY protocol settings.
+retryBudget
+RetryBudget
+Specifies a limit on concurrent retries in relation to the number of active requests.
+[[H3]] PortTrafficPolicy
+Traffic policies that apply to specific ports of the service
+Field | Description
+port
+PortSelector
+Specifies the number of a port on the destination service on which this policy is being applied.
+loadBalancer
+LoadBalancerSettings
+Settings controlling the load balancer algorithms.
+connectionPool
+ConnectionPoolSettings
+Settings controlling the volume of connections to an upstream service
+outlierDetection
+OutlierDetection
+Settings controlling eviction of unhealthy hosts from the load balancing pool
+tls
+ClientTLSSettings
+TLS related settings for connections to the upstream service.
+[[H3]] TunnelSettings
+Field | Description
+protocol
+string
+Specifies which protocol to use for tunneling the downstream connection. Supported protocols are:
+CONNECT - uses HTTP CONNECT;
+POST - uses HTTP POST.
+CONNECT is used by default if not specified.
+HTTP version for upstream requests is determined by the service protocol defined for the proxy.
+targetHost
+string
+Required
+Specifies a host to which the downstream connection is tunneled. Target host must be an FQDN or IP address.
+targetPort
+uint32
+Required
+Specifies a port to which the downstream connection is tunneled.
+[[H3]] ProxyProtocol
+Field | Description
+version
+VERSION
+The PROXY protocol version to use. See the protocol spec for details. By default it is V1.
+[[H4]] VERSION
+Name | Description
+V1
+⁣PROXY protocol version 1. Human readable format.
+V2
+⁣PROXY protocol version 2. Binary format.
+[[H3]] RetryBudget
+Field | Description
+percent
+DoubleValue
+Specifies the limit on concurrent retries as a percentage of the sum of active requests and active pending requests. Defaults to 20%.
+minRetryConcurrency
+uint32
+Specifies the minimum retry concurrency allowed for the retry budget. For example, a budget of 20% with a minimum retry concurrency of 3 will allow 5 active retries while there are 25 active requests. If there are 2 active requests, there are still 3 active retries allowed because of the minimum retry concurrency.
+Defaults to 3.
+budgetInterval
+Duration
+Specifies the duration in which requests will be considered when calculating the budget for retries. This parameter alters the way in which the retry budget is calculated, overriding the default behavior when specified.
+By default, when budget_interval is set to 0ms, only presently active and pending requests are considered when calculating the retry budget.
+When a non-zero budget_interval is specified, new requests are considered for the duration of budget_interval when calculating the retry budget.
+Defaults to 0ms.
+[[H2]] Subset
+A subset of endpoints of a service. Subsets can be used for scenarios like A/B testing, or routing to a specific version of a service. Refer to VirtualService documentation for examples of using subsets in these scenarios. In addition, traffic policies defined at the service-level can be overridden at a subset-level. The following rule uses a round robin load balancing policy for all traffic going to a subset named testversion that is composed of endpoints (e.g., pods) with labels (version:v3).
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: bookinfo-ratings
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+loadBalancer:
+simple: LEAST_REQUEST
+subsets:
+- name: testversion
+labels:
+version: v3
+trafficPolicy:
+loadBalancer:
+simple: ROUND_ROBIN
+Note: Policies specified for subsets will not take effect until a route rule explicitly sends traffic to this subset.
+One or more labels are typically required to identify the subset destination, however, when the corresponding DestinationRule represents a host that supports multiple SNI hosts (e.g., an egress gateway), a subset without labels may be meaningful. In this case a traffic policy with ClientTLSSettings can be used to identify a specific SNI host corresponding to the named subset.
+Field | Description
+name
+string
+Required
+Name of the subset. The service name and the subset name can be used for traffic splitting in a route rule.
+labels
+map<string, string>
+Labels apply a filter over the endpoints of a service in the service registry. See route rules for examples of usage.
+trafficPolicy
+TrafficPolicy
+Traffic policies that apply to this subset. Subsets inherit the traffic policies specified at the DestinationRule level. Settings specified at the subset level will override the corresponding settings specified at the DestinationRule level.
+[[H2]] LoadBalancerSettings
+Load balancing policies to apply for a specific destination. See Envoy’s load balancing documentation for more details.
+For example, the following rule uses a round robin load balancing policy for all traffic going to the ratings service.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: bookinfo-ratings
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+loadBalancer:
+simple: ROUND_ROBIN
+The following example sets up sticky sessions for the ratings service hashing-based load balancer for the same ratings service using the the User cookie as the hash key.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: bookinfo-ratings
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+loadBalancer:
+consistentHash:
+httpCookie:
+name: user
+ttl: 0s
+Field | Description
+simple
+SimpleLB (oneof)
+Standard load balancing algorithms that require no tuning.
+consistentHash
+ConsistentHashLB (oneof)
+Consistent Hash-based load balancing can be used to provide soft session affinity based on HTTP headers, cookies or other properties.
+localityLbSetting
+LocalityLoadBalancerSetting
+Locality load balancer settings. This will override mesh-wide settings in entirety, meaning no merging would be performed between this object and the object one in MeshConfig Only one of locality_lb_setting and zone_aware_lb_setting can be set.
+zoneAwareLbSetting
+ZoneAwareLoadBalancerSetting
+Zone Aware load balancer settings. This will override mesh-wide settings in entirety, meaning no merging would be performed between this object and the object one in MeshConfig. Only one of locality_lb_setting and zone_aware_lb_setting can be set.
+warmupDurationSecs
+Duration
+Deprecated: use warmup instead.
+warmup
+WarmupConfiguration
+Represents the warmup configuration of Service. If set, the newly created endpoint of service remains in warmup mode starting from its creation time for the duration of this window and Istio progressively increases amount of traffic for that endpoint instead of sending proportional amount of traffic. This should be enabled for services that require warm up time to serve full production load with reasonable latency. Please note that this is most effective when few new endpoints come up like scale event in Kubernetes. When all the endpoints are relatively new like new deployment, this is not very effective as all endpoints end up getting same amount of requests. Currently this is only supported for ROUND_ROBIN and LEAST_REQUEST load balancers.
+[[H3]] ConsistentHashLB
+Consistent Hash-based load balancing can be used to provide soft session affinity based on HTTP headers, cookies or other properties. The affinity to a particular destination host may be lost when one or more hosts are added/removed from the destination service.
+Note: consistent hashing is less reliable at maintaining affinity than common “sticky sessions” implementations, which often encode a specific destination in a cookie, ensuring affinity is maintained as long as the backend remains. With consistent hash, the guarantees are weaker; any host addition or removal can break affinity for 1/backends requests.
+Warning: consistent hashing depends on each proxy having a consistent view of endpoints. This is not the case when locality load balancing is enabled. Locality load balancing and consistent hash will only work together when all proxies are in the same locality, or a high level load balancer handles locality affinity.
+Field | Description
+httpHeaderName
+string (oneof)
+Hash based on a specific HTTP header.
+httpCookie
+HTTPCookie (oneof)
+Hash based on HTTP cookie.
+useSourceIp
+bool (oneof)
+Hash based on the source IP address. This is applicable for both TCP and HTTP connections.
+httpQueryParameterName
+string (oneof)
+Hash based on a specific HTTP query parameter.
+ringHash
+RingHash (oneof)
+The ring/modulo hash load balancer implements consistent hashing to backend hosts.
+maglev
+MagLev (oneof)
+The Maglev load balancer implements consistent hashing to backend hosts.
+minimumRingSize
+uint64
+Deprecated. Use RingHash instead.
+[[H4]] RingHash
+Field | Description
+minimumRingSize
+uint64
+The minimum number of virtual nodes to use for the hash ring. Defaults to 1024. Larger ring sizes result in more granular load distributions. If the number of hosts in the load balancing pool is larger than the ring size, each host will be assigned a single virtual node.
+[[H4]] MagLev
+Field | Description
+tableSize
+uint64
+The table size for Maglev hashing. This helps in controlling the disruption when the backend hosts change. Increasing the table size reduces the amount of disruption. The table size must be prime number less than 5000011. If it is not specified, the default is 65537.
+[[H4]] HTTPCookie
+Describes a HTTP cookie that will be used as the hash key for the Consistent Hash load balancer.
+Field | Description
+name
+string
+Required
+Name of the cookie.
+path
+string
+Path to set for the cookie.
+ttl
+Duration
+Lifetime of the cookie. If specified, a cookie with the TTL will be generated if the cookie is not present. If the TTL is present and zero, the generated cookie will be a session cookie.
+attributes
+Attribute[]
+Additional attributes for the cookie. They will be used when generating a new cookie.
+[[H5]] Attribute
+Attribute defines an API for adding additional attributes for a HTTP cookie.
+Field | Description
+name
+string
+Required
+The name of the cookie attribute.
+value
+string
+The optional value of the cookie attribute.
+[[H3]] SimpleLB
+Standard load balancing algorithms that require no tuning.
+Name | Description
+UNSPECIFIED
+No load balancing algorithm has been specified by the user. Istio will select an appropriate default.
+RANDOM
+The random load balancer selects a random healthy host. The random load balancer generally performs better than round robin if no health checking policy is configured.
+PASSTHROUGH
+This option will forward the connection to the original IP address requested by the caller without doing any form of load balancing. This option must be used with care. It is meant for advanced use cases. Refer to Original Destination load balancer in Envoy for further details.
+ROUND_ROBIN
+A basic round robin load balancing policy. This is generally unsafe for many scenarios (e.g. when endpoint weighting is used) as it can overburden endpoints. In general, prefer to use LEAST_REQUEST as a drop-in replacement for ROUND_ROBIN.
+LEAST_REQUEST
+The least request load balancer spreads load across endpoints, favoring endpoints with the least outstanding requests. This is generally safer and outperforms ROUND_ROBIN in nearly all cases. Prefer to use LEAST_REQUEST as a drop-in replacement for ROUND_ROBIN.
+LEAST_CONN
+Deprecated. Use LEAST_REQUEST instead.
+[[H2]] WarmupConfiguration
+Field | Description
+duration
+Duration
+Required
+Duration of warmup mode
+minimumPercent
+DoubleValue
+Configures the minimum percentage of origin weight If unspecified, defaults to 10
+aggression
+DoubleValue
+This parameter controls the speed of traffic increase over the warmup duration. Defaults to 1.0, so that endpoints would get linearly increasing amount of traffic. When increasing the value for this parameter, the speed of traffic ramp-up increases non-linearly.
+[[H2]] ConnectionPoolSettings
+Connection pool settings for an upstream host. The settings apply to each individual host in the upstream service. See Envoy’s circuit breaker for more details. Connection pool settings can be applied at the TCP level as well as at HTTP level.
+For example, the following rule sets a limit of 100 connections to redis service called myredissrv with a connect timeout of 30ms
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: bookinfo-redis
+spec:
+host: myredissrv.prod.svc.cluster.local
+trafficPolicy:
+connectionPool:
+tcp:
+maxConnections: 100
+connectTimeout: 30ms
+tcpKeepalive:
+time: 7200s
+interval: 75s
+Field | Description
+tcp
+TCPSettings
+Settings common to both HTTP and TCP upstream connections.
+http
+HTTPSettings
+HTTP connection pool settings.
+[[H3]] TCPSettings
+Settings common to both HTTP and TCP upstream connections.
+Field | Description
+maxConnections
+int32
+Maximum number of HTTP1 /TCP connections to a destination host. Default 2^32-1.
+connectTimeout
+Duration
+TCP connection timeout. format: 1h/1m/1s/1ms. MUST be >=1ms. Default is 10s.
+tcpKeepalive
+TcpKeepalive
+If set then set SO_KEEPALIVE on the socket to enable TCP Keepalives.
+maxConnectionDuration
+Duration
+The maximum duration of a connection. The duration is defined as the period since a connection was established. If not set, there is no max duration. When maxConnectionDuration is reached the connection will be closed. Duration must be at least 1ms.
+idleTimeout
+Duration
+The idle timeout for TCP connections. This is applied to the outbound connections to the upstream service. The idle timeout is defined as the period in which there are no bytes sent or received on the upstream connection. If not set, the default idle timeout is 1 hour. If set to 0s, the timeout will be disabled. Idle timeout is not configured per each cluster individually when weighted destinations are used, because idleTimeout is a property of a listener, not a cluster. In that case, idleTimeout specified in a destination rule for the first weighted route is configured in the listener, which means also for all weighted routes. To set the idle timeout for downstream (inbound) connections, use the ISTIO_META_IDLE_TIMEOUT field in the proxy configuration (e.g., via the proxy.istio.io/config annotation) which applies to all inbound connections.
+proxy.istio.io/config: |-
+proxyMetadata:
+ISTIO_META_IDLE_TIMEOUT: "100s"
+[[H4]] TcpKeepalive
+TCP keepalive.
+Field | Description
+probes
+uint32
+Maximum number of keepalive probes to send without response before deciding the connection is dead. Default is to use the OS level configuration (unless overridden, Linux defaults to 9.)
+time
+Duration
+The time duration a connection needs to be idle before keep-alive probes start being sent. Default is to use the OS level configuration (unless overridden, Linux defaults to 7200s (ie 2 hours.)
+interval
+Duration
+The time duration between keep-alive probes. Default is to use the OS level configuration (unless overridden, Linux defaults to 75s.)
+[[H3]] HTTPSettings
+Settings applicable to HTTP1.1/HTTP2/GRPC connections.
+Field | Description
+http1MaxPendingRequests
+int32
+Maximum number of requests that will be queued while waiting for a ready connection pool connection. Default 2^32-1. Refer to Envoy Circuit Breaking under which conditions a new connection is created for HTTP/2. Please note that this is applicable to both HTTP/1.1 and HTTP/2.
+http2MaxRequests
+int32
+Maximum number of active requests to a destination. Default 2^32-1. Please note that this is applicable to both HTTP/1.1 and HTTP/2.
+maxRequestsPerConnection
+int32
+Maximum number of requests per connection to a backend. Setting this parameter to 1 disables keep alive. Default 0, meaning “unlimited”, up to 2^29.
+maxRetries
+int32
+Maximum number of retries that can be outstanding to all hosts in a cluster at a given time. Defaults to 2^32-1.
+idleTimeout
+Duration
+The idle timeout for upstream connection pool connections. The idle timeout is defined as the period in which there are no active requests. If not set, the default is 1 hour. When the idle timeout is reached, the connection will be closed. If the connection is an HTTP/2 connection a drain sequence will occur prior to closing the connection. Note that request based timeouts mean that HTTP/2 PINGs will not keep the connection alive. Applies to both HTTP/1.1 and HTTP/2 connections.
+h2UpgradePolicy
+H2UpgradePolicy
+Specify if http1.1 connection should be upgraded to http2 for the associated destination.
+useClientProtocol
+bool
+If set to true, client protocol will be preserved while initiating connection to backend. Note that when this is set to true, h2UpgradePolicy will be ineffective i.e. the client connections will not be upgraded to http2.
+maxConcurrentStreams
+int32
+The maximum number of concurrent streams allowed for a peer on one HTTP/2 connection. Defaults to 2^31-1.
+http2KeepAlive
+ConnectionKeepalive
+Configure HTTP/2 PING frames for upstream connections.
+[[H4]] ConnectionKeepalive
+Settings for HTTP/2 PING frames.
+Field | Description
+interval
+Duration
+Send HTTP/2 PING frames at this interval. Required when http2KeepAlive is set.
+timeout
+Duration
+How long to wait for a response to an HTTP/2 PING frame before closing the connection. Required when http2KeepAlive is set.
+[[H4]] H2UpgradePolicy
+Policy for upgrading http1.1 connections to http2.
+Name | Description
+DEFAULT
+Use the global default.
+DO_NOT_UPGRADE
+Do not upgrade the connection to http2. This opt-out option overrides the default.
+UPGRADE
+Upgrade the connection to http2. This opt-in option overrides the default.
+[[H2]] OutlierDetection
+A Circuit breaker implementation that tracks the status of each individual host in the upstream service. Applicable to both HTTP and TCP services. For HTTP services, hosts that continually return 5xx errors for API calls are ejected from the pool for a pre-defined period of time. For TCP services, connection timeouts or connection failures to a given host counts as an error when measuring the consecutive errors metric. See Envoy’s outlier detection for more details.
+Note: Istio’s default mesh configuration enables locality load balancing (localityLbSetting.enabled: true). As a result, configuring OutlierDetection in a DestinationRule will automatically activate locality-aware failover behavior — Envoy uses the outlier detection state to determine when endpoints are unhealthy and should be failed over to the next locality. To suppress this implicit failover, explicitly set localityLbSetting.enabled: false in the DestinationRule’s load balancer settings.
+The following rule sets a connection pool size of 100 HTTP1 connections with no more than 10 req/connection to the “reviews” service. In addition, it sets a limit of 1000 concurrent HTTP/2 requests and configures upstream hosts to be scanned every 5 mins so that any host that fails 7 consecutive times with a 502, 503, or 504 error code will be ejected for 15 minutes.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: reviews-cb-policy
+spec:
+host: reviews.prod.svc.cluster.local
+trafficPolicy:
+connectionPool:
+tcp:
+maxConnections: 100
+http:
+http2MaxRequests: 1000
+maxRequestsPerConnection: 10
+outlierDetection:
+consecutive5xxErrors: 7
+interval: 5m
+baseEjectionTime: 15m
+Field | Description
+splitExternalLocalOriginErrors
+bool
+Determines whether to distinguish local origin failures from external errors. If set to true consecutiveLocalOriginFailures is taken into account for outlier detection calculations. This should be used when you want to derive the outlier detection status based on the errors seen locally such as failure to connect, timeout while connecting etc. rather than the status code returned by upstream service. This is especially useful when the upstream service explicitly returns a 5xx for some requests and you want to ignore those responses from upstream service while determining the outlier detection status of a host. Defaults to false.
+consecutiveLocalOriginFailures
+UInt32Value
+The number of consecutive locally originated failures before ejection occurs. Defaults to 5. Parameter takes effect only when splitExternalLocalOriginErrors is set to true.
+consecutiveGatewayErrors
+UInt32Value
+Number of gateway errors before a host is ejected from the connection pool. When the upstream host is accessed over HTTP, a 502, 503, or 504 return code qualifies as a gateway error. When the upstream host is accessed over an opaque TCP connection, connect timeouts and connection error/failure events qualify as a gateway error. This feature is disabled by default or when set to the value 0.
+Note that consecutiveGatewayErrors and consecutive5xxErrors can be used separately or together. Because the errors counted by consecutiveGatewayErrors are also included in consecutive5xxErrors, if the value of consecutiveGatewayErrors is greater than or equal to the value of consecutive5xxErrors, consecutiveGatewayErrors will have no effect.
+consecutive5xxErrors
+UInt32Value
+Number of 5xx errors before a host is ejected from the connection pool. When the upstream host is accessed over an opaque TCP connection, connect timeouts, connection error/failure and request failure events qualify as a 5xx error. This feature defaults to 5 but can be disabled by setting the value to 0.
+Note that consecutiveGatewayErrors and consecutive5xxErrors can be used separately or together. Because the errors counted by consecutiveGatewayErrors are also included in consecutive5xxErrors, if the value of consecutiveGatewayErrors is greater than or equal to the value of consecutive5xxErrors, consecutiveGatewayErrors will have no effect.
+interval
+Duration
+Time interval between ejection sweep analysis. format: 1h/1m/1s/1ms. MUST be >=1ms. Default is 10s.
+baseEjectionTime
+Duration
+Minimum ejection duration. A host will remain ejected for a period equal to the product of minimum ejection duration and the number of times the host has been ejected. This technique allows the system to automatically increase the ejection period for unhealthy upstream servers. format: 1h/1m/1s/1ms. MUST be >=1ms. Default is 30s.
+maxEjectionPercent
+int32
+Maximum % of hosts in the load balancing pool for the upstream service that can be ejected. Defaults to 10%.
+minHealthPercent
+int32
+Outlier detection will be enabled as long as the associated load balancing pool has at least minHealthPercent hosts in healthy mode. When the percentage of healthy hosts in the load balancing pool drops below this threshold, outlier detection will be disabled and the proxy will load balance across all hosts in the pool (healthy and unhealthy). The threshold can be disabled by setting it to 0%. The default is 0% as it’s not typically applicable in k8s environments with few pods per service.
+outlierDetectionHttpErrorCodes
+uint32[]
+Specifies the HTTP response status codes that are treated as outlier detection errors. If specified, only responses with one of these status codes will be treated as errors by outlier detection. If not specified, only 5xx responses are treated as errors.
+Note: Host ejection is still driven by the consecutive5xxErrors and consecutiveGatewayErrors thresholds; this field only redefines which HTTP status codes are counted as errors toward those thresholds.
+Values must be in the range [100, 599].
+[[H2]] ClientTLSSettings
+SSL/TLS related settings for upstream connections. See Envoy’s TLS context for more details. These settings are common to both HTTP and TCP upstreams.
+For example, the following rule configures a client to use mutual TLS for connections to upstream database cluster.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: db-mtls
+spec:
+host: mydbserver.prod.svc.cluster.local
+trafficPolicy:
+tls:
+mode: MUTUAL
+clientCertificate: /etc/certs/myclientcert.pem
+privateKey: /etc/certs/client_private_key.pem
+caCertificates: /etc/certs/rootcacerts.pem
+The following rule configures a client to use TLS when talking to a foreign service whose domain matches *.foo.com.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: tls-foo
+spec:
+host: "*.foo.com"
+trafficPolicy:
+tls:
+mode: SIMPLE
+The following rule configures a client to use Istio mutual TLS when talking to rating services.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: ratings-istio-mtls
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+tls:
+mode: ISTIO_MUTUAL
+Field | Description
+mode
+TLSmode
+Indicates whether connections to this port should be secured using TLS. The value of this field determines how TLS is enforced.
+clientCertificate
+string
+REQUIRED if mode is MUTUAL. The path to the file holding the client-side TLS certificate to use. Should be empty if mode is ISTIO_MUTUAL.
+privateKey
+string
+REQUIRED if mode is MUTUAL. The path to the file holding the client’s private key. Should be empty if mode is ISTIO_MUTUAL.
+caCertificates
+string
+OPTIONAL: The path to the file containing certificate authority certificates to use in verifying a presented server certificate. If omitted, the proxy will verify the server’s certificate using the OS CA certificates. Should be empty if mode is ISTIO_MUTUAL.
+credentialName
+string
+The name of the secret that holds the TLS certs for the client including the CA certificates. This secret must exist in the namespace of the proxy using the certificates. An Opaque secret should contain the following keys and values: key: <privateKey>, cert: <clientCert>, cacert: <CACertificate>, crl: <certificateRevocationList> Here CACertificate is used to verify the server certificate. For mutual TLS, cacert: <CACertificate> can be provided in the same secret or a separate secret named <secret>-cacert. A TLS secret for client certificates with an additional ca.crt key for CA certificates and ca.crl key for certificate revocation list(CRL) is also supported. Only one of client certificates and CA certificate or credentialName can be specified.
+NOTE: This field is applicable at sidecars only if DestinationRule has a workloadSelector specified. Otherwise the field will be applicable only at gateways, and sidecars will continue to use the certificate paths.
+subjectAltNames
+string[]
+A list of alternate names to verify the subject identity in the certificate. If specified, the proxy will verify that the server certificate’s subject alt name matches one of the specified values. If specified, this list overrides the value of subjectAltNames from the ServiceEntry. If unspecified, automatic validation of upstream presented certificate for new upstream connections will be done based on the downstream HTTP host/authority header.
+sni
+string
+SNI string to present to the server during TLS handshake. If unspecified, SNI will be automatically set based on downstream HTTP host/authority header for SIMPLE and MUTUAL TLS modes.
+insecureSkipVerify
+BoolValue
+insecureSkipVerify specifies whether the proxy should skip verifying the CA signature and SAN for the server certificate corresponding to the host. The default value of this field is false.
+caCrl
+string
+OPTIONAL: The path to the file containing the certificate revocation list (CRL) to use in verifying a presented server certificate. CRL is a list of certificates that have been revoked by the CA (Certificate Authority) before their scheduled expiration date. If specified, the proxy will verify if the presented certificate is part of the revoked list of certificates. If omitted, the proxy will not verify the certificate against the crl. Note that if credentialName is set, CRL cannot be specified using caCrl, rather it has to be specified inside the credential.
+[[H3]] TLSmode
+TLS connection mode
+Name | Description
+DISABLE
+Do not setup a TLS connection to the upstream endpoint.
+SIMPLE
+Originate a TLS connection to the upstream endpoint.
+MUTUAL
+Secure connections to the upstream using mutual TLS by presenting client certificates for authentication.
+ISTIO_MUTUAL
+Secure connections to the upstream using mutual TLS by presenting client certificates for authentication. Compared to Mutual mode, this mode uses certificates generated automatically by Istio for mTLS authentication. When this mode is used, all other fields in ClientTLSSettings should be empty.
+[[H2]] LocalityLoadBalancerSetting
+Locality-weighted load balancing allows administrators to control the distribution of traffic to endpoints based on the localities of where the traffic originates and where it will terminate. These localities are specified using arbitrary labels that designate a hierarchy of localities in {region}/{zone}/{sub-zone} form. For additional detail refer to Locality Weight The following example shows how to setup locality weights mesh-wide.
+Given a mesh with workloads and their service deployed to “us-west/zone1/*” and “us-west/zone2/*”. This example specifies that when traffic accessing a service originates from workloads in “us-west/zone1/*”, 80% of the traffic will be sent to endpoints in “us-west/zone1/*”, i.e the same zone, and the remaining 20% will go to endpoints in “us-west/zone2/*”. This setup is intended to favor routing traffic to endpoints in the same locality. A similar setting is specified for traffic originating in “us-west/zone2/*”.
+distribute:
+- from: us-west/zone1/*
+to:
+"us-west/zone1/*": 80
+"us-west/zone2/*": 20
+- from: us-west/zone2/*
+to:
+"us-west/zone1/*": 20
+"us-west/zone2/*": 80
+If the goal of the operator is not to distribute load across zones and regions but rather to restrict the regionality of failover to meet other operational requirements an operator can set a ‘failover’ policy instead of a ‘distribute’ policy.
+The following example sets up a locality failover policy for regions. Assume a service resides in zones within us-east, us-west & eu-west this example specifies that when endpoints within us-east become unhealthy traffic should failover to endpoints in any zone or sub-zone within eu-west and similarly us-west should failover to us-east.
+failover:
+- from: us-east
+to: eu-west
+- from: us-west
+to: us-east
+Field | Description
+distribute
+Distribute[]
+only one of distribute, failover or failoverPriority can be set. Explicitly specify loadbalancing weight across different zones and geographical locations. Refer to Locality weighted load balancing If empty, the locality weight is set according to the endpoints number within it.
+failover
+Failover[]
+only one of distribute, failover or failoverPriority can be set. Explicitly specify the region traffic will land on when endpoints in local region becomes unhealthy. Should be used together with OutlierDetection to detect unhealthy endpoints. Note: if no OutlierDetection specified, this will not take effect.
+failoverPriority
+string[]
+failoverPriority is an ordered list of labels used to sort endpoints to do priority based load balancing. This is to support traffic failover across different groups of endpoints. Two kinds of labels can be specified:
+Specify only label keys [key1, key2, key3], istio would compare the label values of client with endpoints. Suppose there are total N label keys [key1, key2, key3, ...keyN] specified:
+Endpoints matching all N labels with the client proxy have priority P(0) i.e. the highest priority.
+Endpoints matching the first N-1 labels with the client proxy have priority P(1) i.e. second highest priority.
+By extension of this logic, endpoints matching only the first label with the client proxy has priority P(N-1) i.e. second lowest priority.
+All the other endpoints have priority P(N) i.e. lowest priority.
+Specify labels with key and value [key1=value1, key2=value2, key3=value3], istio would compare the labels with endpoints. Suppose there are total N labels [key1=value1, key2=value2, key3=value3, ...keyN=valueN] specified:
+Endpoints matching all N labels have priority P(0) i.e. the highest priority.
+Endpoints matching the first N-1 labels have priority P(1) i.e. second highest priority.
+By extension of this logic, endpoints matching only the first label has priority P(N-1) i.e. second lowest priority.
+All the other endpoints have priority P(N) i.e. lowest priority.
+Note: For a label to be considered for match, the previous labels must match, i.e. nth label would be considered matched only if first n-1 labels match.
+It can be any label specified on both client and server workloads. The following labels which have special semantic meaning are also supported:
+topology.istio.io/network is used to match the network metadata of an endpoint, which can be specified by pod/namespace label topology.istio.io/network, sidecar env ISTIO_META_NETWORK or MeshNetworks.
+topology.istio.io/cluster is used to match the clusterID of an endpoint, which can be specified by pod label topology.istio.io/cluster or pod env ISTIO_META_CLUSTER_ID.
+topology.kubernetes.io/region is used to match the region metadata of an endpoint, which maps to Kubernetes node label topology.kubernetes.io/region or the deprecated label failure-domain.beta.kubernetes.io/region.
+topology.kubernetes.io/zone is used to match the zone metadata of an endpoint, which maps to Kubernetes node label topology.kubernetes.io/zone or the deprecated label failure-domain.beta.kubernetes.io/zone.
+topology.istio.io/subzone is used to match the subzone metadata of an endpoint, which maps to Istio node label topology.istio.io/subzone.
+kubernetes.io/hostname is used to match the current node of an endpoint, which maps to Kubernetes node label kubernetes.io/hostname.
+The below topology config indicates the following priority levels:
+failoverPriority:
+- "topology.istio.io/network"
+- "topology.kubernetes.io/region"
+- "topology.kubernetes.io/zone"
+- "topology.istio.io/subzone"
+endpoints match same [network, region, zone, subzone] label with the client proxy have the highest priority.
+endpoints have same [network, region, zone] label but different [subzone] label with the client proxy have the second highest priority.
+endpoints have same [network, region] label but different [zone] label with the client proxy have the third highest priority.
+endpoints have same [network] but different [region] labels with the client proxy have the fourth highest priority.
+all the other endpoints have the same lowest priority.
+Suppose a service associated endpoints reside in multi clusters, the below example represents:
+endpoints in clusterA and has version=v1 label have P(0) priority.
+endpoints not in clusterA but has version=v1 label have P(1) priority.
+all the other endpoints have P(2) priority.
+failoverPriority:
+- "version=v1"
+- "topology.istio.io/cluster=clusterA"
+only one of distribute, failover or failoverPriority can be set. And it should be used together with OutlierDetection to detect unhealthy endpoints, otherwise has no effect.
+enabled
+BoolValue
+Enable locality load balancing. This is DestinationRule-level and will override mesh-wide settings in entirety. e.g. true means that turn on locality load balancing for this DestinationRule no matter what mesh-wide settings is.
+[[H3]] Distribute
+Describes how traffic originating in the ‘from’ zone or sub-zone is distributed over a set of ’to’ zones. Syntax for specifying a zone is {region}/{zone}/{sub-zone} and terminal wildcards are allowed on any segment of the specification. Examples:
+* - matches all localities
+us-west/* - all zones and sub-zones within the us-west region
+us-west/zone-1/* - all sub-zones within us-west/zone-1
+Field | Description
+from
+string
+Originating locality, ‘/’ separated, e.g. ‘region/zone/sub_zone’.
+to
+map<string, uint32>
+Map of upstream localities to traffic distribution weights. The sum of all weights should be 100. Any locality not present will receive no traffic.
+[[H3]] Failover
+Specify the traffic failover policy across regions. Since zone and sub-zone failover is supported by default this only needs to be specified for regions when the operator needs to constrain traffic failover so that the default behavior of failing over to any endpoint globally does not apply. This is useful when failing over traffic across regions would not improve service health or may need to be restricted for other reasons like regulatory controls.
+Field | Description
+from
+string
+Originating region.
+to
+string
+Destination region the traffic will fail over to when endpoints in the ‘from’ region becomes unhealthy.
+[[H2]] ZoneAwareLoadBalancerSetting
+Zone Aware Load Balancer automatically routes traffic to endpoints in the same availability zone as the downstream proxy, reducing cross-zone latency and inter-zone data transfer costs. Unlike LocalityLoadBalancerSetting, which requires explicitly specifying traffic weights per locality, Zone Aware Load Balancer automatically calculates routing percentages based on the relative number of upstream endpoints in each zone — no manual distribution configuration is needed.
+When the local zone has proportionally fewer endpoints than the share of traffic it would need to absorb, Envoy automatically overflows the excess to other zones rather than overloading local endpoints.
+Additionally Zone Aware Load Balancer always partitions endpoints by region: the proxy’s own region forms the highest-priority tier and Envoy’s automatic zone balancing operates only among the endpoints within that region. Endpoints in other regions form lower-priority failover tiers that receive traffic only when the local region is unhealthy or runs out of capacity. The failover and failoverPriority fields only influence how those lower tiers are ordered; the regional partitioning itself is always applied whenever zone-aware load balancing is enabled.
+For proxies to activate Zone Aware Load Balancer all of the following conditions are needed:
+The downstream proxy is configured with ISTIO_META_ENABLE_SELF_DISCOVERY=true (set via proxyMetadata).
+The upstream cluster spans more than one zone.
+The upstream cluster has at least minClusterSize hosts (default 6) in the local region.
+There is at least one healthy endpoint in the local zone.
+If any of these conditions are not met, Envoy falls back to the configured load balancing policy (e.g. round-robin or least-request) across all endpoints in the local region.
+For additional details on the algorithm, refer to Envoy’s Zone Aware Routing documentation.
+Note: Zone Aware Load Balancer is not supported on Ambient mode.
+The following example enables zone-aware load balancing for the ratings service:
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: ratings-zone-aware
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+loadBalancer:
+simple: ROUND_ROBIN
+zoneAwareLbSetting:
+enabled: true
+The following example adds a cross-region failover policy so that when all endpoints in us-east become unhealthy, traffic fails over to eu-west instead of any region globally:
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: ratings-zone-aware-failover
+spec:
+host: ratings.prod.svc.cluster.local
+trafficPolicy:
+loadBalancer:
+simple: LEAST_REQUEST
+zoneAwareLbSetting:
+enabled: true
+failover:
+- from: us-east
+to: eu-west
+- from: us-west
+to: us-east
+outlierDetection:
+consecutive5xxErrors: 5
+interval: 30s
+baseEjectionTime: 30s
+Field | Description
+enabled
+BoolValue
+Enable zone aware load balancing. This is DestinationRule-level and will override mesh-wide settings in entirety, meaning no merging is performed with MeshConfig.
+failover
+Failover[]
+Explicitly specifies the region traffic will land on when the endpoints in the local region become unhealthy. Regional partitioning is always applied; this field only customizes the ordering of the cross-region tiers. It may be used on its own, or together with failoverPriority, in which case it orders the regional tiers applied on top of the label-based priorities. For this to be effective consider one of the following:
+Use together with OutlierDetection to detect unhealthy endpoints in the local zone so that traffic fails over to other zones according to the specified priority.
+Enable PILOT_SEND_UNHEALTHY_ENDPOINTS to allow Envoy to know when endpoints in the local zone are unhealthy and failover according to the specified priority.
+failoverPriority
+string[]
+failoverPriority is an ordered list of labels used to sort endpoints for priority-based load balancing. This supports traffic failover across different groups of endpoints and complements the automatic zone-level routing by allowing label-based priority tiers on top of it.
+Regional partitioning is always applied in addition to these labels: within each tier produced by failoverPriority, endpoints in the proxy’s own region are preferred over endpoints in other regions (ordered by failover when it is also set). Because region-, zone-, and subzone-level routing are all handled automatically, failoverPriority must not include the topology.kubernetes.io/region, topology.kubernetes.io/zone, or topology.istio.io/subzone labels.
+Two kinds of labels can be specified:
+Specify only label keys [key1, key2, key3], istio would compare the label values of client with endpoints. Suppose there are total N label keys [key1, key2, key3, ...keyN] specified:
+Endpoints matching all N labels with the client proxy have priority P(0) i.e. the highest priority.
+Endpoints matching the first N-1 labels with the client proxy have priority P(1) i.e. second highest priority.
+By extension of this logic, endpoints matching only the first label with the client proxy has priority P(N-1) i.e. second lowest priority.
+All the other endpoints have priority P(N) i.e. lowest priority.
+Specify labels with key and value [key1=value1, key2=value2, key3=value3], istio would compare the labels with endpoints. Suppose there are total N labels [key1=value1, key2=value2, key3=value3, ...keyN=valueN] specified:
+Endpoints matching all N labels have priority P(0) i.e. the highest priority.
+Endpoints matching the first N-1 labels have priority P(1) i.e. second highest priority.
+By extension of this logic, endpoints matching only the first label has priority P(N-1) i.e. second lowest priority.
+All the other endpoints have priority P(N) i.e. lowest priority.
+Note: For a label to be considered for match, the previous labels must match, i.e. nth label would be considered matched only if first n-1 labels match.
+It can be any label specified on both client and server workloads. The following labels which have special semantic meaning are also supported:
+topology.istio.io/network is used to match the network metadata of an endpoint, which can be specified by pod/namespace label topology.istio.io/network, sidecar env ISTIO_META_NETWORK or MeshNetworks.
+topology.istio.io/cluster is used to match the clusterID of an endpoint, which can be specified by pod label topology.istio.io/cluster or pod env ISTIO_META_CLUSTER_ID.
+topology.kubernetes.io/region is used to match the region metadata of an endpoint, which maps to Kubernetes node label topology.kubernetes.io/region or the deprecated label failure-domain.beta.kubernetes.io/region.
+topology.kubernetes.io/zone is used to match the zone metadata of an endpoint, which maps to Kubernetes node label topology.kubernetes.io/zone or the deprecated label failure-domain.beta.kubernetes.io/zone.
+kubernetes.io/hostname is used to match the current node of an endpoint, which maps to Kubernetes node label kubernetes.io/hostname.
+The below topology config indicates the following priority levels:
+failoverPriority:
+- "topology.istio.io/network"
+- "topology.kubernetes.io/region"
+- "topology.kubernetes.io/zone"
+endpoints match same [network, region, zone] label with the client proxy have the highest priority.
+endpoints have same [network, region] label but different [zone] label with the client proxy have the second highest priority.
+endpoints have same [network] but different [region] labels with the client proxy have the third highest priority.
+all the other endpoints have the same lowest priority.
+Suppose a service associated endpoints reside in multi clusters, the below example represents:
+endpoints in clusterA and has version=v1 label have P(0) priority.
+endpoints not in clusterA but has version=v1 label have P(1) priority.
+all the other endpoints have P(2) priority.
+failoverPriority:
+- "version=v1"
+- "topology.istio.io/cluster=clusterA"
+May be combined with failover (which then orders the regional tiers applied on top of these label-based priorities). For this to be effective consider one of the following:
+Use together with OutlierDetection to detect unhealthy endpoints in the local zone so that traffic fails over to other zones according to the specified priority.
+Enable PILOT_SEND_UNHEALTHY_ENDPOINTS to allow Envoy to know when endpoints in the local zone are unhealthy and failover according to the specified priority.
+minClusterSize
+UInt32Value
+Minimum number of hosts in the upstream cluster’s local region required for zone-aware load balancing to be enabled. If the total number of upstream hosts in the local region falls below this value, zone-aware load balancing is disabled for this cluster regardless of other settings. This guards against zone-skew issues that can occur with very small clusters where the uneven distribution of hosts across zones would produce poor load balancing results. If not specified, the default is 6.
+[[H3]] Failover
+Specify the traffic failover policy across regions. Since zone and sub-zone failover is supported by default this only needs to be specified for regions when the operator needs to constrain traffic failover so that the default behavior of failing over to any endpoint globally does not apply. This is useful when failing over traffic across regions would not improve service health or may need to be restricted for other reasons like regulatory controls.
+Field | Description
+from
+string
+Originating region.
+to
+string
+Destination region the traffic will fail over to when endpoints in the ‘from’ region becomes unhealthy.
+[[H4]] UInt32Value
+Wrapper message for uint32.
+The JSON representation for UInt32Value is JSON number.
+Field | Description
+value
+uint32
+The uint32 value.
+Envoy Filter
+Was this information useful?
+Yes No
+Do you have any suggestions for improvement?
+Thanks for your feedback!
+[[H2]] Links
+DestinationRule
+TrafficPolicy
+PortTrafficPolicy
+TunnelSettings
+ProxyProtocol
+VERSION
+RetryBudget
+Subset
+LoadBalancerSettings
+ConsistentHashLB
+RingHash
+MagLev
+HTTPCookie
+Attribute
+SimpleLB
+WarmupConfiguration
+ConnectionPoolSettings
+TCPSettings
+TcpKeepalive
+HTTPSettings
+ConnectionKeepalive
+H2UpgradePolicy
+OutlierDetection
+ClientTLSSettings
+TLSmode
+LocalityLoadBalancerSetting
+Distribute
+Failover
+ZoneAwareLoadBalancerSetting
+Failover
+UInt32Value

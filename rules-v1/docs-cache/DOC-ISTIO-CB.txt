@@ -1,0 +1,609 @@
+# doc_id: DOC-ISTIO-CB
+# url: https://istio.io/latest/docs/tasks/traffic-management/circuit-breaking/
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Overview
+What is Istio?
+Why choose Istio?
+Sidecar or ambient?
+Quickstart
+Concepts
+Traffic Management
+Security
+Observability
+Extensibility
+Sidecar Mode
+Getting Started
+Platform Setup
+Alibaba Cloud
+Amazon EKS
+Azure
+Docker Desktop
+Google Kubernetes Engine
+Huawei Cloud
+IBM Cloud
+k3d
+kind
+Kops
+Kubernetes Gardener
+KubeSphere Container Platform
+MicroK8s
+Minikube
+OpenShift
+Oracle Cloud Infrastructure
+Tencent Cloud
+Install
+Install with Istioctl
+Install with Helm
+Install Multicluster
+Before you begin
+Install Multi-Primary
+Install Primary-Remote
+Install Multi-Primary on different networks
+Install Primary-Remote on different networks
+Verify the installation
+Install Istio with an External Control Plane
+Install Multiple Istio Control Planes in a Single Cluster
+Virtual Machine Installation
+Upgrade
+Canary Upgrades
+In-place Upgrades
+Upgrade with Helm
+More Guides
+Download the Istio release
+Installation Configuration Profiles
+Compatibility Versions
+Installing Gateways
+Installing the Sidecar
+Customizing the installation configuration
+Advanced Helm Chart Customization
+Install Istio in Dual-Stack mode
+Install Istio with Pod Security Admission
+Install the Istio CNI node agent
+NetworkPolicy
+Getting Started without the Gateway API
+Ambient Mode
+Overview
+Getting Started
+Deploy a sample application
+Secure and visualize the application
+Enforce authorization policies
+Manage traffic
+Clean up
+Install
+Platform-Specific Prerequisites
+Install with Helm
+Install with istioctl
+Install Multicluster
+Before you begin
+Install ambient multi-primary on different networks
+Verify the ambient installation
+Configure failover behavior in multicluster ambient installation
+Kiali Dashboard for Ambient Multi-network
+Upgrade
+Upgrade with Helm
+Migrate from Sidecar to Ambient
+Before you begin
+Install ambient components
+Migrate policies
+Enable ambient mode
+User Guides
+Add workloads to the mesh
+Verify mutual TLS is enabled
+Ambient and Kubernetes NetworkPolicy
+Use Layer 4 security policy
+Configure waypoint proxies
+Traffic Distribution
+ServiceEntry visibility
+Use agentgateway
+Use Layer 7 features
+Extend waypoints with WebAssembly plugins *
+Extend waypoints with Lua scripts *
+Troubleshoot connectivity issues with ztunnel
+Troubleshoot issues with waypoints
+Architecture
+Ambient and the Istio control plane
+Ambient data plane
+HBONE
+Ztunnel traffic redirection
+Tasks
+Traffic Management
+Request Routing
+Fault Injection
+Traffic Shifting
+TCP Traffic Shifting
+Request Timeouts
+Circuit Breaking
+Mirroring
+Locality Load Balancing
+Before you begin
+Locality failover
+Locality weighted distribution
+Cleanup
+Ingress
+Ingress Gateways
+Secure Gateways
+Ingress Gateway without TLS Termination
+Ingress Sidecar TLS Termination
+Kubernetes Ingress
+Kubernetes Gateway API
+Kubernetes Gateway API Inference Extension
+Egress
+Accessing External Services
+Egress TLS Origination
+Egress Gateways
+Egress Gateways with TLS Origination
+Egress using Wildcard Hosts
+Kubernetes Services for Egress Traffic
+Using an External HTTPS Proxy
+Security
+Certificate Management
+Plug in CA Certificates
+Custom CA Integration using Kubernetes CSR *
+Authentication
+Authentication Policy
+JWT claim based routing *
+Copy JWT Claims to HTTP Headers *
+Mutual TLS Migration
+Authorization
+HTTP Traffic
+TCP Traffic
+JWT Token
+External Authorization
+Explicit Deny
+Ingress Access Control
+Trust Domain Migration
+Dry Run *
+TLS Configuration
+Istio Workload Minimum TLS Version Configuration
+Policy Enforcement
+Enabling Rate Limits using Envoy
+Observability
+Telemetry API
+Metrics
+Customizing Istio Metrics with Telemetry API
+Collecting Metrics for TCP Services
+Customizing Istio Metrics
+Classifying Metrics Based on Request or Response
+Querying Metrics from Prometheus
+Visualizing Metrics with Grafana
+Securing Prometheus Scraping for Istio Sidecar and Gateway
+Logs
+Configure access logs with Telemetry API
+Envoy Access Logs
+OpenTelemetry
+Distributed Tracing
+Overview
+Configure tracing with Telemetry API
+Configure tracing using MeshConfig and pod annotations
+Configure trace sampling
+OpenTelemetry
+Jaeger
+Zipkin
+Apache SkyWalking
+Visualizing Your Mesh
+Remotely Accessing Telemetry Addons
+Extensibility
+Executing WebAssembly Modules *
+Executing Lua Scripts *
+Examples
+Bookinfo Application
+Bookinfo with a Virtual Machine
+Learn Microservices using Kubernetes and Istio
+Prerequisites
+Set up a Kubernetes Cluster
+Set up a Local Computer
+Run a Microservice Locally
+Run ratings in Docker
+Run Bookinfo with Kubernetes
+Test in production
+Add a new version of reviews
+Enable Istio on productpage
+Enable Istio on all the microservices
+Configure Istio Ingress Gateway
+Monitoring with Istio
+Operations
+Deployment
+Platform Requirements
+Architecture
+Security Model
+Deployment Models
+Virtual Machine Architecture
+Ambient Multicluster Performance
+Performance and Scalability
+Application Requirements
+Configuration
+Mesh Configuration
+Dynamic Admission Webhooks Overview
+Health Checking of Istio Services
+Configuration Scoping
+Traffic Management
+Protocol Selection
+Managing In-Mesh Certificates
+TLS Configuration
+Traffic Routing
+DNS
+Configuring Gateway Network Topology *
+DNS Proxying
+Multi-cluster Traffic Management
+Security
+Security policy examples
+Harden Docker Container Images
+Observability
+Envoy Statistics
+Monitoring Multicluster Istio with Prometheus
+Extensibility
+Pull Policy for WebAssembly Modules *
+Best Practices
+Deployment Best Practices
+Traffic Management Best Practices
+Security Best Practices
+Image Signing and Validation
+Observability Best Practices
+Common Problems
+Traffic Management Problems
+Security Problems
+Observability Problems
+Sidecar Injection Problems
+Configuration Validation Problems
+Upgrade Problems
+Diagnostic Tools
+Using the Istioctl Command-line Tool
+Debugging Envoy and Istiod
+Understand your Mesh with Istioctl Describe
+Diagnose your Configuration with Istioctl Analyze
+Verifying Istio Sidecar Injection with Istioctl Check-Inject
+Istiod Introspection
+Component Logging
+Debugging Virtual Machines
+Troubleshooting Multicluster
+Troubleshooting the Istio CNI plugin
+Integrations
+cert-manager
+Grafana
+Integration Guide
+Debug Endpoints
+Jaeger
+Kiali
+Prometheus
+SPIRE
+Apache SkyWalking
+Zipkin
+Third Party Load Balancers
+Releases
+Feature Status
+Reporting Bugs
+Security Vulnerabilities
+Supported Releases
+Contribute Documentation
+Work with GitHub
+Add New Documentation
+Remove Retired Documentation
+Build and serve the website locally
+Front matter
+Documentation Review Process
+Add Code Blocks
+Use Shortcodes
+Follow Formatting Standards
+Style Guide
+Terminology Standards
+Diagram Creation Guidelines
+Website Content Changes
+Reference
+Configuration
+Analysis Messages
+Global Mesh Options
+IstioOperator Options
+Proxy Extensions
+Traffic Extension
+Wasm Plugin
+Traffic Management
+Destination Rule
+Envoy Filter
+Gateway
+ProxyConfig
+Service Entry
+Sidecar
+Virtual Service
+Workload Entry
+Workload Group
+Security
+PeerAuthentication
+RequestAuthentication
+Authorization Policy
+Authorization Policy Conditions
+Authorization Policy Normalization
+Telemetry
+Common Types
+Workload Selector
+Istio Standard Metrics
+Resource Annotations
+Resource Labels
+Configuration Analysis Messages
+AlphaAnnotation
+Analyzer Message Format
+ConflictingMeshGatewayVirtualServiceHosts
+ConflictingSidecarWorkloadSelectors
+ConflictingTelemetryWorkloadSelectors
+DeploymentAssociatedToMultipleServices
+DeploymentConflictingPorts
+Deprecated
+DeprecatedAnnotation
+EnvoyFilterUsesAddOperationIncorrectly
+EnvoyFilterUsesRelativeOperation
+EnvoyFilterUsesRelativeOperationWithProxyVersion
+EnvoyFilterUsesRemoveOperationIncorrectly
+EnvoyFilterUsesReplaceOperationIncorrectly
+ExternalControlPlaneAddressIsNotAHostname
+ExternalNameServiceTypeInvalidPortName
+GatewayPortNotDefinedOnService
+IneffectivePolicy
+IneffectiveSelector
+InternalError
+InvalidAnnotation
+InvalidApplicationUID
+InvalidExternalControlPlaneConfig
+InvalidGatewayCredential
+InvalidTelemetryProvider
+LocalhostListener
+MisplacedAnnotation
+MultipleSidecarsWithoutWorkloadSelectors
+MultipleTelemetriesWithoutWorkloadSelectors
+NamespaceMultipleInjectionLabels
+NamespaceNotInjected
+NoMatchingWorkloadsFound
+NoServerCertificateVerificationDestinationLevel
+NoServerCertificateVerificationPortLevel
+PodMissingProxy
+PodsIstioProxyImageMismatchInNamespace
+PortNameIsNotUnderNamingConvention
+ReferencedResourceNotFound
+SchemaValidationError
+ServiceEntryAddressesRequired
+UnknownAnnotation
+VirtualServiceDestinationPortSelectorRequired
+VirtualServiceHostNotFoundInGateway
+VirtualServiceIneffectiveMatch
+VirtualServiceUnreachableRule
+Commands
+install-cni
+istioctl
+pilot-agent
+pilot-discovery
+Glossary
+Contents
+Documentation
+Tasks
+Traffic Management
+Circuit Breaking
+[[H1]] Circuit Breaking
+7 minute read page test
+Before you begin
+Configuring the circuit breaker
+Adding a client
+Tripping the circuit breaker
+Cleaning up
+See also
+This task shows you how to configure circuit breaking for connections, requests, and outlier detection.
+Circuit breaking is an important pattern for creating resilient microservice applications. Circuit breaking allows you to write applications that limit the impact of failures, latency spikes, and other undesirable effects of network peculiarities.
+In this task, you will configure circuit breaking rules and then test the configuration by intentionally “tripping” the circuit breaker.
+[[H2]] Before you begin
+Setup Istio by following the instructions in the Installation guide.
+Start the httpbin sample.
+If you have enabled automatic sidecar injection, deploy the httpbin service:
+Zip
+$ kubectl apply -f @samples/httpbin/httpbin.yaml@
+Otherwise, you have to manually inject the sidecar before deploying the httpbin application:
+Zip
+$ kubectl apply -f <(istioctl kube-inject -f @samples/httpbin/httpbin.yaml@)
+The httpbin application serves as the backend service for this task.
+[[H2]] Configuring the circuit breaker
+Create a destination rule to apply circuit breaking settings when calling the httpbin service:
+If you installed/configured Istio with mutual TLS authentication enabled, you must add a TLS traffic policy mode: ISTIO_MUTUAL to the DestinationRule before applying it. Otherwise requests will generate 503 errors as described here.
+$ kubectl apply -f - <<EOF
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+name: httpbin
+spec:
+host: httpbin
+trafficPolicy:
+connectionPool:
+tcp:
+maxConnections: 1
+http:
+http1MaxPendingRequests: 1
+maxRequestsPerConnection: 1
+outlierDetection:
+consecutive5xxErrors: 1
+interval: 1s
+baseEjectionTime: 3m
+maxEjectionPercent: 100
+EOF
+Verify the destination rule was created correctly:
+$ kubectl get destinationrule httpbin -o yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+...
+spec:
+host: httpbin
+trafficPolicy:
+connectionPool:
+http:
+http1MaxPendingRequests: 1
+maxRequestsPerConnection: 1
+tcp:
+maxConnections: 1
+outlierDetection:
+baseEjectionTime: 3m
+consecutive5xxErrors: 1
+interval: 1s
+maxEjectionPercent: 100
+[[H2]] Adding a client
+Create a client to send traffic to the httpbin service. The client is a simple load-testing client called fortio. Fortio lets you control the number of connections, concurrency, and delays for outgoing HTTP calls. You will use this client to “trip” the circuit breaker policies you set in the DestinationRule.
+Inject the client with the Istio sidecar proxy so network interactions are governed by Istio.
+If you have enabled automatic sidecar injection, deploy the fortio service:
+Zip
+$ kubectl apply -f @samples/httpbin/sample-client/fortio-deploy.yaml@
+Otherwise, you have to manually inject the sidecar before deploying the fortio application:
+Zip
+$ kubectl apply -f <(istioctl kube-inject -f @samples/httpbin/sample-client/fortio-deploy.yaml@)
+Log in to the client pod and use the fortio tool to call httpbin. Pass in curl to indicate that you just want to make one call:
+$ export FORTIO_POD=$(kubectl get pods -l app=fortio -o 'jsonpath={.items[0].metadata.name}')
+$ kubectl exec "$FORTIO_POD" -c fortio -- /usr/bin/fortio curl -quiet http://httpbin:8000/get
+HTTP/1.1 200 OK
+server: envoy
+date: Tue, 25 Feb 2020 20:25:52 GMT
+content-type: application/json
+content-length: 586
+access-control-allow-origin: *
+access-control-allow-credentials: true
+x-envoy-upstream-service-time: 36
+{
+"args": {},
+"headers": {
+"Content-Length": "0",
+"Host": "httpbin:8000",
+"User-Agent": "fortio.org/fortio-1.3.1",
+"X-B3-Parentspanid": "8fc453fb1dec2c22",
+"X-B3-Sampled": "1",
+"X-B3-Spanid": "071d7f06bc94943c",
+"X-B3-Traceid": "86a929a0e76cda378fc453fb1dec2c22",
+"X-Forwarded-Client-Cert": "By=spiffe://cluster.local/ns/default/sa/httpbin;Hash=68bbaedefe01ef4cb99e17358ff63e92d04a4ce831a35ab9a31d3c8e06adb038;Subject=\"\";URI=spiffe://cluster.local/ns/default/sa/default"
+},
+"origin": "127.0.0.1",
+"url": "http://httpbin:8000/get"
+}
+You can see the request succeeded! Now, it’s time to break something.
+[[H2]] Tripping the circuit breaker
+In the DestinationRule settings, you specified maxConnections: 1 and http1MaxPendingRequests: 1. These rules indicate that if you exceed more than one connection and request concurrently, you should see some failures when the istio-proxy opens the circuit for further requests and connections.
+Call the service with two concurrent connections (-c 2) and send 20 requests (-n 20):
+$ kubectl exec "$FORTIO_POD" -c fortio -- /usr/bin/fortio load -c 2 -qps 0 -n 20 -loglevel Warning http://httpbin:8000/get
+20:33:46 I logger.go:97> Log level is now 3 Warning (was 2 Info)
+Fortio 1.3.1 running at 0 queries per second, 6->6 procs, for 20 calls: http://httpbin:8000/get
+Starting at max qps with 2 thread(s) [gomax 6] for exactly 20 calls (10 per thread + 0)
+20:33:46 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:33:47 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:33:47 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+Ended after 59.8524ms : 20 calls. qps=334.16
+Aggregated Function Time : count 20 avg 0.0056869 +/- 0.003869 min 0.000499 max 0.0144329 sum 0.113738
+# range, mid point, percentile, count
+>= 0.000499 <= 0.001 , 0.0007495 , 10.00, 2
+> 0.001 <= 0.002 , 0.0015 , 15.00, 1
+> 0.003 <= 0.004 , 0.0035 , 45.00, 6
+> 0.004 <= 0.005 , 0.0045 , 55.00, 2
+> 0.005 <= 0.006 , 0.0055 , 60.00, 1
+> 0.006 <= 0.007 , 0.0065 , 70.00, 2
+> 0.007 <= 0.008 , 0.0075 , 80.00, 2
+> 0.008 <= 0.009 , 0.0085 , 85.00, 1
+> 0.011 <= 0.012 , 0.0115 , 90.00, 1
+> 0.012 <= 0.014 , 0.013 , 95.00, 1
+> 0.014 <= 0.0144329 , 0.0142165 , 100.00, 1
+# target 50% 0.0045
+# target 75% 0.0075
+# target 90% 0.012
+# target 99% 0.0143463
+# target 99.9% 0.0144242
+Sockets used: 4 (for perfect keepalive, would be 2)
+Code 200 : 17 (85.0 %)
+Code 503 : 3 (15.0 %)
+Response Header Sizes : count 20 avg 195.65 +/- 82.19 min 0 max 231 sum 3913
+Response Body/Total Sizes : count 20 avg 729.9 +/- 205.4 min 241 max 817 sum 14598
+All done 20 calls (plus 0 warmup) 5.687 ms avg, 334.2 qps
+It’s interesting to see that almost all requests made it through! The istio-proxy does allow for some leeway.
+Code 200 : 17 (85.0 %)
+Code 503 : 3 (15.0 %)
+Bring the number of concurrent connections up to 3:
+$ kubectl exec "$FORTIO_POD" -c fortio -- /usr/bin/fortio load -c 3 -qps 0 -n 30 -loglevel Warning http://httpbin:8000/get
+20:32:30 I logger.go:97> Log level is now 3 Warning (was 2 Info)
+Fortio 1.3.1 running at 0 queries per second, 6->6 procs, for 30 calls: http://httpbin:8000/get
+Starting at max qps with 3 thread(s) [gomax 6] for exactly 30 calls (10 per thread + 0)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+20:32:30 W http_client.go:679> Parsed non ok code 503 (HTTP/1.1 503)
+Ended after 51.9946ms : 30 calls. qps=576.98
+Aggregated Function Time : count 30 avg 0.0040001633 +/- 0.003447 min 0.0004298 max 0.015943 sum 0.1200049
+# range, mid point, percentile, count
+>= 0.0004298 <= 0.001 , 0.0007149 , 16.67, 5
+> 0.001 <= 0.002 , 0.0015 , 36.67, 6
+> 0.002 <= 0.003 , 0.0025 , 50.00, 4
+> 0.003 <= 0.004 , 0.0035 , 60.00, 3
+> 0.004 <= 0.005 , 0.0045 , 66.67, 2
+> 0.005 <= 0.006 , 0.0055 , 76.67, 3
+> 0.006 <= 0.007 , 0.0065 , 83.33, 2
+> 0.007 <= 0.008 , 0.0075 , 86.67, 1
+> 0.008 <= 0.009 , 0.0085 , 90.00, 1
+> 0.009 <= 0.01 , 0.0095 , 96.67, 2
+> 0.014 <= 0.015943 , 0.0149715 , 100.00, 1
+# target 50% 0.003
+# target 75% 0.00583333
+# target 90% 0.009
+# target 99% 0.0153601
+# target 99.9% 0.0158847
+Sockets used: 20 (for perfect keepalive, would be 3)
+Code 200 : 11 (36.7 %)
+Code 503 : 19 (63.3 %)
+Response Header Sizes : count 30 avg 84.366667 +/- 110.9 min 0 max 231 sum 2531
+Response Body/Total Sizes : count 30 avg 451.86667 +/- 277.1 min 241 max 817 sum 13556
+All done 30 calls (plus 0 warmup) 4.000 ms avg, 577.0 qps
+Now you start to see the expected circuit breaking behavior. Only 36.7% of the requests succeeded and the rest were trapped by circuit breaking:
+Code 200 : 11 (36.7 %)
+Code 503 : 19 (63.3 %)
+Query the istio-proxy stats to see more:
+$ kubectl exec "$FORTIO_POD" -c istio-proxy -- pilot-agent request GET stats 2>/dev/null | grep httpbin | grep pending
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.circuit_breakers.default.rq_pending_open: 0
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.circuit_breakers.high.rq_pending_open: 0
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.upstream_rq_pending_active: 0
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.upstream_rq_pending_failure_eject: 0
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.upstream_rq_pending_overflow: 21
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.upstream_rq_pending_total: 29
+You can see 21 for the upstream_rq_pending_overflow value which means 21 calls so far have been flagged for circuit breaking.
+[[H2]] Cleaning up
+Remove the rules:
+$ kubectl delete destinationrule httpbin
+Shutdown the httpbin service and client:
+ZipZip
+$ kubectl delete -f @samples/httpbin/sample-client/fortio-deploy.yaml@
+$ kubectl delete -f @samples/httpbin/httpbin.yaml@
+[[H2]] See also
+Simplifying Egress Routing to Wildcard Destinations
+Istio now supports wildcard ServiceEntry with DYNAMIC_DNS resolution, allowing sidecars to route traffic directly to wildcard HTTPS destinations while simplifying egress configuration.
+Routing egress traffic to wildcard destinations
+A generic approach to set up egress gateways that can route traffic to a restricted set of target remote hosts dynamically, including wildcard domains.
+Getting started with the Kubernetes Gateway API
+Using the Gateway API to configure ingress traffic for your Kubernetes cluster.
+Extending Gateway API support in Istio
+A standard API for service mesh, in Istio and in the broader community.
+Direct encrypted traffic from IBM Cloud Kubernetes Service Ingress to Istio Ingress Gateway
+Configure the IBM Cloud Kubernetes Service Application Load Balancer to direct traffic to the Istio Ingress gateway with mutual TLS.
+Multicluster Istio configuration and service discovery using Admiral
+Automating Istio configuration for Istio deployments (clusters) that work as a single mesh.
+Request Timeouts
+Mirroring
+Was this information useful?
+Yes No
+Do you have any suggestions for improvement?
+Thanks for your feedback!
+[[H2]] Links
+Before you begin
+Configuring the circuit breaker
+Adding a client
+Tripping the circuit breaker
+Cleaning up
+See also

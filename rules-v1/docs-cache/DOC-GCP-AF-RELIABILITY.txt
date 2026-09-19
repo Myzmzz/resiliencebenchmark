@@ -1,0 +1,69 @@
+# doc_id: DOC-GCP-AF-RELIABILITY
+# url: https://cloud.google.com/architecture/framework/reliability
+# retrieved: 2026-09-19
+# ---- normalized text below ----
+Home
+Documentation
+Cloud Architecture Center
+Send feedback
+[[H1]] Well-Architected Framework: Reliability pillar Stay organized with collections Save and categorize content based on your preferences.
+Last reviewed 2024-12-30 UTC
+To view the content in the reliability pillar on a single page or to to get a PDF output of the content, see View on one page.
+The reliability pillar in the Google Cloud Well-Architected Framework provides principles and recommendations to help you design, deploy, and manage reliable workloads in Google Cloud.
+This document is intended for cloud architects, developers, platform engineers, administrators, and site reliability engineers.
+Reliability is a system's ability to consistently perform its intended functions within the defined conditions and maintain uninterrupted service. Best practices for reliability include redundancy, fault-tolerant design, monitoring, and automated recovery processes.
+As a part of reliability, resilience is the system's ability to withstand and recover from failures or unexpected disruptions, while maintaining performance. Google Cloud features, like multi-regional deployments, automated backups, and disaster recovery solutions, can help you improve your system's resilience.
+Reliability is important to your cloud strategy for many reasons, including the following:
+Minimal downtime: Downtime can lead to lost revenue, decreased productivity, and damage to reputation. Resilient architectures can help ensure that systems can continue to function during failures or recover efficiently from failures.
+Enhanced user experience: Users expect seamless interactions with technology. Resilient systems can help maintain consistent performance and availability, and they provide reliable service even during high demand or unexpected issues.
+Data integrity: Failures can cause data loss or data corruption. Resilient systems implement mechanisms such as backups, redundancy, and replication to protect data and ensure that it remains accurate and accessible.
+Business continuity: Your business relies on technology for critical operations. Resilient architectures can help ensure continuity after a catastrophic failure, which enables business functions to continue without significant interruptions and supports a swift recovery.
+Compliance: Many industries have regulatory requirements for system availability and data protection. Resilient architectures can help you to meet these standards by ensuring systems remain operational and secure.
+Lower long-term costs: Resilient architectures require upfront investment, but resiliency can help to reduce costs over time by preventing expensive downtime, avoiding reactive fixes, and enabling more efficient resource use.
+[[H2]] Organizational mindset
+To make your systems reliable, you need a plan and an established strategy. This strategy must include education and the authority to prioritize reliability alongside other initiatives.
+Set a clear expectation that the entire organization is responsible for reliability, including development, product management, operations, platform engineering, and site reliability engineering (SRE). Even the business-focused groups, like marketing and sales, can influence reliability.
+Every team must understand the reliability targets and risks of their applications. The teams must be accountable to these requirements. Conflicts between reliability and regular product feature development must be prioritized and escalated accordingly.
+Plan and manage reliability holistically, across all your functions and teams. Consider setting up a Cloud Centre of Excellence (CCoE) that includes a reliability pillar. For more information, see Optimize your organization's cloud journey with a Cloud Center of Excellence.
+[[H2]] Focus areas for reliability
+The activities that you perform to design, deploy, and manage a reliable system can be categorized in the following focus areas. Each of the reliability principles and recommendations in this pillar is relevant to one of these focus areas.
+Scoping: To understand your system, conduct a detailed analysis of its architecture. You need to understand the components, how they work and interact, how data and actions flow through the system, and what could go wrong. Identify potential failures, bottlenecks, and risks, which helps you to take actions to mitigate those issues.
+Observation: To help prevent system failures, implement comprehensive and continuous observation and monitoring. Through this observation, you can understand trends and identify potential problems proactively.
+Response: To reduce the impact of failures, respond appropriately and recover efficiently. Automated responses can also help reduce the impact of failures. Even with planning and controls, failures can still occur.
+Learning: To help prevent failures from recurring, learn from each experience, and take appropriate actions.
+[[H2]] Core principles
+The recommendations in the reliability pillar of the Well-Architected Framework are mapped to the following core principles:
+Define reliability based on user-experience goals
+Set realistic targets for reliability
+Build highly available systems through resource redundancy
+Take advantage of horizontal scalability
+Detect potential failures by using observability
+Design for graceful degradation
+Perform testing for recovery from failures
+Perform testing for recovery from data loss
+Conduct thorough postmortems
+Note: To learn about the building blocks of infrastructure reliability in Google Cloud, see Google Cloud infrastructure reliability guide.
+[[H2]] Contributors
+Authors:
+Laura Hyatt | Customer Engineer, FSI
+Jose Andrade | Customer Engineer, SRE Specialist
+Gino Pelliccia | Principal Architect
+Other contributors:
+Andrés-Leonardo Martínez-Ortiz | Technical Program Manager
+Brian Kudzia | Enterprise Infrastructure Customer Engineer
+Daniel Lees | Cloud Security Architect
+Filipe Gracio, PhD | Customer Engineer, AI/ML Specialist
+Gary Harmson | Principal Architect
+Kumar Dhanagopal | Cross-Product Solution Developer
+Marwan Al Shawi | Partner Customer Engineer
+Nicolas Pintaux | Customer Engineer, Application Modernization Specialist
+Radhika Kanakam | Program Lead, Google Cloud Well-Architected Framework
+Ryan Cox | Principal Architect
+Samantha He | Technical Writer
+Wade Holmes | Global Solutions Director
+Zach Seils | Networking Specialist
+Next
+Define reliability based on user-experience goals arrow_forward
+Send feedback
+Except as otherwise noted, the content of this page is licensed under the Creative Commons Attribution 4.0 License, and code samples are licensed under the Apache 2.0 License. For details, see the Google Developers Site Policies. Java is a registered trademark of Oracle and/or its affiliates.
+Last updated 2024-12-30 UTC.

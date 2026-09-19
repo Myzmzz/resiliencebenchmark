@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start': new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0], j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src= 'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f); })(window,document,'script','dataLayer','GTM-WVF23W3');</script>
+    <meta charset="utf-8">
+    <meta content="initial-scale=1, minimum-scale=1, width=device-width" name="viewport">
+    <title>Google SRE - Enhance Reliability With Cloud Load Balancer</title>
+      <meta name="description" content="Google cloud load balancer ensures high availability, realibility, and low latency with advance traffic management strategies and stabilized anycast.">
+    <meta name="referrer" content="no-referrer" />
+    <link rel="canonical" href="https://sre.google/workbook/managing-load/">
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="https://lh3.googleusercontent.com/Yf2DCX8RKda6r4Jml9DLMByS2zQCBFs3kQpvBfN8UgIh4YVWIYSYIQOoTxJriyuM26cT5PDjyEb5aynDQ0Xyz46yHKnfg8JlUbDW">
+    <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Google+Sans:400|Roboto:400,400italic,500,500italic,700,700italic|Roboto+Mono:400,500,700|Material+Icons">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://lh3.googleusercontent.com/Yf2DCX8RKda6r4Jml9DLMByS2zQCBFs3kQpvBfN8UgIh4YVWIYSYIQOoTxJriyuM26cT5PDjyEb5aynDQ0Xyz46yHKnfg8JlUbDW">
+    <link rel="icon" type="image/png" sizes="16x16" href="https://lh3.googleusercontent.com/Yf2DCX8RKda6r4Jml9DLMByS2zQCBFs3kQpvBfN8UgIh4YVWIYSYIQOoTxJriyuM26cT5PDjyEb5aynDQ0Xyz46yHKnfg8JlUbDW">
+    <link rel="shortcut icon" href="https://lh3.googleusercontent.com/Yf2DCX8RKda6r4Jml9DLMByS2zQCBFs3kQpvBfN8UgIh4YVWIYSYIQOoTxJriyuM26cT5PDjyEb5aynDQ0Xyz46yHKnfg8JlUbDW">
+    <link href="/sre-book/static/css/index.min.css?cache=6c30b59" rel="stylesheet">
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-75468017-1', 'auto');
+      ga('send', 'pageview');
+    </script>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "/workbook/managing-load/"
+      },
+      "headline": "Managing Load",
+      "description": "This chapter describes Google's approach to traffic management with the hope that you can use these best practices to improve the efficiency, reliability, and availability of your services.",
+        "image": "https://lh3.googleusercontent.com/RrDDHM62PHVB290U60uHYlbhVtA97w-hAnDyMTtkZ5VD904KkvSaUKrM_qCSpkw2RV7NfyWqNGjdcIDRtgqmJCbeGbx2JHZmP4Kpxw",
+        "author": [
+            {
+              "@type": "Person",
+              "name": "Cooper Bethea"
+            },
+            {
+              "@type": "Person",
+              "name": "Gráinne Sheerin"
+            },
+            {
+              "@type": "Person",
+              "name": "Jennifer Mace"
+            },
+            {
+              "@type": "Person",
+              "name": "Ruth King"
+            },
+            {
+              "@type": "Person",
+              "name": "Gary Luo"
+            },
+            {
+              "@type": "Person",
+              "name": "Gary O’Connor"
+            }
+        ],
+      "publisher": {
+        "@type": "Organization",
+        "name": "Google SRE",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://lh3.googleusercontent.com/C3_YVnTdc7xzTDekhsGeZ2hEYUnAlp47Au-9C50vi5r44rfpJAgiycs1g6AFKWqIpw6KVPrZWLse1VUqgOqYht-RxV1iowdB0_IABUd966aDsDWW-65m"
+        }
+      }
+    }
+  </script>
+    <script src="/sre-book/static/js/detect.min.js?cache=4cb778b"></script>
+  </head>
+
+  <body>
+    <noscript><iframe class="no-script-iframe" src="https://www.googletagmanager.com/ns.html?id=GTM-WVF23W3"></iframe></noscript>
+    <main>
+  <div ng-controller= "HeaderCtrl as headerCtrl">
+    <div id="curtain" class="menu-closed"></div>
+      <div class="header clearfix">
+        <a id="burger-menu" class="expand"></a>
+        <h2 class="chapter-title">
+                Chapter 11 - Managing Load
+        </h2>
+      </div>
+      <div id="overlay-element" class="expands">
+        <div class="logo">
+          <a href="https://www.google.com"><img src="https://lh3.googleusercontent.com/YoVRtLOHMSRYQZ3OhFL8RIamcjFYbmQXX4oAQx02MRqqY9zlKNvsuZpS73khXiOqTH3qrFW27VrERJJIHTjPk-tAh46q8-Fd4w6qlw" alt="Google"></a>
+        </div>
+        <ol id="drop-down" class="dropdown-content hide">
+          <li><a class="menu-buttons" href="/workbook/table-of-contents/">Table of Contents</a></li>
+            <li>
+              <a href="/workbook/foreword-I/" class="menu-buttons">
+                  Foreword I
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/foreword-II/" class="menu-buttons">
+                  Foreword II
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/preface/" class="menu-buttons">
+                  Preface
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/how-sre-relates/" class="menu-buttons">
+                  1. How SRE Relates to DevOps
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/part-I-foundations/" class="menu-buttons">
+                  Part I - Foundations
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/implementing-slos/" class="menu-buttons">
+                  2. Implementing SLOs
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/slo-engineering-case-studies/" class="menu-buttons">
+                  3. SLO Engineering Case Studies
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/monitoring/" class="menu-buttons">
+                  4. Monitoring
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/alerting-on-slos/" class="menu-buttons">
+                  5. Alerting on SLOs
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/eliminating-toil/" class="menu-buttons">
+                  6. Eliminating Toil
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/simplicity/" class="menu-buttons">
+                  7. Simplicity
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/part-II-practices/" class="menu-buttons">
+                  Part II - Practices
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/on-call/" class="menu-buttons">
+                  8. On-Call
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/incident-response/" class="menu-buttons">
+                  9. Incident Response
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/postmortem-culture/" class="menu-buttons">
+                  10. Postmortem Culture: Learning from Failure
+              </a>
+            </li>
+            <li class="active">
+              <a href="/workbook/managing-load/" class="menu-buttons">
+                  11. Managing Load
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/non-abstract-design/" class="menu-buttons">
+                  12. Introducing Non-Abstract Large System Design
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/data-processing/" class="menu-buttons">
+                  13. Data Processing Pipelines
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/configuration-design/" class="menu-buttons">
+                  14. Configuration Design and Best Practices
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/configuration-specifics/" class="menu-buttons">
+                  15. Configuration Specifics
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/canarying-releases/" class="menu-buttons">
+                  16. Canarying Releases
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/part-III-processes/" class="menu-buttons">
+                  Part III - Processes
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/overload/" class="menu-buttons">
+                  17. Identifying and Recovering from Overload
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/engagement-model/" class="menu-buttons">
+                  18. SRE Engagement Model
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/reaching-beyond/" class="menu-buttons">
+                  19. SRE: Reaching Beyond Your Walls
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/team-lifecycles/" class="menu-buttons">
+                  20. SRE Team Lifecycles
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/organizational-change/" class="menu-buttons">
+                  21. Organizational Change Management in SRE
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/conclusion/" class="menu-buttons">
+                  Conclusion
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/slo-document/" class="menu-buttons">
+                  Appendix A. Example SLO Document
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/error-budget-policy/" class="menu-buttons">
+                  Appendix B. Example Error Budget Policy
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/postmortem-analysis/" class="menu-buttons">
+                  Appendix C. Results of Postmortem Analysis
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/index/" class="menu-buttons">
+                  Index
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/editors/" class="menu-buttons">
+                  About the Editors
+              </a>
+            </li>
+            <li>
+              <a href="/workbook/colophon/" class="menu-buttons">
+                  Colophon
+              </a>
+            </li>
+        </ol>
+      </div>
+    </div>
+
+  <div id="maia-main">
+    <div class="content" id="content">
+      <h2 class="heading jumptargets" id="managing-load">Managing Load</h2>
+
+<p class="byline author">By Cooper Bethea, Gráinne Sheerin, Jennifer Mace, and Ruth King with Gary Luo and Gary O’Connor</p>
+
+<p>
+  No service is 100% available 100% of the time: clients can be inconsiderate, demand can grow fifty-fold, a service might crash in response to a traffic spike, or an anchor might pull up a transatlantic cable. There are people who depend upon your service, and as service owners, we care about our users. When faced with these chains of outage triggers, how can we make our infrastructure as adaptive and reliable as possible?
+</p>
+
+<p>
+  This chapter describes Google’s approach to traffic management with the hope that you can use these best practices to improve the efficiency, reliability, and availability of your services. Over the years, we have discovered that there’s no single solution for equalizing and stabilizing network load. Instead, we use a combination of tools, technologies, and strategies that work in harmony to help keep our services reliable.
+</p>
+
+<p>
+  Before we dive in to this chapter, we recommend reading the philosophies discussed in Chapters 19 (<a href="https://sre.google/sre-book/load-balancing-frontend/">"Load Balancing at the Frontend"</a>) and 20 (<a href="https://sre.google/sre-book/load-balancing-datacenter/">"Load Balancing in the Datacenter"</a>) of our first SRE book.
+</p>
+
+<h1 class="heading jumptargets" id="google-cloud-load-balancing">Google Cloud Load Balancing</h1>
+
+<p>
+  These days, most companies don’t develop and maintain their own global load balancing solutions, instead opting to use load balancing services from a larger public cloud provider. We’ll discuss Google Cloud Load Balancer (GCLB) as a concrete example of large-scale load balancing, but nearly all of the best practices we describe also apply to other cloud providers’ load balancers.
+</p>
+
+<p>
+  Google has spent the past 18 years building infrastructure to make our services fast and reliable. Today we use these systems to serve YouTube, Maps, Gmail, Search, and many other products and services. GCLB is our publicly consumable global load balancing solution, and is the externalization of one of our internally developed global load balancing systems.
+</p>
+
+<p>
+  This section describes the components of GCLB and how they work together to serve user requests. We trace a typical user request from its creation to delivery at its destination. The Niantic <a data-type="xref" href="#pokemon-go-on-gclb">Pokémon GO</a> case study provides a concrete implementation of GCLB in the real world.
+</p>
+
+<p>
+  <a href="https://sre.google/sre-book/load-balancing-frontend/">Chapter 19</a> of our first SRE book described how DNS-based load balancing is the simplest and most effective way to balance load before the user’s connection even starts. We also discussed an endemic problem of this approach: it relies on client cooperation to properly expire and refetch DNS records. For this reason, GCLB does not use DNS load balancing.
+</p>
+
+<p>
+  Instead, we use <span class="italic">anycast</span>, a method for sending clients to the closest cluster without relying on DNS geolocation. Google’s global load balancer knows where the clients are located and directs packets to the closest web service, providing low latency to users while using a single <a href="https://en.wikipedia.org/wiki/Virtual_IP_address" target="_blank"  rel="noopener noreferrer" rel="noopener noreferrer">virtual IP (VIP)</a>. Using a single VIP means we can increase the time to live (TTL) of our DNS records, which further reduces latency.
+</p>
+
+<h5 class="subheaders jumptargets" id="anycast">Anycast</h5>
+
+<p>
+  Anycast is a network addressing and routing methodology. It routes datagrams from a single sender to the topologically nearest node in a group of potential receivers, which are all identified by the same destination IP address. Google announces IPs via <a href="https://en.wikipedia.org/wiki/Border_Gateway_Protocol" target="_blank" rel="noopener noreferrer" rel="noopener noreferrer">Border Gateway Protocol (BGP)</a> from multiple points in our network. We rely on the BGP routing mesh to deliver packets from a user to the closest frontend location that can terminate a transmission control protocol (TCP) session. This deployment eliminates the problems of unicast IP proliferation and finding the closest frontend for a user. Two main issues remain:
+</p>
+
+<ul>
+  <li>
+    Too many nearby users can overwhelm a frontend site.
+  </li>
+  <li>
+    BGP route calculation might reset connections.
+  </li>
+</ul>
+
+<p>
+  Consider an ISP that frequently recalculates its BGP routes such that one of its users prefers either of two frontend sites. Each time the BGP route “flaps,” all in-progress TCP streams are reset as the unfortunate user’s packets are directed to a new frontend with no TCP session state. To address these problems, we have leveraged our connection-level load balancer, Maglev (described shortly), to cohere TCP streams even when routes flap. We refer to this technique as <span class="italic">stabilized anycast</span>.
+</p>
+
+<h6 class="subheaders-small jumptargets" id="stabilized-anycast">Stabilized anycast</h6>
+
+<p>
+  As shown in <a data-type="xref" href="#stabilized-anycast">Figure 11-1</a>, Google implements stabilized anycast using Maglev, our custom load balancer. To stabilize anycast, we provide each Maglev machine with a way to map client IPs to the closest Google frontend site. Sometimes Maglev processes a packet destined for an anycast VIP for a client that is closer to another frontend site. In this case, Maglev forwards that packet to another Maglev on a machine located at the closest frontend site for delivery. The Maglev machines at the closest frontend site then simply treat the packet as they would any other packet, and route it to a local backend.
+</p>
+
+<figure id="stabilized-anycast" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/RrDDHM62PHVB290U60uHYlbhVtA97w-hAnDyMTtkZ5VD904KkvSaUKrM_qCSpkw2RV7NfyWqNGjdcIDRtgqmJCbeGbx2JHZmP4Kpxw=s801" alt="stabilized-anycast">
+      <figcaption><span class="label">Figure 11-1. </span>Stabilized anycast</figcaption>
+</figure>
+
+<h5 class="subheaders jumptargets" id="maglev">Maglev</h5>
+
+<p>
+  <a href="https://ai.google/research/pubs/pub44824" target="_blank" rel="noopener noreferrer" rel="noopener noreferrer" rel="noopener noreferrer">Maglev</a>, shown in <a data-type="xref" href="#maglev">Figure 11-2</a>, is Google’s custom distributed packet-level load balancer. An integral part of our cloud architecture, Maglev machines manage incoming traffic to a cluster. They provide stateful TCP-level load balancing across our frontend servers. Maglev differs from other traditional hardware load balancers in a few key ways:
+</p>
+
+<ul>
+  <li>
+    All packets destined for a given IP address can be evenly spread across a pool of Maglev machines via <a href="https://en.wikipedia.org/wiki/Equal-cost_multi-path_routing" target="_blank" rel="noopener noreferrer" rel="noopener noreferrer">Equal-Cost Multi-Path (ECMP) forwarding</a>. This enables us to boost Maglev capacity by simply adding servers to a pool. Spreading packets evenly also enables Maglev redundancy to be modeled as <span class="italic">N</span> + 1, enhancing availability and reliability over traditional load balancing systems (which typically rely on active/passive pairs to give 1 + 1 redundancy).
+  </li>
+  <li>
+    Maglev is a Google custom solution. We control the system end-to-end, which allows us to experiment and iterate quickly.
+  </li>
+  <li>
+    Maglev runs on commodity hardware in our datacenters, which greatly simplifies deployment.
+  </li>
+</ul>
+
+<figure id="maglev" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/zRx5-QRUciOXESUgTDLC6EOoE8grbbkobJmZj2pdFPcKDvya5SVQPr4f16gUUr5qaYBuT1JK83k2O-J7L7rVq1l05U5dn69S1GZ2_A=s567" alt="maglev">
+      <figcaption><span class="label">Figure 11-2. </span>Maglev</figcaption>
+</figure>
+
+<p>
+  Maglev packet delivery uses <span class="italic">consistent hashing</span> and <span class="italic">connection tracking</span>. These techniques coalesce TCP streams at our HTTP reverse proxies (also known as <span class="italic">Google Front Ends</span>, or <span class="italic">GFEs</span>), which terminate TCP sessions. Consistent hashing and connection tracking are key to Maglev’s ability to scale by packet rather than by number of connections. When a router receives a packet destined for a VIP hosted by Maglev, the router forwards the packet to any Maglev machine in the cluster through ECMP. When a Maglev receives a packet, it computes the packet’s 5-tuple hash<sup><a class="jumptarget" data-type="noteref" id="ch11fn1-marker" href="#ch11fn1">1</a></sup> and looks up the hash value in its connection tracking table, which contains routing results for recent connections. If Maglev finds a match and the selected backend service is still healthy, it reuses the connection. Otherwise, Maglev falls back to consistent hashing to choose a backend. The combination of these techniques eliminates the need to share connection state among individual Maglev machines.
+</p>
+
+<h5 class="subheaders jumptargets" id="global-software-load-balancer">Global Software Load Balancer</h5>
+
+<p>
+  GSLB is Google’s Global Software Load Balancer. It allows us to balance live user traffic between clusters so that we can match user demand to available service capacity, and so we can handle service failures in a way that’s transparent to users. As shown in <a data-type="xref" href="#gslb">Figure 11-3</a>, GSLB controls both the distribution of connections to GFEs and the distribution of requests to backend services.  GSLB allows us to serve users from backends and GFEs running in different clusters. In addition to load balancing between frontends and backends, GSLB understands the health of backend services and can automatically drain traffic away from failed clusters.
+</p>
+
+<figure id="gslb" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/XDw7N0FgtKRFsbccMP62wfQiC-J5j2_R4_SMGBvtuSbrnxYC2UCB7nQTnmwnNEe_bHTsSeipmd8a63GpX1KymPu8JTBeK-AcWw3gpg=s965" alt="gslb">
+      <figcaption><span class="label">Figure 11-3. </span>GSLB</figcaption>
+</figure>
+
+<h5 class="subheaders jumptargets" id="google-front-end">Google Front End</h5>
+
+<p>
+  As shown in <a data-type="xref" href="#gfe">Figure 11-4</a>, the GFE sits between the outside world and various Google services (web search, image search, Gmail, etc.) and is frequently the first Google server a client HTTP(S) request encounters. The GFE terminates the client’s TCP and SSL sessions and inspects the HTTP header and URL path to determine which backend service should handle the request. Once the GFE decides where to send the request, it reencrypts the data and forwards the request. For more information on how this encryption process works, see our whitepaper <a href="https://cloud.google.com/security/encryption-in-transit/" target="_blank" rel="noopener noreferrer">"Encryption in Transit in Google Cloud"</a>.
+</p>
+
+<p>
+  The GFE is also responsible for health-checking its backends. If a backend server returns a <span class="italic">negative acknowledgment</span> (“NACKs” the request) or times out health checks, GFEs stop sending traffic to the failed backend. We use this signal to update GFE backends without impacting uptime. By putting GFE backends into a mode in which they fail health checks while continuing to respond to in-flight requests, we can gracefully remove GFE backends from service without disrupting any user requests. We call this “lame duck” mode and we discuss it in more detail in <a href="https://sre.google/sre-book/load-balancing-datacenter/">Chapter 20</a> of the first SRE book.
+</p>
+
+<figure id="gfe" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/OSO2fALj8_3UsPhcj9mPeXnt4M2_EP0P0pLERO2mZQAeC8M3iwPfiEE9nFTLqctZfYV8A-O68yMCkBLL_Im0-F2qgQp_yG3hq3t1WQ=s822" alt="gfe">
+      <figcaption><span class="label">Figure 11-4. </span>GFE</figcaption>
+</figure>
+
+<p>
+  The GFEs also maintain persistent sessions to all their recently active backends so that a connection is ready to use as soon as a request arrives. This strategy helps reduce latency for our users, particularly in scenarios when we use SSL to secure the connection between GFE and the backend.
+</p>
+
+<h5 class="subheaders jumptargets" id="gclb-low-latency">GCLB: Low Latency</h5>
+
+<p>
+  Our network provisioning strategy aims to reduce end-user latency to our services. Because negotiating a secure connection via HTTPS requires two network round trips between client and server, it’s particularly important that we minimize the latency of this leg of the request time. To this end, we extended the edge of our network to host Maglev and GFE. These components terminate SSL as close to the user as possible, then forward requests to backend services deeper within our network over long-lived encrypted connections.
+</p>
+
+<p>
+  We built GCLB atop this combined Maglev/GFE-augmented edge network. When customers create a load balancer, we provision an anycast VIP and program Maglev to load-balance it globally across GFEs at the edge of our network. GFE’s role is to terminate SSL, accept and buffer HTTP requests, forward those requests to the customer’s backend services, and then proxy the responses back to users. GSLB provides the glue between each layer: it enables Maglev to find the nearest GFE location with available capacity, and enables GFE to route requests to the nearest VM instance group with available capacity.
+</p>
+
+<h5 class="subheaders jumptargets" id="gclb-high-availability">GCLB: High Availability</h5>
+
+<p>
+In the interest of providing high availability to our customers, GCLB offers an availability SLA<sup><a class="jumptarget" data-type="noteref" id="ch11fn2-marker" href="#ch11fn2">2</a></sup> of 99.99%. In addition, GCLB provides support tools that enable our customers to improve and manage the availability of their own applications. It’s useful to think of the load balancing system as a sort of traffic manager. During normal operation, GCLB routes traffic to the nearest backend with available capacity. When one instance of your service fails, GCLB detects the failure on your behalf and routes traffic to healthy instances.
+</p>
+
+<p>
+Canarying and gradual rollouts help GCLB maintain high availability. Canarying is one of our standard release procedures. As described in <a href="https://sre.google/workbook/canarying-releases/">Canarying Releases</a> this process involves deploying a new application to a very small number of servers, then gradually increasing traffic and carefully observing system behavior to verify that there are no regressions. This practice reduces the impact of any regressions by catching them early in the canary phase. If the new version crashes or otherwise fails health checks, the load balancer routes around it. If you detect a nonfatal regression, you can administratively remove the instance group from the load balancer without touching the main version of the application.
+</p>
+
+<h5 class="subheaders jumptargets" id="pokemon-go-on-gclb">Case Study 1: Pokémon GO on GCLB</h5>
+
+<p>
+Niantic launched Pokémon GO in the summer of 2016. It was the first new Pokémon game in years, the first official Pokémon smartphone game, and Niantic’s first project in concert with a major entertainment company. The game was a runaway hit and more popular than anyone expected—that summer you’d regularly see players gathering to duel around landmarks that were Pokémon Gyms in the virtual world.
+</p>
+
+<p>
+Pokémon GO’s success greatly exceeded the expectations of the Niantic engineering team. Prior to launch, they load-tested their software stack to process up to 5x their most optimistic traffic estimates. The actual launch requests per second (RPS) rate was nearly 50x that estimate—enough to present a scaling challenge for nearly any software stack. To further complicate the matter, the world of Pokémon GO is highly interactive and globally shared among its users. All players in a given area see the same view of the game world and interact with each other inside that world. This requires that the game produce and distribute near-real-time updates to a state shared by all participants.
+</p>
+
+<p>
+Scaling the game to 50x more users required a truly impressive effort from the Niantic engineering team. In addition, many engineers across Google provided their assistance in scaling the service for a successful launch. Within two days of migrating to GCLB, the Pokemon GO app became the single largest GCLB service, easily on par with the other top 10 GCLB services.
+</p>
+
+<p>
+As shown in <a data-type="xref" href="#pokemon-go">Figure 11-5</a>, when it launched, Pokémon GO used Google’s regional <a href="https://cloud.google.com/load-balancing/docs/network/" target="_blank" rel="noopener noreferrer">Network Load Balancer (NLB)</a> to load-balance ingress traffic across a <a href="https://kubernetes.io/docs/concepts/services-networking/ingress/" target="_blank" rel="noopener noreferrer">Kubernetes</a> cluster. Each cluster contained pods of <a href="https://www.nginx.com/" target="_blank" rel="noopener noreferrer">Nginx</a> instances, which served as Layer 7 reverse proxies that terminated SSL, buffered HTTP requests, and performed routing and load balancing across pods of application server backends.
+</p>
+
+<figure id="pokemon-go" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/Tv0NB07YbLCC4anSDeQQ-O0TtGfqCoUNWAW8EaIQxSJrzqN0T4iMgBNDnRqomPNLazQ-AxOAzpxAR5ZASAm5Sljit6LTWXhFadcOGw=s974" alt="pokemon-go">
+      <figcaption><span class="label">Figure 11-5. </span>Pokémon GO (pre-GCLB)</figcaption>
+</figure>
+
+<p>
+  NLB is responsible for load balancing at the IP layer, so a service that uses NLB effectively becomes a backend of Maglev. In this case, relying on NLB had the following implications for Niantic:
+</p>
+
+<ul>
+  <li>
+    The Nginx backends were responsible for terminating SSL for clients, which required two round trips from a client device to Niantic’s frontend proxies.
+  </li>
+  <li>
+    The need to buffer HTTP requests from clients led to resource exhaustion on the proxy tier, particularly when clients were only able to send bytes slowly.
+  </li>
+  <li>
+    Low-level network attacks such as <a href="https://en.wikipedia.org/wiki/SYN_flood" target="_blank" rel="noopener noreferrer">SYN flood</a> could not be effectively ameliorated by a packet-level proxy.
+  </li>
+</ul>
+
+<p>
+  In order to scale appropriately, Niantic needed a high-level proxy operating on a large edge network. This solution wasn’t possible with NLB.
+</p>
+
+<h6 class="subheaders-small jumptargets" id="migrating-to-gclb">Migrating to GCLB</h6>
+
+<p>
+  A large SYN flood attack made migrating Pokémon GO to GCLB a priority. This migration was a joint effort between Niantic and the Google Customer Reliability Engineering (CRE) and SRE teams. The initial transition took place during a traffic trough and, at the time, was unremarkable. However, unforeseen problems emerged for both Niantic and Google as traffic ramped up to peak. Both Google and Niantic discovered that the true client demand for Pokémon GO traffic was 200% higher than previously observed. The Niantic frontend proxies received so many requests that they weren’t able to keep pace with all inbound connections. Any connection refused in this way wasn’t surfaced in the monitoring for inbound requests. The backends never had a chance.
+</p>
+
+<p>
+  This traffic surge caused a classic cascading failure scenario. Numerous backing services for the <a href="https://sre.google/cloud/">API—Cloud Datastore</a>, Pokémon GO backends and API servers, and the load balancing system itself—exceeded the capacity available to Niantic’s cloud project. The overload caused Niantic’s backends to become extremely slow (rather than refuse requests), manifesting as requests timing out to the load balancing layer. Under this circumstance, the load balancer retried GET requests, adding to the system load. The combination of extremely high request volume and added retries stressed the SSL client code in the GFE at an unprecedented level, as it tried to reconnect to unresponsive backends. This induced a severe performance regression in GFE such that GCLB’s worldwide capacity was effectively reduced by 50%.
+</p>
+
+<p>
+  As backends failed, the Pokémon GO app attempted to retry failed requests on behalf of users. At the time, the app’s retry strategy was a single immediate retry, followed by constant backoff. As the outage continued, the service sometimes returned a large number of quick errors—for example, when a shared backend restarted. These error responses served to effectively synchronize client retries, producing a “thundering herd” problem, in which many client requests were issued at essentially the same time. As shown in <a data-type="xref" href="#traffic-spikes-caused-by-synchronous-client-retries">Figure 11-6</a>, these synchronized request spikes ramped up enormously to 20× the previous global RPS peak.
+</p>
+
+<figure id="traffic-spikes-caused-by-synchronous-client-retries" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/K1g-4t9cUc2-ZELccimQV0JSbEMoyI-GS97cjhjaR-I9rmyFoY3rHaMci2vGEbdXcpUKt3pzWIdwj_9yTyXvXdcweNsI39GIpp5u6A=s1440" alt="traffic-spikes-caused-by-synchronous-client-retries">
+      <figcaption><span class="label">Figure 11-6. </span>Traffic spikes caused by synchronous client retries</figcaption>
+</figure>
+
+<h6 class="subheaders-small jumptargets" id="resolving-the-issue">Resolving the issue</h6>
+
+<p>
+  These request spikes, combined with the GFE capacity regression, resulted in queuing and high latency for all GCLB services. Google’s on-call Traffic SREs acted to reduce collateral damage to other GCLB users by doing the following:
+</p>
+
+<ol type="1">
+  <li>
+    Isolating GFEs that could serve Pokémon GO traffic from the main pool of load balancers.
+  </li>
+  <li>
+    Enlarging the isolated Pokémon GO pool until it could handle peak traffic despite the performance regression. This action moved the capacity bottleneck from GFE to the Niantic stack, where servers were still timing out, particularly when client retries started to synchronize and spike.
+  </li>
+  <li>
+    With Niantic’s blessing, Traffic SRE implemented administrative overrides to limit the rate of traffic the load balancers would accept on behalf of Pokémon GO. This strategy contained client demand enough to allow Niantic to reestablish normal operation and commence scaling upward.
+  </li>
+</ol>
+
+<p>
+<a data-type="xref" href="#pokemon-go-gclb">Figure 11-7</a> shows the final network configuration.
+</p>
+
+<figure id="pokemon-go-gclb" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/dSJULtwzaddPxoKkm4BZJKNsloeLGbteJ5Pv3voX3gnmw6Dyf5haIRxhmJZCg14gypQG-4EZB1NfiJxaqa_ySjjf5uMum5Ap00CrdQ=s1028" alt="pokemon-go-gclb">
+      <figcaption><span class="label">Figure 11-7. </span>Pokémon GO GCLB</figcaption>
+</figure>
+
+<h6 class="subheaders-small jumptargets" id="future-proofing">Future-proofing</h6>
+
+<p>
+  In the wake of this incident, Google and Niantic both made significant changes to their systems. Niantic introduced jitter and truncated exponential backoff<sup><a class="jumptarget" data-type="noteref" id="ch11fn3-marker" href="#ch11fn3">3</a></sup> to their clients, which curbed the massive synchronized retry spikes experienced during cascading failure. Google learned to consider GFE backends as a potentially significant source of load, and instituted qualification and load testing practices to detect GFE performance degradation caused by slow or otherwise misbehaving backends. Finally, both companies realized they should measure load as close to the client as possible. Had Niantic and Google CRE been able to accurately predict client RPS demand, we would have preemptively scaled up the resources allocated to Niantic even more than we did before conducting the switch to GCLB.
+</p>
+
+<h1 class="heading jumptargets" id="autoscaling">Autoscaling</h1>
+
+<p>
+  Tools like GCLB can help you balance load efficiently across your fleet, making your service more stable and reliable. Sometimes you simply don’t have enough resources reserved to manage your existing traffic. You can use <a href="https://en.wikipedia.org/wiki/Autoscaling" target="_blank" rel="noopener noreferrer">autoscaling</a> to scale your fleet strategically. Whether you increase the resources per machine (vertical scaling) or increase the total number of machines in the pool (horizontal scaling), autoscaling is a powerful tool and, when used correctly, can enhance your service availability and utilization. Conversely, if misconfigured or misused, autoscaling can negatively impact your service. This section describes some best practices, common failure modes, and current limitations of autoscaling.
+</p>
+
+<h5 class="subheaders jumptargets" id="handling-unhealthy-machines">Handling Unhealthy Machines</h5>
+
+<p>
+  Autoscaling normally averages utilization over all instances regardless of their state, and assumes that instances are homogeneous in terms of request processing efficiency. Autoscaling runs into problems when machines are not serving (known as <span class="italic">unhealthy instances</span>) but are still counted toward the utilization average. In this scenario, autoscaling simply won’t occur. A variety of issues can trigger this failure mode, including:
+</p>
+
+<ul>
+  <li>
+    Instances taking a long time to get ready to serve (e.g., when loading a binary or warming up)
+  </li>
+  <li>
+    Instances stuck in a nonserving state (i.e., zombies)
+  </li>
+</ul>
+
+<p>
+  We can improve this situation using a variety of tactics. You can make the following improvements in combination or individually:
+</p>
+
+<p class="italic">Load balancing</p>
+
+<ul class="simplelist">
+  <li>
+    Autoscale using a capacity metric as observed by the load balancer. This will automatically discount unhealthy instances from the average.
+  </li>
+</ul>
+
+<p class="italic">Wait for new instances to stabilize before collecting metrics</p>
+
+<ul class="simplelist">
+  <li>
+    You can configure autoscaler to collect information about new instances only once new instances become healthy (GCE refers to this period of inactivity as a <span class="italic">cool-down period</span>).
+  </li>
+</ul>
+
+<p class="italic">Autoscale and autoheal</p>
+
+<ul class="simplelist">
+  <li>
+    Autohealing monitors your instances and attempts to restart them if they are unhealthy. Typically, you configure your autohealer to monitor a health metric exposed by your instances. If autohealer detects that an instance is down or unhealthy, it will attempt a restart. When configuring your autohealer, it’s important to ensure you leave sufficient time for your instances to become healthy after a restart.
+  </li>
+</ul>
+
+<p>
+  Using a mix of these solutions, you can optimize horizontal autoscaling to keep track only of healthy machines. Remember that when running your service, autoscaler will continuously adjust the size of your fleet. Creating new instances is never instant.
+</p>
+
+<h5 class="subheaders jumptargets" id="working-with-stateful-systems">Working with Stateful Systems</h5>
+
+<p>
+  A stateful system sends all requests in a user session consistently to the same backend server. If these pathways are overburdened, adding more instances (i.e., horizontal scaling) won’t help. Intelligent, task-level routing that spreads the load around (e.g., using consistent hashing<sup><a class="jumptarget" data-type="noteref" id="ch11fn4-marker" href="#ch11fn4">4</a></sup>) is a better strategy for stateful systems.
+</p>
+
+<p>
+  Vertical autoscaling can be useful in stateful systems.  When used in combination with task-level balancing to even out load on your system, vertical autoscaling can help absorb short-term hotspots. Use this strategy with caution: because vertical autoscaling is typically uniform across all instances, your low-traffic instances may grow unnecessarily large.
+</p>
+
+<h5 class="subheaders jumptargets" id="configuring-conservatively">Configuring Conservatively</h5>
+
+<p>
+  Using autoscaling to scale up is more important and less risky than using it to scale down since a failure to scale up can result in overload and dropped traffic. By design, most autoscaler implementations are intentionally more sensitive to jumps in traffic than to drops in traffic. When scaling up, autoscalers are inclined to add extra serving capacity quickly. When scaling down, they are more cautious and wait longer for their scaling condition to hold true before slowly reducing resources.
+</p>
+
+<p>
+  The load spikes you can absorb increase as your service moves further away from a bottleneck. We recommend configuring your autoscaler to keep your service far from key system bottlenecks (such as CPU). Autoscaler also needs adequate time to react, particularly when new instances cannot turn up and serve instantly. We recommend that user-facing services reserve enough spare capacity for both overload protection and redundancy.<sup><a class="jumptarget" data-type="noteref" id="ch11fn5-marker" href="#ch11fn5">5</a></sup>
+</p>
+
+<h5 class="subheaders jumptargets" id="setting-constraints">Setting Constraints</h5>
+
+<p>
+  Autoscaler is a powerful tool; if misconfigured, it can scale out of control. You might inadvertently trigger serious consequences by introducing a bug or changing a setting. For example, consider the following scenarios:
+</p>
+
+<ul>
+  <li>
+    You configured autoscaling to scale based on CPU utilization. You release a new version of your system, which contains a bug causing the server to consume CPU without doing any work. Autoscaler reacts by upsizing this job again and again until all available <a href="https://cloud.google.com/compute/quotas" target="_blank" rel="noopener noreferrer">quota</a> is wasted.
+  </li>
+  <li>
+    Nothing has changed in your service, but a dependency is failing. This failure causes all requests to get stuck on your servers and never finish, consuming resources all the while. Autoscaler will scale up the jobs, causing more and more traffic to get stuck. The increased load on your failing dependency can prevent the dependency from recovering.
+  </li>
+</ul>
+
+<p>
+  It’s useful to constrain the work that your autoscaler is allowed to perform. Set a minimum and maximum bound for scaling, making sure that you have enough quota to scale to the set limits. Doing so prevents you from depleting your quota and helps with capacity planning.
+</p>
+
+<h5 class="subheaders jumptargets" id="including-kill-switches-and-manual-overrides">Including Kill Switches and Manual Overrides</h5>
+
+<p>
+  It’s a good idea to have a kill switch in case something goes wrong with your autoscaling. Make sure your on-call engineers understand how to disable autoscaling and how to manually scale if necessary. Your autoscaling kill switch functionality should be easy, obvious, fast, and well documented.
+</p>
+
+<h5 class="subheaders jumptargets" id="avoiding-overloading-backends">Avoiding Overloading Backends</h5>
+
+<p>
+  A correctly configured autoscaler will scale up in response to an increase in traffic. An increase in traffic will have consequences down the stack. Backend services, such as databases, need to absorb any additional load your servers might create. Therefore, it’s a good idea to perform a detailed dependency analysis on your backend services before deploying your autoscaler, particularly as some services may scale more linearly than others. Ensure your backends have enough extra capacity to serve increased traffic and are able to degrade gracefully when overloaded. Use the data from your analysis to inform the limits of your autoscaler configuration.
+</p>
+
+<p>
+  Service deployments commonly run a variety of microservices that share quota. If a microservice scales up in response to a traffic spike, it might use most of the quota. If increased traffic on a single microservice means increased traffic on other microservices, there will be no available quota for the remaining microservices to grow. In this scenario, a dependency analysis can help guide you toward preemptively implementing limited scaling. Alternatively, you can implement separate quotas per microservice (which may entail splitting your service into separate projects).
+</p>
+
+<h5 class="subheaders jumptargets" id="avoiding-traffic-imbalance">Avoiding Traffic Imbalance</h5>
+
+<p>
+  Some autoscalers (e.g., AWS EC2, GCP) can balance instances across regional groups of instances (<a href="https://cloud.google.com/compute/docs/instance-groups/distributing-instances-with-regional-instance-groups" target="_blank" rel="noopener noreferrer">RMiGs</a>). In addition to regular autoscaling, these autoscalers run a separate job that constantly attempts to even out the size of each zone across the region. Rebalancing traffic in this way avoids having one large zone. If the system you’re using allocates quota per zone, this strategy evens out your quota usage. In addition, autoscaling across regions provides more diversity for failure domains.
+</p>
+
+<h1 class="heading jumptargets" id="combining-strategies-to-manage-load">Combining Strategies to Manage Load</h1>
+
+<p>
+  If your system becomes sufficiently complex, you may need to use more than one kind of load management. For example, you might run several managed instance groups that scale with load but are cloned across multiple regions for capacity; therefore, you also need to balance traffic between regions. In this case, your system needs to use both <span class="italic">load balancing</span> and <span class="italic">load-based autoscaling</span>.
+</p>
+
+<p>
+  Or maybe you run a website across three colocated facilities around the world. You’d like to serve locally for latency, but since it takes weeks to deploy more machines, overflow capacity needs to spill over to other locations. If your site gets popular on social media and suddenly experiences a five-fold increase in traffic, you’d prefer to serve what requests you can. Therefore, you implement load shedding to drop excess traffic. In this case, your system needs to use both <span class="italic">load balancing</span> and <span class="italic">load shedding</span>.
+</p>
+
+<p>
+  Or perhaps your data processing pipeline lives in a Kubernetes cluster in one cloud region. When data processing slows significantly, it provisions more pods to handle the work. However, when data comes in so fast that reading it causes you to run out of memory, or slows down garbage collection, your pods may need to shed that load temporarily or permanently. In this case, your system needs to use both <span class="italic">load-based autoscaling</span> and <span class="italic">load shedding</span> techniques.
+</p>
+
+<p>
+  Load balancing, load shedding, and autoscaling are all systems designed for the same goal: to equalize and stabilize the system load. Since the three systems are often implemented, installed, and configured separately, they seem independent. However, as shown in <a data-type="xref" href="#a-full-traffic-management-system">Figure 11-8</a>, they’re not entirely independent. The following case study illustrates how these systems can interact.
+</p>
+
+<figure id="a-full-traffic-management-system" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/mYeO-4hBxarY9IKP8K2Un-5o9wGMdPASYs_7hQbhdCx4T-UXtwRB4e1-fgBWVfuFZDfrN-8BTM4Me7IoL85rnqXEwuD84Hh_vKH7Hpw=s851" alt="a-full-traffic-management-system">
+      <figcaption><span class="label">Figure 11-8. </span>A full traffic management system</figcaption>
+</figure>
+
+<h5 class="subheaders jumptargets" id="case-study-2-when-load-shedding-attacks">Case Study 2: When Load Shedding Attacks</h5>
+
+<p>
+  Imagine a fictional company, Dressy, that sells dresses online via an app. As this is a traffic-driven service, the development team at Dressy deployed their app across three regions. This deployment allows their app to respond quickly to user requests and weather single-zone failures—or so they thought.
+</p>
+
+<p>
+  The customer service team at Dressy starts receiving complaints that customers can’t access the app. Dressy’s development teams investigate and notice a problem: their load balancing is inexplicably drawing all user traffic into region A, even though that region is full-to-overflowing and both B and C are empty (and equally large). The timeline of events (see <a data-type="xref" href="#regional-traffic">Figure 11-9</a>) is as follows:
+</p>
+
+<ol type="1">
+  <li>
+    At the beginning of the day, the traffic graphs showed all three clusters steady at 90 RPS.
+  </li>
+  <li>
+    At 10:46 a.m., traffic started to rise in all three regions as eager shoppers began hunting for bargains.
+  </li>
+  <li>
+    At 11:00 a.m., region A reached 120 RPS just before regions B and C.
+  </li>
+  <li>
+    At 11:10 a.m., region A continued to grow to 400 RPS, while B and C dipped to 40 RPS.
+  </li>
+  <li>
+    The load balancer settled at this state.
+  </li>
+  <li>
+    The majority of requests hitting region A were returning 503 errors.
+  </li>
+  <li>
+    Users whose requests hit this cluster started to complain.
+  </li>
+</ol>
+
+<figure id="regional-traffic" class="horizontal vertical jumptarget">
+      <img src="https://lh3.googleusercontent.com/zP4V08Csb9LZHM84ucy2mpqjkpnbfOFJZ5p1stcuRZ7nfeWRe0ZaHovkfPBUnvCGlkQTK8dcTLTH0apA7-C2gZ55PJmy2bQbbN81JbQ=s918" alt="regional-traffic">
+      <figcaption><span class="label">Figure 11-9. </span>Regional traffic</figcaption>
+</figure>
+
+<p>
+  If the development team had consulted their load balancer’s fullness graphs, they would have seen something very strange. The load balancer was utilization-aware: it was reading CPU utilization from Dressy’s containers and using this information to estimate fullness. As far as it could tell, per-request CPU utilization was 10 times lower in region A than either B or C. The load balancer determined that all regions were equally loaded, and its job was done.
+</p>
+
+<h6 class="subheaders-small jumptargets" id="what-was-happening">What was happening?</h6>
+
+<p>
+  Earlier in the week, to protect against cascading overload, the team enabled load shedding. Whenever CPU utilization reached a certain threshold, a server would return an error for any new requests it received rather than attempting to process them. On this particular day, region A reached this threshold slightly ahead of the other regions. Each server began rejecting 10% of requests it received, then 20% of requests, then 50%. During this time frame, CPU usage remained constant.
+</p>
+
+<p>
+  As far as the load balancer system was concerned, each successive dropped request was a reduction in the per-request CPU cost. Region A was far more efficient than regions B and C. It was serving 240 RPS at 80% CPU (the shedding cap), while B and C were managing only 120 RPS. Logically, it decided to send more requests to A.
+</p>
+
+<h6 class="subheaders-small jumptargets" id="what-went-wrong">What went wrong?</h6>
+
+<p>
+  In brief, the load balancer didn’t know that the “efficient” requests were errors because the load shedding and load balancing systems weren’t communicating. Each system was added and enabled separately, likely by different engineers. No one had examined them as one unified load management system.
+</p>
+
+<h6 class="subheaders-small jumptargets" id="lessons-learned">Lessons learned</h6>
+
+<p>
+  To effectively manage system load, we need to be deliberate—both in the configuration of our individual load management tools and in the management of their interactions. For example, in the Dressy case study, adding error handling to the load balancer logic would have fixed the problem. Let’s say each “error” request counts as 120% CPU utilization (any number over 100 will work). Now region A looks overloaded. Requests will spread to B and C, and the system will equalize.
+</p>
+
+<p>
+  You can use similar logic to extrapolate this example to any combination of load management tactics. When adopting a new load management tool, carefully examine how it interacts with other tools your system is already using and instrument their intersection. Add monitoring to detect feedback loops. Make sure your emergency shutdown triggers can be coordinated across your load management systems, and consider adding automatic shutdown triggers if these systems are behaving wildly out of control. If you don’t take appropriate precautions up front, you’ll likely have to do so in the wake of a postmortem.
+</p>
+
+<p>
+  It is easy to say “take precautions.” More specifically, here are some precautions you might consider, depending on the kind of load management you deploy:
+</p>
+
+<p class="italic">Load balancing</p>
+
+<ul class="simplelist">
+  <li>
+    Load balancing minimizes latency by routing to the location closest to the user. Autoscaling can work together with load balancing to increase the size of locations close to the user and then route more traffic there, creating a positive feedback loop.
+  </li>
+  <li>
+    If demand is primarily closest to one location, that location will grow in size until all serving capacity is in one spot. If this location goes down, the remaining locations will become overloaded and traffic may be dropped. Scaling these locations up will not be instant. You can avoid this situation by setting a minimum number of instances per location to keep spare capacity for failover.
+  </li>
+</ul>
+
+<p class="italic">Load shedding</p>
+
+<ul class="simplelist">
+  <li>
+    It’s a good idea to set your thresholds such that your system autoscales before load shedding kicks in. Otherwise, your system might start shedding traffic it could have served had it scaled up first.
+  </li>
+</ul>
+
+<p class="italic">Managing load with RPC</p>
+
+<ul class="simplelist">
+  <li>
+    Handling the right requests is important for efficiency: you don’t want to autoscale up to serve requests that won’t benefit users, or shed load unnecessarily because you’re processing unimportant requests. When using both autoscaling and load shedding, it’s important that you set deadlines on your RPC requests.
+  </li>
+  <li>
+    Processes hold resources for all in-flight requests, and release those resources when the requests are completed. In the absence of a specific deadline, the system will hold resources for all in-progress requests, up to the maximum possible limit. By default, this deadline is a very large number (which depends on the language implementation—some language APIs work in terms of a fixed point in time, and others with a duration of time). This behavior causes clients, and ultimately users, to experience higher latency. The service is also at risk of running out of resources (like memory) and crashing.
+  </li>
+  <li>
+    To handle this scenario gracefully, we recommend that the server terminates requests that take too long, and that clients cancel requests that are no longer useful to them. For example, a server shouldn’t start an expensive search operation if the client already returned an error to the user. To set behavior expectations for a service, you could simply provide a comment in the API’s <span class="italic">.proto</span> file to suggest a default deadline. Also, set deliberate deadlines for the client (for examples, see our blog post <a href="https://grpc.io/blog/deadlines" target="_blank" rel="noopener noreferrer">“gRPC and Deadlines”</a>).
+  </li>
+</ul>
+
+<h1 class="heading jumptargets" id="conclusion">Conclusion</h1>
+
+<p>
+  In Google’s experience, there are no perfect traffic management configurations. Autoscaling is a powerful tool, but it’s easy to get wrong. Unless carefully configured, autoscaling can result in disastrous consequences—for example, potentially catastrophic feedback cycles between load balancing, load shedding, and autoscaling when these tools are configured in isolation. As the Pokémon GO case study illustrates, traffic management works best when it’s based upon a holistic view of the interactions between systems.
+</p>
+
+<p>
+  Time and time again, we’ve seen that no amount of load shedding, autoscaling, or throttling will save our services when they all fail in sync. For example, in the Pokémon GO case study, we had a “thundering herd” of synchronized client retries combined with load balancers that waited for unresponsive backend servers. To fail your services gracefully, you need to plan ahead to mitigate potential problems. Your mitigation strategy might involve setting flags, changing default behaviors, enabling expensive logging, or exposing the current value of parameters the traffic management system uses for decisions.
+</p>
+
+<p>
+  We hope the strategies and insights provided in this chapter can help you manage traffic for your own services and keep your users happy.
+</p>
+
+<div data-type="footnotes" class="footnotes">
+
+<p data-type="footnote" id="ch11fn1"><sup><a class="jumptargets" href="#ch11fn1-marker">1</a></sup>5-tuple includes the following: source address, destination address, source port, destination port, and the transport protocol type.</p>
+<p data-type="footnote" id="ch11fn2"><sup><a class="jumptargets" href="#ch11fn2-marker">2</a></sup>See the Google Cloud Platform blog post <a href="https://cloudplatform.googleblog.com/2017/01/availability-part-deux--CRE-life-lessons.html" target="_blank" rel="noopener noreferrer">“SLOs, SLIs, SLAs, Oh My—CRE Life Lessons”</a> for an explanation of the difference between SLOs and SLAs.
+</p>
+<p data-type="footnote" id="ch11fn3"><sup><a class="jumptargets" href="#ch11fn3-marker">3</a></sup>For more information on this topic, see <a href="https://sre.google/sre-book/addressing-cascading-failures/">Chapter 22</a> of the first SRE book.
+</p>
+<p data-type="footnote" id="ch11fn4"><sup><a class="jumptargets" href="#ch11fn4-marker">4</a></sup>See <span class="italic">Site Reliability Engineering</span>, <a href="https://sre.google/sre-book/load-balancing-frontend/">Chapter 19</a>.</p>
+<p data-type="footnote" id="ch11fn5"><sup><a class="jumptargets" href="#ch11fn5-marker">5</a></sup>For more info about redundancy in capacity planning, see <span class="italic">Site Reliability Engineering</span>, <a href="https://sre.google/sre-book/service-best-practices/">Appendix B</a>.</p>
+</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="maia-aux">
+      <div class="previous">
+          <a href="/workbook/postmortem-culture/">
+            <p class="footer-caption">Previous</p>
+            <p class="chapter-link">
+                Chapter 10 - Postmortem Culture: Learning from Failure
+            </p>
+          </a>
+      </div>
+      <div class="next">
+          <a href="/workbook/non-abstract-design/">
+            <p class="footer-caption">Next</p>
+            <p class="chapter-link">
+                Chapter 12 - Introducing Non-Abstract Large System Design
+            </p>
+          </a>
+      </div>
+        <p class="footer-link">Copyright © 2018 Google, Inc. Published by O'Reilly Media, Inc. Licensed under <a href="https://creativecommons.org/licenses/by-nc-nd/4.0/" rel="noopener noreferrer" target="_blank">CC BY-NC-ND 4.0</a></p>
+    </div>
+  </div>
+    </main>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.6.6/angular.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.6.6/angular-animate.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.6.6/angular-touch.min.js"></script>
+    <script src="/sre-book/static/js/index.min.js?cache=5b7f90b"></script>
+
+  </body>
+</html>

@@ -1,0 +1,915 @@
+<!doctype html>
+<html class="no-js aws-lng-en_US aws-with-target" lang="en-US" data-static-assets="https://a0.awsstatic.com" data-js-version="1.0.592" data-css-version="1.0.506">
+ <head><script src="https://web-static.archive.org/_static/js/athena.js" type="text/javascript"></script>
+<script type="text/javascript">window.addEventListener('DOMContentLoaded',function(){var v=archive_analytics.values;v.service='wb';v.server_name='wwwb-app247.us.archive.org';v.server_ms=605;archive_analytics.send_pageview({});});</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/bundle-playback.js?v=lGQTDXxZ" charset="utf-8"></script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/wombat.js?v=o9P2E1FK" charset="utf-8"></script>
+<script>window.RufflePlayer=window.RufflePlayer||{};window.RufflePlayer.config={"autoplay":"on","unmuteOverlay":"hidden","showSwfDownload":true};</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/ruffle/ruffle.js"></script>
+<script type="text/javascript">
+    __wm.init("https://web.archive.org/web");
+  __wm.wombat("https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/","20241129033912","https://web.archive.org/","web","https://web-static.archive.org/_static/",
+	      "1732851552");
+</script>
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3" />
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv" />
+<!-- End Wayback Rewrite JS Include -->
+ 
+  <meta http-equiv="Content-Security-Policy" content="" data-report-uri="https://prod-us-west-2.csp-report.marketing.aws.dev/submit"> 
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+  <link rel="preconnect" href="https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/" crossorigin="anonymous"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241129033912/https://d1.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241129033912/https://amazonwebservicesinc.tt.omtrdc.net/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241129033912/https://s0.awsstatic.com/"> 
+  <link rel="dns-prefetch" href="https://web.archive.org/web/20241129033912/https://t0.m.awsstatic.com/"> 
+  <title>Making retries safe with idempotent APIs</title> 
+  <meta name="description" content="Strategies for using idempotent APIs to reduce complexity and manage retries."> 
+  <meta name="robots" content="index, follow"> 
+  <meta property="twitter:title" content="Making retries safe with idempotent APIs"> 
+  <meta property="twitter:description" content="Strategies for using idempotent APIs to reduce complexity and manage retries."> 
+  <meta property="og:title" content="Making retries safe with idempotent APIs"> 
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"> 
+  <link rel="canonical" href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"> 
+  <script src="https://web.archive.org/web/20241129033912js_/https://a0.awsstatic.com/libra/1.0.592/csp/csp-report.js" async="true"></script> 
+  <meta property="twitter:card" content="summary"> 
+  <meta property="twitter:image" content="https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_179x109.png"> 
+  <meta property="twitter:site" content="@awscloud"> 
+  <meta property="fb:pages" content="153063591397681"> 
+  <meta name="baidu-site-verification" content="pjxJUyWxae"> 
+  <meta name="360-site-verification" content="cbe5c6f0249e273e71fffd6d6580ce09"> 
+  <meta name="shenma-site-verification" content="79b94bb338f010af876605819a332e19_1617844070"> 
+  <meta name="sogou_site_verification" content="Ow8cCy3Hgq"> 
+  <link rel="icon" type="image/ico" href="https://web.archive.org/web/20241129033912im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="shortcut icon" type="image/ico" href="https://web.archive.org/web/20241129033912im_/https://a0.awsstatic.com/libra-css/images/site/fav/favicon.ico"> 
+  <link rel="apple-touch-icon" sizes="57x57" href="https://web.archive.org/web/20241129033912im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="72x72" href="https://web.archive.org/web/20241129033912im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <link rel="apple-touch-icon" sizes="114x114" href="https://web.archive.org/web/20241129033912im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-iphone-114-smile.png"> 
+  <link rel="apple-touch-icon" sizes="144x144" href="https://web.archive.org/web/20241129033912im_/https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png"> 
+  <meta property="og:type" content="company"> 
+  <meta property="og:url" content="https://web.archive.org/web/20241129033912/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"> 
+  <meta property="og:image" content="https://web.archive.org/web/20241129033912im_/https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_1200x630.png"> 
+  <meta property="og:site_name" content="Amazon Web Services, Inc."> 
+  <meta name="facebook-domain-verification" content="ucogvbvio3zpukhjxw4pcprci7qylr"> 
+  <meta name="google-site-verification" content="XHghG81ulgiW-3EylGcF48sG28tBW5EH0bNUhgo_DrU"> 
+  <meta name="msvalidate.01" content="6F92E52A288E266E30C2797ECB5FCCF3"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20241129033912cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-base.css"> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20241129033912cs_/https://a0.awsstatic.com/libra-css/css/1.0.506/style-awsm-components.css"> 
+  <script type="esms-options">{"noLoadEventRetriggers": true, "nonce":"POTAQap37FQFGq46m1dE6cBJHSU9zNq8bjp4TY78+Ho="}</script> 
+  <script async src="https://web.archive.org/web/20241129033912js_/https://a0.awsstatic.com/eb-csr/1.0.115/polyfills/es-module-shims/es-module-shims.js"></script> 
+  <script type="importmap">{"imports":{"react":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/react/react.js","react/jsx-runtime":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/react/jsx-runtime.js","react-dom":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/react/react-dom.js","react-dom/server":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/react/server-browser.js","react-dom-server-browser":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/react/react-dom-server-browser.js","sanitize-html":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/sanitize-html/index.js","video.js":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/videojs/video.js","videojs-event-tracking":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/videojs/videojs-event-tracking.js","videojs-hotkeys":"https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/eb-csr/1.0.115/videojs/videojs-hotkeys.js"}}</script> 
+  <script type="application/json" id="aws-page-settings">
+  {
+    "supportedLanguages": ["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],
+    "defaultLanguage": "en",
+    "logDataSet": "LIVE:PROD",
+    "logInstance": "PUB",
+    "csdsEndpoint": "https://web.archive.org/web/20241129033912/https://d2c.aws.amazon.com/",
+    "framework": "v2",
+    "g11nLibPath": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/g11n-lib/2.0.106",
+    "i18nStringPath": "https://web.archive.org/web/20241129033912/https://i18n-string.us-west-2.prod.pricing.aws.a2z.com",
+    "libraCSSPath": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/libra-css/css/1.0.506",
+    "libraCSSImagePath": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/libra-css/images",
+    "isLoggingEnabled": true,
+    "currentLanguage": "en-US",
+    "currentStage": "Prod",
+    "isBJS": false,
+    "isMarketplace": false,
+    "isRTL": false,
+    "requireBaseUrl": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com",
+    "requirePackages":[
+      {
+          "name": "libra",
+          "location": "libra/1.0.592"
+      }
+    ],
+    "requirePaths": {
+      "directories": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/libra/1.0.592/directories",
+      "libra-cardsui": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/libra/1.0.592/libra-cardsui",
+      "librastandardlib": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/libra/1.0.592/librastandardlib",
+      "aws-blog": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/aws-blog/1.0.80/js",
+      "plc": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/plc/js/1.0.138/plc",
+      "scripts": "libra/1.0.592/v1-polyfills/scripts",
+      "libra-search": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/libra-search/1.0.19/js",
+      "pricing-calculator": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/pricing-calculator/js/1.0.2",
+      "pricing-savings-plan": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/pricing-savings-plan/js/1.0.23"
+    },
+    "staticAssetPath": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com",
+    "jsAssetPath": "https://web.archive.org/web/20241129033912/https://a0.awsstatic.com/libra/1.0.592",
+    "awstvVideoAssetOrigin": "https://web.archive.org/web/20241129033912/https://tv.awsstatic.com",
+    "awstvVideoAPIOrigin": "//web.archive.org/web/20241129033912/https://aws.amazon.com"
+  }
+</script> 
+  <script src="https://web.archive.org/web/20241129033912js_/https://a0.awsstatic.com/libra/1.0.592/libra-head.js"></script> 
+  <script src="https://web.archive.org/web/20241129033912js_/https://a0.awsstatic.com/s_code/js/3.0/awshome_s_code.js"></script> 
+  <script src="https://web.archive.org/web/20241129033912js_/https://d2c.aws.amazon.com/client/loader/v1/d2c-load.js"></script> 
+  <script async src="https://web.archive.org/web/20241129033912js_/https://a0.awsstatic.com/da/js/1.0.51/aws-da.js"></script> 
+  <link rel="stylesheet" href="https://web.archive.org/web/20241129033912cs_/https://a0.awsstatic.com/eb-csr/1.0.115/orchestrate.css"> 
+  <script type="module" async="true" src="https://web.archive.org/web/20241129033912jm_/https://a0.awsstatic.com/eb-csr/1.0.115/orchestrate.js"></script> 
+  <script type="application/json" id="target-mediator">{"pageLanguage":"en","supportedLanguages":["ar","cn","de","en","es","fr","id","it","jp","ko","pt","ru","th","tr","tw","vi"],"offerOrigin":"https://web.archive.org/web/20241129033912/https://s0.awsstatic.com"}</script> 
+  <script data-js-script="target-mediator" src="https://web.archive.org/web/20241129033912js_/https://a0.awsstatic.com/target/1.0.123/aws-target-mediator.js" async="true"></script> 
+ </head> 
+ <body class="awsm"><!-- BEGIN WAYBACK TOOLBAR INSERT -->
+<script>__wm.rw(0);</script>
+<div id="wm-ipp-base" lang="en" style="display:none;direction:ltr;" toolbar-mode="auto">
+<div id="wm-ipp" style="position:fixed;left:0;top:0;right:0;">
+<div id="donato" style="position:relative;width:100%;height:0;">
+  <div id="donato-base">
+    <iframe id="donato-if" src="https://archive.org/includes/donate.php?as_page=1&amp;platform=wb&amp;referer=https%3A//web.archive.org/web/20241129033912/https%3A//aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
+	    scrolling="no" frameborder="0" style="width:100%; height:100%">
+    </iframe>
+  </div>
+</div><div id="wm-ipp-inside">
+  <div id="wm-toolbar" style="position:relative;display:flex;flex-flow:row nowrap;justify-content:space-between;" nav="async">
+    <div id="wm-logo" style="/*width:110px;*/padding-top:12px;">
+      <a href="/web/" title="Wayback Machine home page"><img src="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png" srcset="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-100.png, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-150.png 1.5x, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png 2x" alt="Wayback Machine" style="width:100px" border="0" /></a>
+    </div>
+    <div class="c" style="display:flex;flex-flow:column nowrap;justify-content:space-between;flex:1;">
+      <form class="u" style="display:flex;flex-direction:row;flex-wrap:nowrap;" target="_top" method="get" action="/web/submit" name="wmtb" id="wmtb"><input type="text" name="url" id="wmtbURL" value="https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/" onfocus="this.focus();this.select();" style="flex:1;"/><input type="hidden" name="type" value="replay" /><input type="hidden" name="date" value="20241129033912" /><input type="submit" value="Go" />
+      </form>
+      <div style="display:flex;flex-flow:row nowrap;align-items:flex-end;">
+                <div class="s" id="wm-nav-captures" style="flex:1;">
+                    <a class="t" href="/web/20241129033912*/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/" title="See a list of every capture for this URL">65 captures</a>
+          <div class="r" title="Timespan for captures of this URL">15 Jan 2021 - 08 Sep 2026</div>
+          </div>
+        <div class="k">
+          <a href="" id="wm-graph-anchor">
+            <div id="wm-ipp-sparkline" title="Explore captures for this URL" style="position: relative">
+              <canvas id="wm-sparkline-canvas" width="775" height="27" border="0"></canvas>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="n">
+      <table>
+        <tbody>
+          <!-- NEXT/PREV MONTH NAV AND MONTH INDICATOR -->
+          <tr class="m">
+            <td class="b" nowrap="nowrap">Oct</td>
+            <td class="c" id="displayMonthEl" title="You are here: 03:39:12 Nov 29, 2024">NOV</td>
+            <td class="f" nowrap="nowrap">Dec</td>
+          </tr>
+          <!-- NEXT/PREV CAPTURE NAV AND DAY OF MONTH INDICATOR -->
+          <tr class="d">
+            <td class="b" nowrap="nowrap"><span class="ta"></span></td>
+            <td class="c" id="displayDayEl" style="width:34px;font-size:22px;white-space:nowrap;" title="You are here: 03:39:12 Nov 29, 2024">29</td>
+            <td class="f" nowrap="nowrap"><span class="ta"></span></td>
+          </tr>
+          <!-- NEXT/PREV YEAR NAV AND YEAR INDICATOR -->
+          <tr class="y">
+            <td class="b" nowrap="nowrap">2023</td>
+            <td class="c" id="displayYearEl" title="You are here: 03:39:12 Nov 29, 2024">2024</td>
+            <td class="f" nowrap="nowrap">2025</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="r" style="display:flex;flex-flow:column nowrap;align-items:flex-end;justify-content:space-between;">
+      <div id="wm-btns" style="text-align:right;height:23px;">
+                <span class="xxs">
+          <div id="wm-save-snapshot-success">success</div>
+          <div id="wm-save-snapshot-fail">fail</div>
+          <a id="wm-save-snapshot-open" href="#" title="Share via My Web Archive" >
+            <span class="iconochive-web"></span>
+          </a>
+          <a href="https://archive.org/account/login.php" title="Sign In" id="wm-sign-in">
+            <span class="iconochive-person"></span>
+          </a>
+          <span id="wm-save-snapshot-in-progress" class="iconochive-web"></span>
+        </span>
+                <a class="xxs" href="https://help.archive.org/help/category/the-wayback-machine/" title="Get some help using the Wayback Machine" style="top:-6px;"><span class="iconochive-question" style="color:rgb(87,186,244);font-size:160%;"></span></a>
+        <a id="wm-tb-close" href="#close" style="top:-2px;" title="Close the toolbar"><span class="iconochive-remove-circle" style="color:#888888;font-size:240%;"></span></a>
+      </div>
+      <div id="wm-share" class="xxs">
+        <a href="/web/20241129033912/http://web.archive.org/screenshot/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
+           id="wm-screenshot"
+           title="screenshot">
+          <span class="wm-icon-screen-shot"></span>
+        </a>
+        <a href="#" id="wm-video" title="video">
+          <span class="iconochive-movies"></span>
+        </a>
+        <a id="wm-share-facebook" href="#" data-url="https://web.archive.org/web/20241129033912/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/" title="Share on Facebook" style="margin-right:5px;" target="_blank"><span class="iconochive-facebook" style="color:#3b5998;font-size:160%;"></span></a>
+        <a id="wm-share-twitter" href="#" data-url="https://web.archive.org/web/20241129033912/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/" title="Share on Twitter" style="margin-right:5px;" target="_blank"><span class="iconochive-twitter" style="color:#1dcaff;font-size:160%;"></span></a>
+      </div>
+      <div style="padding-right:2px;text-align:right;white-space:nowrap;">
+        <a id="wm-expand" class="wm-btn wm-closed" href="#expand"><span id="wm-expand-icon" class="iconochive-down-solid"></span> <span class="xxs" style="font-size:80%;">About this capture</span></a>
+      </div>
+    </div>
+  </div>
+    <div id="wm-capinfo" style="border-top:1px solid #777;display:none; overflow: hidden">
+        <div id="wm-capinfo-notice" source="api"></div>
+                <div id="wm-capinfo-collected-by" source="api" trigger="hover" token="MVueYcY9WPeagmQbIpEkPGKnkl6_Aze1JvC7r25l9XevxIy_KKIkwUxOAUedKAxBM7E"></div>
+    <div id="wm-capinfo-timestamps">
+    <div style="background-color:#666;color:#fff;font-weight:bold;text-align:center;padding:2px 0;" title="Timestamps for the elements of this page">TIMESTAMPS</div>
+    <div>
+      <div id="wm-capresources" style="margin:0 5px 5px 5px;max-height:250px;overflow-y:scroll !important"></div>
+      <div id="wm-capresources-loading" style="text-align:left;margin:0 20px 5px 5px;display:none"><img src="https://web-static.archive.org/_static/images/loading.gif" alt="loading" /></div>
+    </div>
+    </div>
+  </div></div></div></div><div id="wm-ipp-print">The Wayback Machine - https://web.archive.org/web/20241129033912/https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/</div>
+<script type="text/javascript">//<![CDATA[
+__wm.bt(775,27,25,2,"web","https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/","20241129033912",1996,"https://web-static.archive.org/_static/",["https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3","https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv"], false);
+  __wm.rw(1);
+//]]></script>
+<!-- END WAYBACK TOOLBAR INSERT -->
+  
+  <script id="awsc-panorama-bundle" type="text/javascript" src="https://web.archive.org/web/20241129033912js_/https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{&quot;appEntity&quot;:&quot;aws-marketing&quot;,&quot;region&quot;:&quot;us-west-1&quot;,&quot;service&quot;:&quot;global-site&quot;,&quot;trackerConstants&quot;:{&quot;cookieDomain&quot;:&quot;aws.amazon.com&quot;}}" async="true"></script> 
+  <a id="aws-page-skip-to-main" class="lb-sr-only lb-sr-only-focusable lb-bold lb-skip-el" href="#aws-page-content-main"> Skip to main content</a> 
+  <header id="aws-page-header" class="awsm m-page-header lb-with-mobile-subrow" role="banner"> 
+   <div id="m-nav" class="m-nav" role="navigation" aria-label="Global Navigation"> 
+    <div class="m-nav-header lb-clearfix" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/desktop/index.html"> 
+     <div class="m-nav-logo"> 
+      <div class="lb-bg-logo aws-amazon_web_services_smile-header-desktop-en"> 
+       <a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+      </div> 
+     </div> 
+     <nav class="m-nav-secondary-links" style="min-width: 620px" aria-label="Secondary Global Navigation"> 
+      <a href="/web/20241129033912/https://aws.amazon.com/about-aws/?nc2=h_header">About AWS</a> 
+      <a href="/web/20241129033912/https://aws.amazon.com/contact-us/?nc2=h_header">Contact Us</a> 
+      <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt lb-has-trigger-indicator" href="#" data-mbox-ignore="true" data-lb-popover-trigger="popover-support-selector" role="button" aria-expanded="false" aria-label="Explore support options" id="popover-popover-support-selector-trigger" aria-controls="popover-support-selector" aria-haspopup="true"> Support &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a id="m-nav-language-selector" class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-language-selector" data-language="en" aria-label="Set site language" role="button" aria-controls="popover-language-selector" aria-expanded="false" aria-haspopup="true"> English &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <a class="lb-tiny-iblock lb-txt lb-has-trigger-indicator" href="#" data-lb-popover-trigger="popover-my-account" aria-label="Access account options" role="button" aria-controls="popover-my-account" aria-expanded="false" aria-haspopup="true"> My Account &nbsp; 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-chevron-down lb-trigger-mount"> 
+        <path d="M1 4.5L8 11.5L15 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/> 
+       </svg> </a> 
+      <div class="m-nav-cta-btn"> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_nav_cta"> 
+        <div class="lb-data-attr-wrapper data-attr-wrapper" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="sign-up-sign-in-all" data-da-so-url="nav"> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-pad lb-box" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-sign-in" data-da-so-url="all"> 
+          <a class="lb-txt-none lb-tiny-iblock lb-txt-13 lb-txt" style="padding-top:8px; padding-right:13px;" href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/console/home?nc2=h_ct&amp;src=header-signin"> Sign In</a> 
+         </div> 
+         <div class="data-attr-wrapper lb-tiny-iblock lb-none-v-margin lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="nav-buttons" data-da-so-version="prospect-signup" data-da-so-url="all"> 
+          <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241129033912/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_ct&amp;src=header_signup" data-trk-params="{&quot;trkOverrideWithQs&quot;:true}" role="button"> <span> Create an AWS Account</span> </a> 
+         </div> 
+        </div> 
+       </div> 
+       <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_desktop_nav_cta_test"> 
+       </div> 
+      </div> 
+     </nav> 
+     <div class="m-nav-primary-group"> 
+      <nav class="m-nav-primary-links" aria-label="Primary Global Navigation"> 
+       <i class="m-nav-angle-left-icon" aria-hidden="true"></i> 
+       <ul> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20241129033912/https://reinvent.awsevents.com/?nc=nav-l1&amp;trk=0e487c8f-c3e3-4b03-9550-a51ebdba56b6" class="m-nav-featured" data-panel="m-nav-panel-reinvent24">re:Invent</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/products/?nc2=h_ql_prod" data-panel="m-nav-panel-products">Products</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/solutions/?nc2=h_ql_sol" data-panel="m-nav-panel-solutions">Solutions</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/pricing/?nc2=h_ql_pr" data-panel="m-nav-panel-pricing">Pricing</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/documentation-overview/?nc2=h_ql_doc_do" data-panel="m-nav-panel-documentation">Documentation</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/getting-started/?nc2=h_ql_le" data-panel="m-nav-panel-learn">Learn</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/partners/?nc2=h_ql_pn" data-panel="m-nav-panel-partner">Partner Network</a></span></li> 
+        <li aria-expanded="false"><span><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/marketplace/?nc2=h_ql_mp" data-panel="m-nav-panel-marketplace">AWS Marketplace</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/customer-enablement/?nc2=h_ql_ce" data-panel="m-nav-panel-customer">Customer Enablement</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/events/?nc2=h_ql_ev" data-panel="m-nav-panel-events">Events</a></span></li> 
+        <li aria-expanded="false"><span><a href="/web/20241129033912/https://aws.amazon.com/contact-us/?nc2=h_ql_exm" data-panel="m-nav-panel-more">Explore More </a></span></li> 
+       </ul> 
+       <div class="m-nav-icon-group"> 
+        <i class="m-nav-angle-right-icon" aria-hidden="true"></i> 
+        <button class="m-nav-search-icon" tabindex="0" aria-expanded="false" aria-label="Search"> 
+         <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-magnify"> 
+          <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+          <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+         </svg> </button> 
+       </div> 
+      </nav> 
+      <div id="m-nav-desktop-search" class="m-nav-search"> 
+       <form action="https://web.archive.org/web/20241129033912/https://aws.amazon.com/search/" role="search"> 
+        <div class="m-typeahead" data-directory-id="typeahead-suggestions" data-lb-comp="typeahead"> 
+         <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+        </div> 
+       </form> 
+       <i class="m-nav-close-icon" role="button" aria-label="Close"></i> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-language-selector" id="popover-language-selector" aria-modal="false" aria-labelledby="popover-popover-language-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="ar-SA" translate="no" data-language="ar"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+        <li lang="id-ID" translate="no" data-language="id"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+        <li lang="de-DE" translate="no" data-language="de"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+        <li lang="en-US" translate="no" data-language="en"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+        <li lang="es-ES" translate="no" data-language="es"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+        <li lang="fr-FR" translate="no" data-language="fr"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+        <li lang="it-IT" translate="no" data-language="it"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+        <li lang="pt-BR" translate="no" data-language="pt"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       </ul> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-12"> 
+       <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+        <li lang="vi-VN" translate="no" data-language="vi"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+        <li lang="tr-TR" translate="no" data-language="tr"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+        <li lang="ru-RU" translate="no" data-language="ru"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+        <li lang="th-TH" translate="no" data-language="th"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+        <li lang="ja-JP" translate="no" data-language="jp"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+        <li lang="ko-KR" translate="no" data-language="ko"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+        <li lang="zh-CN" translate="no" data-language="cn"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+        <li lang="zh-TW" translate="no" data-language="tw"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-my-account" id="popover-my-account" aria-modal="false" aria-labelledby="popover-popover-my-account-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="/web/20241129033912/https://aws.amazon.com/profile/?nc2=h_m_mc">My Profile</a></li> 
+      <li class="m-no-auth" data-myaws-auth-only="true"><a href="https://web.archive.org/web/20241129033912/https://auth.aws.amazon.com/sign-out/?nc2=h_m_mc">Sign out of AWS Builder ID</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/?nc2=h_m_mc">AWS Management Console</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/billing/home#/account?nc2=h_m_ma">Account Settings</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/billing/home?nc2=h_m_bc">Billing &amp; Cost Management</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/iam/home?nc2=h_m_sc#security_credential">Security Credentials</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://phd.aws.amazon.com/?nc2=h_m_sc">AWS Personal Health Dashboard</a></li> 
+     </ul> 
+    </div> 
+    <div class="lb-popover lb-popover-aui lb-popover-tiny" data-lb-comp="popover" data-id="popover-support-selector" id="popover-support-selector" aria-modal="false" aria-labelledby="popover-popover-support-selector-trigger" data-action="hover" data-position="top"> 
+     <a class="lb-popover-close" role="button" tabindex="0" aria-label="Close" title="Close"> <span class="lb-sr-only">Close</span> </a> 
+     <ul class="lb-txt-none lb-ul lb-list-style-none lb-tiny-ul-block"> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/support/home/?nc2=h_ql_cu">Support Center</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://iq.aws.amazon.com/?utm=mkt.nav">Expert Help</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://repost.aws/knowledge-center/?nc2=h_m_ma">Knowledge Center</a></li> 
+      <li><a href="/web/20241129033912/https://aws.amazon.com/premiumsupport/?nc2=h_m_bc">AWS Support Overview</a></li> 
+      <li><a href="https://web.archive.org/web/20241129033912/https://repost.aws/">AWS re:Post</a></li> 
+     </ul> 
+    </div> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/suggestions" data-hbs-context="{&quot;pricingText&quot;:&quot;Pricing&quot;,&quot;documentationText&quot;:&quot;Documentation&quot;,&quot;calculatorText&quot;:&quot;Calculator&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/products-head" data-hbs-context="{&quot;productsText&quot;:&quot;Products&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/keypages-head" data-hbs-context="{&quot;relatedPagesText&quot;:&quot;Related Pages&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/tutorials-head" data-hbs-context="{&quot;tutorialsText&quot;:&quot;Tutorials&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/blogs-head" data-hbs-context="{&quot;blogsText&quot;:&quot;Blogs&quot;}"></script> 
+    <script type="text/x-handlebars-template" data-hbs-template-path="nav-desktop/see-all" data-hbs-context="{&quot;resultsText&quot;:&quot;See more results for&quot;}"></script> 
+   </div> 
+   <div id="m-nav-mobile" class="m-nav-mobile" role="navigation" aria-label="Global Navigation for Mobile"> 
+    <div id="m-nav-mobile-header" class="m-nav-mobile-header m-nav-mobile-with-sub-row" data-menu-url="https://s0.awsstatic.com/en_US/nav/v3/panel-content/mobile/index.html"> 
+     <div class="lb-bg-logo aws-amazon_web_services_smile-header-mobile-en"> 
+      <a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/?nc2=h_lg"><span>Click here to return to Amazon Web Services homepage</span></a> 
+     </div> 
+     <div class="m-nav-mobile-button-group"> 
+      <button class="m-nav-mobile-button icon-search" tabindex="0" aria-expanded="false" aria-label="Search"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M10.5 10.5L14.5 14.5" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M7 12.5C10.0376 12.5 12.5 10.0376 12.5 7C12.5 3.96243 10.0376 1.5 7 1.5C3.96243 1.5 1.5 3.96243 1.5 7C1.5 10.0376 3.96243 12.5 7 12.5Z" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <button class="m-nav-mobile-button icon-reorder" tabindex="0" aria-expanded="false" aria-label="Menu"> 
+       <svg viewbox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"> 
+        <path d="M15 3H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 8H1" stroke-width="2" stroke-linejoin="round"/> 
+        <path d="M15 13H1" stroke-width="2" stroke-linejoin="round"/> 
+       </svg> </button> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_header_mobile_nav_cta_test"> 
+      </div> 
+     </div> 
+     <div id="m-nav-mobile-sub-row" class="m-nav-mobile-sub-row"> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="get-started-for-free-cta" data-da-so-url="all"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241129033912/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc2=h_mobile" role="button"> <span> Get Started for Free</span> </a> 
+      </div> 
+      <div class="data-attr-wrapper lb-btn" data-da-type="so" data-da-so-category="monitoring" data-da-so-language="en" data-da-so-name="global-mobile-sticky-cta-buttons" data-da-so-type="viewport" data-da-so-version="contact-us"> 
+       <a class="lb-btn-p" href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/contact-us/?nc2=h_mobile" role="button"> <span> Contact Us</span> </a> 
+      </div> 
+     </div> 
+    </div> 
+    <div id="m-nav-mobile-search" class="m-nav-mobile-search"> 
+     <form action="https://web.archive.org/web/20241129033912/https://aws.amazon.com/search" role="search"> 
+      <div class="m-typeahead"> 
+       <input class="m-nav-search-field" placeholder="Search" autocomplete="off" spellcheck="false" dir="auto" type="text" name="searchQuery"> 
+      </div> 
+     </form> 
+    </div> 
+    <nav id="m-nav-trimdown" aria-label="Condensed Global Navigation for Mobile"> 
+     <ul class="m-nav-mobile-menu-group"> 
+      <li> <a href="https://web.archive.org/web/20241129033912/https://reinvent.awsevents.com/?nc=nav-m&amp;trk=0e487c8f-c3e3-4b03-9550-a51ebdba56b6"> <span class="m-nav-link-title">re:Invent</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/products/?nc2=h_mo"> <span class="m-nav-link-title">Products</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/solutions/?nc2=h_mo"> <span class="m-nav-link-title">Solutions</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/pricing/?nc2=h_mo"> <span class="m-nav-link-title">Pricing</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/what-is-aws/?nc2=h_mo"> <span class="m-nav-link-title">Introduction to AWS</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/getting-started/?nc2=h_mo"> <span class="m-nav-link-title">Getting Started</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/documentation-overview/?nc2=h_mo"> <span class="m-nav-link-title">Documentation</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/training/?nc2=h_mo"> <span class="m-nav-link-title">Training and Certification</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/developer/?nc2=h_mo"> <span class="m-nav-link-title">Developer Center</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/solutions/case-studies/?nc2=h_mo"> <span class="m-nav-link-title">Customer Success</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/partners/?nc2=h_mo"> <span class="m-nav-link-title">Partner Network</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/marketplace/?nc2=h_mo"> <span class="m-nav-link-title">AWS Marketplace</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/support/home?nc2=h_ql_cu"> <span class="m-nav-link-title">Support</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241129033912/https://repost.aws/"> <span class="m-nav-link-title">AWS re:Post</span> </a> </li> 
+      <li> <a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/console/home"> <span class="m-nav-link-title">Log into Console</span> </a> </li> 
+      <li> <a href="/web/20241129033912/https://aws.amazon.com/console/mobile/"> <span class="m-nav-link-title">Download the Mobile App</span> </a> </li> 
+     </ul> 
+    </nav> 
+   </div> 
+   <div class="lb-sticky-subnav" data-lb-comp="sticky-subnav" data-lb-page-path="/builders-library/making-retries-safe-with-idempotent-APIs/"> 
+    <div class="lb-row lb-row-max-large lb-snap"> 
+     <div class="lb-tiny-24 lb-sticky-subnav-content"> 
+      <div class="lb-sticky-subnav-title"> 
+       <a class="lb-txt" href="/web/20241129033912/https://aws.amazon.com/builders-library/"> The Amazon Builders' Library</a> 
+      </div> 
+      <div class="lb-sticky-subnav-links"> 
+       <a class="lb-txt-bold lb-txt" href="/web/20241129033912/https://aws.amazon.com/builders-library/"> Overview</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20241129033912/https://aws.amazon.com/builders-library/authors/"> Authors</a> 
+       <a class="lb-txt-bold lb-txt-none lb-txt" href="/web/20241129033912/https://aws.amazon.com/builders-library/faqs/"> FAQs</a> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </header> 
+  <div id="aws-page-content" class="lb-page-with-sidebar-left lb-page-content lb-page-with-sticky-subnav" style="padding-top:0px; padding-bottom:0px;" data-page-alert-target="true"> 
+   <div> 
+    <div class="lb-bg-left-bottom-cover lb-none-v-margin lb-grid" style="padding-top:50px; background-image:url('https://web.archive.org/web/20241129033912im_/https://d1.awsstatic.com/legal/builders-library/WEB_Library-header.d958a0d6de10906ba0ed43e35bfd1669a3c84031.jpg');"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-16"> 
+       <div class="lb-breadcrumbs lb-breadcrumbs-dropTitle lb-breadcrumbs-dark"> 
+        <ul> 
+         <li> <a href="/web/20241129033912/https://aws.amazon.com/builders-library/"><span>Amazon Builders' Library</span></a> </li> 
+        </ul> 
+        <h1>Making retries safe with idempotent APIs</h1> 
+       </div> 
+       <div class="lb-txt-uppercase lb-txt-white lb-txt-16 lb-txt" style="margin-bottom:20px;">
+         Architecture | LEVEL 300 
+       </div> 
+      </div> 
+      <div class="lb-col lb-tiny-24 lb-mid-8"> 
+       <div class="lb-tiny-iblock lb-tiny-pad lb-box" style="background-color:#eaeded;"> 
+        <div class="lb-none-v-margin lb-rtxt" style="margin-top:10px;"> 
+         <p style="text-align: center;"><b>Would you like to be notified of&nbsp;new content?</b></p> 
+        </div> 
+        <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-14"> 
+          <div class="lb-btn"> 
+           <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241129033912/https://pages.awscloud.com/amazon-builders-library.html" target="_blank" rel="noopener noreferrer" role="button"> <span> Send me updates</span> </a> 
+          </div> 
+         </div> 
+         <div class="lb-col lb-tiny-24 lb-mid-5"> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <main id="aws-page-content-main" role="main" tabindex="-1"> 
+    <div class="lb-sticky-sidebar lb-sticky-sidebar-modern" data-lb-comp="sticky-sidebar"> 
+     <div data-lb-comp="floating-wrapper" class="lb-floating-wrapper"> 
+      <div class="lb-floating-wrapper-content"> 
+       <div class="lb-wrapper-content"> 
+        <div class="lb-toggle-wrapper"> 
+         <button class="lb-toggle" aria-label="Collapse sidebar" data-aria-label-toggle="Expand sidebar" aria-expanded="true"></button> 
+        </div> 
+        <div class="lb-sidebar-content"> 
+         <div> 
+          <div class="lb-sidebar-header">
+            Article Content 
+          </div> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Introduction"> Introduction</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Retrying_and_the_potential_for_undesirable_side_effects"> Retrying and side effects</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Reducing_client_complexity_with_idempotent_API_design"> Reducing client complexity</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Semantic_equivalence_and_support_for_default_retry_strategies"> Retries and semantic equivalence</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Late_arriving_requests_and_the_life_span_of_unique_client_request_identifiers"> Late arriving requests</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Responding_when_a_customer_changes_request_parameters_on_a_subsequent_call_where_the_client_request_ID_stays_the_same"> Same client request ID, different intent</a> 
+          <a class="lb-txt-bold lb-txt-none lb-txt-16 lb-txt" href="#Conclusion"> Conclusion</a> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+    <div class="lb-grid"> 
+     <div class="lb-row lb-row-max-large lb-snap"> 
+      <div class="lb-col lb-tiny-24 lb-mid-24"> 
+       <div class="lb-none-v-margin lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-txt-none lb-txt" href="/web/20241129033912/https://aws.amazon.com/builders-library/authors/malcolm-featonby/"> By Malcolm Featonby</a> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-16"> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <a class="lb-tiny-align-left lb-small-align-left lb-mid-align-left lb-large-align-left lb-xlarge-align-left lb-txt-none lb-tiny-hide lb-small-show lb-mid-show lb-large-show lb-xlarge-show lb-txt" href="https://web.archive.org/web/20241129033912/https://d1.awsstatic.com/builderslibrary/pdfs/making-retries-safe-with-idempotent-apis-malcolm-featonby.pdf" target="_blank" rel="noopener noreferrer"> <i class="icon-file-pdf-o lb-before"></i>&nbsp;PDF</a> 
+        </div> 
+       </div> 
+       <div id="Introduction"></div> 
+       <div class="lb-rtxt"> 
+        <p>At Amazon, we often see patterns in our services in which a complex operation is decomposed into a controlling process making calls to a number of smaller services, each responsible for one part of the overall workflow. For example, consider the launch of an Amazon Elastic Compute Cloud (EC2) instance. “Under the hood” this involves calls to services responsible for making placement decisions, creating Amazon Elastic Block Store (EBS) volumes, creating elastic network Interfaces, and provisioning a virtual machine (VM). On occasion, one or more of these service calls might fail. To deliver a good customer experience we want to drive this workflow to success. To achieve this, we look to the controlling process to shepherd all decomposed services into a known good state. </p> 
+        <p>We’ve found that in many cases the simplest solution is the best solution. In the scenario I just described, it would be best to simply retry these calls until they succeed. Interestingly, as Marc Brooker explains in the article <a href="/web/20241129033912/https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/">Timeouts, retries, and backoff with jitter</a>, a surprisingly large number of transient or random faults can be overcome by simply retrying the call. As simple as it seems, this pattern has proven so effective that we have baked <a href="https://web.archive.org/web/20241129033912/https://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/retry/PredefinedRetryPolicies.SDKDefaultRetryCondition.html" target="_blank">default retry behavior</a> into some of our AWS SDK implementations. These implementations automatically retry requests that fail as a result of network IO issues, server-side fault, or service rate limiting. Being able to simply retry requests reduces the number of edge cases that need to be dealt with by the client. As a result, it reduces the amount of undifferentiated boilerplate code needed in calling services. Undifferentiated boilerplate code in this context refers to the code needed to wrap service calls to remote services to handle various fault scenarios that might arise.</p> 
+        <p>However, retrying a service call as mitigation for a transient fault is based on a simplifying assumption that an operation can be retried without any side effects. Put another way, we want to make sure that the result of the call happens only once, even if we need to make that call multiple times as part of our retry loop. Going back to our earlier example, it would be undesirable for the EC2 instance launch workflow to retry a failed call to create an EBS volume and end up with two EBS volumes. In this article, we discuss how AWS leverages idempotent API operations to mitigate some of the potential undesirable side effects of retrying in order to deliver a more robust service while still leveraging the benefits of retries to simplifying client-side code.<br> </p> 
+       </div> 
+       <h2 id="Retrying_and_the_potential_for_undesirable_side_effects" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Retrying and the potential for undesirable side effects</h2> 
+       <div class="lb-rtxt"> 
+        <div>
+          To dive into this more deeply let’s consider a hypothetical scenario where a customer is using the Amazon EC2 RunInstances API operation. In our scenario, our customer wants to run a 
+         <i>singleton</i> workload, which is a workload that requires “at most one” EC2 instance running at any time. To achieve this, our customer’s provisioning process asks Amazon EC2 to launch this new workload. However, for some reason, perhaps due to a network timeout, the provisioning process receives no response. 
+         <br> 
+        </div> 
+       </div> 
+       <figure class="lb-img"> 
+        <div> 
+         <img src="https://web.archive.org/web/20241129033912im_/https://d1.awsstatic.com/builderslibrary/architecture-images/making-retries-safe-1.56760d1d28759735e71c26243f3c1d190329c2a0.png" alt="" title="" class="cq-dd-image"> 
+        </div> 
+       </figure> 
+       <div class="lb-rtxt"> 
+        <div>
+          This leaves the provisioning process with a dilemma. It’s not clear whether the singleton workload is running or not. Simply retrying the request could result in multiple workloads, which could have dire consequences. To overcome this dilemma the provisioning process has to perform a reconciliation to determine whether this workload is running or not. This is a lot of heavy lifting to compensate for an edge case that might happen relatively infrequently. In addition, even in the case of a reconciliation workflow, there might still be some uncertainty. What if the resource is there but created by another provisioning process? In the simple case that might be fine, but in more complex scenarios it might be important to know whether the resource was created by this process or another process. 
+         <br> 
+        </div> 
+       </div> 
+       <h2 id="Reducing_client_complexity_with_idempotent_API_design" class="lb-txt-bold lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Reducing client complexity with idempotent API design</h2> 
+       <div class="lb-rtxt"> 
+        <p>To allow callers to retry these kinds of operations we need to make them idempotent. An <i>idempotent</i> operation is one where a request can be retransmitted or retried with no additional side effects, a property that is very beneficial in distributed systems. </p> 
+        <p>We can significantly simplify client code by delivering a contract that allows the client to make a simplifying assumption that any error that isn’t a validation error can be overcome by retrying the request until it succeeds. However, this introduces some additional complexity to service implementation. In a distributed system with many clients making many calls and with many requests in flight, the challenge is how do we identify that a request is a repeat of some previous request? </p> 
+        <p>Many approaches could be used to infer whether a request is a duplicate of an earlier request. For example, it might be possible to derive a synthetic token based on the parameters in the request. You could derive a hash of the parameters present and assume that any request from the same caller with identical parameters is a duplicate. On the surface, this seems to simplify both the customer experience and the service implementation. Any request that looks exactly like a previous request is considered a duplicate. However, we have found that this approach doesn’t work in all cases. For example, it might be reasonable to assume that two exact duplicate requests from the same caller to create an Amazon DynamoDB table received very close together in time are duplicates of the same request. However, if those requests were for launching an Amazon EC2 instance, then our assumption might not hold. It’s possible that the caller actually wants two identical EC2 instances. </p> 
+        <p>At Amazon, our preferred approach is to incorporate a unique caller-provided client request identifier into our API contract. Requests from the same caller with the same client request identifier can be considered duplicate requests and can be dealt with accordingly. By allowing customers to clearly express intent through API semantics we want to reduce the potential for unexpected outcomes for the customer. A unique caller-provided client request identifier for idempotent operations meets this need. It also has the benefit of making that intent readily auditable because the unique identifier is present in logs like AWS CloudTrail. Furthermore, by labeling the created resource with the unique client request identifier, customers are able to identify resources created by any given request. A concrete example of this can be seen in the Amazon EC2 DescribeInstances response, which shows the unique identifier used to create the EC2 instance. (In the Amazon EC2 API the unique client request identifier is called the ClientToken). </p> 
+        <p>The following diagram shows a sample request/response flow that uses a unique client request identifier in an idempotent retry scenario:<br> </p> 
+       </div> 
+       <figure class="lb-img"> 
+        <div> 
+         <img src="https://web.archive.org/web/20241129033912im_/https://d1.awsstatic.com/builderslibrary/architecture-images/making-retries-safe-2.75b41b5b444aa53dbf460396495e3f30b5c6af49.png" alt="" title="" class="cq-dd-image"> 
+        </div> 
+       </figure> 
+       <div class="lb-rtxt"> 
+        <p>In this example, a customer requests the creation of a resource that presents a unique client request identifier. On receiving the request, the service first checks to see if it has seen this identifier before. If it has not, it starts to process the request. It creates an idempotent “session” for this request keyed off the customer identifier and their unique client request identifier. If a subsequent request is received from the same customer with the same unique client request identifier then the service knows it has already seen this request and can take appropriate action. An important consideration is that the process that combines recording the idempotent token and all mutating operations related to servicing the request must meet the properties for an atomic, consistent, isolated, and durable (<a href="https://web.archive.org/web/20241129033912/https://sites.fas.harvard.edu/~cs265/papers/haerder-1983.pdf" target="_blank">ACID</a>) operation. An ACID server-side operation needs to be an “all or nothing” or atomic process. This ensures that we avoid situations where we could potentially record the idempotent token and fail to create some resources or, alternatively, create the resources and fail to record the idempotent token.</p> 
+        <p>The previous diagram shows the preparation of a semantically equivalent response in cases where the request has already been seen. It could be argued that this is not required to meet the letter of the law for an operation to be idempotent. Consider the case where a hypothetical CreateResource operation is called with the unique request identifier123. If the first request is received and processed but the response never makes it back to the caller then the caller will retry the request with identifier 123. However, the resource might now have been created as part of the initial request. One possible response to this request is to return a ResourceAlreadyExists return code. This meets the basic tenets for idempotency because there is no side effect for retrying the call. However, this leads to uncertainty from the perspective of the caller because it’s not clear whether the resource was created as a result of this request or the resource was created as the result of an earlier request. It also makes introducing retry as the default behavior a little more challenging. This is because, although the request had no side effects, the subsequent retry and resultant return code will likely change the flow of execution for the caller. Now the caller needs to deal with the resource already existing even in cases where (from their perspective) it did not exist before they made the call. In this scenario, although there is no side effect from the service perspective, returning ResourceAlreadyExists has a side effect from the client’s perspective.<br> </p> 
+       </div> 
+       <h2 id="Semantic_equivalence_and_support_for_default_retry_strategies" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Semantic equivalence and support for default retry strategies</h2> 
+       <div class="lb-rtxt"> 
+        <p>An alternative is to deliver a semantically equivalent response in every case for the same unique request identifier for some interval. This means that any subsequent response to a retry request from the same caller with the same unique client request identifier will have the same meaning as the first response returned for the first successful request. This approach has some really useful properties—especially where we want to improve the customer experience by safely and simply retrying operations that experience server-side faults, just as we do with the AWS SDK through default retry policies. </p> 
+        <p>We can see an example of idempotency with semantically equivalent responses and automated retry logic in action when we use the Amazon EC2 RunInstances API operation and the AWS Command Line Interface (CLI). Note that the AWS CLI (like the AWS SDK) <a href="https://web.archive.org/web/20241129033912/https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-retries.html" target="_blank">supports a default retry policy</a>, which we are using here. In this example, we launch an EC2 instance using the following AWS CLI command:<br> </p> 
+       </div> 
+       <div class="lb-border-p-feature lb-code lb-ctxt-p lb-no-highlighting" data-lb-comp="code"> 
+        <pre class="language-terminalOutput line-numbers"><code class="language-">$ aws ec2 run-instances --image-id ami-04fcd96153cb57194 --instance-type t2.micro 
+{                                                                                                                                                                                                                                                                               
+    "Instances": [                                                                                                                                                                                                                                                              
+        {                                                                                                                                                                                                                                                                       
+            "Monitoring": {                                                                                                                                                                                                                                                     
+                "State": "disabled"                                                                                                                                                                                                                                             
+            },                                                                                                                                                                                                                                                                  
+            "StateReason": {                                                                                                                                                                                                                                                    
+                "Message": "pending",                                                                                                                                                                                                                                           
+                "Code": "pending"                                                                                                                                                                                                                                               
+            },                                                                                                                                                                                                                                                                  
+            "State": {                                                                                                                                                                                                                                                          
+                "Code": 0,                                                                                                                                                                                                                                                      
+                "Name": "pending"                                                                                                                                                                                                                                               
+            },                                                                                                                                                                                                                                                                  
+            "InstanceId": "i-xxxxxxxxxxxxxxxxx",                                                                                                                                                                                                                                
+            "ImageId": "ami-04fcd96153cb57194",
+            …                                                                                                                                                                                                                                 
+            "ClientToken": "eb3c3141-a229-4ca0-b005-eb922e2cabdc",                                                                                                                                                                                                              
+            …</code></pre> 
+        <button class="lb-code-copy-btn"> 
+         <div class="lb-code-copy-confirmation"> 
+          <i class="icon-check"></i> 
+          <span>Code snippet copied</span> 
+         </div> <span class="lb-custom-pol-icon lb-icon-copy-blue"></span> Copy</button> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>In many AWS API operations, the unique client request identifier is modeled by the ClientToken field. Note that we didn’t provide a unique client request identifier in our request. The ClientToken property in the response is echoed back by the remote service. This is because the AWS CLI will generate a unique ID for the request if an identifier is not provided, which allows retries to happen “under the hood” in the event of a transient upstream service fault. An example of what a retried request/response might look like can be simulated by waiting a few minutes and then making another request using the AWS CLI and the same ClientToken that was returned in the previous request. It’s important to note that the response returned is very similar but not identical to the first response:<br> </p> 
+       </div> 
+       <div class="lb-border-p-feature lb-code lb-ctxt-p lb-no-highlighting" data-lb-comp="code"> 
+        <pre class="language-terminalOutput line-numbers"><code class="language-">$ aws ec2 run-instances --image-id ami-04fcd96153cb57194 --instance-type t2.micro --client-token eb3c3141-a229-4ca0-b005-eb922e2cabdc
+{                                                                                                                                                                                                                                                                               
+    "Instances": [                                                                                                                                                                                                                                                              
+        {                                                                                                                                                                                                                                                                       
+            "Monitoring": {                                                                                                                                                                                                                                                     
+                "State": "disabled"                                                                                                                                                                                                                                             
+            },                                                                                                                                                                                                                                                                  
+            "StateReason": {
+                "Message": "running",  Now running
+                "Code": "running"   Now running
+            }, 
+            "State": {
+                "Code": 16,   Now running status code
+                "Name": "running"   Now running
+            },
+            "InstanceId": "i-xxxxxxxxxxxxxxxxx",                                                                                                                                                                                                                                
+            "ImageId": "ami-04fcd96153cb57194",
+            …                                                                                                                                                                                                                                 
+            "ClientToken": "eb3c3141-a229-4ca0-b005-eb922e2cabdc",                                                                                                                                                                                                              
+            …</code></pre> 
+        <button class="lb-code-copy-btn"> 
+         <div class="lb-code-copy-confirmation"> 
+          <i class="icon-check"></i> 
+          <span>Code snippet copied</span> 
+         </div> <span class="lb-custom-pol-icon lb-icon-copy-blue"></span> Copy</button> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>The AWS SDK and AWS CLI leverage this behavior whenever it’s available to simplify the experience of the customer using these tools. Our SDK and CLI are aware of which operations support an idempotent contract, and they will generate a unique client request identifier and add it to the request if one is not provided by the caller. This generated identifier is then reused in the event of a retry, thus ensuring we meet the “at most once” commitment for the request. Because the response (even on a retry) is semantically equivalent, the calling client code can be completely unaware of any retries that happen within the SDK code and simply deal with the response when it is received. <br> </p> 
+       </div> 
+       <h2 id="Late_arriving_requests_and_the_life_span_of_unique_client_request_identifiers" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Late arriving requests and the life span of unique client request identifiers</h2> 
+       <div class="lb-rtxt"> 
+        <p>An interesting edge case with idempotent solutions in distributed systems can occur when requests arrive late. Consider the hypothetical situation where we have two actors in a service and a scenario where the client creating the resource retries the operation and the subsequent request is delayed. In the interim a second actor deletes the resource:<br> </p> 
+       </div> 
+       <figure class="lb-img"> 
+        <div> 
+         <img src="https://web.archive.org/web/20241129033912im_/https://d1.awsstatic.com/builderslibrary/architecture-images/making-retries-safe-3.f56ed9bcd4a25f3e6b998f5fe6f483d8707998a5.png" alt="" title="" class="cq-dd-image"> 
+        </div> 
+       </figure> 
+       <div class="lb-rtxt"> 
+        <p>The best way to deal with this scenario can vary from service to service. The approach we have taken for EC2 RunInstances is to honor the initial idempotent contract even in the scenario we just described. In this situation we hold with the principle of least astonishment. This means that a semantically equivalent response, even in cases where the resource has been deleted, is the least surprising approach that still delivers a consistent experience when using tools like the AWS SDK and AWS CLI. </p> 
+        <p>Building on our earlier EC2 instance launch example, we can model this edge case by terminating the EC2 instance that we previously launched:<br> </p> 
+       </div> 
+       <div class="lb-border-p-feature lb-code lb-ctxt-p lb-no-highlighting" data-lb-comp="code"> 
+        <pre class="language-terminalOutput line-numbers"><code class="language-">$ aws ec2 terminate-instances --instance-ids i-xxxxxxxxxxxxxxxxx 
+{                                                                                                                                                                                                                                                                               
+    "TerminatingInstances": [                                                                                                                                                                                                                                                   
+        {                                                                                                                                                                                                                                                                       
+            "InstanceId": "i-xxxxxxxxxxxxxxxxx",                                                                                                                                                                                                                                
+            "CurrentState": {                                                                                                                                                                                                                                                   
+                "Code": 32,                                                                                                                                                                                                                                                     
+                "Name": "shutting-down"                                                                                                                                                                                                                                         
+            },                                                                                                                                                                                                                                                                  
+            "PreviousState": {                                                                                                                                                                                                                                                  
+                "Code": 16,                                                                                                                                                                                                                                                     
+                "Name": "running"                                                                                                                                                                                                                                               
+            }                                                                                                                                                                                                                                                                   
+        }                                                                                                                                                                                                                                                                       
+    ]                                                                                                                                                                                                                                                                           
+}</code></pre> 
+        <button class="lb-code-copy-btn"> 
+         <div class="lb-code-copy-confirmation"> 
+          <i class="icon-check"></i> 
+          <span>Code snippet copied</span> 
+         </div> <span class="lb-custom-pol-icon lb-icon-copy-blue"></span> Copy</button> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>If we follow this with a simulated “late arriving” retry of the RunInstances API request with the same parameters and unique request identifier, we will get a semantically equivalent response. However, as the following example shows, the instance is now terminated:<br> </p> 
+       </div> 
+       <div class="lb-border-p-feature lb-code lb-ctxt-p lb-no-highlighting" data-lb-comp="code"> 
+        <pre class="language-terminalOutput line-numbers"><code class="language-">$ aws ec2 run-instances --image-id ami-04fcd96153cb57194 --instance-type t2.micro --client-token eb3c3141-a229-4ca0-b005-eb922e2cabdc
+{                                                                                                                                                                                                                                                                               
+    "Instances": [                                                                                                                                                                                                                                                              
+        {                                                                                                                                                                                                                                                                       
+            "Monitoring": {                                                                                                                                                                                                                                                     
+                "State": "disabled"                                                                                                                                                                                                                                             
+            },                                                                                                                                                                                                                                                                  
+            "StateReason": {
+                "Message": "terminated",  Now terminated
+                "Code": "terminated"   Now terminated
+            }, 
+            "State": {
+                "Code": 48,   Terminated status code
+                "Name": "terminated"   Now terminated
+            },
+            "InstanceId": "i-xxxxxxxxxxxxxxxxx",                                                                                                                                                                                                                                
+            "ImageId": "ami-04fcd96153cb57194",
+            …                                                                                                                                                                                                                                 
+            "ClientToken": "eb3c3141-a229-4ca0-b005-eb922e2cabdc",                                                                                                                                                                                                              
+            …</code></pre> 
+        <button class="lb-code-copy-btn"> 
+         <div class="lb-code-copy-confirmation"> 
+          <i class="icon-check"></i> 
+          <span>Code snippet copied</span> 
+         </div> <span class="lb-custom-pol-icon lb-icon-copy-blue"></span> Copy</button> 
+       </div> 
+       <div class="lb-rtxt"> 
+        <p>To support this behavior we need to retain knowledge of the initial idempotent request in our service. However, it’s impractical to retain that knowledge indefinitely. Indefinite retention could also have an undesirable impact on the customer experience if some future request identifier collides with one used much earlier. Requirements for retention vary across services and service resources. We have found that, for EC2 instances, it works to limit the time period to the lifetime of the resource, plus an interval after which it is reasonable to assume that any late arriving requests would either have arrived or would no longer be valid. <br> </p> 
+       </div> 
+       <h2 id="Responding_when_a_customer_changes_request_parameters_on_a_subsequent_call_where_the_client_request_ID_stays_the_same" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Responding when a customer changes request parameters on a subsequent call where the client request ID stays the same</h2> 
+       <div class="lb-rtxt"> 
+        <p>We design our APIs to allow our customers to explicitly state their intent. Take the situation where we receive a unique client request token that we have seen before, but there is a parameter combination that is different from the earlier request. We find that it is safest to assume that the customer intended a different outcome, and that this might not be the same request. In response to this situation, we return a validation error indicating a parameter mismatch between idempotent requests. To support this deep validation, we also store the parameters used to make the initial request along with the client request identifier. <br> </p> 
+       </div> 
+       <h2 id="Conclusion" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h2 lb-title" style="color:#232f3e;"> Conclusion</h2> 
+       <div class="lb-rtxt"> 
+        <p>Werner Vogels, Amazon CTO, notes that one of the lessons we have learned at Amazon is to <a href="https://web.archive.org/web/20241129033912/https://www.allthingsdistributed.com/2016/03/10-lessons-from-10-years-of-aws.html" target="_blank">expect the unexpected</a>. He reminds us that failures are a given, and as a consequence it’s desirable to build systems that embrace failure as a natural occurrence. Coding around these failures is important, but undifferentiated, work that improves the integrity of the solution being delivered. However, it takes time away from investing in differentiating code. </p> 
+        <p>In the article, ”Timeouts, retries, and backoff with jitter,” discussed earlier, Marc Brooker shows how we can leverage retries to mitigate transient faults, and how automating these retries in SDKs and tooling can improve usability. Building on that article, in this article we explore how AWS leverages idempotent behavior to deliver the benefits of automated retry policies to our customers while still honoring the “at most once” commitment inherent in the API contracts of some operations.</p> 
+        <p>We have found the approach we’ve outlined works well, and we have heard that customers appreciate the reduced complexity this approach delivers. However, there is cost and complexity inherent in building services to meet the contract this article describes, and that complexity is not right for all solutions. Sometimes it’s better to take the extra time to meet the demands of a more rigorous contract as described here, in other cases it’s better to innovate more quickly with a less complex contract because that’s best for our customers. In cases where a more rigorous “at most once” contract is required, we have found the approach in this article to work well to meet our customers’ needs.<br> </p> 
+       </div> 
+       <hr class="lb-divider" style="margin-top:0px; margin-bottom:0px;"> 
+       <h4 id="About_the_author" class="lb-txt-bold lb-txt-none lb-txt-24 lb-h4 lb-title" style="color:#232f3e;"> About the author</h4> 
+       <div class="lb-grid lb-row lb-row-max-large lb-snap"> 
+        <div class="lb-col lb-tiny-24 lb-mid-4"> 
+         <div class="lb-box"> 
+          <figure class="lb-tiny-v-margin lb-img"> 
+           <div> 
+            <img src="https://web.archive.org/web/20241129033912im_/https://d1.awsstatic.com/builderslibrary/authors-biopage/WEB_ABL_Author-Portrait_Malcolm-Featonby.17c6a75fad889545344485f3facddfc9a85edc14.png" alt="Malcolm Featonby" title="Malcolm Featonby" class="cq-dd-image"> 
+           </div> 
+          </figure> 
+          <a class="lb-txt-none lb-txt" style="margin-top:20px;" href="/web/20241129033912/https://aws.amazon.com/builders-library/authors/malcolm-featonby/"> Malcolm Featonby</a> 
+         </div> 
+        </div> 
+        <div class="lb-col lb-tiny-24 lb-mid-20"> 
+         <div class="lb-rtxt" style="margin-top:60px;"> 
+          <p>Malcolm Featonby is a Principal Engineer at Amazon Web Services. He joined Amazon in 2011 and has spent a number of years working with various teams across AWS EC2. More recently Malcolm has transitioned to the AWS containers organization working with the teams that deliver AWS ECS, ECR and Fargate. Malcolm is passionate about service scaling and system decoupling in hypergrowth environments. He holds a masters degree in Information Technology.<br> </p> 
+         </div> 
+        </div> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </main> 
+  </div> 
+  <footer id="aws-page-footer" class="m-page-footer" role="contentinfo"> 
+   <div class="data-attr-wrapper lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer" data-da-so-version="a"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1 lb-small-xb-3 lb-large-xb-5"> 
+     <div class="lb-xbcol"> 
+      <div class="data-attr-wrapper lb-small-hide lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signin-mobile-default"> 
+       <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/console/home?nc1=f_ct&amp;src=footer-signin-mobile" role="button"> <span> Sign In to the Console</span> </a> 
+      </div> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Learn About AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/what-is-aws/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is AWS?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/what-is-cloud-computing/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is Cloud Computing?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/accessibility/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Accessibility</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/diversity-inclusion/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Inclusion, Diversity &amp; Equity</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/devops/what-is-devops/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is DevOps?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/containers/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Container?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/what-is/data-lake/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What Is a Data Lake?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/what-is/artificial-intelligence/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Artificial Intelligence (AI)?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/what-is/generative-ai/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Generative AI?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/what-is/machine-learning/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What is Machine Learning (ML)?</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/security/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Cloud Security</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/new/?nc1=f_cc" target="_blank" rel="noopener noreferrer">What's New</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/blogs/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Blogs</a></li> 
+       <li><a href="https://web.archive.org/web/20241129033912/https://press.aboutamazon.com/press-releases/aws" target="_blank" rel="noopener noreferrer" title="Press Releases" alt="Press Releases">Press Releases</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Resources for AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/getting-started/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Getting Started</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/training/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Training and Certification</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/solutions/?nc1=f_cc" target="_blank" rel="noopener noreferrer">AWS Solutions Library</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/architecture/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Architecture Center</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/faqs/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Product and Technical FAQs</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/resources/analyst-reports/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Analyst Reports</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/partners/work-with-partners/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Partners</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Developers on AWS</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/developer/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Developer Center</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/developer/tools/?nc1=f_dr" target="_blank" rel="noopener noreferrer">SDKs &amp; Tools</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/developer/language/net/?nc1=f_dr" target="_blank" rel="noopener noreferrer">.NET on AWS</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/developer/language/python/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Python on AWS</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/developer/language/java/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Java on AWS</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/developer/language/php/?nc1=f_cc" target="_blank" rel="noopener noreferrer">PHP on AWS</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/developer/language/javascript/?nc1=f_dr" target="_blank" rel="noopener noreferrer">JavaScript on AWS</a></li> 
+      </ul> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <h3 class="lb-txt-none lb-txt-white lb-tiny-v-margin lb-h3 lb-title"> Help</h3> 
+      <ul class="lb-txt-white lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-block" style="margin-bottom:0px;"> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/contact-us/?nc1=f_m" target="_blank" rel="noopener noreferrer">Contact Us</a></li> 
+       <li><a href="https://web.archive.org/web/20241129033912/https://iq.aws.amazon.com/?utm=mkt.foot/?nc1=f_m" target="_blank" rel="noopener noreferrer">Get Expert Help</a></li> 
+       <li><a href="https://web.archive.org/web/20241129033912/https://console.aws.amazon.com/support/home/?nc1=f_dr" target="_blank" rel="noopener noreferrer">File a Support Ticket</a></li> 
+       <li><a href="https://web.archive.org/web/20241129033912/https://repost.aws/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS re:Post</a></li> 
+       <li><a href="https://web.archive.org/web/20241129033912/https://repost.aws/knowledge-center/?nc1=f_dr" target="_blank" rel="noopener noreferrer">Knowledge Center</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/premiumsupport/?nc1=f_dr" target="_blank" rel="noopener noreferrer">AWS Support Overview</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/legal/?nc1=f_cc" target="_blank" rel="noopener noreferrer">Legal</a></li> 
+       <li><a href="/web/20241129033912/https://aws.amazon.com/careers/">AWS Careers</a></li> 
+      </ul> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_addl-help"> 
+      </div> 
+     </div> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-v3_cta"> 
+       <div class="data-attr-wrapper lb-tiny-hide lb-small-show lb-btn" data-da-type="so" data-da-so-type="viewport" data-da-so-language="en" data-da-so-category="monitoring" data-da-so-name="footer_buttons" data-da-so-url="all" data-da-so-version="footer_signup-default"> 
+        <a class="lb-btn-p-primary" href="https://web.archive.org/web/20241129033912/https://portal.aws.amazon.com/gp/aws/developer/registration/index.html?nc1=f_ct&amp;src=default" role="button"> <span> Create an AWS Account</span> </a> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:20px; margin-bottom:0px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-left:0px; padding-right:5px;" href="https://web.archive.org/web/20241129033912/https://twitter.com/awscloud" target="_blank" rel="noopener noreferrer" title="Twitter" alt="Twitter"> <i class="icon-twitter lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-none-v-margin lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241129033912/https://www.facebook.com/amazonwebservices" target="_blank" rel="noopener noreferrer" title="Facebook" alt="Facebook"> <i class="icon-facebook lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241129033912/https://www.linkedin.com/company/amazon-web-services/" target="_blank" rel="noopener noreferrer" title="Linkedin" alt="Linkedin"> <i class="icon-linkedin lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241129033912/https://www.instagram.com/amazonwebservices/" target="_blank" rel="noopener noreferrer" title="Instagram" alt="Instagram"> <i class="icon-instagram lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-xb-grid-wrap" style="padding-left:0px; margin-top:10px;"> 
+       <div class="lb-xb-grid lb-row-max-large lb-xb-equal-height lb-snap lb-gutter-collapse lb-vgutter-collapse lb-tiny-xb-4"> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241129033912/https://www.twitch.tv/aws" target="_blank" rel="noopener noreferrer" title="Twitch" alt="Twitch"> <i class="icon-twitch lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241129033912/https://www.youtube.com/user/AmazonWebServices/Cloud/" target="_blank" rel="noopener noreferrer" title="YouTube" alt="YouTube"> <i class="icon-youtube lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="/web/20241129033912/https://aws.amazon.com/podcasts/" target="_blank" rel="noopener noreferrer" title="Podcast" alt="Podcast"> <i class="icon-podcast lb-before"></i></a> 
+        </div> 
+        <div class="lb-xbcol"> 
+         <a class="lb-txt-none lb-txt-white lb-none-pad lb-txt" style="padding-right:5px;" href="https://web.archive.org/web/20241129033912/https://pages.awscloud.com/communication-preferences?trk=homepage" target="_blank" rel="noopener noreferrer" title="Email" alt="Email"> <i class="icon-envelope-o lb-before"></i></a> 
+        </div> 
+       </div> 
+      </div> 
+      <div class="lb-txt-normal lb-txt-white lb-txt-14 lb-rtxt" style="color:#eaeded; margin-top:0px;"> 
+       <div>
+         Amazon is an Equal Opportunity Employer: 
+        <i> Minority / Women / Disability / Veteran / Gender Identity / Sexual Orientation / Age.</i> 
+       </div> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#141f2e;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <ul class="lb-txt-white lb-tiny-iblock lb-none-v-margin lb-ul lb-list-style-none lb-li-micro-v-margin lb-tiny-ul-iblock"> 
+       <li class="lb-txt-bold">Language</li> 
+       <li data-language="ar" lang="ar-SA" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/ar/?nc1=h_ls">عربي</a></li> 
+       <li data-language="id" lang="id-ID" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/id/?nc1=h_ls">Bahasa Indonesia</a></li> 
+       <li data-language="de" lang="de-DE" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/de/?nc1=h_ls">Deutsch</a></li> 
+       <li data-language="en" lang="en-US" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/?nc1=h_ls">English</a></li> 
+       <li data-language="es" lang="es-ES" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/es/?nc1=h_ls">Español</a></li> 
+       <li data-language="fr" lang="fr-FR" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/fr/?nc1=h_ls">Français</a></li> 
+       <li data-language="it" lang="it-IT" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/it/?nc1=h_ls">Italiano</a></li> 
+       <li data-language="pt" lang="pt-BR" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/pt/?nc1=h_ls">Português</a></li> 
+       <li data-language="vi" lang="vi-VN" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/vi/?nc1=f_ls">Tiếng Việt</a></li> 
+       <li data-language="tr" lang="tr-TR" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/tr/?nc1=h_ls">Türkçe</a></li> 
+       <li data-language="ru" lang="ru-RU" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/ru/?nc1=h_ls">Ρусский</a></li> 
+       <li data-language="th" lang="th-TH" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/th/?nc1=f_ls">ไทย</a></li> 
+       <li data-language="jp" lang="ja-JP" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/jp/?nc1=h_ls">日本語</a></li> 
+       <li data-language="ko" lang="ko-KR" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/ko/?nc1=h_ls">한국어</a></li> 
+       <li data-language="cn" lang="zh-CN" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/cn/?nc1=h_ls">中文 (简体)</a></li> 
+       <li data-language="tw" lang="zh-TW" translate="no"><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/tw/?nc1=h_ls">中文 (繁體)</a></li> 
+      </ul> 
+     </div> 
+    </div> 
+   </div> 
+   <div class="lb-none-pad lb-none-v-margin lb-xb-grid-wrap" style="background-color:#EAEDED; padding-top:5px;"> 
+    <div class="lb-xb-grid lb-row-max-large lb-snap lb-tiny-xb-1"> 
+     <div class="lb-xbcol"> 
+      <div class="lb-mbox js-mbox" data-lb-comp="mbox" data-lb-comp-ignore="true" data-mbox="en_footer-legal-links"> 
+       <ul class="lb-txt-squid lb-none-v-margin lb-ul lb-list-style-none lb-li-none-v-margin lb-tiny-ul-iblock"> 
+        <li><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/privacy/?nc1=f_pr">Privacy</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/accessibility/?nc1=f_acc">Accessibility</a></li> 
+        <li>|</li> 
+        <li><a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/terms/?nc1=f_pr">Site Terms</a></li> 
+        <li>|</li> 
+        <li data-cookie-consent-modal="1"><a href="#"> Cookie Preferences </a></li> 
+        <li>|</li> 
+        <li>© 2024, Amazon Web Services, Inc. or its affiliates. All rights reserved.</li> 
+       </ul> 
+      </div> 
+     </div> 
+    </div> 
+   </div> 
+  </footer> 
+  <div id="aws-page-end"></div> 
+  <div id="lb-page-end"></div> 
+  <div id="mrc-sunrise-chat"></div> 
+  <script defer id="mrc-sunrise-chat-loader" src="https://web.archive.org/web/20241129033912js_/https://loader.us-east-1.prod.mrc-sunrise.marketing.aws.dev/loader.js"></script> 
+  <!--[if lte IE 9]>
+  <p class="deprecated-browser-support-message">
+    You are using an outdated browser. Please upgrade to a modern browser to improve your experience.<img src="https://fls-na.amazon.com/1/action-impressions/1/OE/aws-mktg/action/awsm_:comp_DeprecatedBrowser@v=1:u=c?dataset=LIVE:PROD&instance=PUB&client=dsk&marketplaceId=A12QK8IU0H0XW5&requestId=ABCDEFGHIJKLMNOPQRST&session=123-1234567-1234567"
+           alt="deprecated-browser pixel tag" />
+      </p>
+<![endif]--> 
+  <div class="lb-skt-overlay lb-modal lb-comp-content-container" data-lb-comp="modal" data-lb-modal-id="ie-deprecation-msg" data-ie10-deprecation-msg="You are using an outdated browser. Please upgrade to a modern browser to improve your experience."> 
+   <div class="lb-modal-dialog"> 
+    <div class="lb-modal-content"> 
+     <div class="lb-modal-header"> 
+      <h4 class="lb-h4"> Ending Support for Internet Explorer</h4> 
+      <a class="lb-modal-close" role="button" href="#" title="Close"> <span class="lb-sr-only">Got it</span> </a> 
+     </div> 
+     <div class="lb-modal-body">
+       AWS support for Internet Explorer ends on 07/31/2022. Supported browsers are Chrome, Firefox, Edge, and Safari. 
+      <a href="https://web.archive.org/web/20241129033912/https://aws.amazon.com/blogs/aws/heads-up-aws-support-for-internet-explorer-11-is-ending/" rel="noopener">Learn more »</a> 
+     </div> 
+     <div class="lb-modal-footer"> 
+      <a class="lb-btn-p-primary lb-modal-close lb-modal-action" role="button">Got it</a> 
+     </div> 
+    </div> 
+   </div> 
+  </div> 
+  <a data-lb-modal-trigger="ie-deprecation-msg" style="display: none;"></a> 
+  <!-- cms_updated_at: 2024-11-19T13:39:00.619-0800 -->  
+ </body>
+</html><!--
+     FILE ARCHIVED ON 03:39:12 Nov 29, 2024 AND RETRIEVED FROM THE
+     INTERNET ARCHIVE ON 06:17:02 Sep 19, 2026.
+     JAVASCRIPT APPENDED BY WAYBACK MACHINE, COPYRIGHT INTERNET ARCHIVE.
+
+     ALL OTHER CONTENT MAY ALSO BE PROTECTED BY COPYRIGHT (17 U.S.C.
+     SECTION 108(a)(3)).
+-->
+<!--
+playback timings (ms):
+  captures_list: 0.83
+  exclusion.robots: 0.095
+  exclusion.robots.policy: 0.082
+  esindex: 0.076
+  cdx.remote: 37.399
+  LoadShardBlock: 254.291 (3)
+  PetaboxLoader3.datanode: 219.178 (4)
+  PetaboxLoader3.resolve: 116.759 (2)
+  load_resource: 154.259
+  nav: 0.263 (6)
+-->

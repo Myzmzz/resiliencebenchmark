@@ -1,0 +1,2035 @@
+
+
+<!DOCTYPE html>
+<html lang="en" data-layout="responsive" data-local="">
+  <head>
+    
+    <script>
+      window.addEventListener('error', window.__err=function f(e){f.p=f.p||[];f.p.push(e)});
+    </script>
+    <script>
+      (function() {
+        const theme = document.cookie.match(/prefers-color-scheme=(light|dark|auto)/)?.[1]
+        if (theme) {
+          document.querySelector('html').setAttribute('data-theme', theme);
+        }
+      }())
+    </script>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="Description" content="Package gobreaker implements the Circuit Breaker pattern.">
+    
+    <meta class="js-gtmID" data-gtmid="GTM-W8MVQXG">
+    <link rel="shortcut icon" href="/static/shared/icon/favicon.ico">
+    
+  
+    <link rel="canonical" href="https://pkg.go.dev/github.com/sony/gobreaker">
+  
+
+    <link href="/static/frontend/frontend.min.css?version=prod-frontend-00251-xnk" rel="stylesheet">
+    
+    <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="Go Packages">
+    
+    
+  <title>gobreaker package - github.com/sony/gobreaker - Go Packages</title>
+
+    
+  <link href="/static/frontend/unit/unit.min.css?version=prod-frontend-00251-xnk" rel="stylesheet">
+  
+  <link href="/static/frontend/unit/main/main.min.css?version=prod-frontend-00251-xnk" rel="stylesheet">
+
+
+  </head>
+  <body>
+    
+    <script>
+      function loadScript(src, mod = true) {
+        let s = document.createElement('script');
+        s.src = src;
+        if (mod) {
+          s.type = 'module';
+          s.async = true;
+          s.defer = true
+        }
+        document.head.appendChild(s);
+      }
+      loadScript("/third_party/dialog-polyfill/dialog-polyfill.js", false)
+      loadScript("/static/frontend/frontend.js");
+    </script>
+    
+  <header class="go-Header go-Header--full js-siteHeader">
+    <div class="go-Header-inner go-Header-inner--dark">
+      <nav class="go-Header-nav">
+        <a href="https://go.dev/" class="js-headerLogo" data-gtmc="nav link"
+            data-test-id="go-header-logo-link" role="heading" aria-level="1">
+          <img class="go-Header-logo" src="/static/shared/logo/go-white.svg" alt="Go">
+        </a>
+         <div class="skip-navigation-wrapper">
+            <a class="skip-to-content-link" aria-label="Skip to main content" href="#main-content"> Skip to Main Content </a>
+          </div>
+        <div class="go-Header-rightContent">
+          
+<div class="go-SearchForm js-searchForm">
+  <form
+    class="go-InputGroup go-ShortcutKey go-SearchForm-form"
+    action="/search"
+    data-shortcut="/"
+    data-shortcut-alt="search"
+    data-gtmc="search form"
+    aria-label="Search for a package"
+    role="search"
+  >
+    <input name="q" class="go-Input js-searchFocus" aria-label="Search for a package" type="search"
+        autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"
+        placeholder="Search packages or symbols"
+        value="" />
+    <input name="m" value="" hidden>
+    <button class="go-Button go-Button--inverted" aria-label="Submit search">
+      <img
+        class="go-Icon"
+        height="24"
+        width="24"
+        src="/static/shared/icon/search_gm_grey_24dp.svg"
+        alt=""
+      />
+    </button>
+  </form>
+  <button class="go-SearchForm-expandSearch js-expandSearch" data-gtmc="nav button"
+      aria-label="Open search" data-test-id="expand-search">
+    <img class="go-Icon go-Icon--inverted" height="24" width="24"
+        src="/static/shared/icon/search_gm_grey_24dp.svg" alt="">
+
+  </button>
+</div>
+
+          <ul class="go-Header-menu">
+            <li class="go-Header-menuItem">
+              <a class="js-desktop-menu-hover" href="#" data-gtmc="nav link">
+                Why Go
+                <img class="go-Icon" height="24" width="24" src="/static/shared/icon/arrow_drop_down_gm_grey_24dp.svg" alt="submenu dropdown icon">
+              </a>
+              <ul class="go-Header-submenu go-Header-submenu--why js-desktop-submenu-hover" aria-label="submenu">
+                  <li class="go-Header-submenuItem">
+                    <div>
+                      <a href="https://go.dev/solutions/case-studies">
+                        <span>Case Studies</span>
+                      </a>
+                    </div>
+                    <p>Common problems companies solve with Go</p>
+                  </li>
+                  <li class="go-Header-submenuItem">
+                    <div>
+                      <a href="https://go.dev/solutions/use-cases">
+                        <span>Use Cases</span>
+                      </a>
+                    </div>
+                    <p>Stories about how and why companies use Go</p>
+                  </li>
+                  <li class="go-Header-submenuItem">
+                    <div>
+                      <a href="https://go.dev/security/">
+                        <span>Security</span>
+                      </a>
+                    </div>
+                    <p>How Go can help keep you secure by default</p>
+                  </li>
+              </ul>
+            </li>
+            <li class="go-Header-menuItem">
+              <a href="https://go.dev/learn/" data-gtmc="nav link">Learn</a>
+            </li>
+            <li class="go-Header-menuItem">
+              <a class="js-desktop-menu-hover" href="#" data-gtmc="nav link">
+                Docs
+                <img class="go-Icon" height="24" width="24" src="/static/shared/icon/arrow_drop_down_gm_grey_24dp.svg" alt="submenu dropdown icon">
+              </a>
+              <ul class="go-Header-submenu go-Header-submenu--docs js-desktop-submenu-hover" aria-label="submenu">
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/doc/effective_go">
+                      <span>Effective Go</span>
+                    </a>
+                  </div>
+                  <p>Tips for writing clear, performant, and idiomatic Go code</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/doc/">
+                      <span>Go User Manual</span>
+                    </a>
+                  </div>
+                  <p>A complete introduction to building software with Go</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://pkg.go.dev/std">
+                      <span>Standard library</span>
+                    </a>
+                  </div>
+                  <p>Reference documentation for Go's standard library</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/doc/devel/release">
+                      <span>Release Notes</span>
+                    </a>
+                  </div>
+                  <p>Learn what's new in each Go release</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="/api">
+                      <span>API</span>
+                    </a>
+                  </div>
+                  <p>Reference documentation for the pkg.go.dev API</p>
+                </li>
+              </ul>
+            </li>
+            <li class="go-Header-menuItem go-Header-menuItem--active">
+              <a href="/" data-gtmc="nav link">Packages</a>
+            </li>
+            <li class="go-Header-menuItem">
+              <a class="js-desktop-menu-hover" href="#" data-gtmc="nav link">
+                Community
+                <img class="go-Icon" height="24" width="24" src="/static/shared/icon/arrow_drop_down_gm_grey_24dp.svg" alt="submenu dropdown icon">
+              </a>
+              <ul class="go-Header-submenu go-Header-submenu--community js-desktop-submenu-hover" aria-label="submenu">
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/talks/">
+                      <span>Recorded Talks</span>
+                    </a>
+                  </div>
+                  <p>Videos from prior events</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://www.meetup.com/pro/go">
+                      <span>Meetups</span>
+                      <i class="material-icons">
+                        <img class="go-Icon" height="24" width="24"
+                            src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </div>
+                  <p>Meet other local Go developers</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://github.com/golang/go/wiki/Conferences">
+                      <span>Conferences</span>
+                      <i class="material-icons">
+                        <img class="go-Icon" height="24" width="24"
+                            src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </div>
+                  <p>Learn and network with Go developers from around the world</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/blog">
+                      <span>Go blog</span>
+                    </a>
+                  </div>
+                  <p>The Go project's official blog.</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    <a href="https://go.dev/help">
+                      <span>Go project</span>
+                    </a>
+                  </div>
+                  <p>Get help and stay informed from Go</p>
+                </li>
+                <li class="go-Header-submenuItem">
+                  <div>
+                    Get connected
+                  </div>
+                  <p></p>
+                  <div class="go-Header-socialIcons">
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with google-groups (Opens in new window)"
+                        title="Get connected with google-groups (Opens in new window)"
+                        href="https://groups.google.com/g/golang-nuts">
+                        <img src="/static/shared/logo/social/google-groups.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with github (Opens in new window)"
+                        title="Get connected with github (Opens in new window)"
+                        href="https://github.com/golang">
+                        <img src="/static/shared/logo/social/github.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with twitter (Opens in new window)"
+                        title="Get connected with twitter (Opens in new window)"
+                        href="https://twitter.com/golang">
+                        <img src="/static/shared/logo/social/twitter.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with reddit (Opens in new window)"
+                        title="Get connected with reddit (Opens in new window)"
+                        href="https://www.reddit.com/r/golang/">
+                        <img src="/static/shared/logo/social/reddit.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with slack (Opens in new window)"
+                        title="Get connected with slack (Opens in new window)"
+                        href="https://invite.slack.golangbridge.org/">
+                        <img src="/static/shared/logo/social/slack.svg" />
+                      </a>
+                      <a
+                        class="go-Header-socialIcon"
+                        aria-label="Get connected with stack-overflow (Opens in new window)"
+                        title=""
+                        href="https://stackoverflow.com/collectives/go">
+                        <img src="/static/shared/logo/social/stack-overflow.svg" />
+                      </a>
+                  </div>
+                </li>
+              </ul>
+            </li>
+          </ul>
+          <button class="go-Header-navOpen js-headerMenuButton go-Header-navOpen--white" data-gtmc="nav button" aria-label="Open navigation">
+          </button>
+        </div>
+      </nav>
+    </div>
+  </header>
+  <aside class="go-NavigationDrawer js-header">
+    <nav class="go-NavigationDrawer-nav">
+      <div class="go-NavigationDrawer-header">
+        <a href="https://go.dev/">
+          <img class="go-NavigationDrawer-logo" src="/static/shared/logo/go-blue.svg" alt="Go.">
+        </a>
+      </div>
+      <ul class="go-NavigationDrawer-list">
+          <li class="go-NavigationDrawer-listItem js-mobile-subnav-trigger go-NavigationDrawer-hasSubnav">
+            <a href="#">
+              <span>Why Go</span>
+              <i class="material-icons">
+                <img class="go-Icon" height="24" width="24"
+                  src="/static/shared/icon/navigate_next_gm_grey_24dp.svg" alt="">
+              </i>
+            </a>
+
+            <div class="go-NavigationDrawer go-NavigationDrawer-submenuItem">
+              <div class="go-NavigationDrawer-nav">
+                <div class="go-NavigationDrawer-header">
+                  <a href="#">
+                    <i class="material-icons">
+                      <img class="go-Icon" height="24" width="24"
+                        src="/static/shared/icon/navigate_before_gm_grey_24dp.svg" alt="">
+                      </i>
+                      Why Go
+                  </a>
+                </div>
+                <ul class="go-NavigationDrawer-list">
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/solutions/case-studies">
+                      Case Studies
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/solutions/use-cases">
+                      Use Cases
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/security/">
+                      Security
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+          <li class="go-NavigationDrawer-listItem">
+            <a href="https://go.dev/learn/">Learn</a>
+          </li>
+          <li class="go-NavigationDrawer-listItem js-mobile-subnav-trigger go-NavigationDrawer-hasSubnav">
+            <a href="#">
+              <span>Docs</span>
+              <i class="material-icons">
+                <img class="go-Icon" height="24" width="24"
+                  src="/static/shared/icon/navigate_next_gm_grey_24dp.svg" alt="">
+              </i>
+            </a>
+
+            <div class="go-NavigationDrawer go-NavigationDrawer-submenuItem">
+              <div class="go-NavigationDrawer-nav">
+                <div class="go-NavigationDrawer-header">
+                  <a href="#"><i class="material-icons">
+                    <img class="go-Icon" height="24" width="24"
+                      src="/static/shared/icon/navigate_before_gm_grey_24dp.svg" alt="">
+                    </i>
+                    Docs
+                  </a>
+                </div>
+                <ul class="go-NavigationDrawer-list">
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/doc/effective_go">
+                      Effective Go
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/doc/">
+                      Go User Manual
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://pkg.go.dev/std">
+                      Standard library
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/doc/devel/release">
+                      Release Notes
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="/api">
+                      API
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+          <li class="go-NavigationDrawer-listItem go-NavigationDrawer-listItem--active">
+            <a href="/">Packages</a>
+          </li>
+          <li class="go-NavigationDrawer-listItem js-mobile-subnav-trigger go-NavigationDrawer-hasSubnav">
+            <a href="#">
+              <span>Community</span>
+              <i class="material-icons">
+                <img class="go-Icon" height="24" width="24"
+                  src="/static/shared/icon/navigate_next_gm_grey_24dp.svg" alt="">
+              </i>
+            </a>
+            <div class="go-NavigationDrawer go-NavigationDrawer-submenuItem">
+              <div class="go-NavigationDrawer-nav">
+                <div class="go-NavigationDrawer-header">
+                  <a href="#">
+                    <i class="material-icons">
+                      <img class="go-Icon" height="24" width="24"
+                        src="/static/shared/icon/navigate_before_gm_grey_24dp.svg" alt="">
+                    </i>
+                    Community
+                  </a>
+                </div>
+                <ul class="go-NavigationDrawer-list">
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/talks/">
+                      Recorded Talks
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://www.meetup.com/pro/go">
+                      Meetups
+                      <i class="material-icons">
+                      <img class="go-Icon" height="24" width="24"
+                          src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://github.com/golang/go/wiki/Conferences">
+                      Conferences
+                      <i class="material-icons">
+                        <img class="go-Icon" height="24" width="24" src="/static/shared/icon/launch_gm_grey_24dp.svg" alt="">
+                      </i>
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/blog">
+                      Go blog
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <a href="https://go.dev/help">
+                      Go project
+                    </a>
+                  </li>
+                  <li class="go-NavigationDrawer-listItem">
+                    <div>Get connected</div>
+                    <div class="go-Header-socialIcons">
+                        <a class="go-Header-socialIcon" href="https://groups.google.com/g/golang-nuts"><img src="/static/shared/logo/social/google-groups.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://github.com/golang"><img src="/static/shared/logo/social/github.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://twitter.com/golang"><img src="/static/shared/logo/social/twitter.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://www.reddit.com/r/golang/"><img src="/static/shared/logo/social/reddit.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://invite.slack.golangbridge.org/"><img src="/static/shared/logo/social/slack.svg" /></a>
+                        <a class="go-Header-socialIcon" href="https://stackoverflow.com/collectives/go"><img src="/static/shared/logo/social/stack-overflow.svg" /></a>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+      </ul>
+    </nav>
+  </aside>
+  <div class="go-NavigationDrawer-scrim js-scrim" role="presentation"></div>
+
+    
+  <main class="go-Main" id="main-content">
+    <div class="go-Main-banner" role="alert"><div class="go-Message go-Message--notice" data-test-id="UnitHeader-majorVersionBanner">
+      <img
+        class="go-Icon"
+        height="24"
+        width="24"
+        src="/static/shared/icon/info_gm_grey_24dp.svg"
+        alt="Notice"
+      />&nbsp; The highest tagged major version is
+      <a href="/github.com/sony/gobreaker/v2" data-gtmc="banner link" aria-label="Go to Latest Major Version">v2</a>.
+    </div></div>
+    <header class="go-Main-header js-mainHeader">
+  
+  
+  <nav class="go-Main-headerBreadcrumb go-Breadcrumb" aria-label="Breadcrumb" data-test-id="UnitHeader-breadcrumb">
+    <ol>
+      
+        
+          <li data-test-id="UnitHeader-breadcrumbItem">
+            <a href="/" data-gtmc="breadcrumb link">Discover Packages</a>
+          </li>
+        
+        <li>
+          <a href="/github.com/sony/gobreaker@v1.0.0" data-gtmc="breadcrumb link" aria-current="location"
+              data-test-id="UnitHeader-breadcrumbCurrent">
+            github.com/sony/gobreaker
+          </a>
+          
+            <button
+              class="go-Button go-Button--inline go-Clipboard js-clipboard"
+              title="Copy path to clipboard.&#10;&#10;github.com/sony/gobreaker"
+              aria-label="Copy Path to Clipboard"
+              data-to-copy="github.com/sony/gobreaker"
+              data-gtmc="breadcrumbs button"
+            >
+              <img
+                class="go-Icon go-Icon--accented"
+                height="24"
+                width="24"
+                src="/static/shared/icon/content_copy_gm_grey_24dp.svg"
+                alt=""
+              >
+            </button>
+          
+        
+      </li>
+    </ol>
+  </nav>
+
+  <div class="go-Main-headerContent">
+    
+  <div class="go-Main-headerTitle js-stickyHeader">
+    <a class="go-Main-headerLogo" href="https://go.dev/" aria-hidden="true" tabindex="-1" data-gtmc="header link" aria-label="Link to Go Homepage">
+      <img height="78" width="207" src="/static/shared/logo/go-blue.svg" alt="Go">
+    </a>
+    <h1 class="UnitHeader-titleHeading" data-test-id="UnitHeader-title">gobreaker</h1>
+    
+      <span class="go-Chip go-Chip--inverted">package</span>
+    
+      <span class="go-Chip go-Chip--inverted">module</span>
+    
+    
+      
+        <button
+          class="go-Button go-Button--inline go-Clipboard js-clipboard"
+          title="Copy path to clipboard.&#10;&#10;github.com/sony/gobreaker"
+          aria-label="Copy Path to Clipboard"
+          data-to-copy="github.com/sony/gobreaker"
+          data-gtmc="title button"
+          tabindex="-1"
+        >
+          <img
+            class="go-Icon go-Icon--accented"
+            height="24"
+            width="24"
+            src="/static/shared/icon/content_copy_gm_grey_24dp.svg"
+            alt=""
+          />
+        </button>
+      
+    
+  </div>
+
+    
+      
+  <div class="go-Main-headerDetails">
+    
+      
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-version">
+    <a href="?tab=versions" aria-label="Version: v1.0.0" 
+    data-gtmc="header link" aria-describedby="version-description">
+      <span class="go-textSubtle" aria-hidden="true">Version: </span>
+        v1.0.0
+    </a>
+    <div class="screen-reader-only" id="version-description" hidden>
+      Opens a new window with list of versions in this module.
+    </div>
+    
+    <span class="DetailsHeader-badge--latest" data-test-id="UnitHeader-minorVersionBanner">
+      <span class="go-Chip DetailsHeader-span--latest">Latest</span>
+      <span class="go-Chip DetailsHeader-span--notAtLatest">
+        Latest
+        
+  <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+    <summary>
+      <img class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/alert_gm_grey_24dp.svg" alt="Warning">
+    </summary>
+    <p>This package is not in the latest version of its module.</p>
+  </details>
+
+      </span>
+      <a href="/github.com/sony/gobreaker" aria-label="Go to Latest Version" data-gtmc="header link">
+        <span class="go-Chip go-Chip--alert DetailsHeader-span--goToLatest">Go to latest</span>
+      </a>
+    </span>
+  </span>
+
+      
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-commitTime">
+    Published: Apr 30, 2024
+  </span>
+
+      
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-licenses">
+    License: <a href="/github.com/sony/gobreaker?tab=licenses" data-test-id="UnitHeader-license" 
+        data-gtmc="header link" aria-describedby="license-description">MIT</a>
+      
+    
+  </span>
+  <div class="screen-reader-only" id="license-description" hidden>
+    Opens a new window with license information.
+  </div>
+
+      
+        
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-imports">
+    <a href="/github.com/sony/gobreaker?tab=imports" aria-label="Imports: 4"
+        data-gtmc="header link" aria-describedby="imports-description">
+      <span class="go-textSubtle">Imports: </span>4
+    </a>
+  </span>
+  <div class="screen-reader-only" id="imports-description" hidden>
+    Opens a new window with list of imports.
+  </div>
+
+        
+  <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-importedby">
+    <a href="/github.com/sony/gobreaker?tab=importedby" aria-label="Imported By: 1,330"
+        data-gtmc="header link" aria-describedby="importedby-description">
+       <span class="go-textSubtle">Imported by: </span>1,330
+    </a>
+  </span>
+  <div class="screen-reader-only" id="importedby-description" hidden>
+    Opens a new window with list of known importers.
+  </div>
+
+      
+    
+  </div>
+  
+  <div class="UnitHeader-overflowContainer">
+    <svg class="UnitHeader-overflowImage" xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+      <path d="M0 0h24v24H0z" fill="none"/>
+      <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+    </svg>
+    <select class="UnitHeader-overflowSelect js-selectNav" tabindex="-1">
+      <option value="/">Main</option>
+      <option value="/github.com/sony/gobreaker?tab=versions">
+        Versions
+      </option>
+      <option value="/github.com/sony/gobreaker?tab=licenses">
+        Licenses
+      </option>
+      
+        <option value="/github.com/sony/gobreaker?tab=imports">
+          Imports
+        </option>
+        <option value="/github.com/sony/gobreaker?tab=importedby">
+          Imported By
+        </option>
+      
+    </select>
+  </div>
+
+
+    
+  </div>
+
+</header>
+    
+      <aside class="go-Main-aside  js-mainAside">
+  
+  <div class="UnitMeta">
+    <h2 class="go-textLabel">Details</h2>
+    
+  <ul class="UnitMeta-details">
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Valid <a href="https://github.com/sony/gobreaker/tree/v1.0.0/go.mod" target="_blank" rel="noopener">go.mod</a> file
+          <img class="go-Icon" role="button" tabindex="0" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" aria-label="Toggle go.mod validity tooltip" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">
+          The Go module system was introduced in Go 1.11 and is the official dependency management
+          solution for Go.
+        </p>
+      </details>
+    </li>
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Redistributable license
+          <img class="go-Icon" role="button" tabindex="0" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" aria-label="Toggle redistributable help tooltip" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">
+          Redistributable licenses place minimal restrictions on how software can be used,
+          modified, and redistributed.
+        </p>
+      </details>
+    </li>
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Tagged version
+          <img class="go-Icon" role="button" tabindex="0" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" aria-label="Toggle tagged version tooltip" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">Modules with tagged versions give importers more predictable builds.</p>
+      </details>
+    </li>
+    <li>
+      <details class="go-Tooltip js-tooltip" data-gtmc="tooltip">
+        <summary class="go-textSubtle">
+          
+  <img class="go-Icon go-Icon--accented"
+    tabindex="0"
+    role="button"src="/static/shared/icon/check_circle_gm_grey_24dp.svg" alt="checked" aria-label="Valid file, toggle tooltip"height="24" width="24">
+
+          Stable version
+          <img class="go-Icon" role="button" tabindex="0" aria-label="Toggle stable version tooltip" src="/static/shared/icon/help_gm_grey_24dp.svg" alt="" height="24" width="24">
+        </summary>
+        <p aria-live="polite" role="tooltip">When a project reaches major version v1 it is considered stable.</p>
+      </details>
+    </li>
+    <li class="UnitMeta-detailsLearn">
+      <a href="/about#best-practices" data-gtmc="meta link">Learn more about best practices</a>
+    </li>
+  </ul>
+
+    <h2 class="go-textLabel">Repository</h2>
+    <div class="UnitMeta-repo">
+      
+        <a href="https://github.com/sony/gobreaker" title="https://github.com/sony/gobreaker" target="_blank" rel="noopener">
+          github.com/sony/gobreaker
+        </a>
+      
+    </div>
+    
+      <h2 class="go-textLabel" data-test-id="links-heading">Links</h2>
+      <ul class="UnitMeta-links">
+        
+        
+          <li>
+            <a href="https://deps.dev/go/github.com%2Fsony%2Fgobreaker/v1.0.0" title="View this module on Open Source Insights"
+              target="_blank" rel="noopener" data-test-id="meta-link-depsdev">
+              <img class="link-Icon" src="/static/shared/icon/depsdev-logo.svg"
+                alt="Open Source Insights Logo" />
+              Open Source Insights
+            </a>
+          </li>
+        
+        
+          <li>
+            <a href="/codewiki?module=github.com%2Fsony%2Fgobreaker&amp;package=github.com%2Fsony%2Fgobreaker&amp;url=https%3A%2F%2Fcodewiki.google%2Fgithub.com%2Fsony%2Fgobreaker%3Futm_source%3Dfirst_party_link%26utm_medium%3Dgo_pkg_web%26utm_campaign%3Dgithub.com%2Fsony%2Fgobreaker" title="View this repo on Code Wiki"
+              target="_blank" rel="noopener" data-test-id="meta-link-codewiki">
+              <img class="link-Icon" src="/static/shared/icon/codewiki-logo.svg"
+                alt="Code Wiki Logo" />
+              Code Wiki
+            </a>
+          </li>
+        
+        
+  
+
+        
+  
+
+        
+  
+
+      </ul>
+    
+  </div>
+
+</aside>
+    
+    <nav class="go-Main-nav go-Main-nav--sticky js-mainNav" aria-label="Outline">
+  <div class="go-Main-navDesktop">
+    
+  <div class="UnitOutline-jumpTo">
+    <button class="UnitOutline-jumpToInput go-ShortcutKey js-jumpToInput"
+        aria-controls="jump-to-modal"
+        aria-label="Open Jump to Identifier"
+        data-shortcut="f"
+        data-shortcut-alt="find"
+        data-test-id="jump-to-button" data-gtmc="outline button">
+      Jump to ...
+    </button>
+  </div>
+  <ul class="go-Tree js-tree" role="tree" aria-label="Outline">
+    
+      <li class="js-readmeOutline">
+        <a href="#section-readme" data-gtmc="outline link">
+          README
+        </a>
+        
+  <ul id="readme-outline">
+    
+      <li>
+        <a href="#readme-installation" data-gtmc="readme outline link">
+          Installation
+        </a>
+         
+      </li>
+    
+      <li>
+        <a href="#readme-usage" data-gtmc="readme outline link">
+          Usage
+        </a>
+         
+      </li>
+    
+      <li>
+        <a href="#readme-example" data-gtmc="readme outline link">
+          Example
+        </a>
+         
+      </li>
+    
+      <li>
+        <a href="#readme-license" data-gtmc="readme outline link">
+          License
+        </a>
+         
+      </li>
+     
+  </ul>
+
+      </li>
+    
+    
+      <li>
+        <a href="#section-documentation" data-gtmc="outline link">
+          Documentation
+        </a>
+        
+<ul>
+  
+    <li>
+      <a href="#pkg-overview" data-gtmc="doc outline link">Overview</a>
+    </li>
+  <li class="DocNav-overview">
+      <a href="#pkg-index" data-gtmc="doc outline link">
+        Index
+      </a>
+    </li>
+    <li class="DocNav-constants">
+      <a href="#pkg-constants" data-gtmc="doc outline link">
+        Constants
+      </a>
+    </li>
+    <li class="DocNav-variables">
+      <a href="#pkg-variables" data-gtmc="doc outline link">
+        Variables
+      </a>
+    </li>
+    <li class="DocNav-functions">
+      <a href="#pkg-functions" data-gtmc="doc outline link">
+        Functions
+      </a>
+      
+    </li>
+    <li class="DocNav-types">
+      <a href="#pkg-types" data-gtmc="doc outline link">
+        Types
+      </a>
+      <ul>
+        
+          
+          <li>
+            <a href="#CircuitBreaker" title="type CircuitBreaker" data-gtmc="doc outline link">
+              type CircuitBreaker
+            </a>
+            
+              <ul>
+                
+                  <li>
+                    <a href="#NewCircuitBreaker" title="NewCircuitBreaker(st)"
+                        data-gtmc="doc outline link">
+                      NewCircuitBreaker(st)
+                    </a>
+                  </li>
+                
+                
+                  <li>
+                    <a href="#CircuitBreaker.Counts" title="(cb) Counts()"
+                        data-gtmc="doc outline link">
+                      (cb) Counts()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#CircuitBreaker.Execute" title="(cb) Execute(req)"
+                        data-gtmc="doc outline link">
+                      (cb) Execute(req)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#CircuitBreaker.Name" title="(cb) Name()"
+                        data-gtmc="doc outline link">
+                      (cb) Name()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#CircuitBreaker.State" title="(cb) State()"
+                        data-gtmc="doc outline link">
+                      (cb) State()
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#Counts" title="type Counts" data-gtmc="doc outline link">
+              type Counts
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#Settings" title="type Settings" data-gtmc="doc outline link">
+              type Settings
+            </a>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#State" title="type State" data-gtmc="doc outline link">
+              type State
+            </a>
+            
+              <ul>
+                
+                
+                  <li>
+                    <a href="#State.String" title="(s) String()"
+                        data-gtmc="doc outline link">
+                      (s) String()
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+        
+          
+          <li>
+            <a href="#TwoStepCircuitBreaker" title="type TwoStepCircuitBreaker" data-gtmc="doc outline link">
+              type TwoStepCircuitBreaker
+            </a>
+            
+              <ul>
+                
+                  <li>
+                    <a href="#NewTwoStepCircuitBreaker" title="NewTwoStepCircuitBreaker(st)"
+                        data-gtmc="doc outline link">
+                      NewTwoStepCircuitBreaker(st)
+                    </a>
+                  </li>
+                
+                
+                  <li>
+                    <a href="#TwoStepCircuitBreaker.Allow" title="(tscb) Allow()"
+                        data-gtmc="doc outline link">
+                      (tscb) Allow()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#TwoStepCircuitBreaker.Counts" title="(tscb) Counts()"
+                        data-gtmc="doc outline link">
+                      (tscb) Counts()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#TwoStepCircuitBreaker.Name" title="(tscb) Name()"
+                        data-gtmc="doc outline link">
+                      (tscb) Name()
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#TwoStepCircuitBreaker.State" title="(tscb) State()"
+                        data-gtmc="doc outline link">
+                      (tscb) State()
+                    </a>
+                  </li>
+                
+              </ul>
+             
+          </li>
+         
+      </ul>
+    </li>
+  
+  
+</ul>
+
+      </li>
+    
+    
+      <li>
+        <a href="#section-sourcefiles" data-gtmc="outline link">
+          Source Files
+        </a>
+      </li>
+    
+    
+      <li>
+        <a href="#section-directories" data-gtmc="outline link">
+          Directories
+        </a>
+      </li>
+    
+  </ul>
+
+  </div>
+  <div class="go-Main-navMobile js-mainNavMobile">
+    <label class="go-Label">
+      <select class="go-Select">
+        
+          <option selected disabled>README</option>
+        
+      </select>
+    </label>
+  </div>
+</nav>
+    <article class="go-Main-article js-mainContent">
+  <div class="UnitDetails" data-test-id="UnitDetails" style="display: block;">
+    <div class="UnitDetails-content js-unitDetailsContent" data-test-id="UnitDetails-content">
+      
+        
+  <div class="UnitReadme UnitReadme--expanded js-readme">
+    <h2 class="UnitReadme-title" id="section-readme">
+      <img class="go-Icon" height="24" width="24" src="/static/shared/icon/chrome_reader_mode_gm_grey_24dp.svg" alt="">
+      README
+      <a class="UnitReadme-idLink" href="#section-readme" title="Go to Readme" aria-label="Go to Readme">¶</a>
+    </h2>
+    
+      <div class="UnitReadme-content" data-test-id="Unit-readmeContent">
+        <div class="Overview-readmeContent js-readmeContent"><h3 class="h1" id="readme-gobreaker">gobreaker</h3>
+<p><a href="https://godoc.org/github.com/sony/gobreaker" rel="nofollow"><img src="https://godoc.org/github.com/sony/gobreaker?status.svg" alt="GoDoc"/></a></p>
+<p><a href="https://github.com/sony/gobreaker" rel="nofollow">gobreaker</a> implements the <a href="https://msdn.microsoft.com/en-us/library/dn589784.aspx" rel="nofollow">Circuit Breaker pattern</a> in Go.</p>
+<h4 class="h2" id="readme-installation">Installation</h4>
+<pre><code>go get github.com/sony/gobreaker
+</code></pre>
+<h4 class="h2" id="readme-usage">Usage</h4>
+<p>The struct <code>CircuitBreaker</code> is a state machine to prevent sending requests that are likely to fail.
+The function <code>NewCircuitBreaker</code> creates a new <code>CircuitBreaker</code>.</p>
+<pre><code>func NewCircuitBreaker(st Settings) *CircuitBreaker
+</code></pre>
+<p>You can configure <code>CircuitBreaker</code> by the struct <code>Settings</code>:</p>
+<pre><code>type Settings struct {
+	Name          string
+	MaxRequests   uint32
+	Interval      time.Duration
+	Timeout       time.Duration
+	ReadyToTrip   func(counts Counts) bool
+	OnStateChange func(name string, from State, to State)
+	IsSuccessful  func(err error) bool
+}
+</code></pre>
+<ul>
+<li>
+<p><code>Name</code> is the name of the <code>CircuitBreaker</code>.</p>
+</li>
+<li>
+<p><code>MaxRequests</code> is the maximum number of requests allowed to pass through
+when the <code>CircuitBreaker</code> is half-open.
+If <code>MaxRequests</code> is 0, <code>CircuitBreaker</code> allows only 1 request.</p>
+</li>
+<li>
+<p><code>Interval</code> is the cyclic period of the closed state
+for <code>CircuitBreaker</code> to clear the internal <code>Counts</code>, described later in this section.
+If <code>Interval</code> is 0, <code>CircuitBreaker</code> doesn&#39;t clear the internal <code>Counts</code> during the closed state.</p>
+</li>
+<li>
+<p><code>Timeout</code> is the period of the open state,
+after which the state of <code>CircuitBreaker</code> becomes half-open.
+If <code>Timeout</code> is 0, the timeout value of <code>CircuitBreaker</code> is set to 60 seconds.</p>
+</li>
+<li>
+<p><code>ReadyToTrip</code> is called with a copy of <code>Counts</code> whenever a request fails in the closed state.
+If <code>ReadyToTrip</code> returns true, <code>CircuitBreaker</code> will be placed into the open state.
+If <code>ReadyToTrip</code> is <code>nil</code>, default <code>ReadyToTrip</code> is used.
+Default <code>ReadyToTrip</code> returns true when the number of consecutive failures is more than 5.</p>
+</li>
+<li>
+<p><code>OnStateChange</code> is called whenever the state of <code>CircuitBreaker</code> changes.</p>
+</li>
+<li>
+<p><code>IsSuccessful</code> is called with the error returned from a request.
+If <code>IsSuccessful</code> returns true, the error is counted as a success.
+Otherwise the error is counted as a failure.
+If <code>IsSuccessful</code> is nil, default <code>IsSuccessful</code> is used, which returns false for all non-nil errors.</p>
+</li>
+</ul>
+<p>The struct <code>Counts</code> holds the numbers of requests and their successes/failures:</p>
+<pre><code>type Counts struct {
+	Requests             uint32
+	TotalSuccesses       uint32
+	TotalFailures        uint32
+	ConsecutiveSuccesses uint32
+	ConsecutiveFailures  uint32
+}
+</code></pre>
+<p><code>CircuitBreaker</code> clears the internal <code>Counts</code> either
+on the change of the state or at the closed-state intervals.
+<code>Counts</code> ignores the results of the requests sent before clearing.</p>
+<p><code>CircuitBreaker</code> can wrap any function to send a request:</p>
+<pre><code>func (cb *CircuitBreaker) Execute(req func() (interface{}, error)) (interface{}, error)
+</code></pre>
+<p>The method <code>Execute</code> runs the given request if <code>CircuitBreaker</code> accepts it.
+<code>Execute</code> returns an error instantly if <code>CircuitBreaker</code> rejects the request.
+Otherwise, <code>Execute</code> returns the result of the request.
+If a panic occurs in the request, <code>CircuitBreaker</code> handles it as an error
+and causes the same panic again.</p>
+<h4 class="h2" id="readme-example">Example</h4>
+<pre><code>var cb *breaker.CircuitBreaker
+
+func Get(url string) ([]byte, error) {
+	body, err := cb.Execute(func() (interface{}, error) {
+		resp, err := http.Get(url)
+		if err != nil {
+			return nil, err
+		}
+
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		return body, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return body.([]byte), nil
+}
+</code></pre>
+<p>See <a href="https://github.com/sony/gobreaker/raw/master/example" rel="nofollow">example</a> for details.</p>
+<h4 class="h2" id="readme-license">License</h4>
+<p>The MIT License (MIT)</p>
+<p>See <a href="https://github.com/sony/gobreaker/raw/master/LICENSE" rel="nofollow">LICENSE</a> for details.</p>
+</div>
+      </div>
+      <button class="UnitReadme-expandLink js-readmeExpand"
+          data-test-id="readme-expand" data-gtmc="readme button"
+          aria-label="Expand Readme">Expand ▾</button>
+      <button class="UnitReadme-collapseLink js-readmeCollapse"
+          data-test-id="readme-collapse" data-gtmc="readme button"
+          aria-label="Expand Readme">Collapse ▴</button>
+    
+  </div>
+
+      
+      
+        
+          
+  <div class="UnitDoc">
+    <h2 class="UnitDoc-title" id="section-documentation">
+      <img class="go-Icon" height="24" width="24" src="/static/shared/icon/code_gm_grey_24dp.svg" alt="">
+      Documentation
+      <a class="UnitDoc-idLink" href="#section-documentation" title="Go to Documentation" aria-label="Go to Documentation">¶</a>
+    </h2>
+    
+  
+    
+  
+
+    <div class="Documentation js-documentation">
+      
+        
+
+<div class="Documentation-content js-docContent"> <section class="Documentation-overview">
+    <h3 tabindex="-1" id="pkg-overview" class="Documentation-overviewHeader">Overview <a href="#pkg-overview" title="Go to Overview" aria-label="Go to Overview">¶</a></h3>
+
+<p>Package gobreaker implements the Circuit Breaker pattern.
+See <a href="https://msdn.microsoft.com/en-us/library/dn589784.aspx">https://msdn.microsoft.com/en-us/library/dn589784.aspx</a>.
+</p>
+</section><section class="Documentation-index">
+    <h3 id="pkg-index" class="Documentation-indexHeader">Index <a href="#pkg-index" title="Go to Index" aria-label="Go to Index">¶</a></h3>
+
+<ul class="Documentation-indexList">
+<li class="Documentation-indexVariables"><a href="#pkg-variables">Variables</a></li>
+<li class="Documentation-indexType">
+          <a href="#CircuitBreaker">type CircuitBreaker</a></li>
+<li><ul class="Documentation-indexTypeFunctions">
+<li>
+            <a href="#NewCircuitBreaker">func NewCircuitBreaker(st Settings) *CircuitBreaker</a></li>
+</ul></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#CircuitBreaker.Counts">func (cb *CircuitBreaker) Counts() Counts</a></li>
+<li>
+            <a href="#CircuitBreaker.Execute">func (cb *CircuitBreaker) Execute(req func() (interface{}, error)) (interface{}, error)</a></li>
+<li>
+            <a href="#CircuitBreaker.Name">func (cb *CircuitBreaker) Name() string</a></li>
+<li>
+            <a href="#CircuitBreaker.State">func (cb *CircuitBreaker) State() State</a></li>
+</ul></li>
+<li class="Documentation-indexType">
+          <a href="#Counts">type Counts</a></li>
+<li class="Documentation-indexType">
+          <a href="#Settings">type Settings</a></li>
+<li class="Documentation-indexType">
+          <a href="#State">type State</a></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#State.String">func (s State) String() string</a></li>
+</ul></li>
+<li class="Documentation-indexType">
+          <a href="#TwoStepCircuitBreaker">type TwoStepCircuitBreaker</a></li>
+<li><ul class="Documentation-indexTypeFunctions">
+<li>
+            <a href="#NewTwoStepCircuitBreaker">func NewTwoStepCircuitBreaker(st Settings) *TwoStepCircuitBreaker</a></li>
+</ul></li>
+<li><ul class="Documentation-indexTypeMethods">
+<li>
+            <a href="#TwoStepCircuitBreaker.Allow">func (tscb *TwoStepCircuitBreaker) Allow() (done func(success bool), err error)</a></li>
+<li>
+            <a href="#TwoStepCircuitBreaker.Counts">func (tscb *TwoStepCircuitBreaker) Counts() Counts</a></li>
+<li>
+            <a href="#TwoStepCircuitBreaker.Name">func (tscb *TwoStepCircuitBreaker) Name() string</a></li>
+<li>
+            <a href="#TwoStepCircuitBreaker.State">func (tscb *TwoStepCircuitBreaker) State() State</a></li>
+</ul></li>
+</ul>
+</section><h3 tabindex="-1" id="pkg-constants" class="Documentation-constantsHeader">Constants <a href="#pkg-constants" title="Go to Constants" aria-label="Go to Constants">¶</a></h3>
+
+  <section class="Documentation-constants"><p class="Documentation-empty">This section is empty.</p></section>
+
+  <h3 tabindex="-1" id="pkg-variables" class="Documentation-variablesHeader">Variables <a href="#pkg-variables" title="Go to Variables" aria-label="Go to Variables">¶</a></h3>
+
+  <section class="Documentation-variables">
+    <div class="Documentation-declaration">
+      <span class="Documentation-declarationLink"><a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L22">View Source</a></span>
+      <pre>var (
+<span id="ErrTooManyRequests" data-kind="variable">	<span class="comment">// ErrTooManyRequests is returned when the CB state is half open and the requests count is over the cb maxRequests</span>
+</span>	ErrTooManyRequests = <a href="/errors">errors</a>.<a href="/errors#New">New</a>(&#34;too many requests&#34;)
+<span id="ErrOpenState" data-kind="variable">	<span class="comment">// ErrOpenState is returned when the CB state is open</span>
+</span>	ErrOpenState = <a href="/errors">errors</a>.<a href="/errors#New">New</a>(&#34;circuit breaker is open&#34;)
+)</pre>
+    </div>
+  
+</section>
+
+  <h3 tabindex="-1" id="pkg-functions" class="Documentation-functionsHeader">Functions <a href="#pkg-functions" title="Go to Functions" aria-label="Go to Functions">¶</a></h3>
+
+  <section class="Documentation-functions"><p class="Documentation-empty">This section is empty.</p></section>
+
+  <h3 tabindex="-1" id="pkg-types" class="Documentation-typesHeader">Types <a href="#pkg-types" title="Go to Types" aria-label="Go to Types">¶</a></h3>
+
+  <section class="Documentation-types"><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="CircuitBreaker" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L117">CircuitBreaker</a> <a class="Documentation-idLink" href="#CircuitBreaker" title="Go to CircuitBreaker" aria-label="Go to CircuitBreaker">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type CircuitBreaker struct {
+	<span class="comment">// contains filtered or unexported fields</span>
+}</pre>
+    </div>
+  <p>CircuitBreaker is a state machine to prevent sending requests that are likely to fail.
+</p>
+<div class="Documentation-typeFunc">
+    
+  
+  
+    <h4 tabindex="-1" id="NewCircuitBreaker" data-kind="function" class="Documentation-typeFuncHeader">
+      <span>func <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L141">NewCircuitBreaker</a> <a class="Documentation-idLink" href="#NewCircuitBreaker" title="Go to NewCircuitBreaker" aria-label="Go to NewCircuitBreaker">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func NewCircuitBreaker(st <a href="#Settings">Settings</a>) *<a href="#CircuitBreaker">CircuitBreaker</a></pre>
+    </div>
+  <p>NewCircuitBreaker returns a new CircuitBreaker configured with the given Settings.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="CircuitBreaker.Counts" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*CircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L216">Counts</a> <a class="Documentation-idLink" href="#CircuitBreaker.Counts" title="Go to CircuitBreaker.Counts" aria-label="Go to CircuitBreaker.Counts">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v0.5.0</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (cb *<a href="#CircuitBreaker">CircuitBreaker</a>) Counts() <a href="#Counts">Counts</a></pre>
+    </div>
+  <p>Counts returns internal counters
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="CircuitBreaker.Execute" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*CircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L228">Execute</a> <a class="Documentation-idLink" href="#CircuitBreaker.Execute" title="Go to CircuitBreaker.Execute" aria-label="Go to CircuitBreaker.Execute">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (cb *<a href="#CircuitBreaker">CircuitBreaker</a>) Execute(req func() (interface{}, <a href="/builtin#error">error</a>)) (interface{}, <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Execute runs the given request if the CircuitBreaker accepts it.
+Execute returns an error instantly if the CircuitBreaker rejects the request.
+Otherwise, Execute returns the result of the request.
+If a panic occurs in the request, the CircuitBreaker handles it as an error
+and causes the same panic again.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="CircuitBreaker.Name" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*CircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L201">Name</a> <a class="Documentation-idLink" href="#CircuitBreaker.Name" title="Go to CircuitBreaker.Name" aria-label="Go to CircuitBreaker.Name">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (cb *<a href="#CircuitBreaker">CircuitBreaker</a>) Name() <a href="/builtin#string">string</a></pre>
+    </div>
+  <p>Name returns the name of the CircuitBreaker.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="CircuitBreaker.State" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*CircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L206">State</a> <a class="Documentation-idLink" href="#CircuitBreaker.State" title="Go to CircuitBreaker.State" aria-label="Go to CircuitBreaker.State">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (cb *<a href="#CircuitBreaker">CircuitBreaker</a>) State() <a href="#State">State</a></pre>
+    </div>
+  <p>State returns the current state of the CircuitBreaker.
+</p>
+
+  
+
+  </div>
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="Counts" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L47">Counts</a> <a class="Documentation-idLink" href="#Counts" title="Go to Counts" aria-label="Go to Counts">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type Counts struct {
+<span id="Counts.Requests" data-kind="field">	Requests             <a href="/builtin#uint32">uint32</a>
+</span><span id="Counts.TotalSuccesses" data-kind="field">	TotalSuccesses       <a href="/builtin#uint32">uint32</a>
+</span><span id="Counts.TotalFailures" data-kind="field">	TotalFailures        <a href="/builtin#uint32">uint32</a>
+</span><span id="Counts.ConsecutiveSuccesses" data-kind="field">	ConsecutiveSuccesses <a href="/builtin#uint32">uint32</a>
+</span><span id="Counts.ConsecutiveFailures" data-kind="field">	ConsecutiveFailures  <a href="/builtin#uint32">uint32</a>
+</span>}</pre>
+    </div>
+  <p>Counts holds the numbers of requests and their successes/failures.
+CircuitBreaker clears the internal Counts either
+on the change of the state or at the closed-state intervals.
+Counts ignores the results of the requests sent before clearing.
+</p>
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="Settings" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L106">Settings</a> <a class="Documentation-idLink" href="#Settings" title="Go to Settings" aria-label="Go to Settings">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type Settings struct {
+<span id="Settings.Name" data-kind="field">	Name          <a href="/builtin#string">string</a>
+</span><span id="Settings.MaxRequests" data-kind="field">	MaxRequests   <a href="/builtin#uint32">uint32</a>
+</span><span id="Settings.Interval" data-kind="field">	Interval      <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+</span><span id="Settings.Timeout" data-kind="field">	Timeout       <a href="/time">time</a>.<a href="/time#Duration">Duration</a>
+</span><span id="Settings.ReadyToTrip" data-kind="field">	ReadyToTrip   func(counts <a href="#Counts">Counts</a>) <a href="/builtin#bool">bool</a>
+</span><span id="Settings.OnStateChange" data-kind="field">	OnStateChange func(name <a href="/builtin#string">string</a>, from <a href="#State">State</a>, to <a href="#State">State</a>)
+</span><span id="Settings.IsSuccessful" data-kind="field">	IsSuccessful  func(err <a href="/builtin#error">error</a>) <a href="/builtin#bool">bool</a>
+</span>}</pre>
+    </div>
+  <p>Settings configures CircuitBreaker:
+</p><p>Name is the name of the CircuitBreaker.
+</p><p>MaxRequests is the maximum number of requests allowed to pass through
+when the CircuitBreaker is half-open.
+If MaxRequests is 0, the CircuitBreaker allows only 1 request.
+</p><p>Interval is the cyclic period of the closed state
+for the CircuitBreaker to clear the internal Counts.
+If Interval is less than or equal to 0, the CircuitBreaker doesn&#39;t clear internal Counts during the closed state.
+</p><p>Timeout is the period of the open state,
+after which the state of the CircuitBreaker becomes half-open.
+If Timeout is less than or equal to 0, the timeout value of the CircuitBreaker is set to 60 seconds.
+</p><p>ReadyToTrip is called with a copy of Counts whenever a request fails in the closed state.
+If ReadyToTrip returns true, the CircuitBreaker will be placed into the open state.
+If ReadyToTrip is nil, default ReadyToTrip is used.
+Default ReadyToTrip returns true when the number of consecutive failures is more than 5.
+</p><p>OnStateChange is called whenever the state of the CircuitBreaker changes.
+</p><p>IsSuccessful is called with the error returned from a request.
+If IsSuccessful returns true, the error is counted as a success.
+Otherwise the error is counted as a failure.
+If IsSuccessful is nil, default IsSuccessful is used, which returns false for all non-nil errors.
+</p>
+
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="State" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L13">State</a> <a class="Documentation-idLink" href="#State" title="Go to State" aria-label="Go to State">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type State <a href="/builtin#int">int</a></pre>
+    </div>
+  <p>State is a type that represents a state of CircuitBreaker.
+</p>
+<div class="Documentation-typeConstant">
+    <div class="Documentation-declaration">
+      <pre>const (
+<span id="StateClosed" data-kind="constant">	StateClosed <a href="#State">State</a> = <a href="/builtin#iota">iota</a>
+</span><span id="StateHalfOpen" data-kind="constant">	StateHalfOpen
+</span><span id="StateOpen" data-kind="constant">	StateOpen
+</span>)</pre>
+    </div>
+  <p>These constants are states of CircuitBreaker.
+</p>
+</div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="State.String" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (State) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L30">String</a> <a class="Documentation-idLink" href="#State.String" title="Go to State.String" aria-label="Go to State.String">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (s <a href="#State">State</a>) String() <a href="/builtin#string">string</a></pre>
+    </div>
+  <p>String implements stringer interface.
+</p>
+
+  
+
+  </div>
+  
+
+    </div><div class="Documentation-type">
+      
+  
+  
+    <h4 tabindex="-1" id="TwoStepCircuitBreaker" data-kind="type" class="Documentation-typeHeader">
+      <span>type <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L136">TwoStepCircuitBreaker</a> <a class="Documentation-idLink" href="#TwoStepCircuitBreaker" title="Go to TwoStepCircuitBreaker" aria-label="Go to TwoStepCircuitBreaker">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>type TwoStepCircuitBreaker struct {
+	<span class="comment">// contains filtered or unexported fields</span>
+}</pre>
+    </div>
+  <p>TwoStepCircuitBreaker is like CircuitBreaker but instead of surrounding a function
+with the breaker functionality, it only checks whether a request can proceed and
+expects the caller to report the outcome in a separate step using a callback.
+</p>
+<div class="Documentation-typeFunc">
+    
+  
+  
+    <h4 tabindex="-1" id="NewTwoStepCircuitBreaker" data-kind="function" class="Documentation-typeFuncHeader">
+      <span>func <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L183">NewTwoStepCircuitBreaker</a> <a class="Documentation-idLink" href="#NewTwoStepCircuitBreaker" title="Go to NewTwoStepCircuitBreaker" aria-label="Go to NewTwoStepCircuitBreaker">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func NewTwoStepCircuitBreaker(st <a href="#Settings">Settings</a>) *<a href="#TwoStepCircuitBreaker">TwoStepCircuitBreaker</a></pre>
+    </div>
+  <p>NewTwoStepCircuitBreaker returns a new TwoStepCircuitBreaker configured with the given Settings.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="TwoStepCircuitBreaker.Allow" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*TwoStepCircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L265">Allow</a> <a class="Documentation-idLink" href="#TwoStepCircuitBreaker.Allow" title="Go to TwoStepCircuitBreaker.Allow" aria-label="Go to TwoStepCircuitBreaker.Allow">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tscb *<a href="#TwoStepCircuitBreaker">TwoStepCircuitBreaker</a>) Allow() (done func(success <a href="/builtin#bool">bool</a>), err <a href="/builtin#error">error</a>)</pre>
+    </div>
+  <p>Allow checks if a new request can proceed. It returns a callback that should be used to
+register the success or failure in a separate step. If the circuit breaker doesn&#39;t allow
+requests, it returns an error.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="TwoStepCircuitBreaker.Counts" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*TwoStepCircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L258">Counts</a> <a class="Documentation-idLink" href="#TwoStepCircuitBreaker.Counts" title="Go to TwoStepCircuitBreaker.Counts" aria-label="Go to TwoStepCircuitBreaker.Counts">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+      <span class="Documentation-sinceVersionLabel">added in</span>
+      <span class="Documentation-sinceVersionVersion">v0.5.0</span>
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tscb *<a href="#TwoStepCircuitBreaker">TwoStepCircuitBreaker</a>) Counts() <a href="#Counts">Counts</a></pre>
+    </div>
+  <p>Counts returns internal counters
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="TwoStepCircuitBreaker.Name" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*TwoStepCircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L248">Name</a> <a class="Documentation-idLink" href="#TwoStepCircuitBreaker.Name" title="Go to TwoStepCircuitBreaker.Name" aria-label="Go to TwoStepCircuitBreaker.Name">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tscb *<a href="#TwoStepCircuitBreaker">TwoStepCircuitBreaker</a>) Name() <a href="/builtin#string">string</a></pre>
+    </div>
+  <p>Name returns the name of the TwoStepCircuitBreaker.
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="TwoStepCircuitBreaker.State" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*TwoStepCircuitBreaker) <a class="Documentation-source" href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go#L253">State</a> <a class="Documentation-idLink" href="#TwoStepCircuitBreaker.State" title="Go to TwoStepCircuitBreaker.State" aria-label="Go to TwoStepCircuitBreaker.State">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (tscb *<a href="#TwoStepCircuitBreaker">TwoStepCircuitBreaker</a>) State() <a href="#State">State</a></pre>
+    </div>
+  <p>State returns the current state of the TwoStepCircuitBreaker.
+</p>
+
+  
+
+  </div>
+  
+
+    </div></section></div> 
+
+
+
+
+
+
+
+      
+    </div>
+  </div>
+
+        
+      
+      
+        
+  <div class="UnitFiles js-unitFiles">
+    <h2 class="UnitFiles-title" id="section-sourcefiles">
+      <img class="go-Icon" height="24" width="24" src="/static/shared/icon/insert_drive_file_gm_grey_24dp.svg" alt="">
+      Source Files
+      <a class="UnitFiles-idLink" href="#section-sourcefiles" title="Go to Source Files" aria-label="Go to Source Files">¶</a>
+    </h2><div class="UnitFiles-titleLink">
+      <a href="https://github.com/sony/gobreaker/tree/v1.0.0" target="_blank" rel="noopener">View all Source files</a>
+    </div><div>
+      <ul class="UnitFiles-fileList"><li><a href="https://github.com/sony/gobreaker/blob/v1.0.0/gobreaker.go" target="_blank" rel="noopener" title="gobreaker.go">gobreaker.go</a></li></ul>
+    </div>
+  </div>
+
+      
+      
+        
+  <div class="UnitDirectories js-unitDirectories">
+    <h2 class="UnitDirectories-title" id="section-directories">
+      <img class="go-Icon" height="24" width="24" src="/static/shared/icon/folder_gm_grey_24dp.svg" alt="">
+      Directories
+      <a class="UnitDirectories-idLink" href="#section-directories" title="Go to Directories" aria-label="Go to Directories">¶</a>
+    </h2>
+    <div class="UnitDirectories-toggles">
+      <div class="UnitDirectories-toggleButtons">
+        <button class="js-showInternalDirectories" data-test-id="internal-directories-toggle"
+            data-gtmc="directories button" aria-label="Show Internal Directories">
+          Show internal
+        </button>
+        <button class="js-expandAllDirectories" data-test-id="directories-toggle"
+            data-gtmc="directories button" aria-label="Expand All Directories">
+          Expand all
+        </button>
+      </div>
+    </div>
+    <table class="UnitDirectories-table UnitDirectories-table--tree js-expandableTable"
+          data-test-id="UnitDirectories-table">
+      <tr class="UnitDirectories-tableHeader UnitDirectories-tableHeader--tree">
+        <th>Path</th>
+        <th class="UnitDirectories-desktopSynopsis">Synopsis</th>
+      </tr>
+      
+          
+  
+  <tr
+      class="">
+    <td data-id="example" data-aria-owns="">
+      <div class="UnitDirectories-pathCell">
+        <div><a href="/github.com/sony/gobreaker@v1.0.0/example">example</a>
+            
+          </div>
+          <div class="UnitDirectories-mobileSynopsis"></div>
+        </div>
+      </td>
+      <td class="UnitDirectories-desktopSynopsis"></td></tr></tr>
+
+      
+          
+  
+  <tr data-aria-controls="v2-redis "
+      class="">
+    <td data-id="v2" data-aria-owns="v2-redis ">
+      <div class="UnitDirectories-pathCell">
+        <div><button type="button" class="go-Button go-Button--inline UnitDirectories-toggleButton"
+                aria-expanded="false"
+                aria-label="1 more from"
+                data-aria-controls="v2-redis "
+                data-aria-labelledby="v2-button v2"
+                data-id="v2-button">
+              <img class="go-Icon" height="24" width="24" src="/static/shared/icon/arrow_right_gm_grey_24dp.svg"
+                  alt="">
+            </button><span>v2</span>
+      </td>
+      <td class="UnitDirectories-desktopSynopsis"></td></tr><tr data-id="v2-redis" class="">
+      <td>
+        <div class="UnitDirectories-subdirectory">
+          <span>
+            <a href="/github.com/sony/gobreaker/v2/redis">redis</a>
+            <span class="go-Chip go-Chip--inverted">module</span>
+            
+          </span>
+          <div class="UnitDirectories-mobileSynopsis"></div>
+        </div>
+      </td>
+      <td class="UnitDirectories-desktopSynopsis"></td></tr>
+
+      
+    </table>
+  </div>
+
+      
+    </div>
+  </div>
+  <div id="showInternal-description" hidden> Click to show internal directories. </div>
+  <div id="hideInternal-description" hidden> Click to hide internal directories. </div>
+</article>
+    <footer class="go-Main-footer"></footer>
+  </main>
+
+    
+  <footer class="go-Footer">
+    
+    <div class="go-Footer-links">
+      <div class="go-Footer-linkColumn">
+        <a href="https://go.dev/solutions" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Why Go
+        </a>
+        <a href="https://go.dev/solutions/use-cases" class="go-Footer-link"
+            data-gtmc="footer link">
+          Use Cases
+        </a>
+        <a href="https://go.dev/solutions/case-studies" class="go-Footer-link"
+            data-gtmc="footer link">
+          Case Studies
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://learn.go.dev/" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Get Started
+        </a>
+        <a href="https://play.golang.org" class="go-Footer-link" data-gtmc="footer link">
+          Playground
+        </a>
+        <a href="https://tour.golang.org" class="go-Footer-link" data-gtmc="footer link">
+          Tour
+        </a>
+        <a href="https://stackoverflow.com/questions/tagged/go?tab=Newest" class="go-Footer-link"
+            data-gtmc="footer link">
+          Stack Overflow
+        </a>
+        <a href="https://go.dev/help" class="go-Footer-link"
+            data-gtmc="footer link">
+          Help
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://pkg.go.dev" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Packages
+        </a>
+        <a href="/std" class="go-Footer-link" data-gtmc="footer link">
+          Standard Library
+        </a>
+        <a href="/golang.org/x" class="go-Footer-link" data-gtmc="footer link">
+          Sub-repositories
+        </a>
+        <a href="https://pkg.go.dev/about" class="go-Footer-link" data-gtmc="footer link">
+          About Go Packages
+        </a>
+         <a href="/api" class="go-Footer-link" data-gtmc="footer link">
+          pkg.go.dev API
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://go.dev/project" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          About
+        </a>
+        <a href="https://go.dev/dl/" class="go-Footer-link" data-gtmc="footer link">Download</a>
+        <a href="https://go.dev/blog" class="go-Footer-link" data-gtmc="footer link">Blog</a>
+        <a href="https://github.com/golang/go/issues" class="go-Footer-link" data-gtmc="footer link">
+          Issue Tracker
+        </a>
+        <a href="https://go.dev/doc/devel/release.html" class="go-Footer-link"
+            data-gtmc="footer link">
+          Release Notes
+        </a>
+        <a href="https://go.dev/brand" class="go-Footer-link" data-gtmc="footer link">
+          Brand Guidelines
+        </a>
+        <a href="https://go.dev/conduct" class="go-Footer-link" data-gtmc="footer link">
+          Code of Conduct
+        </a>
+      </div>
+      <div class="go-Footer-linkColumn">
+        <a href="https://www.twitter.com/golang" class="go-Footer-link go-Footer-link--primary"
+            data-gtmc="footer link">
+          Connect
+        </a>
+        <a href="https://www.twitter.com/golang" class="go-Footer-link" data-gtmc="footer link">
+          Twitter
+        </a>
+        <a href="https://github.com/golang" class="go-Footer-link" data-gtmc="footer link">GitHub</a>
+        <a href="https://invite.slack.golangbridge.org/" class="go-Footer-link"
+            data-gtmc="footer link">
+          Slack
+        </a>
+        <a href="https://reddit.com/r/golang" class="go-Footer-link" data-gtmc="footer link">
+          r/golang
+        </a>
+        <a href="https://www.meetup.com/pro/go" class="go-Footer-link" data-gtmc="footer link">
+          Meetup
+        </a>
+        <a href="https://golangweekly.com/" class="go-Footer-link" data-gtmc="footer link">
+          Golang Weekly
+        </a>
+      </div>
+    </div>
+    <div class="go-Footer-bottom">
+      <img class="go-Footer-gopher"  width="1431" height="901"
+          src="/static/shared/gopher/pilot-bust-1431x901.svg" alt="Gopher in flight goggles">
+      <ul class="go-Footer-listRow">
+        <li class="go-Footer-listItem">
+          <a href="https://go.dev/copyright" data-gtmc="footer link">Copyright</a>
+        </li>
+        <li class="go-Footer-listItem">
+          <a href="https://go.dev/tos" data-gtmc="footer link">Terms of Service</a>
+        </li>
+        <li class="go-Footer-listItem">
+          <a href="http://www.google.com/intl/en/policies/privacy/" data-gtmc="footer link"
+              target="_blank" rel="noopener">
+            Privacy Policy
+          </a>
+        </li>
+        <li class="go-Footer-listItem">
+          <a href="https://go.dev/s/pkgsite-feedback" target="_blank" rel="noopener"
+              data-gtmc="footer link">
+            Report an Issue
+          </a>
+        </li>
+        <li class="go-Footer-listItem">
+          <button class="go-Button go-Button--text go-Footer-toggleTheme js-toggleTheme" aria-label="Theme Toggle">
+            <img data-value="auto" class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/brightness_6_gm_grey_24dp.svg" alt="System theme">
+            <img data-value="dark" class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/brightness_2_gm_grey_24dp.svg" alt="Dark theme">
+            <img data-value="light" class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/light_mode_gm_grey_24dp.svg" alt="Light theme">
+            <p> Theme Toggle </p>
+          </button>
+        </li>
+        <li class="go-Footer-listItem">
+          <button class="go-Button go-Button--text go-Footer-keyboard js-openShortcuts" aria-label="Shorcuts Modal">
+            <img class="go-Icon go-Icon--inverted" height="24" width="24" src="/static/shared/icon/keyboard_grey_24dp.svg" alt="">
+            <p> Shortcuts Modal </p>
+          </button>
+        </li>
+      </ul>
+      <a class="go-Footer-googleLogo" href="https://google.com" target="_blank"rel="noopener"
+          data-gtmc="footer link">
+        <img class="go-Footer-googleLogoImg" height="24" width="72"
+            src="/static/shared/logo/google-white.svg" alt="Google logo">
+      </a>
+    </div>
+  </footer>
+
+    
+  <dialog id="jump-to-modal" class="JumpDialog go-Modal go-Modal--md js-modal">
+    <form method="dialog" data-gmtc="jump to form" aria-label="Jump to Identifier">
+      <div class="Dialog-title go-Modal-header">
+        <h2>Jump to</h2>
+        <button
+          class="go-Button go-Button--inline"
+          type="button"
+          data-modal-close
+          data-gtmc="modal button"
+          aria-label="Close"
+        >
+          <img
+            class="go-Icon"
+            height="24"
+            width="24"
+            src="/static/shared/icon/close_gm_grey_24dp.svg"
+            alt=""
+          />
+        </button>
+      </div>
+      <div class="JumpDialog-filter">
+        <input class="JumpDialog-input go-Input" autocomplete="off" type="text">
+      </div>
+      <div class="JumpDialog-body go-Modal-body">
+        <div class="JumpDialog-list"></div>
+      </div>
+      <div class="go-Modal-actions">
+        <button class="go-Button" data-test-id="close-dialog">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="ShortcutsDialog go-Modal go-Modal--sm js-modal">
+    <form method="dialog">
+      <div class="go-Modal-header">
+        <h2>Keyboard shortcuts</h2>
+        <button
+          class="go-Button go-Button--inline"
+          type="button"
+          data-modal-close
+          data-gtmc="modal button"
+          aria-label="Close"
+        >
+          <img
+            class="go-Icon"
+            height="24"
+            width="24"
+            src="/static/shared/icon/close_gm_grey_24dp.svg"
+            alt=""
+          />
+        </button>
+      </div>
+      <div class="go-Modal-body">
+        <table>
+          <tbody>
+            <tr><td class="ShortcutsDialog-key">
+              <strong>?</strong></td><td> : This menu</td>
+            </tr>
+            <tr><td class="ShortcutsDialog-key">
+              <strong>/</strong></td><td> : Search site</td>
+            </tr>
+            <tr><td class="ShortcutsDialog-key">
+              <strong>f</strong> or <strong>F</strong></td><td> : Jump to</td>
+            </tr>
+            <tr>
+              <td class="ShortcutsDialog-key"><strong>y</strong> or <strong>Y</strong></td>
+              <td> : Canonical URL</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="go-Modal-actions">
+        <button class="go-Button" data-test-id="close-dialog">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+    
+      <section class="Cookie-notice js-cookieNotice">
+        <div>go.dev uses cookies from Google to deliver and enhance the quality of its services and to
+        analyze traffic. <a target=_blank href="https://policies.google.com/technologies/cookies">Learn more.</a></div>
+        <div><button class="go-Button">Okay</button></div>
+      </section>
+    
+    
+      <script>
+        // this will throw if the querySelector can’t find the element
+        const gtmId = document.querySelector('.js-gtmID').dataset.gtmid;
+        if (!gtmId) {
+          throw new Error('Google Tag Manager ID not found');
+        }
+        loadScript(`https://www.googletagmanager.com/gtm.js?id=${gtmId}`);
+      </script>
+      <noscript>
+        <iframe src="https://www.googletagmanager.com/ns.html?id=GTM-W8MVQXG"
+                height="0" width="0" style="display:none;visibility:hidden">
+        </iframe>
+      </noscript>
+    
+    
+  
+  <div class="js-canonicalURLPath" data-canonical-url-path="/github.com/sony/gobreaker@v1.0.0" hidden></div>
+  <div class="js-playgroundVars" data-modulepath="github.com/sony/gobreaker" data-version="v1.0.0" hidden></div>
+  <script>
+    loadScript('/static/frontend/unit/main/main.js')
+  </script>
+
+  <script>
+    loadScript('/static/frontend/unit/unit.js')
+  </script>
+
+  </body>
+</html>

@@ -1,0 +1,3674 @@
+<!DOCTYPE html>
+<html lang="en">
+  <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" data-domain-script="018ee325-b3a7-7753-937b-b8b3e643b1a7"></script><script>function OptanonWrapper() {}</script><script>function setGTM(w, d, s, l, i) { w[l] = w[l] || []; w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js"}); var f = d.getElementsByTagName(s)[0], j = d.createElement(s), dl = l != "dataLayer" ? "&l=" + l : ""; j.async = true; j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl; f.parentNode.insertBefore(j, f); } if (document.cookie.indexOf("OptanonConsent") > -1 && document.cookie.indexOf("groups=") > -1) { setGTM(window, document, "script", "dataLayer", "GTM-W8CQ8TL"); } else { waitForOnetrustActiveGroups(); } var timer; function waitForOnetrustActiveGroups() { if (document.cookie.indexOf("OptanonConsent") > -1 && document.cookie.indexOf("groups=") > -1) { clearTimeout(timer); setGTM(window, document, "script", "dataLayer", "GTM-W8CQ8TL"); } else { timer = setTimeout(waitForOnetrustActiveGroups, 250); }}</script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Calling REST Services :: Spring Boot</title>
+    <link rel="canonical" href="https://docs.spring.io/spring-boot/reference/io/rest-client.html">
+    <link rel="prev" href="validation.html">
+    <link rel="next" href="webservices.html">
+    <meta name="generator" content="Antora 3.2.0">
+    <script>
+!function (theme, navWidth) {
+  if (theme === 'dark') document.documentElement.classList.add('dark-theme')
+  if (navWidth) document.documentElement.style.setProperty('--nav-width', `${navWidth}px`)
+}(localStorage && localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)')?.matches && 'dark'),
+  localStorage && localStorage.getItem('nav-width'))
+    </script>
+    <link rel="stylesheet" href="../../_/css/site.css">
+    <link rel="stylesheet" href="../../_/css/vendor/search.css">
+    <link rel="stylesheet" href="../../_/css/vendor/page-search.css">
+    <link rel="stylesheet" href="../../_/css/vendor/onetrust.css">
+    <link rel="stylesheet" href="../../_/css/vendor/asciidoctor-tabs.css">
+
+    <meta name="antora-ui-version" content="v0.4.26"> 
+    <meta name="version" content="4.1.1">
+    <meta name="generation" content="4.1">
+    <meta name="versioned-url" content="https://docs.spring.io/spring-boot/4.1/reference/io/rest-client.html">
+    <meta name="component" content="boot">
+    <meta name="latest-version" content="true">
+    <link rel="icon" href="../../_/img/favicon.ico" type="image/vnd.microsoft.icon">
+  </head>
+  <body class="article">
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="https://spring.io">
+        <img
+          id="springlogo"
+          class="block"
+          src="../../_/img/spring-logo.svg"
+          alt="Spring"
+        />
+      </a>
+      <button class="navbar-burger" data-target="topbar-nav">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Why Spring</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="https://spring.io/why-spring">Overview</a>
+            <li class="navbar-item navbar-item-special-3">Trending</li>
+            <a class="navbar-item" href="https://spring.io/ai">Generative AI</a>
+            <a class="navbar-item" href="https://spring.io/cloud">Cloud</a>
+            <li class="navbar-item navbar-item-special-3">Architecture Patterns</li>
+            <a class="navbar-item" href="https://spring.io/microservices">Microservices</a>
+            <a class="navbar-item" href="https://spring.io/reactive">Reactive</a>
+            <a class="navbar-item" href="https://spring.io/event-driven">Event Driven</a>
+            <li class="navbar-item navbar-item-special-3">Application Types</li>
+            <a class="navbar-item" href="https://spring.io/web-applications">Web Applications</a>
+            <a class="navbar-item" href="https://spring.io/serverless">Serverless</a>
+            <a class="navbar-item" href="https://spring.io/batch">Batch</a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Learn</a>
+          <div class="navbar-dropdown">
+            <li class="navbar-item navbar-item-special-3">Getting Started</li>
+            <a class="navbar-item" href="https://spring.io/quickstart">Quickstart</a>
+            <a class="navbar-item" href="https://spring.io/guides">Guides</a>
+            <li class="navbar-item navbar-item-special-3">Academy</li>
+            <a class="navbar-item" href="https://spring.academy/courses">Courses
+              <svg class="external-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="15 10.94 15 15 1 15 1 1 5.06 1" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><polyline points="8.93 1 15 1 15 7.07" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><line x1="15" y1="1" x2="8" y2="8" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></line></svg>
+            </a>
+            <a class="navbar-item" href="https://spring.academy/learning-path">Get Certified
+              <svg class="external-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="15 10.94 15 15 1 15 1 1 5.06 1" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><polyline points="8.93 1 15 1 15 7.07" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><line x1="15" y1="1" x2="8" y2="8" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></line></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Projects</a>
+          <div class="navbar-dropdown" style="min-width: 280px">
+            <a class="navbar-item" href="https://spring.io/projects">Overview</a>
+            <li class="navbar-item navbar-item-special-3">Projects</li>
+            <a class="navbar-item" href="https://spring.io/projects/spring-boot">Spring Boot</a>
+            <a class="navbar-item" href="https://spring.io/projects/spring-framework">Spring Framework</a>
+            <a class="navbar-item" href="https://spring.io/projects/spring-cloud">Spring Cloud</a>
+            <a class="navbar-item" href="https://spring.io/projects/spring-ai">Spring AI</a>
+            <a class="navbar-item" href="https://spring.io/projects/spring-data">Spring Data</a>
+            <a class="navbar-item" href="https://spring.io/projects/spring-integration">Spring Integration</a>
+            <a class="navbar-item" href="https://spring.io/projects/spring-batch">Spring Batch</a>
+            <a class="navbar-item" href="https://spring.io/projects/spring-security">Spring Security</a>
+            <li class="navbar-item navbar-item-special-3">Foundational Projects</li>
+            <a class="navbar-item" href="https://micrometer.io">Micrometer
+              <svg class="external-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="15 10.94 15 15 1 15 1 1 5.06 1" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><polyline points="8.93 1 15 1 15 7.07" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><line x1="15" y1="1" x2="8" y2="8" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></line></svg>
+            </a>
+            <a class="navbar-item" href="https://projectreactor.io">Reactor
+              <svg class="external-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="15 10.94 15 15 1 15 1 1 5.06 1" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><polyline points="8.93 1 15 1 15 7.07" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><line x1="15" y1="1" x2="8" y2="8" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></line></svg>
+            </a>
+            <li class="navbar-item navbar-item-special-3">Development Tools</li>
+            <a class="navbar-item" href="https://spring.io/tools">Spring Tools</a>
+            <a class="navbar-item navbar-item-special-2" href="https://start.spring.io">Spring Initializr
+              <svg class="external-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="15 10.94 15 15 1 15 1 1 5.06 1" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><polyline points="8.93 1 15 1 15 7.07" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><line x1="15" y1="1" x2="8" y2="8" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></line></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Resources</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="https://spring.io/blog">Blog</a>
+            <a class="navbar-item" href="https://spring.io/projects#release-calendar">Release Calendar</a>
+            <a class="navbar-item" href="https://spring.io/projects/generations">Version Mappings</a>
+            <a class="navbar-item" href="https://spring.io/projects/release-highlights">Release Highlights</a>
+            <a class="navbar-item" href="https://spring.io/security">Security Advisories</a>
+            <li class="navbar-item navbar-item-special-3">GitHub Orgs</li>
+            <a class="navbar-item" href="https://github.com/spring-projects">Spring Projects
+              <svg class="external-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="15 10.94 15 15 1 15 1 1 5.06 1" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><polyline points="8.93 1 15 1 15 7.07" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><line x1="15" y1="1" x2="8" y2="8" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></line></svg>
+            </a>
+            <a class="navbar-item" href="https://github.com/spring-cloud">Spring Cloud
+              <svg class="external-link-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline points="15 10.94 15 15 1 15 1 1 5.06 1" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><polyline points="8.93 1 15 1 15 7.07" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></polyline><line x1="15" y1="1" x2="8" y2="8" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="2"></line></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Community</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="https://spring.io/community">Overview</a>
+            <a class="navbar-item" href="https://spring.io/events">Events</a>
+            <a class="navbar-item" href="https://spring.io/authors">Authors</a>
+          </div>
+        </div>
+
+        <div class="navbar-item has-dropdown is-hoverable is-enterprise">
+          <a class="navbar-link" href="#">Enterprise</a>
+          <div class="navbar-dropdown lg is-right">
+            <a class="navbar-item" href="https://enterprise.spring.io/">Overview</a>
+            <a class="navbar-item" href="https://enterprise.spring.io/lts-releases">Long-term Support</a>
+            <a class="navbar-item" href="https://enterprise.spring.io/spring-application-advisor">Automated Upgrades</a>
+            <a class="navbar-item" href="https://enterprise.spring.io/enterprise-extensions">Governance and Compliance</a>
+            <a class="navbar-item" href="https://enterprise.spring.io/enterprise-components">Modern App Development</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <label class="theme-toggler">
+      <input
+        type="checkbox"
+        type="checkbox"
+        id="switch-theme-checkbox"
+        name="switch-theme-checkbox"
+      />
+      <span class="icon"><svg
+          aria-hidden="true"
+          focusable="false"
+          data-prefix="fas"
+          data-icon="moon"
+          class="svg-inline--fa fa-moon moon"
+          role="img"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 384 512"
+        ><path
+            fill="currentColor"
+            d="M223.5 32C100 32 0 132.3 0 256S100 480 223.5 480c60.6 0 115.5-24.2 155.8-63.4c5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6c-96.9 0-175.5-78.8-175.5-176c0-65.8 36-123.1 89.3-153.3c6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"
+          ></path>
+        </svg>
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          data-prefix="fas"
+          data-icon="sun"
+          class="svg-inline--fa fa-sun sun"
+          role="img"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 512 512"
+        ><path
+            fill="currentColor"
+            d="M361.5 1.2c5 2.1 8.6 6.6 9.6 11.9L391 121l107.9 19.8c5.3 1 9.8 4.6 11.9 9.6s1.5 10.7-1.6 15.2L446.9 256l62.3 90.3c3.1 4.5 3.7 10.2 1.6 15.2s-6.6 8.6-11.9 9.6L391 391 371.1 498.9c-1 5.3-4.6 9.8-9.6 11.9s-10.7 1.5-15.2-1.6L256 446.9l-90.3 62.3c-4.5 3.1-10.2 3.7-15.2 1.6s-8.6-6.6-9.6-11.9L121 391 13.1 371.1c-5.3-1-9.8-4.6-11.9-9.6s-1.5-10.7 1.6-15.2L65.1 256 2.8 165.7c-3.1-4.5-3.7-10.2-1.6-15.2s6.6-8.6 11.9-9.6L121 121 140.9 13.1c1-5.3 4.6-9.8 9.6-11.9s10.7-1.5 15.2 1.6L256 65.1 346.3 2.8c4.5-3.1 10.2-3.7 15.2-1.6zM160 256a96 96 0 1 1 192 0 96 96 0 1 1 -192 0zm224 0a128 128 0 1 0 -256 0 128 128 0 1 0 256 0z"
+          ></path>
+        </svg></span>
+      <span class="text">light</span>
+    </label>
+  </nav>
+</header>
+<script>
+!function (theme) {
+  if (theme === 'dark') {
+    document.getElementById('switch-theme-checkbox').parentElement.classList.add('active')
+  }
+}(localStorage && localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)')?.matches && 'dark'))
+</script>
+<div class="body">
+<div class="nav-container" data-component="boot" data-version="4.1.1">
+  <aside class="nav">
+    <div class="panels">
+      <div class="nav-panel-menu is-active" data-panel="menu">
+        <nav class="nav-menu">
+<div class="context">
+  <span class="title">Spring Boot</span>
+  <span class="version">4.1.1</span>
+  <button class="browse-version" id="browse-version">
+    <svg
+      height="24px"
+      id="Layer_1"
+      style="enable-background:new 0 0 512 512;"
+      version="1.1"
+      viewBox="0 0 512 512"
+      width="24px"
+      xml:space="preserve"
+    ><g><path
+          d="M256,224c-17.7,0-32,14.3-32,32s14.3,32,32,32c17.7,0,32-14.3,32-32S273.7,224,256,224L256,224z"
+        ></path><path
+          d="M128.4,224c-17.7,0-32,14.3-32,32s14.3,32,32,32c17.7,0,32-14.3,32-32S146,224,128.4,224L128.4,224z"
+        ></path><path
+          d="M384,224c-17.7,0-32,14.3-32,32s14.3,32,32,32s32-14.3,32-32S401.7,224,384,224L384,224z"
+        ></path></g></svg>
+  </button>
+  <div class="search">
+  <button class="DocSearch-Button search-button">
+    <svg enable-background="new 0 0 32 32" id="Glyph" version="1.1" viewBox="0 0 32 32" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <path d="M27.414,24.586l-5.077-5.077C23.386,17.928,24,16.035,24,14c0-5.514-4.486-10-10-10S4,8.486,4,14  s4.486,10,10,10c2.035,0,3.928-0.614,5.509-1.663l5.077,5.077c0.78,0.781,2.048,0.781,2.828,0  C28.195,26.633,28.195,25.367,27.414,24.586z M7,14c0-3.86,3.14-7,7-7s7,3.14,7,7s-3.14,7-7,7S7,17.86,7,14z" id="XMLID_223_"/>
+    </svg>
+    <span>Search</span>
+    <span class="search-key"></span>
+  </button>
+</div>
+</div><ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link navtree-icon-home"  href="../../index.html">Overview</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link navtree-icon-book"  href="../../documentation.html">Documentation</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link navtree-icon-question"  href="../../community.html">Community</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link navtree-icon-server"  href="../../system-requirements.html">System Requirements</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link navtree-icon-gift"  href="../../installing.html">Installing Spring Boot</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link navtree-icon-rocket"  href="../../upgrading.html">Upgrading Spring Boot</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../tutorial/index.html">Tutorials</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../tutorial/first-application/index.html">Developing Your First Spring Boot Application</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../index.html">Reference</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../using/index.html">Developing with Spring Boot</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/build-systems.html">Build Systems</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/structuring-your-code.html">Structuring Your Code</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/configuration-classes.html">Configuration Classes</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/auto-configuration.html">Auto-configuration</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/spring-beans-and-dependency-injection.html">Spring Beans and Dependency Injection</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/using-the-springbootapplication-annotation.html">Using the @SpringBootApplication Annotation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/running-your-application.html">Running Your Application</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/devtools.html">Developer Tools</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../using/packaging-for-production.html">Packaging Your Application for Production</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../features/index.html">Core Features</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/spring-application.html">SpringApplication</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/external-config.html">Externalized Configuration</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/profiles.html">Profiles</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/logging.html">Logging</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/internationalization.html">Internationalization</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/aop.html">Aspect-Oriented Programming</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/json.html">JSON</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/task-execution-and-scheduling.html">Task Execution and Scheduling</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/dev-services.html">Development-time Services</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/developing-auto-configuration.html">Creating Your Own Auto-configuration</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/kotlin.html">Kotlin Support</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../features/ssl.html">SSL</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../web/index.html">Web</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../web/servlet.html">Servlet Web Applications</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../web/reactive.html">Reactive Web Applications</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../web/graceful-shutdown.html">Graceful Shutdown</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../web/spring-security.html">Spring Security</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../web/spring-session.html">Spring Session</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../web/spring-graphql.html">Spring for GraphQL</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../web/spring-hateoas.html">Spring HATEOAS</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../data/index.html">Data</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../data/sql.html">SQL Databases</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../data/nosql.html">Working with NoSQL Technologies</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="index.html">IO</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="caching.html">Caching</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="spring-batch.html">Spring Batch</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="grpc.html">gRPC</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="hazelcast.html">Hazelcast</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="quartz.html">Quartz Scheduler</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="email.html">Sending Email</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="validation.html">Validation</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="3">
+    <a class="nav-link"  href="rest-client.html">Calling REST Services</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="webservices.html">Web Services</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="jta.html">Distributed Transactions With JTA</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../messaging/index.html">Messaging</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../messaging/jms.html">JMS</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../messaging/amqp.html">AMQP</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../messaging/kafka.html">Apache Kafka Support</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../messaging/pulsar.html">Apache Pulsar Support</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../messaging/rsocket.html">RSocket</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../messaging/spring-integration.html">Spring Integration</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../messaging/websockets.html">WebSockets</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../security/index.html">Security</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../security/oauth2.html">OAuth2</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../security/saml2.html">SAML 2.0</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../testing/index.html">Testing</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../testing/test-modules.html">Test Modules</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../testing/test-scope-dependencies.html">Test Scope Dependencies</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../testing/spring-applications.html">Testing Spring Applications</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../testing/spring-boot-applications.html">Testing Spring Boot Applications</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../testing/testcontainers.html">Testcontainers</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../testing/test-utilities.html">Test Utilities</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../packaging/index.html">Packaging Spring Boot Applications</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../packaging/efficient.html">Efficient Deployments</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../packaging/aot-cache.html">AOT Cache</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../packaging/aot.html">Ahead-of-Time Processing With the JVM</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../packaging/native-image/index.html">GraalVM Native Images</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="4">
+    <a class="nav-link"  href="../packaging/native-image/introducing-graalvm-native-images.html">Introducing GraalVM Native Images</a>
+  </li>
+  <li class="nav-item" data-depth="4">
+    <a class="nav-link"  href="../packaging/native-image/advanced-topics.html">Advanced Native Images Topics</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../packaging/checkpoint-restore.html">Checkpoint and Restore With the JVM</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../packaging/container-images/index.html">Container Images</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="4">
+    <a class="nav-link"  href="../packaging/container-images/efficient-images.html">Efficient Container Images</a>
+  </li>
+  <li class="nav-item" data-depth="4">
+    <a class="nav-link"  href="../packaging/container-images/dockerfiles.html">Dockerfiles</a>
+  </li>
+  <li class="nav-item" data-depth="4">
+    <a class="nav-link"  href="../packaging/container-images/cloud-native-buildpacks.html">Cloud Native Buildpacks</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../actuator/index.html">Production-ready Features</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/enabling.html">Enabling Production-ready Features</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/endpoints.html">Endpoints</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/monitoring.html">Monitoring and Management Over HTTP</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/jmx.html">Monitoring and Management over JMX</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/observability.html">Observability</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/loggers.html">Loggers</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/metrics.html">Metrics</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/tracing.html">Tracing</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/auditing.html">Auditing</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/http-exchanges.html">Recording HTTP Exchanges</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/process-monitoring.html">Process Monitoring</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../actuator/cloud-foundry.html">Cloud Foundry Support</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../how-to/index.html">How-to Guides</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/application.html">Spring Boot Application</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/properties-and-configuration.html">Properties and Configuration</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/webserver.html">Embedded Web Servers</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/spring-mvc.html">Spring MVC</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/jersey.html">Jersey</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/http-clients.html">HTTP Clients</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/logging.html">Logging</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/data-access.html">Data Access</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/data-initialization.html">Database Initialization</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/nosql.html">NoSQL</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/messaging.html">Messaging</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/batch.html">Batch Applications</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/actuator.html">Actuator</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/security.html">Security</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/hotswapping.html">Hot Swapping</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/testing.html">Testing</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/build.html">Build</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/aot.html">Ahead-of-Time Processing</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../how-to/native-image/index.html">GraalVM Native Applications</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../how-to/native-image/developing-your-first-application.html">Developing Your First GraalVM Native Application</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../how-to/native-image/testing-native-applications.html">Testing GraalVM Native Images</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/aot-cache.html">AOT Cache</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../how-to/deployment/index.html">Deploying Spring Boot Applications</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../how-to/deployment/traditional-deployment.html">Traditional Deployment</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../how-to/deployment/cloud.html">Deploying to the Cloud</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../how-to/deployment/installing.html">Installing Spring Boot Applications</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../how-to/docker-compose.html">Docker Compose</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../build-tool-plugin/index.html">Build Tool Plugins</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../maven-plugin/index.html">Maven Plugin</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/getting-started.html">Getting Started</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/using.html">Using the Plugin</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/goals.html">Goals</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/packaging.html">Packaging Executable Archives</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/build-image.html">Packaging OCI Images</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/run.html">Running your Application with Maven</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/aot.html">Ahead-of-Time Processing</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/integration-tests.html">Running Integration Tests</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/build-info.html">Integrating with Actuator</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../maven-plugin/help.html">Help Information</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../gradle-plugin/index.html">Gradle Plugin</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/getting-started.html">Getting Started</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/managing-dependencies.html">Managing Dependencies</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/packaging.html">Packaging Executable Archives</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/packaging-oci-image.html">Packaging OCI Images</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/publishing.html">Publishing your Application</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/running.html">Running your Application with Gradle</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/aot.html">Ahead-of-Time Processing</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/integrating-with-actuator.html">Integrating with Actuator</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../gradle-plugin/reacting.html">Reacting to Other Plugins</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../build-tool-plugin/antlib.html">Spring Boot AntLib Module</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../build-tool-plugin/other-build-systems.html">Supporting Other Build Systems</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../cli/index.html">Spring Boot CLI</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../cli/installation.html">Installing the CLI</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../cli/using-the-cli.html">Using the CLI</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Rest APIs</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../api/rest/actuator/index.html">Actuator</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/auditevents.html">Audit Events (<code>auditevents</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/beans.html">Beans (<code>beans</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/caches.html">Caches (<code>caches</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/conditions.html">Conditions Evaluation Report (<code>conditions</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/configprops.html">Configuration Properties (<code>configprops</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/env.html">Environment (<code>env</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/flyway.html">Flyway (<code>flyway</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/health.html">Health (<code>health</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/heapdump.html">Heap Dump (<code>heapdump</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/httpexchanges.html">HTTP Exchanges (<code>httpexchanges</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/info.html">Info (<code>info</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/integrationgraph.html">Spring Integration Graph (<code>integrationgraph</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/liquibase.html">Liquibase (<code>liquibase</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/logfile.html">Log File (<code>logfile</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/loggers.html">Loggers (<code>loggers</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/mappings.html">Mappings (<code>mappings</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/metrics.html">Metrics (<code>metrics</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/prometheus.html">Prometheus (<code>prometheus</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/quartz.html">Quartz (<code>quartz</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/sbom.html">Software Bill of Materials (<code>sbom</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/scheduledtasks.html">Scheduled Tasks (<code>scheduledtasks</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/sessions.html">Sessions (<code>sessions</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/shutdown.html">Shutdown (<code>shutdown</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/startup.html">Application Startup (<code>startup</code>)</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../api/rest/actuator/threaddump.html">Thread Dump (<code>threaddump</code>)</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Java APIs</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link link-external"  target="_blank" href="../../api/java/index.html">Spring Boot</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link link-external"  target="_blank" href="../../gradle-plugin/api/java/index.html">Gradle Plugin</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link link-external"  target="_blank" href="../../maven-plugin/api/java/index.html">Maven Plugin</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Kotlin APIs</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link link-external"  target="_blank" href="../../api/kotlin/index.html">Spring Boot</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Specifications</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../specification/configuration-metadata/index.html">Configuration Metadata</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/configuration-metadata/format.html">Metadata Format</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/configuration-metadata/manual-hints.html">Providing Manual Hints</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/configuration-metadata/annotation-processor.html">Generating Your Own Metadata by Using the Annotation Processor</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../specification/executable-jar/index.html">The Executable Jar Format</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/executable-jar/nested-jars.html">Nested JARs</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/executable-jar/jarfile-class.html">Spring Boot&#8217;s &#8220;NestedJarFile&#8221; Class</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/executable-jar/launching.html">Launching Executable Jars</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/executable-jar/property-launcher.html">PropertiesLauncher Features</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/executable-jar/restrictions.html">Executable Jar Restrictions</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../specification/executable-jar/alternatives.html">Alternative Single Jar Solutions</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Appendix</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../appendix/application-properties/index.html">Common Application Properties</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <a class="nav-link"  href="../../appendix/deprecated-application-properties/index.html">Deprecated Application Properties</a>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/index.html">Auto-configuration Classes</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-activemq.html">spring-boot-activemq</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-actuator-autoconfigure.html">spring-boot-actuator-autoconfigure</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-amqp.html">spring-boot-amqp</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-artemis.html">spring-boot-artemis</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-autoconfigure.html">spring-boot-autoconfigure</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-batch.html">spring-boot-batch</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-batch-data-mongodb.html">spring-boot-batch-data-mongodb</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-batch-jdbc.html">spring-boot-batch-jdbc</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-cache.html">spring-boot-cache</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-cassandra.html">spring-boot-cassandra</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-cloudfoundry.html">spring-boot-cloudfoundry</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-couchbase.html">spring-boot-couchbase</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-cassandra.html">spring-boot-data-cassandra</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-commons.html">spring-boot-data-commons</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-couchbase.html">spring-boot-data-couchbase</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-elasticsearch.html">spring-boot-data-elasticsearch</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-jdbc.html">spring-boot-data-jdbc</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-jpa.html">spring-boot-data-jpa</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-ldap.html">spring-boot-data-ldap</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-mongodb.html">spring-boot-data-mongodb</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-neo4j.html">spring-boot-data-neo4j</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-r2dbc.html">spring-boot-data-r2dbc</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-redis.html">spring-boot-data-redis</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-data-rest.html">spring-boot-data-rest</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-devtools.html">spring-boot-devtools</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-elasticsearch.html">spring-boot-elasticsearch</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-flyway.html">spring-boot-flyway</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-freemarker.html">spring-boot-freemarker</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-graphql.html">spring-boot-graphql</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-groovy-templates.html">spring-boot-groovy-templates</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-grpc-client.html">spring-boot-grpc-client</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-grpc-server.html">spring-boot-grpc-server</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-gson.html">spring-boot-gson</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-h2console.html">spring-boot-h2console</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-hateoas.html">spring-boot-hateoas</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-hazelcast.html">spring-boot-hazelcast</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-health.html">spring-boot-health</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-hibernate.html">spring-boot-hibernate</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-http-client.html">spring-boot-http-client</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-http-codec.html">spring-boot-http-codec</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-http-converter.html">spring-boot-http-converter</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-integration.html">spring-boot-integration</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jackson.html">spring-boot-jackson</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jackson2.html">spring-boot-jackson2</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jdbc.html">spring-boot-jdbc</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jersey.html">spring-boot-jersey</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jetty.html">spring-boot-jetty</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jms.html">spring-boot-jms</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jooq.html">spring-boot-jooq</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-jsonb.html">spring-boot-jsonb</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-kafka.html">spring-boot-kafka</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-kotlinx-serialization-json.html">spring-boot-kotlinx-serialization-json</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-ldap.html">spring-boot-ldap</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-liquibase.html">spring-boot-liquibase</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-mail.html">spring-boot-mail</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-micrometer-metrics.html">spring-boot-micrometer-metrics</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-micrometer-observation.html">spring-boot-micrometer-observation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-micrometer-tracing.html">spring-boot-micrometer-tracing</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-micrometer-tracing-brave.html">spring-boot-micrometer-tracing-brave</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-micrometer-tracing-opentelemetry.html">spring-boot-micrometer-tracing-opentelemetry</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-mongodb.html">spring-boot-mongodb</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-mustache.html">spring-boot-mustache</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-neo4j.html">spring-boot-neo4j</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-netty.html">spring-boot-netty</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-opentelemetry.html">spring-boot-opentelemetry</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-persistence.html">spring-boot-persistence</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-pulsar.html">spring-boot-pulsar</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-quartz.html">spring-boot-quartz</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-r2dbc.html">spring-boot-r2dbc</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-reactor.html">spring-boot-reactor</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-reactor-netty.html">spring-boot-reactor-netty</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-restclient.html">spring-boot-restclient</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-resttestclient.html">spring-boot-resttestclient</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-rsocket.html">spring-boot-rsocket</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-security.html">spring-boot-security</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-security-oauth2-authorization-server.html">spring-boot-security-oauth2-authorization-server</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-security-oauth2-client.html">spring-boot-security-oauth2-client</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-security-oauth2-resource-server.html">spring-boot-security-oauth2-resource-server</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-security-saml2.html">spring-boot-security-saml2</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-sendgrid.html">spring-boot-sendgrid</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-servlet.html">spring-boot-servlet</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-session.html">spring-boot-session</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-session-data-redis.html">spring-boot-session-data-redis</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-session-jdbc.html">spring-boot-session-jdbc</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-testcontainers.html">spring-boot-testcontainers</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-thymeleaf.html">spring-boot-thymeleaf</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-tomcat.html">spring-boot-tomcat</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-transaction.html">spring-boot-transaction</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-validation.html">spring-boot-validation</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-webclient.html">spring-boot-webclient</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-webflux.html">spring-boot-webflux</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-webmvc.html">spring-boot-webmvc</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-webservices.html">spring-boot-webservices</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-websocket.html">spring-boot-websocket</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/auto-configuration-classes/spring-boot-zipkin.html">spring-boot-zipkin</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../appendix/test-auto-configuration/index.html">Test Auto-configuration Annotations</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/test-auto-configuration/slices.html">Test Slices</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="2">
+    <button class="nav-item-toggle"></button>
+    <a class="nav-link"  href="../../appendix/dependency-versions/index.html">Dependency Versions</a>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/dependency-versions/coordinates.html">Managed Dependency Coordinates</a>
+  </li>
+  <li class="nav-item" data-depth="3">
+    <a class="nav-link"  href="../../appendix/dependency-versions/properties.html">Version Properties</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+          <div class="toggle-sm">
+            <button id="nav-toggle-2" class="nav-toggle"></button>
+          </div>
+        </nav>
+      </div>
+      <div class="nav-collapse">
+        <button id="nav-collapse-toggle"><span></span></button>        
+      </div>
+    </div>
+    <div class="nav-resize"></div>
+  </aside>
+</div>
+<script>
+!function (sidebar) {
+  if (sidebar) {
+    document.body.classList.add('nav-sm')
+  }
+}(localStorage && localStorage.getItem('sidebar') === 'close')
+</script><main class="article">
+<div class="toolbar" role="navigation">
+  <button id="nav-toggle-1" class="nav-toggle"></button>
+<div class="search">
+  <button class="DocSearch-Button search-button">
+    <svg enable-background="new 0 0 32 32" id="Glyph" version="1.1" viewBox="0 0 32 32" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <path d="M27.414,24.586l-5.077-5.077C23.386,17.928,24,16.035,24,14c0-5.514-4.486-10-10-10S4,8.486,4,14  s4.486,10,10,10c2.035,0,3.928-0.614,5.509-1.663l5.077,5.077c0.78,0.781,2.048,0.781,2.828,0  C28.195,26.633,28.195,25.367,27.414,24.586z M7,14c0-3.86,3.14-7,7-7s7,3.14,7,7s-3.14,7-7,7S7,17.86,7,14z" id="XMLID_223_"/>
+    </svg>
+    <span>Search</span>
+    <span class="search-key"></span>
+  </button>
+</div>
+</div>
+  <div class="content">
+<aside class="sidebar">
+  <div class="content">
+    <div
+      class="toc"
+      data-title="Calling REST Services"
+      data-levels="2"
+    >
+      <div class="toc-menu"></div>
+    </div>
+    <div class="sidebar-links">
+        <a href="https://github.com/spring-projects/spring-boot/blob/v4.1.1/documentation/spring-boot-docs/src/docs/antora/modules/reference/pages/io/rest-client.adoc">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            height="24"
+            viewBox="0 0 24 24"
+            width="24"
+          ><path
+              d="m16 2.012 3 3L16.713 7.3l-3-3zM4 14v3h3l8.299-8.287-3-3zm0 6h16v2H4z"
+            ></path></svg>
+          Edit this Page
+        </a>
+              <a href="https://github.com/spring-projects/spring-boot" title="GitHub">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            height="512px"
+            id="Layer_1"
+            version="1.1"
+            viewBox="0 0 512 512"
+            width="512px"
+          ><style type="text/css"><![CDATA[
+              .st0{fill-rule:evenodd;clip-rule:evenodd;} ]]></style><g><path
+                class="st0"
+                d="M256,32C132.3,32,32,134.8,32,261.7c0,101.5,64.2,187.5,153.2,217.9c11.2,2.1,15.3-5,15.3-11.1   c0-5.5-0.2-19.9-0.3-39.1c-62.3,13.9-75.5-30.8-75.5-30.8c-10.2-26.5-24.9-33.6-24.9-33.6c-20.3-14.3,1.5-14,1.5-14   c22.5,1.6,34.3,23.7,34.3,23.7c20,35.1,52.4,25,65.2,19.1c2-14.8,7.8-25,14.2-30.7c-49.7-5.8-102-25.5-102-113.5   c0-25.1,8.7-45.6,23-61.6c-2.3-5.8-10-29.2,2.2-60.8c0,0,18.8-6.2,61.6,23.5c17.9-5.1,37-7.6,56.1-7.7c19,0.1,38.2,2.6,56.1,7.7   c42.8-29.7,61.5-23.5,61.5-23.5c12.2,31.6,4.5,55,2.2,60.8c14.3,16.1,23,36.6,23,61.6c0,88.2-52.4,107.6-102.3,113.3   c8,7.1,15.2,21.1,15.2,42.5c0,30.7-0.3,55.5-0.3,63c0,6.1,4,13.3,15.4,11C415.9,449.1,480,363.1,480,261.7   C480,134.8,379.7,32,256,32z"
+              ></path></g></svg>
+          GitHub Project
+        </a>
+        <a href="https://stackoverflow.com/tags/spring-boot">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><path
+              d="M290.7 311L95 269.7 86.8 309l195.7 41zm51-87L188.2 95.7l-25.5 30.8 153.5 128.3zm-31.2 39.7L129.2 179l-16.7 36.5L293.7 300zM262 32l-32 24 119.3 160.3 32-24zm20.5 328h-200v39.7h200zm39.7 80H42.7V320h-40v160h359.5V320h-40z"
+            ></path></svg>
+          Stack Overflow
+        </a>
+    </div>
+  </div>
+</aside>
+<article class="doc">
+<div class="breadcrumbs-container">
+  <nav class="breadcrumbs" aria-label="breadcrumbs">
+    <ul>
+      <li id="copy-url" title="Copy versioned URL"></li>
+      <li><a href="../../index.html">Spring Boot</a></li>
+      <li><a href="../index.html">Reference</a></li>
+      <li><a href="index.html">IO</a></li>
+      <li><a href="rest-client.html">Calling REST Services</a></li>
+    </ul>
+  </nav>
+</div><h1 id="page-title" class="page">Calling REST Services</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>Spring Boot provides various convenient ways to call remote REST services.
+If you are developing a non-blocking reactive application and you&#8217;re using Spring WebFlux, then you can use <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a>.
+If you prefer imperative APIs then you can use <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> or <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="io.rest-client.webclient"><a class="anchor" href="#io.rest-client.webclient"></a>WebClient</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>If you have Spring WebFlux on your classpath we recommend that you use <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a> to call remote REST services.
+The <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a> interface provides a functional style API and is fully reactive.
+You can learn more about the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a> in the dedicated <a href="https://docs.spring.io/spring-framework/reference/7.0/web/webflux-webclient.html">section in the Spring Framework docs</a>.</p>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+If you are not writing a reactive Spring WebFlux application you can use the <a href="#io.rest-client.restclient"><code>RestClient</code></a> instead of a <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a>.
+This provides a similar functional API, but is imperative rather than reactive.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Spring Boot creates and pre-configures a prototype <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.Builder.html" class="apiref"><code>WebClient.Builder</code></a> bean for you.
+It is strongly advised to inject it in your components and use it to create <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a> instances.
+Spring Boot is configuring that builder to share HTTP resources and reflect codecs setup in the same fashion as the server ones (see <a href="../web/reactive.html#web.reactive.webflux.httpcodecs" class="xref page">WebFlux HTTP codecs auto-configuration</a>), and more.</p>
+</div>
+<div class="paragraph">
+<p>The following code shows a typical example:</p>
+</div>
+<div id="_tabs_1" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_1_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_1_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_1_java--panel" class="tabpanel" aria-labelledby="_tabs_1_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import reactor.core.publisher.Mono;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final WebClient webClient;
+
+	public MyService(WebClient.Builder webClientBuilder) {
+		this.webClient = webClientBuilder.baseUrl("https://example.org").build();
+	}
+
+	public Mono&lt;Details&gt; someRestCall(String name) {
+		return this.webClient.get().uri("/{name}/details", name).retrieve().bodyToMono(Details.class);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_1_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_1_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.stereotype.Service
+import org.springframework.web.reactive.function.client.WebClient
+import reactor.core.publisher.Mono
+
+</span><span class="fold-block">@Service
+class MyService(webClientBuilder: WebClient.Builder) {
+
+	private val webClient: WebClient
+
+	init {
+		webClient = webClientBuilder.baseUrl("https://example.org").build()
+	}
+
+	fun someRestCall(name: String): Mono&lt;Details&gt; {
+		return webClient.get().uri("/{name}/details", name)
+				.retrieve().bodyToMono(Details::class.java)
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.webclient.runtime"><a class="anchor" href="#io.rest-client.webclient.runtime"></a>WebClient Runtime</h3>
+<div class="paragraph">
+<p>Spring Boot will auto-detect which <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/reactive/ClientHttpConnector.html" class="apiref"><code>ClientHttpConnector</code></a> to use to drive <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a> depending on the libraries available on the application classpath.
+In order of preference, the following clients are supported:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Reactor Netty</p>
+</li>
+<li>
+<p>Jetty RS client</p>
+</li>
+<li>
+<p>Apache HttpClient</p>
+</li>
+<li>
+<p>JDK HttpClient</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>If multiple clients are available on the classpath, the most preferred client will be used.</p>
+</div>
+<div class="paragraph">
+<p>The <code>spring-boot-starter-webflux</code> starter depends on <code>io.projectreactor.netty:reactor-netty</code> by default, which brings both server and client implementations.
+If you choose to use Jetty as a reactive server instead, you should add a dependency on the Jetty Reactive HTTP client library, <code>org.eclipse.jetty:jetty-reactive-httpclient</code>.
+Using the same technology for server and client has its advantages, as it will automatically share HTTP resources between client and server.</p>
+</div>
+<div class="paragraph">
+<p>Developers can override the resource configuration for Jetty and Reactor Netty by providing a custom <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/ReactorResourceFactory.html" class="apiref"><code>ReactorResourceFactory</code></a> or <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/reactive/JettyResourceFactory.html" class="apiref"><code>JettyResourceFactory</code></a> bean - this will be applied to both clients and servers.</p>
+</div>
+<div class="paragraph">
+<p>If you wish to override that choice for the client, you can define your own <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/reactive/ClientHttpConnector.html" class="apiref"><code>ClientHttpConnector</code></a> bean and have full control over the client configuration.</p>
+</div>
+<div class="paragraph">
+<p>You can learn more about the <a href="https://docs.spring.io/spring-framework/reference/7.0/web/webflux-webclient/client-builder.html"><code>WebClient</code> configuration options in the Spring Framework reference documentation</a>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.webclient.configuration"><a class="anchor" href="#io.rest-client.webclient.configuration"></a>Global HTTP Connector Configuration</h3>
+<div class="paragraph">
+<p>If the auto-detected <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/reactive/ClientHttpConnector.html" class="apiref"><code>ClientHttpConnector</code></a> does not meet your needs, you can use the <code>spring.http.clients.reactive.connector</code> property to pick a specific connector.
+For example, if you have Reactor Netty on your classpath, but you prefer Jetty&#8217;s <a href="https://javadoc.jetty.org/jetty-12/org/eclipse/jetty/client/HttpClient.html" class="apiref"><code>HttpClient</code></a> you can add the following:</p>
+</div>
+<div id="_tabs_2" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_2_properties" class="tab">
+<p>Properties</p>
+</li>
+<li id="_tabs_2_yaml" class="tab">
+<p>YAML</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_2_properties--panel" class="tabpanel" aria-labelledby="_tabs_2_properties">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">spring.http.clients.reactive.connector=jetty</code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_2_yaml--panel" class="tabpanel" aria-labelledby="_tabs_2_yaml">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">spring:
+  http:
+    clients:
+      reactive:
+        connector: jetty</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+You can also use <a href="#io.rest-client.global-configuration">global configuration properties</a> which apply to all HTTP clients.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>For more complex customizations, you can use <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/autoconfigure/reactive/ClientHttpConnectorBuilderCustomizer.html" class="apiref"><code>ClientHttpConnectorBuilderCustomizer</code></a> or declare your own <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/reactive/ClientHttpConnectorBuilder.html" class="apiref"><code>ClientHttpConnectorBuilder</code></a> bean which will cause auto-configuration to back off.
+This can be useful when you need to customize some of the internals of the underlying HTTP library.</p>
+</div>
+<div class="paragraph">
+<p>For example, the following will use a JDK client configured with a specific <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/net/ProxySelector.html" class="apiref"><code>ProxySelector</code></a>:</p>
+</div>
+<div id="_tabs_3" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_3_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_3_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_3_java--panel" class="tabpanel" aria-labelledby="_tabs_3_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import java.net.ProxySelector;
+
+import org.springframework.boot.http.client.reactive.ClientHttpConnectorBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+public class MyConnectorHttpConfiguration {
+
+	@Bean
+	ClientHttpConnectorBuilder&lt;?&gt; clientHttpConnectorBuilder(ProxySelector proxySelector) {
+		return ClientHttpConnectorBuilder.jdk().withHttpClientCustomizer((builder) -&gt; builder.proxy(proxySelector));
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_3_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_3_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.http.client.reactive.ClientHttpConnectorBuilder
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import java.net.ProxySelector
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+class MyConnectorHttpConfiguration {
+
+	@Bean
+	fun clientHttpConnectorBuilder(proxySelector: ProxySelector): ClientHttpConnectorBuilder&lt;*&gt; {
+		return ClientHttpConnectorBuilder.jdk().withHttpClientCustomizer { builder -&gt; builder.proxy(proxySelector) }
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.webclient.customization"><a class="anchor" href="#io.rest-client.webclient.customization"></a>WebClient Customization</h3>
+<div class="paragraph">
+<p>There are three main approaches to <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a> customization, depending on how broadly you want the customizations to apply.</p>
+</div>
+<div class="paragraph">
+<p>To make the scope of any customizations as narrow as possible, inject the auto-configured <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.Builder.html" class="apiref"><code>WebClient.Builder</code></a> and then call its methods as required.
+<a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.Builder.html" class="apiref"><code>WebClient.Builder</code></a> instances are stateful: Any change on the builder is reflected in all clients subsequently created with it.
+If you want to create several clients with the same builder, you can also consider cloning the builder with <code>WebClient.Builder other = builder.clone();</code>.</p>
+</div>
+<div class="paragraph">
+<p>To make an application-wide, additive customization to all <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.Builder.html" class="apiref"><code>WebClient.Builder</code></a> instances, you can declare <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/webclient/WebClientCustomizer.html" class="apiref"><code>WebClientCustomizer</code></a> beans and change the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.Builder.html" class="apiref"><code>WebClient.Builder</code></a> locally at the point of injection.</p>
+</div>
+<div class="paragraph">
+<p>Finally, you can fall back to the original API and use <code>WebClient.create()</code>.
+In that case, no auto-configuration or <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/webclient/WebClientCustomizer.html" class="apiref"><code>WebClientCustomizer</code></a> is applied.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.webclient.ssl"><a class="anchor" href="#io.rest-client.webclient.ssl"></a>WebClient SSL Support</h3>
+<div class="paragraph">
+<p>If you need custom SSL configuration on the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/reactive/ClientHttpConnector.html" class="apiref"><code>ClientHttpConnector</code></a> used by the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a>, you can inject a <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/webclient/autoconfigure/WebClientSsl.html" class="apiref"><code>WebClientSsl</code></a> instance that can be used with the builder&#8217;s <code>apply</code> method.</p>
+</div>
+<div class="paragraph">
+<p>The <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/webclient/autoconfigure/WebClientSsl.html" class="apiref"><code>WebClientSsl</code></a> interface provides access to any <a href="../features/ssl.html#features.ssl.bundles" class="xref page">SSL bundles</a> that you have defined in your <code>application.properties</code> or <code>application.yaml</code> file.</p>
+</div>
+<div class="paragraph">
+<p>The following code shows a typical example:</p>
+</div>
+<div id="_tabs_4" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_4_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_4_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_4_java--panel" class="tabpanel" aria-labelledby="_tabs_4_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import reactor.core.publisher.Mono;
+
+import org.springframework.boot.webclient.autoconfigure.WebClientSsl;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final WebClient webClient;
+
+	public MyService(WebClient.Builder webClientBuilder, WebClientSsl ssl) {
+		this.webClient = webClientBuilder.baseUrl("https://example.org").apply(ssl.fromBundle("mybundle")).build();
+	}
+
+	public Mono&lt;Details&gt; someRestCall(String name) {
+		return this.webClient.get().uri("/{name}/details", name).retrieve().bodyToMono(Details.class);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_4_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_4_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.webclient.autoconfigure.WebClientSsl
+import org.springframework.stereotype.Service
+import org.springframework.web.reactive.function.client.WebClient
+import reactor.core.publisher.Mono
+
+</span><span class="fold-block">@Service
+class MyService(webClientBuilder: WebClient.Builder, ssl: WebClientSsl) {
+
+	private val webClient: WebClient
+
+	init {
+		webClient = webClientBuilder.baseUrl("https://example.org")
+				.apply(ssl.fromBundle("mybundle")).build()
+	}
+
+	fun someRestCall(name: String): Mono&lt;Details&gt; {
+		return webClient.get().uri("/{name}/details", name)
+				.retrieve().bodyToMono(Details::class.java)
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="io.rest-client.restclient"><a class="anchor" href="#io.rest-client.restclient"></a>RestClient</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>If you are not using Spring WebFlux or Project Reactor in your application we recommend that you use <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> to call remote REST services.</p>
+</div>
+<div class="paragraph">
+<p>The <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> interface provides a functional style imperative API.</p>
+</div>
+<div class="paragraph">
+<p>Spring Boot creates and pre-configures a prototype <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.Builder.html" class="apiref"><code>RestClient.Builder</code></a> bean for you.
+It is strongly advised to inject it in your components and use it to create <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> instances.
+Spring Boot is configuring that builder with <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/converter/HttpMessageConverters.html" class="apiref"><code>HttpMessageConverters</code></a> and an appropriate <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/ClientHttpRequestFactory.html" class="apiref"><code>ClientHttpRequestFactory</code></a>.</p>
+</div>
+<div class="paragraph">
+<p>The following code shows a typical example:</p>
+</div>
+<div id="_tabs_5" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_5_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_5_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_5_java--panel" class="tabpanel" aria-labelledby="_tabs_5_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final RestClient restClient;
+
+	public MyService(RestClient.Builder restClientBuilder) {
+		this.restClient = restClientBuilder.baseUrl("https://example.org").build();
+	}
+
+	public Details someRestCall(String name) {
+		return this.restClient.get().uri("/{name}/details", name).retrieve().body(Details.class);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_5_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_5_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.docs.io.restclient.restclient.ssl.Details
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
+
+</span><span class="fold-block">@Service
+class MyService(restClientBuilder: RestClient.Builder) {
+
+	private val restClient: RestClient
+
+	init {
+		restClient = restClientBuilder.baseUrl("https://example.org").build()
+	}
+
+	fun someRestCall(name: String): Details {
+		return restClient.get().uri("/{name}/details", name)
+				.retrieve().body(Details::class.java)!!
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.restclient.customization"><a class="anchor" href="#io.rest-client.restclient.customization"></a>RestClient Customization</h3>
+<div class="paragraph">
+<p>There are three main approaches to <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> customization, depending on how broadly you want the customizations to apply.</p>
+</div>
+<div class="paragraph">
+<p>To make the scope of any customizations as narrow as possible, inject the auto-configured <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.Builder.html" class="apiref"><code>RestClient.Builder</code></a> and then call its methods as required.
+<a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.Builder.html" class="apiref"><code>RestClient.Builder</code></a> instances are stateful: Any change on the builder is reflected in all clients subsequently created with it.
+If you want to create several clients with the same builder, you can also consider cloning the builder with <code>RestClient.Builder other = builder.clone();</code>.</p>
+</div>
+<div class="paragraph">
+<p>To make an application-wide, additive customization to all <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.Builder.html" class="apiref"><code>RestClient.Builder</code></a> instances, you can declare <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestClientCustomizer.html" class="apiref"><code>RestClientCustomizer</code></a> beans and change the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.Builder.html" class="apiref"><code>RestClient.Builder</code></a> locally at the point of injection.</p>
+</div>
+<div class="paragraph">
+<p>Finally, you can fall back to the original API and use <code>RestClient.create()</code>.
+In that case, no auto-configuration or <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestClientCustomizer.html" class="apiref"><code>RestClientCustomizer</code></a> is applied.</p>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+You can also change the <a href="#io.rest-client.clienthttprequestfactory.configuration">global HTTP client configuration</a>.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.restclient.ssl"><a class="anchor" href="#io.rest-client.restclient.ssl"></a>RestClient SSL Support</h3>
+<div class="paragraph">
+<p>If you need custom SSL configuration on the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/ClientHttpRequestFactory.html" class="apiref"><code>ClientHttpRequestFactory</code></a> used by the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a>, you can inject a <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/autoconfigure/RestClientSsl.html" class="apiref"><code>RestClientSsl</code></a> instance that can be used with the builder&#8217;s <code>apply</code> method.</p>
+</div>
+<div class="paragraph">
+<p>The <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/autoconfigure/RestClientSsl.html" class="apiref"><code>RestClientSsl</code></a> interface provides access to any <a href="../features/ssl.html#features.ssl.bundles" class="xref page">SSL bundles</a> that you have defined in your <code>application.properties</code> or <code>application.yaml</code> file.</p>
+</div>
+<div class="paragraph">
+<p>The following code shows a typical example:</p>
+</div>
+<div id="_tabs_6" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_6_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_6_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_6_java--panel" class="tabpanel" aria-labelledby="_tabs_6_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.restclient.autoconfigure.RestClientSsl;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final RestClient restClient;
+
+	public MyService(RestClient.Builder restClientBuilder, RestClientSsl ssl) {
+		this.restClient = restClientBuilder.baseUrl("https://example.org").apply(ssl.fromBundle("mybundle")).build();
+	}
+
+	public Details someRestCall(String name) {
+		return this.restClient.get().uri("/{name}/details", name).retrieve().body(Details.class);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_6_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_6_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.docs.io.restclient.restclient.ssl.settings.Details
+import org.springframework.boot.restclient.autoconfigure.RestClientSsl
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
+
+</span><span class="fold-block">@Service
+class MyService(restClientBuilder: RestClient.Builder, ssl: RestClientSsl) {
+
+	private val restClient: RestClient
+
+	init {
+		restClient = restClientBuilder.baseUrl("https://example.org")
+				.apply(ssl.fromBundle("mybundle")).build()
+	}
+
+	fun someRestCall(name: String): Details {
+		return restClient.get().uri("/{name}/details", name)
+				.retrieve().body(Details::class.java)!!
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p>If you need to apply other customization in addition to an SSL bundle, you can use the <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/HttpClientSettings.html" class="apiref"><code>HttpClientSettings</code></a> class with <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/ClientHttpRequestFactoryBuilder.html" class="apiref"><code>ClientHttpRequestFactoryBuilder</code></a>:</p>
+</div>
+<div id="_tabs_7" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_7_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_7_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_7_java--panel" class="tabpanel" aria-labelledby="_tabs_7_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import java.time.Duration;
+
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings;
+import org.springframework.boot.ssl.SslBundles;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final RestClient restClient;
+
+	public MyService(RestClient.Builder restClientBuilder, SslBundles sslBundles) {
+		HttpClientSettings settings = HttpClientSettings.ofSslBundle(sslBundles.getBundle("mybundle"))
+			.withReadTimeout(Duration.ofMinutes(2));
+		ClientHttpRequestFactory requestFactory = ClientHttpRequestFactoryBuilder.detect().build(settings);
+		this.restClient = restClientBuilder.baseUrl("https://example.org").requestFactory(requestFactory).build();
+	}
+
+	public Details someRestCall(String name) {
+		return this.restClient.get().uri("/{name}/details", name).retrieve().body(Details.class);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_7_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_7_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings
+import org.springframework.boot.ssl.SslBundles
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
+import java.time.Duration
+
+</span><span class="fold-block">@Service
+class MyService(restClientBuilder: RestClient.Builder, sslBundles: SslBundles) {
+
+	private val restClient: RestClient
+
+	init {
+		val settings = HttpClientSettings.defaults()
+				.withReadTimeout(Duration.ofMinutes(2))
+				.withSslBundle(sslBundles.getBundle("mybundle"))
+		val requestFactory = ClientHttpRequestFactoryBuilder.detect().build(settings);
+		restClient = restClientBuilder
+				.baseUrl("https://example.org")
+				.requestFactory(requestFactory).build()
+	}
+
+	fun someRestCall(name: String): Details {
+		return restClient.get().uri("/{name}/details", name).retrieve().body(Details::class.java)!!
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="io.rest-client.resttemplate"><a class="anchor" href="#io.rest-client.resttemplate"></a>RestTemplate</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Spring Framework&#8217;s <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> class predates <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> and is the classic way that many applications use to call remote REST services.
+You might choose to use <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> when you have existing code that you don&#8217;t want to migrate to <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a>, or because you&#8217;re already familiar with the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> API.</p>
+</div>
+<div class="paragraph">
+<p>Since <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> instances often need to be customized before being used, Spring Boot does not provide any single auto-configured <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> bean.
+It does, however, auto-configure a <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a>, which can be used to create <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> instances when needed.
+The auto-configured <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> ensures that sensible <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/converter/autoconfigure/HttpMessageConverters.html" class="apiref"><code>HttpMessageConverters</code></a> and an appropriate <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/http/client/ClientHttpRequestFactory.html" class="apiref"><code>ClientHttpRequestFactory</code></a> are applied to <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> instances.</p>
+</div>
+<div class="paragraph">
+<p>The following code shows a typical example:</p>
+</div>
+<div id="_tabs_8" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_8_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_8_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_8_java--panel" class="tabpanel" aria-labelledby="_tabs_8_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.restclient.RestTemplateBuilder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final RestTemplate restTemplate;
+
+	public MyService(RestTemplateBuilder restTemplateBuilder) {
+		this.restTemplate = restTemplateBuilder.build();
+	}
+
+	public Details someRestCall(String name) {
+		return this.restTemplate.getForObject("/{name}/details", Details.class, name);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_8_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_8_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.restclient.RestTemplateBuilder
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestTemplate
+
+</span><span class="fold-block">@Service
+class MyService(restTemplateBuilder: RestTemplateBuilder) {
+
+	private val restTemplate: RestTemplate
+
+	init {
+		restTemplate = restTemplateBuilder.build()
+	}
+
+	fun someRestCall(name: String): Details {
+		return restTemplate.getForObject("/{name}/details", Details::class.java, name)!!
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p><a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> includes a number of useful methods that can be used to quickly configure a <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a>.
+For example, to add BASIC authentication support, you can use <code>builder.basicAuthentication("user", "password").build()</code>.</p>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.resttemplate.customization"><a class="anchor" href="#io.rest-client.resttemplate.customization"></a>RestTemplate Customization</h3>
+<div class="paragraph">
+<p>There are three main approaches to <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> customization, depending on how broadly you want the customizations to apply.</p>
+</div>
+<div class="paragraph">
+<p>To make the scope of any customizations as narrow as possible, inject the auto-configured <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> and then call its methods as required.
+Each method call returns a new <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> instance, so the customizations only affect this use of the builder.</p>
+</div>
+<div class="paragraph">
+<p>To make an application-wide, additive customization, use a <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateCustomizer.html" class="apiref"><code>RestTemplateCustomizer</code></a> bean.
+All such beans are automatically registered with the auto-configured <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> and are applied to any templates that are built with it.</p>
+</div>
+<div class="paragraph">
+<p>The following example shows a customizer that configures the use of a proxy for all hosts except <code>192.168.0.5</code>:</p>
+</div>
+<div id="_tabs_9" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_9_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_9_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_9_java--panel" class="tabpanel" aria-labelledby="_tabs_9_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.client5.http.impl.routing.DefaultProxyRoutePlanner;
+import org.apache.hc.client5.http.routing.HttpRoutePlanner;
+import org.apache.hc.core5.http.HttpException;
+import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.protocol.HttpContext;
+
+import org.springframework.boot.restclient.RestTemplateCustomizer;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.web.client.RestTemplate;
+
+</span><span class="fold-block">public class MyRestTemplateCustomizer implements RestTemplateCustomizer {
+
+	@Override
+	public void customize(RestTemplate restTemplate) {
+		HttpRoutePlanner routePlanner = new CustomRoutePlanner(new HttpHost("proxy.example.com"));
+		HttpClient httpClient = HttpClientBuilder.create().setRoutePlanner(routePlanner).build();
+		restTemplate.setRequestFactory(new HttpComponentsClientHttpRequestFactory(httpClient));
+	}
+
+	static class CustomRoutePlanner extends DefaultProxyRoutePlanner {
+
+		CustomRoutePlanner(HttpHost proxy) {
+			super(proxy);
+		}
+
+		@Override
+		protected HttpHost determineProxy(HttpHost target, HttpContext context) throws HttpException {
+			if (target.getHostName().equals("192.168.0.5")) {
+				return null;
+			}
+			return super.determineProxy(target, context);
+		}
+
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_9_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_9_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.apache.hc.client5.http.classic.HttpClient
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder
+import org.apache.hc.client5.http.impl.routing.DefaultProxyRoutePlanner
+import org.apache.hc.client5.http.routing.HttpRoutePlanner
+import org.apache.hc.core5.http.HttpException
+import org.apache.hc.core5.http.HttpHost
+import org.apache.hc.core5.http.protocol.HttpContext
+import org.springframework.boot.restclient.RestTemplateCustomizer
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory
+import org.springframework.web.client.RestTemplate
+
+</span><span class="fold-block">class MyRestTemplateCustomizer : RestTemplateCustomizer {
+
+	override fun customize(restTemplate: RestTemplate) {
+		val routePlanner: HttpRoutePlanner = CustomRoutePlanner(HttpHost("proxy.example.com"))
+		val httpClient: HttpClient = HttpClientBuilder.create().setRoutePlanner(routePlanner).build()
+		restTemplate.requestFactory = HttpComponentsClientHttpRequestFactory(httpClient)
+	}
+
+	internal class CustomRoutePlanner(proxy: HttpHost?) : DefaultProxyRoutePlanner(proxy) {
+
+		@Throws(HttpException::class)
+		public override fun determineProxy(target: HttpHost, context: HttpContext): HttpHost? {
+			if (target.hostName == "192.168.0.5") {
+				return null
+			}
+			return  super.determineProxy(target, context)
+		}
+
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p>Finally, you can define your own <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> bean.
+Doing so will replace the auto-configured builder.
+If you want any <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateCustomizer.html" class="apiref"><code>RestTemplateCustomizer</code></a> beans to be applied to your custom builder, as the auto-configuration would have done, configure it using a <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/autoconfigure/RestTemplateBuilderConfigurer.html" class="apiref"><code>RestTemplateBuilderConfigurer</code></a>.
+The following example exposes a <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> that matches what Spring Boot&#8217;s auto-configuration would have done, except that custom connect and read timeouts are also specified:</p>
+</div>
+<div id="_tabs_10" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_10_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_10_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_10_java--panel" class="tabpanel" aria-labelledby="_tabs_10_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import java.time.Duration;
+
+import org.springframework.boot.restclient.RestTemplateBuilder;
+import org.springframework.boot.restclient.autoconfigure.RestTemplateBuilderConfigurer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+public class MyRestTemplateBuilderConfiguration {
+
+	@Bean
+	public RestTemplateBuilder restTemplateBuilder(RestTemplateBuilderConfigurer configurer) {
+		return configurer.configure(new RestTemplateBuilder())
+			.connectTimeout(Duration.ofSeconds(5))
+			.readTimeout(Duration.ofSeconds(2));
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_10_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_10_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.restclient.autoconfigure.RestTemplateBuilderConfigurer
+import org.springframework.boot.restclient.RestTemplateBuilder
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import java.time.Duration
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+class MyRestTemplateBuilderConfiguration {
+
+	@Bean
+	fun restTemplateBuilder(configurer: RestTemplateBuilderConfigurer): RestTemplateBuilder {
+		return configurer.configure(RestTemplateBuilder()).connectTimeout(Duration.ofSeconds(5))
+			.readTimeout(Duration.ofSeconds(2))
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p>The most extreme (and rarely used) option is to create your own <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> bean without using a configurer.
+In addition to replacing the auto-configured builder, this also prevents any <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateCustomizer.html" class="apiref"><code>RestTemplateCustomizer</code></a> beans from being used.</p>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+You can also change the <a href="#io.rest-client.clienthttprequestfactory.configuration">global HTTP client configuration</a>.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.resttemplate.ssl"><a class="anchor" href="#io.rest-client.resttemplate.ssl"></a>RestTemplate SSL Support</h3>
+<div class="paragraph">
+<p>If you need custom SSL configuration on the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a>, you can apply an <a href="../features/ssl.html#features.ssl.bundles" class="xref page">SSL bundle</a> to the <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/restclient/RestTemplateBuilder.html" class="apiref"><code>RestTemplateBuilder</code></a> as shown in this example:</p>
+</div>
+<div id="_tabs_11" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_11_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_11_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_11_java--panel" class="tabpanel" aria-labelledby="_tabs_11_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.docs.io.restclient.resttemplate.Details;
+import org.springframework.boot.restclient.RestTemplateBuilder;
+import org.springframework.boot.ssl.SslBundles;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final RestTemplate restTemplate;
+
+	public MyService(RestTemplateBuilder restTemplateBuilder, SslBundles sslBundles) {
+		this.restTemplate = restTemplateBuilder.sslBundle(sslBundles.getBundle("mybundle")).build();
+	}
+
+	public Details someRestCall(String name) {
+		return this.restTemplate.getForObject("/{name}/details", Details.class, name);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_11_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_11_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.docs.io.restclient.resttemplate.Details
+import org.springframework.boot.ssl.SslBundles
+import org.springframework.boot.restclient.RestTemplateBuilder
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestTemplate
+
+</span><span class="fold-block">@Service
+class MyService(restTemplateBuilder: RestTemplateBuilder, sslBundles: SslBundles) {
+
+    private val restTemplate: RestTemplate
+
+    init {
+        restTemplate = restTemplateBuilder.sslBundle(sslBundles.getBundle("mybundle")).build()
+    }
+
+    fun someRestCall(name: String): Details {
+        return restTemplate.getForObject("/{name}/details", Details::class.java, name)!!
+    }
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="io.rest-client.clienthttprequestfactory"><a class="anchor" href="#io.rest-client.clienthttprequestfactory"></a>HTTP Client Detection for RestClient and RestTemplate</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Spring Boot will auto-detect which HTTP client to use with <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> and <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestTemplate.html" class="apiref"><code>RestTemplate</code></a> depending on the libraries available on the application classpath.
+In order of preference, the following clients are supported:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Apache HttpClient</p>
+</li>
+<li>
+<p>Jetty HttpClient</p>
+</li>
+<li>
+<p>Reactor Netty HttpClient</p>
+</li>
+<li>
+<p>JDK client (<code>java.net.http.HttpClient</code>)</p>
+</li>
+<li>
+<p>Simple JDK client (<code>java.net.HttpURLConnection</code>)</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>If multiple clients are available on the classpath, and no global configuration is provided, the most preferred client will be used.</p>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.clienthttprequestfactory.configuration"><a class="anchor" href="#io.rest-client.clienthttprequestfactory.configuration"></a>Global HTTP Client Configuration</h3>
+<div class="paragraph">
+<p>If the auto-detected HTTP client does not meet your needs, you can use the <code>spring.http.clients.imperative.factory</code> property to pick a specific factory.
+For example, if you have Apache HttpClient on your classpath, but you prefer Jetty&#8217;s <a href="https://javadoc.jetty.org/jetty-12/org/eclipse/jetty/client/HttpClient.html" class="apiref"><code>HttpClient</code></a> you can add the following:</p>
+</div>
+<div id="_tabs_12" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_12_properties" class="tab">
+<p>Properties</p>
+</li>
+<li id="_tabs_12_yaml" class="tab">
+<p>YAML</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_12_properties--panel" class="tabpanel" aria-labelledby="_tabs_12_properties">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">spring.http.clients.imperative.factory=jetty</code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_12_yaml--panel" class="tabpanel" aria-labelledby="_tabs_12_yaml">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">spring:
+  http:
+    clients:
+      imperative:
+        factory: jetty</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+You can also use <a href="#io.rest-client.global-configuration">global configuration properties</a> which apply to all HTTP clients.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>For more complex customizations, you can use <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/autoconfigure/ClientHttpRequestFactoryBuilderCustomizer.html" class="apiref"><code>ClientHttpRequestFactoryBuilderCustomizer</code></a> or declare your own <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/ClientHttpRequestFactoryBuilder.html" class="apiref"><code>ClientHttpRequestFactoryBuilder</code></a> bean which will cause auto-configuration to back off.
+This can be useful when you need to customize some of the internals of the underlying HTTP library.</p>
+</div>
+<div class="paragraph">
+<p>For example, the following will use a JDK client configured with a specific <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/net/ProxySelector.html" class="apiref"><code>ProxySelector</code></a>:</p>
+</div>
+<div id="_tabs_13" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_13_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_13_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_13_java--panel" class="tabpanel" aria-labelledby="_tabs_13_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import java.net.ProxySelector;
+
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+public class MyClientHttpConfiguration {
+
+	@Bean
+	ClientHttpRequestFactoryBuilder&lt;?&gt; clientHttpRequestFactoryBuilder(ProxySelector proxySelector) {
+		return ClientHttpRequestFactoryBuilder.jdk()
+			.withHttpClientCustomizer((builder) -&gt; builder.proxy(proxySelector));
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_13_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_13_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import java.net.ProxySelector
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+class MyClientHttpConfiguration {
+
+	@Bean
+	fun clientHttpRequestFactoryBuilder(proxySelector: ProxySelector): ClientHttpRequestFactoryBuilder&lt;*&gt; {
+		return ClientHttpRequestFactoryBuilder.jdk()
+				.withHttpClientCustomizer { builder -&gt; builder.proxy(proxySelector) }
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="io.rest-client.apiversioning"><a class="anchor" href="#io.rest-client.apiversioning"></a>API Versioning</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Both <code>WebClient</code> and <code>RestClient</code> support making versioned remote HTTP calls so that APIs can be evolved over time.
+Commonly this involves sending an HTTP header, a query parameter or URL path segment that indicates the version of the API that should be used.</p>
+</div>
+<div class="paragraph">
+<p>You can configure API versioning using methods on <code>WebClient.Builder</code> or <code>RestClient.Builder</code>.</p>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+API versioning is also supported on the server-side.
+See the <a href="../web/servlet.html#web.servlet.spring-mvc.api-versioning" class="xref page">Spring MVC</a> and <a href="../web/reactive.html#web.reactive.webflux.api-versioning" class="xref page">Spring WebFlux</a> sections for details.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+The server-side API versioning configuration is not taken into account to auto-configure the client.
+Clients that should use an API versioning strategy, typically for testing, need to configure it explicitly.
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="io.rest-client.httpservice"><a class="anchor" href="#io.rest-client.httpservice"></a>HTTP Service Interface Clients</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Instead of directly using a <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/RestClient.html" class="apiref"><code>RestClient</code></a> or <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/WebClient.html" class="apiref"><code>WebClient</code></a> to call an HTTP service, it&#8217;s also possible to call them using annotated Java interfaces.</p>
+</div>
+<div class="paragraph">
+<p>HTTP Service interfaces defines a service contract by using methods that are annotated with <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/annotation/HttpExchange.html" class="apiref"><code>@HttpExchange</code></a>, or more typically the method specific variants (<a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/annotation/GetExchange.html" class="apiref"><code>@GetExchange</code></a>, <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/annotation/PostExchange.html" class="apiref"><code>@PostExchange</code></a>, <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/annotation/DeleteExchange.html" class="apiref"><code>@DeleteExchange</code></a>, etc).</p>
+</div>
+<div class="paragraph">
+<p>For example, the following code defines an HTTP Service for an &#8220;echo&#8221; API that will return a JSON object containing an echo of the request.</p>
+</div>
+<div id="_tabs_14" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_14_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_14_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_14_java--panel" class="tabpanel" aria-labelledby="_tabs_14_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import java.util.Map;
+
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.service.annotation.HttpExchange;
+import org.springframework.web.service.annotation.PostExchange;
+
+</span><span class="fold-block">@HttpExchange(url = "https://echo.zuplo.io")
+public interface EchoService {
+
+	@PostExchange
+	Map&lt;?, ?&gt; echo(@RequestBody Map&lt;String, String&gt; message);
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_14_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_14_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.service.annotation.HttpExchange
+import org.springframework.web.service.annotation.PostExchange
+
+</span><span class="fold-block">@HttpExchange(url = "https://echo.zuplo.io")
+interface EchoService {
+
+	@PostExchange
+	fun echo(@RequestBody message: Map&lt;String, String&gt;): Map&lt;*, *&gt;
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p>More details about how to develop HTTP Service interface clients can be found in the <a href="https://docs.spring.io/spring-framework/reference/7.0/integration/rest-clients.html#rest-http-service-client">Spring Framework reference documentation</a>.</p>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.httpservice.importing"><a class="anchor" href="#io.rest-client.httpservice.importing"></a>Importing HTTP Services</h3>
+<div class="paragraph">
+<p>In order to use an HTTP Service interface as client you need to import it.
+One way to achieve this is to use the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/registry/ImportHttpServices.html" class="apiref"><code>@ImportHttpServices</code></a> annotation, typically on your main application class.
+You can use the annotation to import specific classes, or scan for classes to import from specific packages.</p>
+</div>
+<div class="paragraph">
+<p>For example, the following configuration will scan for HTTP Service interfaces in the <code>com.example.myclients</code> package:</p>
+</div>
+<div id="_tabs_15" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_15_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_15_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_15_java--panel" class="tabpanel" aria-labelledby="_tabs_15_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+</span><span class="fold-block">@SpringBootApplication
+@ImportHttpServices(basePackages = "com.example.myclients")
+public class MyApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(MyApplication.class, args);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_15_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_15_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.runApplication
+import org.springframework.web.service.registry.ImportHttpServices
+
+</span><span class="fold-block">@SpringBootApplication
+@ImportHttpServices(basePackages = ["com.example.myclients"])
+class MyApplication
+
+fun main(args: Array&lt;String&gt;) {
+	runApplication&lt;MyApplication&gt;(*args)
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.httpservice.groups"><a class="anchor" href="#io.rest-client.httpservice.groups"></a>Service Client Groups</h3>
+<div class="paragraph">
+<p>Hard-coding absolute URLs in <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/annotation/HttpExchange.html" class="apiref"><code>@HttpExchange</code></a> annotations is often not ideal in production applications.
+Instead, you will typically want to give the HTTP Service client a logical name in your code, and then lookup a URL from a property based on that name.</p>
+</div>
+<div class="paragraph">
+<p>HTTP Service clients allow you to do this by registering them into named groups.
+An HTTP Service group is a collection of HTTP Service interfaces that all share common features.</p>
+</div>
+<div class="paragraph">
+<p>For example, we may want to define an &#8220;echo&#8221; group to use for HTTP Service clients that call <code>https://echo.zuplo.io</code>.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+HTTP Service groups can be used to define more than just URLs.
+For example, your group could define connection timeouts and SSL settings.
+You can also associate client customization logic to a group, such as adding code to insert required authorization headers.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>To associate an HTTP Service interface with a group when using <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/registry/ImportHttpServices.html" class="apiref"><code>@ImportHttpServices</code></a> you can use the <code>group</code> attribute.</p>
+</div>
+<div class="paragraph">
+<p>For example, if we assume our example above is organized in such a way that all HTTP Service interfaces in the <code>com.example.myclients</code> package belong to the <code>echo</code> group.
+We first remove the hardcoded URL from the service interface:</p>
+</div>
+<div id="_tabs_16" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_16_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_16_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_16_java--panel" class="tabpanel" aria-labelledby="_tabs_16_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import java.util.Map;
+
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.service.annotation.PostExchange;
+
+</span><span class="fold-block">public interface EchoService {
+
+	@PostExchange
+	Map&lt;?, ?&gt; echo(@RequestBody Map&lt;String, String&gt; message);
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_16_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_16_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.service.annotation.HttpExchange
+import org.springframework.web.service.annotation.PostExchange
+
+</span><span class="fold-block">interface EchoService {
+
+	@PostExchange
+	fun echo(@RequestBody message: Map&lt;String, String&gt;): Map&lt;*, *&gt;
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p>We can then write:</p>
+</div>
+<div id="_tabs_17" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_17_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_17_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_17_java--panel" class="tabpanel" aria-labelledby="_tabs_17_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+</span><span class="fold-block">@SpringBootApplication
+@ImportHttpServices(group = "echo", basePackages = "com.example.myclients")
+public class MyApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(MyApplication.class, args);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_17_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_17_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.runApplication
+import org.springframework.web.service.registry.ImportHttpServices
+
+</span><span class="fold-block">@SpringBootApplication
+@ImportHttpServices(group = "echo", basePackages = ["com.example.myclients"])
+class MyApplication
+
+fun main(args: Array&lt;String&gt;) {
+	runApplication&lt;MyApplication&gt;(*args)
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p>And finally we can then use a <code>base-url</code> property to link the <code>echo</code> group to an actual URL:</p>
+</div>
+<div id="_tabs_18" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_18_properties" class="tab">
+<p>Properties</p>
+</li>
+<li id="_tabs_18_yaml" class="tab">
+<p>YAML</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_18_properties--panel" class="tabpanel" aria-labelledby="_tabs_18_properties">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">spring.http.serviceclient.echo.base-url=https://echo.zuplo.io</code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_18_yaml--panel" class="tabpanel" aria-labelledby="_tabs_18_yaml">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">spring:
+  http:
+    serviceclient:
+      echo:
+        base-url: "https://echo.zuplo.io"</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+HTTP Service clients will be associated with a group named &#8220;default&#8221; if you don&#8217;t specify a group.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If you have multiple HTTP Service interfaces in the same package that need to be associated with different groups you can list them individually.
+The <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/registry/ImportHttpServices.html" class="apiref"><code>@ImportHttpServices</code></a> is repeatable and the <code>types</code> attributes allows you to import individual classes.</p>
+</div>
+<div class="paragraph">
+<p>For example:</p>
+</div>
+<div id="_tabs_19" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_19_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_19_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_19_java--panel" class="tabpanel" aria-labelledby="_tabs_19_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+</span><span class="fold-block">@SpringBootApplication
+@ImportHttpServices(group = "echo", types = EchoService.class)
+@ImportHttpServices(group = "other", types = OtherService.class)
+public class MyApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(MyApplication.class, args);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_19_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_19_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.runApplication
+import org.springframework.web.service.registry.ImportHttpServices
+
+</span><span class="fold-block">@SpringBootApplication
+@ImportHttpServices(group = "echo", types = [EchoService::class])
+@ImportHttpServices(group = "other", types = [OtherService::class])
+class MyApplication
+
+fun main(args: Array&lt;String&gt;) {
+	runApplication&lt;MyApplication&gt;(*args)
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.httpservice.properties"><a class="anchor" href="#io.rest-client.httpservice.properties"></a>Configuration Properties</h3>
+<div class="paragraph">
+<p>Configuration properties for HTTP Services can be specified under <code>spring.http.serviceclient.&lt;group-name&gt;</code>:</p>
+</div>
+<div class="paragraph">
+<p>You can use properties to configure aspects such as:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>The base URL.</p>
+</li>
+<li>
+<p>Any default headers that should be sent.</p>
+</li>
+<li>
+<p>API versioning configuration.</p>
+</li>
+<li>
+<p>Redirect settings.</p>
+</li>
+<li>
+<p>Connection and read timeouts.</p>
+</li>
+<li>
+<p>SSL bundles to use.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+You can also use <a href="#io.rest-client.global-configuration">global configuration properties</a> which apply to all HTTP clients.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>For example, the properties below will:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Configure all HTTP clients to use a one second connect timeout (unless otherwise overridden).</p>
+</li>
+<li>
+<p>Configure HTTP Service clients in the &#8220;echo&#8221; group to:</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Use a specific base URL.</p>
+</li>
+<li>
+<p>Have a one-second connect timeout.</p>
+</li>
+<li>
+<p>Have a two-second read timeout.</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+<div id="_tabs_20" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_20_properties" class="tab">
+<p>Properties</p>
+</li>
+<li id="_tabs_20_yaml" class="tab">
+<p>YAML</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_20_properties--panel" class="tabpanel" aria-labelledby="_tabs_20_properties">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">spring.http.clients.connect-timeout=1s
+spring.http.serviceclient.echo.base-url=https://echo.zuplo.io
+spring.http.serviceclient.echo.connect-timeout=2s
+spring.http.serviceclient.echo.read-timeout=2s</code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_20_yaml--panel" class="tabpanel" aria-labelledby="_tabs_20_yaml">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">spring:
+  http:
+    clients:
+      connect-timeout: 1s
+    serviceclient:
+      echo:
+        base-url: "https://echo.zuplo.io"
+        connect-timeout: 2s
+        read-timeout: 2s</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.httpservice.customization"><a class="anchor" href="#io.rest-client.httpservice.customization"></a>Customization</h3>
+<div class="paragraph">
+<p>If you need to customize HTTP Service clients beyond basic properties, you can use an HTTP Service group configurer.
+For <code>RestClient</code> backed HTTP Service clients, you can declare a bean that implements <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/client/support/RestClientHttpServiceGroupConfigurer.html" class="apiref"><code>RestClientHttpServiceGroupConfigurer</code></a>.
+For <code>WebClient</code> backed HTTP Service clients you can declare a bean that implements <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/reactive/function/client/support/WebClientHttpServiceGroupConfigurer.html" class="apiref"><code>WebClientHttpServiceGroupConfigurer</code></a>.</p>
+</div>
+<div class="paragraph">
+<p>Both work in the same way and will be automatically applied by Spring Boot&#8217;s auto-configuration.</p>
+</div>
+<div class="paragraph">
+<p>For example, the following configuration would add a group customizer that adds an HTTP header to each outgoing request containing the group name:</p>
+</div>
+<div id="_tabs_21" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_21_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_21_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_21_java--panel" class="tabpanel" aria-labelledby="_tabs_21_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+public class MyHttpServiceGroupConfiguration {
+
+	@Bean
+	RestClientHttpServiceGroupConfigurer myHttpServiceGroupConfigurer() {
+		return (groups) -&gt; groups.forEachClient((group, clientBuilder) -&gt; {
+			String groupName = group.name();
+			clientBuilder.defaultHeader("service-group", groupName);
+		});
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_21_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_21_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+class MyHttpServiceGroupConfiguration {
+
+	@Bean
+	fun myHttpServiceGroupConfigurer(): RestClientHttpServiceGroupConfigurer {
+		return RestClientHttpServiceGroupConfigurer { groups -&gt;
+			groups.forEachClient { group, clientBuilder -&gt;
+				val groupName = group.name()
+				clientBuilder.defaultHeader("service-group", groupName)
+			}
+		}
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.httpservice.advanced-configuration"><a class="anchor" href="#io.rest-client.httpservice.advanced-configuration"></a>Advanced Configuration</h3>
+<div class="paragraph">
+<p>As well as the <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/registry/ImportHttpServices.html" class="apiref"><code>@ImportHttpServices</code></a> annotation, Spring Framework also offers an <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/web/service/registry/AbstractHttpServiceRegistrar.html" class="apiref"><code>AbstractHttpServiceRegistrar</code></a> class.
+You can <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/context/annotation/Import.html" class="apiref"><code>@Import</code></a> your own extension of this class to perform programmatic configuration.
+For more details, see <a href="https://docs.spring.io/spring-framework/reference/7.0/integration/rest-clients.html#rest-http-service-client-group-config">Spring Framework reference documentation</a>.</p>
+</div>
+<div class="paragraph">
+<p>Regardless of which method you use to register HTTP Service clients, Spring Boot&#8217;s support remains the same.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="io.rest-client.global-configuration"><a class="anchor" href="#io.rest-client.global-configuration"></a>Applying Global Configuration to All HTTP Clients</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Regardless of the underlying technology being used, all HTTP clients have common settings that can be configured.</p>
+</div>
+<div class="paragraph">
+<p>These include:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Connection Timeouts.</p>
+</li>
+<li>
+<p>Read Timeouts.</p>
+</li>
+<li>
+<p>How HTTP redirects should be handled.</p>
+</li>
+<li>
+<p>Which SSL bundle should be used when connecting.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>These common settings are represented by the <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/HttpClientSettings.html" class="apiref"><code>HttpClientSettings</code></a> class which can be passed into the <code>build(&#8230;&#8203;)</code> methods of <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/reactive/ClientHttpConnectorBuilder.html" class="apiref"><code>ClientHttpConnectorBuilder</code></a> and <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/ClientHttpRequestFactoryBuilder.html" class="apiref"><code>ClientHttpRequestFactoryBuilder</code></a>.</p>
+</div>
+<div class="paragraph">
+<p>If you want to apply the same configuration to all auto-configured clients, you can use <code>spring.http.clients</code> properties to do so:</p>
+</div>
+<div id="_tabs_22" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_22_properties" class="tab">
+<p>Properties</p>
+</li>
+<li id="_tabs_22_yaml" class="tab">
+<p>YAML</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_22_properties--panel" class="tabpanel" aria-labelledby="_tabs_22_properties">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">spring.http.clients.connect-timeout=2s
+spring.http.clients.read-timeout=1s
+spring.http.clients.redirects=dont-follow</code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_22_yaml--panel" class="tabpanel" aria-labelledby="_tabs_22_yaml">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">spring:
+  http:
+    clients:
+      connect-timeout: 2s
+      read-timeout: 1s
+      redirects: dont-follow</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="io.rest-client.global-configuration.inetaddress-filtering"><a class="anchor" href="#io.rest-client.global-configuration.inetaddress-filtering"></a>InetAddress Filtering and SSRF Protection</h3>
+<div class="paragraph">
+<p>It&#8217;s sometimes useful to limit the remote addresses that an HTTP client is permitted to call.
+This technique can be especially useful when hardening your application against Server-Side Request Forgery (SSRF) attacks.</p>
+</div>
+<div class="paragraph">
+<p>To limit the address that a client can call, you can use an <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/InetAddressFilter.html" class="apiref"><code>InetAddressFilter</code></a> which will only allow outgoing calls to addresses that match the filter.
+The filter is a functional interface and you can either create your own implementation, or use one of the convenient factory methods.</p>
+</div>
+<div class="paragraph">
+<p>Filters may be applied to the <a href="https://docs.spring.io/spring-boot/4.1.1/api/java/org/springframework/boot/http/client/HttpClientSettings.html" class="apiref"><code>HttpClientSettings</code></a> you used when building a client:</p>
+</div>
+<div id="_tabs_23" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_23_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_23_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_23_java--panel" class="tabpanel" aria-labelledby="_tabs_23_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings;
+import org.springframework.boot.http.client.InetAddressFilter;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+
+</span><span class="fold-block">@Service
+public class MyService {
+
+	private final RestClient restClient;
+
+	public MyService() {
+		InetAddressFilter onlyExternalAddresses = InetAddressFilter.externalAddresses();
+		HttpClientSettings settings = HttpClientSettings.defaults().withInetAddressFilter(onlyExternalAddresses);
+		ClientHttpRequestFactory requestFactory = ClientHttpRequestFactoryBuilder.jdk().build(settings);
+		this.restClient = RestClient.builder().requestFactory(requestFactory).baseUrl("https://example.org").build();
+	}
+
+	public Details someRestCall(String name) {
+		return this.restClient.get().uri("/{name}/details", name).retrieve().body(Details.class);
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_23_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_23_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder
+import org.springframework.boot.http.client.HttpClientSettings
+import org.springframework.boot.http.client.InetAddressFilter
+import org.springframework.http.client.ClientHttpRequestFactory
+import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
+
+</span><span class="fold-block">@Service
+class MyService {
+
+	private val restClient: RestClient
+
+	init {
+		val onlyExternalAddresses = InetAddressFilter.externalAddresses()
+		val settings = HttpClientSettings.defaults().withInetAddressFilter(onlyExternalAddresses)
+		val requestFactory: ClientHttpRequestFactory = ClientHttpRequestFactoryBuilder.jdk().build(settings)
+		restClient = RestClient.builder().requestFactory(requestFactory).baseUrl("https://example.org").build()
+	}
+
+	fun someRestCall(name: String?): Details {
+		return restClient.get().uri("/{name}/details", name)
+			.retrieve().body(Details::class.java)!!
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="paragraph">
+<p>Or you can also define one as a <a href="https://docs.spring.io/spring-framework/docs/7.0.x/javadoc-api/org/springframework/context/annotation/Bean.html" class="apiref"><code>@Bean</code></a> if you want to apply it to all auto-configured HTTP client builders:</p>
+</div>
+<div id="_tabs_24" class="openblock tabs is-sync is-loading">
+<div class="content">
+<div class="ulist tablist">
+<ul>
+<li id="_tabs_24_java" class="tab">
+<p>Java</p>
+</li>
+<li id="_tabs_24_kotlin" class="tab">
+<p>Kotlin</p>
+</li>
+</ul>
+</div>
+<div id="_tabs_24_java--panel" class="tabpanel" aria-labelledby="_tabs_24_java">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="fold-block is-hidden-folded">import org.springframework.boot.http.client.InetAddressFilter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+public class MyHttpClientConfiguration {
+
+	@Bean
+	public InetAddressFilter httpClientInetAddressFilter() {
+		return InetAddressFilter.of("192.168.1.0/24").andNot("192.168.1.1", "192.168.1.10");
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+<div id="_tabs_24_kotlin--panel" class="tabpanel" aria-labelledby="_tabs_24_kotlin">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="fold-block is-hidden-folded">import org.springframework.boot.http.client.InetAddressFilter
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+
+</span><span class="fold-block">@Configuration(proxyBeanMethods = false)
+class MyHttpClientConfiguration {
+
+	@Bean
+	fun httpClientInetAddressFilter(): InetAddressFilter {
+		return InetAddressFilter.of("192.168.1.0/24").andNot("192.168.1.1", "192.168.1.10")
+	}
+
+}</span></code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="validation.html">Validation</a></span>
+  <span class="next"><a href="webservices.html">Web Services</a></span>
+</nav>
+</article>  </div>
+</main>
+<div class="modal micromodal-slide" id="modal-versions" aria-hidden="true">
+    <div class="modal__overlay" tabindex="-1" data-micromodal-close>
+        <div class="modal__container" role="dialog" aria-modal="true">
+            <main class="modal__content" id="modal-versions-content">
+              <button data-micromodal-close class="modal-versions-close">
+                <svg width="28px" height="28px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><style>.cls-1h{fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round;stroke-width:2px;}</style></defs><title/><g id="cross"><line class="cls-1h" x1="7" x2="25" y1="7" y2="25"/><line class="cls-1h" x1="7" x2="25" y1="25" y2="7"/></g></svg>
+              </button>
+              <div class="colset">
+                <div class="col-left">
+
+                  <ul class="nav-versions">
+                      <li class="component">
+                        <div>
+                          <a class="title" href="../../index.html">Spring Boot</a>
+                        </div>                        <div class="version-item is-active">
+                          <div>
+                            <button class="version-toggle" type="button">
+                              <span></span>
+                              Stable
+                            </button>
+                          </div>
+                          <ul class="versions">
+  <li class="version">
+    <a href="rest-client.html">
+      4.1.1
+    </a>
+  </li>
+  <li class="version">
+    <a href="../../4.0/reference/io/rest-client.html">
+      4.0.8
+    </a>
+  </li>
+  <li class="version">
+    <a href="../../3.5/reference/io/rest-client.html">
+      3.5.16
+    </a>
+  </li>
+  <li class="version">
+    <a href="../../3.4/reference/io/rest-client.html">
+      3.4.13
+    </a>
+  </li>
+  <li class="version">
+    <a href="../../3.3/reference/io/rest-client.html">
+      3.3.13
+    </a>
+  </li>
+</ul>                        </div>
+                        <div class="version-item">
+                          <div>
+                            <button class="version-toggle" type="button">
+                              <span></span>
+                              Preview
+                            </button>
+                          </div>
+                          <ul class="versions">
+  <li class="version">
+    <a href="../../4.2/reference/io/rest-client.html">
+      4.2.0-M1
+    </a>
+  </li>
+</ul>                        </div>
+                        <div class="version-item">
+                          <div>
+                            <button class="version-toggle" type="button">
+                              <span></span>
+                              Snapshot
+                            </button>
+                          </div>
+                          <ul class="versions">
+  <li class="version">
+    <a href="../../4.2-SNAPSHOT/reference/io/rest-client.html">
+      4.2.0-SNAPSHOT
+    </a>
+  </li>
+  <li class="version">
+    <a href="../../4.1-SNAPSHOT/reference/io/rest-client.html">
+      4.1.2-SNAPSHOT
+    </a>
+  </li>
+  <li class="version">
+    <a href="../../4.0-SNAPSHOT/reference/io/rest-client.html">
+      4.0.9-SNAPSHOT
+    </a>
+  </li>
+</ul>                        </div>
+                        
+                      </li>
+                  </ul>
+                </div>
+                <div class="col-right">
+                  <ul class="projects">
+  <li>
+    Related Spring Documentation
+    <ul class="projects-list">
+        <li>
+<a href="https://docs.spring.io/spring-boot/">
+  Spring Boot
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-framework/reference/">
+  Spring Framework
+</a>
+</li>
+        <li>
+<a class="anchor"><i class="fa fa-angle-right" aria-hidden="true"></i></a>
+  Spring Cloud
+<ul>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-build/reference/">
+  Spring Cloud Build
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-bus/reference/">
+  Spring Cloud Bus
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-circuitbreaker/reference/">
+  Spring Cloud Circuit Breaker
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-commons/reference/">
+  Spring Cloud Commons
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-config/reference/">
+  Spring Cloud Config
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-consul/reference/">
+  Spring Cloud Consul
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-contract/reference/">
+  Spring Cloud Contract
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-function/reference/">
+  Spring Cloud Function
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-gateway/reference/">
+  Spring Cloud Gateway
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-kubernetes/reference/">
+  Spring Cloud Kubernetes
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-netflix/reference/">
+  Spring Cloud Netflix
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-openfeign/reference/">
+  Spring Cloud OpenFeign
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-stream/reference/">
+  Spring Cloud Stream
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-task/reference/">
+  Spring Cloud Task
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-vault/reference/">
+  Spring Cloud Vault
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-cloud-zookeeper/reference/">
+  Spring Cloud Zookeeper
+</a>
+</li>
+</ul>
+</li>
+        <li>
+<a class="anchor"><i class="fa fa-angle-right" aria-hidden="true"></i></a>
+  Spring Data
+<ul>
+    <li>
+<a href="https://docs.spring.io/spring-data/cassandra/reference/">
+  Spring Data Cassandra
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/commons/reference/">
+  Spring Data Commons
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/couchbase/reference/">
+  Spring Data Couchbase
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/elasticsearch/reference/">
+  Spring Data Elasticsearch
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/jpa/reference/">
+  Spring Data JPA
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/keyvalue/reference/">
+  Spring Data KeyValue
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/ldap/reference/">
+  Spring Data LDAP
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/mongodb/reference/">
+  Spring Data MongoDB
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/neo4j/reference/">
+  Spring Data Neo4j
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/redis/reference/">
+  Spring Data Redis
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/relational/reference/">
+  Spring Data JDBC &amp; R2DBC
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-data/rest/reference/">
+  Spring Data REST
+</a>
+</li>
+</ul>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-integration/reference/">
+  Spring Integration
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-batch/reference/">
+  Spring Batch
+</a>
+</li>
+        <li>
+<a class="anchor"><i class="fa fa-angle-right" aria-hidden="true"></i></a>
+<a href="https://docs.spring.io/spring-security/reference/">
+  Spring Security
+</a>
+<ul>
+    <li>
+<a href="https://docs.spring.io/spring-authorization-server/reference/">
+  Spring Authorization Server
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-ldap/reference/">
+  Spring LDAP
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-security-kerberos/reference/">
+  Spring Security Kerberos
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-session/reference/">
+  Spring Session
+</a>
+</li>
+    <li>
+<a href="https://docs.spring.io/spring-vault/reference/">
+  Spring Vault
+</a>
+</li>
+</ul>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-ai/reference/">
+  Spring AI
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-amqp/reference/">
+  Spring AMQP
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-cli/reference/">
+  Spring CLI
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-graphql/reference/">
+  Spring GraphQL
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-kafka/reference/">
+  Spring for Apache Kafka
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-modulith/reference/">
+  Spring Modulith
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-pulsar/reference/">
+  Spring for Apache Pulsar
+</a>
+</li>
+        <li>
+<a href="https://docs.spring.io/spring-shell/reference/">
+  Spring Shell
+</a>
+</li>
+    </ul>
+  </li
+  <li><a href="../../spring-projects.html">All Docs...</a></li>
+</ul>
+                </div>
+              </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+</div>
+<footer class="footer flex">
+    <div id="spring-links flex">
+        <img id="springlogo" src="../../_/img/spring-logo.svg" alt="Spring">
+        <p class="smallest antialiased">Copyright © 2005 - <script>var d = new Date();
+        document.write(d.getFullYear());</script> Broadcom. All Rights Reserved. The term "Broadcom" refers to Broadcom Inc. and/or its subsidiaries.<br /><a href="https://www.vmware.com/help/legal.html">Terms of Use</a> • <a href="https://www.vmware.com/help/privacy.html" rel="noopener noreferrer">Privacy</a> • <a href="https://spring.io/trademarks">Trademark Guidelines</a> <span id="thank-you-mobile">• <a href="https://spring.io/thank-you">Thank you</a></span> • <a href="https://www.vmware.com/help/privacy/california-privacy-rights.html">Your California Privacy Rights</a> • <a class="ot-sdk-show-settings">Cookie Settings</a> <span id="teconsent"></span></p>
+        <p class="smallest antialiased has-gray-text">Apache®, Apache Tomcat®, Apache Kafka®, Apache Cassandra&trade;, and Apache Geode&trade; are trademarks or registered trademarks of the Apache Software Foundation in the United States and/or other countries. Java&trade;, Java&trade; SE, Java&trade; EE, and OpenJDK&trade; are trademarks of Oracle and/or its affiliates. Kubernetes® is a registered trademark of the Linux Foundation in the United States and other countries. Linux® is the registered trademark of Linus Torvalds in the United States and other countries. Windows® and Microsoft® Azure are registered trademarks of Microsoft Corporation. “AWS” and “Amazon Web Services” are trademarks or registered trademarks of Amazon.com Inc. or its affiliates. All other trademarks and copyrights are property of their respective owners and are only mentioned for informative purposes. Other names may be trademarks of their respective owners.</p>
+    </div>
+    <div id="social-icons" class="flex jc-between">
+        <a href="https://www.youtube.com/user/SpringSourceDev" title="Youtube"><svg id="youtube-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle class="cls-1" cx="20" cy="20" r="20"/><path class="cls-2" d="M30.91,14.53a2.89,2.89,0,0,0-2-2C27.12,12,20,12,20,12s-7.12,0-8.9.47a2.9,2.9,0,0,0-2,2A30.56,30.56,0,0,0,8.63,20a30.44,30.44,0,0,0,.46,5.47,2.89,2.89,0,0,0,2,2C12.9,28,20,28,20,28s7.12,0,8.9-.47a2.87,2.87,0,0,0,2-2A30.56,30.56,0,0,0,31.37,20,28.88,28.88,0,0,0,30.91,14.53ZM17.73,23.41V16.59L23.65,20Z"/></svg></a>
+        <a href="https://github.com/spring-projects" title="GitHub"><svg id="github-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75.93 75.93"><path class="cls-1" d="M38,0a38,38,0,1,0,38,38A38,38,0,0,0,38,0Z"/></g><path class="cls-2" d="M38,15.59A22.95,22.95,0,0,0,30.71,60.3c1.15.21,1.57-.5,1.57-1.11s0-2,0-3.9c-6.38,1.39-7.73-3.07-7.73-3.07A6.09,6.09,0,0,0,22,48.86c-2.09-1.42.15-1.39.15-1.39a4.81,4.81,0,0,1,3.52,2.36c2,3.5,5.37,2.49,6.67,1.91a4.87,4.87,0,0,1,1.46-3.07c-5.09-.58-10.45-2.55-10.45-11.34a8.84,8.84,0,0,1,2.36-6.15,8.29,8.29,0,0,1,.23-6.07s1.92-.62,6.3,2.35a21.82,21.82,0,0,1,11.49,0c4.38-3,6.3-2.35,6.3-2.35a8.29,8.29,0,0,1,.23,6.07,8.84,8.84,0,0,1,2.36,6.15c0,8.81-5.37,10.75-10.48,11.32a5.46,5.46,0,0,1,1.56,4.25c0,3.07,0,5.54,0,6.29s.42,1.33,1.58,1.1A22.94,22.94,0,0,0,38,15.59Z"/></svg></a>
+        <a href="https://twitter.com/springcentral" title="Twitter"><svg id="twitter-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75.93 75.93"><circle class="cls-1" cx="37.97" cy="37.97" r="37.97"/><path id="Twitter-2" data-name="Twitter" class="cls-2" d="M55.2,22.73a15.43,15.43,0,0,1-4.88,1.91,7.56,7.56,0,0,0-5.61-2.49A7.78,7.78,0,0,0,37,30a7.56,7.56,0,0,0,.2,1.79,21.63,21.63,0,0,1-15.84-8.23,8,8,0,0,0,2.37,10.52,7.66,7.66,0,0,1-3.48-1v.09A7.84,7.84,0,0,0,26.45,41a7.54,7.54,0,0,1-2,.28A7.64,7.64,0,0,1,23,41.09a7.71,7.71,0,0,0,7.18,5.47,15.21,15.21,0,0,1-9.55,3.37,15.78,15.78,0,0,1-1.83-.11,21.41,21.41,0,0,0,11.78,3.54c14.13,0,21.86-12,21.86-22.42,0-.34,0-.68,0-1a15.67,15.67,0,0,0,3.83-4.08,14.9,14.9,0,0,1-4.41,1.24A7.8,7.8,0,0,0,55.2,22.73Z"/></svg></a>
+    </div>
+</footer>
+<script src="../../_/js/vendor/import.js"></script>
+<script src="../../_/js/site.js"></script>
+<script async src="../../_/js/vendor/highlight.js"></script>
+<script async src="../../_/js/vendor/asciidoctor-tabs.js" data-sync-storage-key="docs:preferred-tab"></script>
+
+<div class="modal micromodal-slide" id="modal-1" aria-hidden="true">
+    <div class="modal__overlay" tabindex="-1" data-micromodal-close>
+        <div class="modal__container" role="dialog" aria-modal="true" aria-labelledby="modal-1-title">
+            <main class="modal__content" id="modal-1-content">
+                <div id="searchbox"></div>
+                <div id="counter"></div>
+                <div class="search-link-box">
+                    <a class="search-link" href="../../search.html">Search in all Spring Docs</a>
+                </div>
+                <div class="search-by">
+                    <a target="_blank" rel="noopener noreferrer" href="https://www.algolia.com/" aria-label="Search by Algolia">
+                        <img class="light" width="140" src="../../_/img/algolia-light.svg" />
+                        <img class="dark" width="140" src="../../_/img/algolia-dark.svg" />
+                    </a>
+                </div>
+                <div id="hits"></div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<script src="../../_/js/vendor/hotkeys.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/algoliasearch@4.17.0/dist/algoliasearch-lite.umd.js" integrity="sha256-Lf9DrpGmcRip6OQzbcL6lnvNmoZNSKpyQX5pMlwatWE=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/instantsearch.js@4.54.1/dist/instantsearch.production.min.js" integrity="sha256-xYsZPDeNjYNTBWLvqD2Lxe98hOxcDgOHyMPfz4tVAbk=" crossorigin="anonymous"></script>
+<script async id="search-script" src="../../_/js/vendor/search.js" data-app-id="WB1FQYI187" data-api-key="c2e84f15fa630d534f1c62b1c413bb77" data-index-name="springdocs" data-stylesheet="../../_/css/vendor/search.css" data-page-version="4.1.1" data-page-generation="4.1" data-page-component="boot"></script>
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"bffcb8a918ae4755926f76178bfbd26b","spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>

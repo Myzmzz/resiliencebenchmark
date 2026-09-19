@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en" class="svg no-js">
+<head><script src="https://web-static.archive.org/_static/js/athena.js" type="text/javascript"></script>
+<script type="text/javascript">window.addEventListener('DOMContentLoaded',function(){var v=archive_analytics.values;v.service='wb';v.server_name='wwwb-app28.us.archive.org';v.server_ms=939;archive_analytics.send_pageview({});});</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/bundle-playback.js?v=lGQTDXxZ" charset="utf-8"></script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/wombat.js?v=o9P2E1FK" charset="utf-8"></script>
+<script>window.RufflePlayer=window.RufflePlayer||{};window.RufflePlayer.config={"autoplay":"on","unmuteOverlay":"hidden","showSwfDownload":true};</script>
+<script type="text/javascript" src="https://web-static.archive.org/_static/js/ruffle/ruffle.js"></script>
+<script type="text/javascript">
+    __wm.init("https://web.archive.org/web");
+  __wm.wombat("https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html","20250212232939","https://web.archive.org/","web","https://web-static.archive.org/_static/",
+	      "1739402979");
+</script>
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3" />
+<link rel="stylesheet" type="text/css" href="https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv" />
+<!-- End Wayback Rewrite JS Include -->
+
+    <meta charset="utf-8"/>
+    <!--[if IE ]>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1" />
+    <![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="Language" content="en">
+
+    <title>MySQL :: MySQL Connector/J Developer Guide :: 6.3.4 Networking</title>
+    <link rel="stylesheet" media="all" href="https://web.archive.org/web/20250212232939cs_/https://labs.mysql.com/common/css/main-20241001.min.css"/>
+            <link rel="stylesheet" media="all" href="https://web.archive.org/web/20250212232939cs_/https://labs.mysql.com/common/css/docs-20241001.min.css"/>
+    
+    
+    <link rel="stylesheet" media="print" href="https://web.archive.org/web/20250212232939cs_/https://labs.mysql.com/common/css/print-20241001.min.css"/>
+
+    
+    
+    
+    
+            <link rel="contents" href="index.html" title="MySQL Connector/J Developer Guide"/>
+<link rel="start" href="index.html" title="MySQL Connector/J Developer Guide"/>
+<link rel="prev" href="connector-j-connp-props-session.html" title="6.3.3 Session"/>
+<link rel="next" href="connector-j-connp-props-security.html?ff=nopfpls" title="6.3.5 Security"/>
+<link rel="up" href="connector-j-reference-configuration-properties.html" title="6.3 Configuration Properties"/>
+
+    
+    <link rel="shortcut icon" href="https://web.archive.org/web/20250212232939im_/https://labs.mysql.com/common/themes/sakila/favicon.ico"/>
+    <script async="async" type="text/javascript" src="https://web.archive.org/web/20250212232939js_/https://consent.truste.com/notice?domain=oracle.com&amp;c=teconsent&amp;js=bb&amp;noticeType=bb&amp;text=true&amp;cdn=1&amp;pcookie&amp;gtm=1" crossorigin></script>
+    <script src="https://web.archive.org/web/20250212232939js_/https://www.oracle.com/assets/truste-oraclelib.js"></script>
+    <script>(function(H){ H.className=H.className.replace(/\bno-js\b/,'js') })(document.documentElement)</script>
+    <script src="https://web.archive.org/web/20250212232939js_/https://labs.mysql.com/common/js/site-20250121.min.js"></script>
+
+    
+    
+    <!--[if lt IE 9]>
+        <script src="https://labs.mysql.com/common/js/polyfills/html5shiv-printshiv-3.7.2.min.js"></script>
+        <script src="https://labs.mysql.com/common/js/polyfills/respond-1.4.2.min.js"></script>
+    <![endif]-->
+        <!--[if IE 9]>
+        <style>#docs-sidebar-toc { box-sizing: content-box; }</style>
+    <![endif]-->
+        
+                              <script>!function(e){var n="https://web.archive.org/web/20250212232939/https://s.go-mpulse.net/boomerang/";if("False"=="True")e.BOOMR_config=e.BOOMR_config||{},e.BOOMR_config.PageParams=e.BOOMR_config.PageParams||{},e.BOOMR_config.PageParams.pci=!0,n="https://web.archive.org/web/20250212232939/https://s2.go-mpulse.net/boomerang/";if(window.BOOMR_API_key="E6BB6-B37B4-898B7-F97BA-BBCDB",function(){function e(){if(!o){var e=document.createElement("script");e.id="boomr-scr-as",e.src=window.BOOMR.url,e.async=!0,i.parentNode.appendChild(e),o=!0}}function t(e){o=!0;var n,t,a,r,d=document,O=window;if(window.BOOMR.snippetMethod=e?"if":"i",t=function(e,n){var t=d.createElement("script");t.id=n||"boomr-if-as",t.src=window.BOOMR.url,BOOMR_lstart=(new Date).getTime(),e=e||d.body,e.appendChild(t)},!window.addEventListener&&window.attachEvent&&navigator.userAgent.match(/MSIE [67]\./))return window.BOOMR.snippetMethod="s",void t(i.parentNode,"boomr-async");a=document.createElement("IFRAME"),a.src="about:blank",a.title="",a.role="presentation",a.loading="eager",r=(a.frameElement||a).style,r.width=0,r.height=0,r.border=0,r.display="none",i.parentNode.appendChild(a);try{O=a.contentWindow,d=O.document.open()}catch(_){n=document.domain,a.src="javascript:var d=document.open();d.domain='"+n+"';void(0);",O=a.contentWindow,d=O.document.open()}if(n)d._boomrl=function(){this.domain=n,t()},d.write("<bo"+"dy onload='document._boomrl();'>");else if(O._boomrl=function(){t()},O.addEventListener)O.addEventListener("load",O._boomrl,!1);else if(O.attachEvent)O.attachEvent("onload",O._boomrl);d.close()}function a(e){window.BOOMR_onload=e&&e.timeStamp||(new Date).getTime()}if(!window.BOOMR||!window.BOOMR.version&&!window.BOOMR.snippetExecuted){window.BOOMR=window.BOOMR||{},window.BOOMR.snippetStart=(new Date).getTime(),window.BOOMR.snippetExecuted=!0,window.BOOMR.snippetVersion=12,window.BOOMR.url=n+"E6BB6-B37B4-898B7-F97BA-BBCDB";var i=document.currentScript||document.getElementsByTagName("script")[0],o=!1,r=document.createElement("link");if(r.relList&&"function"==typeof r.relList.supports&&r.relList.supports("preload")&&"as"in r)window.BOOMR.snippetMethod="p",r.href=window.BOOMR.url,r.rel="preload",r.as="script",r.addEventListener("load",e),r.addEventListener("error",function(){t(!0)}),setTimeout(function(){if(!o)t(!0)},3e3),BOOMR_lstart=(new Date).getTime(),i.parentNode.appendChild(r);else t(!1);if(window.addEventListener)window.addEventListener("load",a,!1);else if(window.attachEvent)window.attachEvent("onload",a)}}(),"".length>0)if(e&&"performance"in e&&e.performance&&"function"==typeof e.performance.setResourceTimingBufferSize)e.performance.setResourceTimingBufferSize();!function(){if(BOOMR=e.BOOMR||{},BOOMR.plugins=BOOMR.plugins||{},!BOOMR.plugins.AK){var n=""=="true"?1:0,t="",a="cjqq4ufydmfoqz5nf3ra-f-dbf415d2b-clientnsv4-s.akamaihd.net",i="false"=="true"?2:1,o={"ak.v":"39","ak.cp":"1334304","ak.ai":parseInt("802521",10),"ak.ol":"0","ak.cr":1,"ak.ipv":4,"ak.proto":"h2","ak.rid":"1a338c7","ak.r":41485,"ak.a2":n,"ak.m":"dscx","ak.n":"essl","ak.bpcip":"18.97.14.0","ak.cport":37842,"ak.gh":"23.220.107.155","ak.quicv":"","ak.tlsv":"tls1.3","ak.0rtt":"","ak.0rtt.ed":"","ak.csrc":"-","ak.acc":"","ak.t":"1739402978","ak.ak":"hOBiQwZUYzCg5VSAfCLimQ==7Xb8zltJgyBno9RZO7eG3kG3yasdE4c5IEdHnvgMEttiIB1F8zTBN6IhdJ40NL7mT3OwH1JG9eqamIuF93XziBBrRoqi/Gp06nSAfbYtPTSHyqdOomfLyhEhNMcoTiTS3YOgfh+a/x5CW5dTUYfdYnhvMPyeqQWi3IHM6JJaq8ktL/4lNa9uRhFQd2C3+2POyqM4WFxvCqcy2A8P6uKp0PCAEmifQ8f/+XWx+NVdrnrY9MUkHNEsBWk8/WQAJJGFMyZ8duJjsG0vUINiXnN+IgPQOgkfTc9MgMXVvpv6nQeH+1eC+JIW3bokJApTeh//wPBezTIQFI4fxoT4FCf2AdM9AXbCosT+RIPmKaBmlSbuNDRPnh8/tU4WNhyigQcdgrwmLAUA+/FnjCHwg+pvf0RmD57jOidQJELwrT/MLf4=","ak.pv":"16","ak.dpoabenc":"","ak.tf":i};if(""!==t)o["ak.ruds"]=t;var r={i:!1,av:function(n){var t="http.initiator";if(n&&(!n[t]||"spa_hard"===n[t]))o["ak.feo"]=void 0!==e.aFeoApplied?1:0,BOOMR.addVar(o)},rv:function(){var e=["ak.bpcip","ak.cport","ak.cr","ak.csrc","ak.gh","ak.ipv","ak.m","ak.n","ak.ol","ak.proto","ak.quicv","ak.tlsv","ak.0rtt","ak.0rtt.ed","ak.r","ak.acc","ak.t","ak.tf"];BOOMR.removeVar(e)}};BOOMR.plugins.AK={akVars:o,akDNSPreFetchDomain:a,init:function(){if(!r.i){var e=BOOMR.subscribe;e("before_beacon",r.av,null,null),e("onbeacon",r.rv,null,null),r.i=!0}return this},is_complete:function(){return!0}}}}()}(window);</script></head>
+
+<body class="no-sidebar full-page dev"><!-- BEGIN WAYBACK TOOLBAR INSERT -->
+<script>__wm.rw(0);</script>
+<div id="wm-ipp-base" lang="en" style="display:none;direction:ltr;" toolbar-mode="auto">
+<div id="wm-ipp" style="position:fixed;left:0;top:0;right:0;">
+<div id="donato" style="position:relative;width:100%;height:0;">
+  <div id="donato-base">
+    <iframe id="donato-if" src="https://archive.org/includes/donate.php?as_page=1&amp;platform=wb&amp;referer=https%3A//web.archive.org/web/20250212232939/https%3A//dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html"
+	    scrolling="no" frameborder="0" style="width:100%; height:100%">
+    </iframe>
+  </div>
+</div><div id="wm-ipp-inside">
+  <div id="wm-toolbar" style="position:relative;display:flex;flex-flow:row nowrap;justify-content:space-between;" nav="async">
+    <div id="wm-logo" style="/*width:110px;*/padding-top:12px;">
+      <a href="/web/" title="Wayback Machine home page"><img src="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png" srcset="https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-100.png, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-150.png 1.5x, https://web-static.archive.org/_static/images/toolbar/wayback-toolbar-logo-200.png 2x" alt="Wayback Machine" style="width:100px" border="0" /></a>
+    </div>
+    <div class="c" style="display:flex;flex-flow:column nowrap;justify-content:space-between;flex:1;">
+      <form class="u" style="display:flex;flex-direction:row;flex-wrap:nowrap;" target="_top" method="get" action="/web/submit" name="wmtb" id="wmtb"><input type="text" name="url" id="wmtbURL" value="https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html" onfocus="this.focus();this.select();" style="flex:1;"/><input type="hidden" name="type" value="replay" /><input type="hidden" name="date" value="20250212232939" /><input type="submit" value="Go" />
+      </form>
+      <div style="display:flex;flex-flow:row nowrap;align-items:flex-end;">
+                <div class="s" id="wm-nav-captures" style="flex:1;">
+                    <a class="t" href="/web/20250212232939*/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html" title="See a list of every capture for this URL">34 captures</a>
+          <div class="r" title="Timespan for captures of this URL">07 Dec 2023 - 25 Jul 2026</div>
+          </div>
+        <div class="k">
+          <a href="" id="wm-graph-anchor">
+            <div id="wm-ipp-sparkline" title="Explore captures for this URL" style="position: relative">
+              <canvas id="wm-sparkline-canvas" width="775" height="27" border="0"></canvas>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="n">
+      <table>
+        <tbody>
+          <!-- NEXT/PREV MONTH NAV AND MONTH INDICATOR -->
+          <tr class="m">
+            <td class="b" nowrap="nowrap">Jan</td>
+            <td class="c" id="displayMonthEl" title="You are here: 23:29:39 Feb 12, 2025">FEB</td>
+            <td class="f" nowrap="nowrap">Mar</td>
+          </tr>
+          <!-- NEXT/PREV CAPTURE NAV AND DAY OF MONTH INDICATOR -->
+          <tr class="d">
+            <td class="b" nowrap="nowrap"><span class="ta"></span></td>
+            <td class="c" id="displayDayEl" style="width:34px;font-size:22px;white-space:nowrap;" title="You are here: 23:29:39 Feb 12, 2025">12</td>
+            <td class="f" nowrap="nowrap"><span class="ta"></span></td>
+          </tr>
+          <!-- NEXT/PREV YEAR NAV AND YEAR INDICATOR -->
+          <tr class="y">
+            <td class="b" nowrap="nowrap">2024</td>
+            <td class="c" id="displayYearEl" title="You are here: 23:29:39 Feb 12, 2025">2025</td>
+            <td class="f" nowrap="nowrap">2026</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="r" style="display:flex;flex-flow:column nowrap;align-items:flex-end;justify-content:space-between;">
+      <div id="wm-btns" style="text-align:right;height:23px;">
+                <span class="xxs">
+          <div id="wm-save-snapshot-success">success</div>
+          <div id="wm-save-snapshot-fail">fail</div>
+          <a id="wm-save-snapshot-open" href="#" title="Share via My Web Archive" >
+            <span class="iconochive-web"></span>
+          </a>
+          <a href="https://archive.org/account/login.php" title="Sign In" id="wm-sign-in">
+            <span class="iconochive-person"></span>
+          </a>
+          <span id="wm-save-snapshot-in-progress" class="iconochive-web"></span>
+        </span>
+                <a class="xxs" href="https://help.archive.org/help/category/the-wayback-machine/" title="Get some help using the Wayback Machine" style="top:-6px;"><span class="iconochive-question" style="color:rgb(87,186,244);font-size:160%;"></span></a>
+        <a id="wm-tb-close" href="#close" style="top:-2px;" title="Close the toolbar"><span class="iconochive-remove-circle" style="color:#888888;font-size:240%;"></span></a>
+      </div>
+      <div id="wm-share" class="xxs">
+        <a href="/web/20250212232939/http://web.archive.org/screenshot/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html"
+           id="wm-screenshot"
+           title="screenshot">
+          <span class="wm-icon-screen-shot"></span>
+        </a>
+        <a href="#" id="wm-video" title="video">
+          <span class="iconochive-movies"></span>
+        </a>
+        <a id="wm-share-facebook" href="#" data-url="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html" title="Share on Facebook" style="margin-right:5px;" target="_blank"><span class="iconochive-facebook" style="color:#3b5998;font-size:160%;"></span></a>
+        <a id="wm-share-twitter" href="#" data-url="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html" title="Share on Twitter" style="margin-right:5px;" target="_blank"><span class="iconochive-twitter" style="color:#1dcaff;font-size:160%;"></span></a>
+      </div>
+      <div style="padding-right:2px;text-align:right;white-space:nowrap;">
+        <a id="wm-expand" class="wm-btn wm-closed" href="#expand"><span id="wm-expand-icon" class="iconochive-down-solid"></span> <span class="xxs" style="font-size:80%;">About this capture</span></a>
+      </div>
+    </div>
+  </div>
+    <div id="wm-capinfo" style="border-top:1px solid #777;display:none; overflow: hidden">
+        <div id="wm-capinfo-notice" source="api"></div>
+                <div id="wm-capinfo-collected-by" source="api" trigger="hover" token="MRBPzhiNOqzOgJRfG_3n1kbrQxENPSkgxl1dlQwKqMaB2hVfRVReK-Uj-7NNaWifS938fg"></div>
+    <div id="wm-capinfo-timestamps">
+    <div style="background-color:#666;color:#fff;font-weight:bold;text-align:center;padding:2px 0;" title="Timestamps for the elements of this page">TIMESTAMPS</div>
+    <div>
+      <div id="wm-capresources" style="margin:0 5px 5px 5px;max-height:250px;overflow-y:scroll !important"></div>
+      <div id="wm-capresources-loading" style="text-align:left;margin:0 20px 5px 5px;display:none"><img src="https://web-static.archive.org/_static/images/loading.gif" alt="loading" /></div>
+    </div>
+    </div>
+  </div></div></div></div><div id="wm-ipp-print">The Wayback Machine - https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html</div>
+<script type="text/javascript">//<![CDATA[
+__wm.bt(775,27,25,2,"web","https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html","20250212232939",1996,"https://web-static.archive.org/_static/",["https://web-static.archive.org/_static/css/banner-styles.css?v=1utQkbB3","https://web-static.archive.org/_static/css/iconochive.css?v=3PDvdIFv"], false);
+  __wm.rw(1);
+//]]></script>
+<!-- END WAYBACK TOOLBAR INSERT -->
+ 
+<a class="skip-main" href="#main">Skip to Main Content</a>
+<div class="page-wrapper">
+    <header>
+
+                        <a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/" aria-label="MySQL Home" title="MySQL" id="l1-home-link"></a>
+        
+        <div id="l1-nav-container">
+            <div id="l1-line1">
+                <div id="l1-lhs">
+                    <div id="l1-slogan">
+                        The world's most popular open source database
+                    </div>
+                    <div id="l1-search-box">
+                        <form id="l1-search-form" method="get" action="https://web.archive.org/web/20250212232939/https://search.oracle.com/mysql">
+                        <input type="hidden" name="app" value="mysql"/>
+                        <input id="l1-search-input" type="search" class="icon-search" placeholder="Search" aria-label="Search" name="q"/>
+                        </form>
+                    </div>
+                    <div id="l1-auth-links">
+                        <nav aria-label="Contact/Login Navigation" role="navigation">
+                            <a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/about/contact/"><b>Contact MySQL</b></a>
+                            <span id="l1-contact-separator">&nbsp;|&nbsp;</span>
+                            <span id="l1-contact-separator-br"><br/></span>
+                                                             <a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/auth/login/?dest=https%3A%2F%2Fdev.mysql.com%2Fdoc%2Fconnector-j%2Fen%2Fconnector-j-connp-props-networking.html">Login</a> &nbsp;|&nbsp;
+                                 <a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/auth/register/">Register</a>
+                                                    </nav>
+                    </div>
+                </div>
+            </div>
+            <div id="l1-line2">
+                <nav aria-label="Primary Navigation" role="navigation">
+                    <ul id="l1-nav">
+                        <li>
+                            <a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/"><!-- <span class="icon-sakila"></span>  -->MySQL.com</a>
+                        </li><li>
+                            <a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/downloads/"><!-- <span class="icon-download-thin"></span>  -->Downloads</a>
+                        </li><li class="active">
+                            <a href="/web/20250212232939/https://dev.mysql.com/doc/"><!-- <span class="icon-books"></span>  -->Documentation</a>
+                        </li><li>
+                            <a href="/web/20250212232939/https://dev.mysql.com/"><!-- <span class="icon-code"></span>  -->Developer Zone</a>
+                        </li>                    </ul>
+                </nav>
+                <div class="social-icons">
+                    <nav aria-label="Social Navigation" role="navigation">
+                        <a aria-label="Join us on Facebook" title="Join us on Facebook" href="https://web.archive.org/web/20250212232939/http://www.facebook.com/mysql"><span class="icon-facebook"></span></a>
+                        <a aria-label="Follow us on X" title="Follow us on X" href="https://web.archive.org/web/20250212232939/https://x.com/mysql"><span class="icon-x-twitter"></span></a>
+                        <a aria-label="Follow us on LinkedIn" title="Follow us on LinkedIn" href="https://web.archive.org/web/20250212232939/https://www.linkedin.com/company/mysql"><span class="icon-linkedin"></span></a>
+                        <a aria-label="Visit our YouTube channel" title="Visit our YouTube channel" href="https://web.archive.org/web/20250212232939/http://www.youtube.com/mysqlchannel"><span class="icon-youtube"></span></a>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        <div id="sub-header">
+            <div id="l2-nav-container">
+                <div id="l2-nav-toggle">
+                    <span class="icon-three-bars"></span>
+                </div>
+                                                                                        <a class="button nav-button-3" href="/web/20250212232939/https://dev.mysql.com/"><span class="icon-code"></span> Developer Zone</a>
+                                                                                                                                    <a class="button nav-button-2" href="https://web.archive.org/web/20250212232939/https://www.mysql.com/downloads/"><span class="icon-download-thin"></span> Downloads</a>
+                                                                                                <a class="button nav-button-1" href="https://web.archive.org/web/20250212232939/https://www.mysql.com/"><span class="icon-sakila"></span> MySQL.com</a>
+                                                                        <div id="l2-search-toggle">
+                    <span class="icon-search"></span>
+                </div>
+                <div id="l2-site-icon">
+                                                                                                                                                                                                    <span class="icon-books"></span>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </div>
+                <div id="l1-section-title">
+                    <span id="l1-section-label">
+                        <a href="/web/20250212232939/https://dev.mysql.com/doc/">Documentation</a>
+                    </span>
+                </div>
+                <nav aria-label="Secondary Navigation" role="navigation">
+                    
+
+<ul id="l2-nav">
+            	<li class=""><a href="/web/20250212232939/https://dev.mysql.com/doc/refman/en/">MySQL Server</a>
+    			</li>
+	        	<li class=""><a href="/web/20250212232939/https://dev.mysql.com/doc/index-enterprise.html">MySQL Enterprise</a>
+    			</li>
+	        	<li class=""><a href="/web/20250212232939/https://dev.mysql.com/doc/workbench/en/">Workbench</a>
+    			</li>
+	        	<li class=""><a href="/web/20250212232939/https://dev.mysql.com/doc/mysql-shell/en/mysql-innodb-cluster.html">InnoDB Cluster</a>
+    			</li>
+	        	<li class=""><a href="/web/20250212232939/https://dev.mysql.com/doc/index-cluster.html">MySQL NDB Cluster</a>
+    			</li>
+	        	<li class="active"><a class="active " href="/web/20250212232939/https://dev.mysql.com/doc/index-connectors.html">Connectors</a>
+    			</li>
+	        	<li class=" last"><a href="/web/20250212232939/https://dev.mysql.com/doc/index-other.html">More</a>
+    			</li>
+	                        <li class="other-section"><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/">MySQL.com</a></li>
+                            <li class="other-section"><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/downloads/">Downloads</a></li>
+                                        <li class="other-section"><a href="/web/20250212232939/https://dev.mysql.com/">Developer Zone</a></li>
+            </ul>
+                </nav>
+            </div>
+            <div id="l3-search-container"></div>
+            <div id="top-orange"><span id="section-nav">Section Menu: &nbsp; </span></div>
+        </div>
+    </header>
+        <div id="page">
+                        <div role="main" id="main" tabindex="-1">
+
+            
+                
+            
+<div>
+    <div id="docs-sidebar-toc" class="">
+    <div id="docs-toc-inner">
+        <div class="docs-sidebar-header" id="docs-nav-header">
+            <a class="docs-show-hide-nav" id="docs-hide-nav" href="" title="Hide Sidebar" aria-label="Hide Sidebar"><span class="icon-arrow-small-left"></span></a>
+            <div class="docs-nav-links">
+                                    
+    <a href="connector-j-connp-props-session.html" aria-label="Previous" title="Previous: Session"><span class="icon-chevron-left"></span></a>
+<a href="index.html" aria-label="Start" title="Start"><span class="icon-book-open"></span></a>
+        <a aria-label="Up" href="connector-j-reference-configuration-properties.html" title="Up: Configuration Properties"><span class="icon-chevron-up"></span></a>
+    <a href="connector-j-connp-props-security.html" aria-label="Next" title="Next: Security"><span class="icon-chevron-right"></span></a>
+                            </div>
+        </div>
+                    
+<div id="docs-sidebar-search-container">
+    <div id="docs-sidebar-search-box">
+        <form method="get" action="/web/20250212232939/https://dev.mysql.com/doc/search/">
+            <input type="hidden" name="d" id="d" value="331"/>
+            <input type="hidden" name="p" id="p" value="1"/>
+            <input type="text" name="q" id="q" title="Search this Manual" value="Search this Manual" style="color: #bbb;" onfocus="if(this.value == 'Search this Manual') {this.value='';this.style.color='#555';}" onblur="if(this.value == '') {this.value='Search this Manual';this.style.color='#bbb';}"/>
+
+            <button class="docs-sidebar-search-btn" aria-label="Search" title="Search" type="submit">
+                <span class="icon-search"></span>
+            </button>
+        </form>
+    </div>
+</div>
+                <div class="docs-sidebar-nav">
+            <a class="docs-icon-home" href="/web/20250212232939/https://dev.mysql.com/doc/"><span class="icon-home"></span>Documentation Home</a><hr/>
+            <div class="docs-sidebar-mtitle">MySQL Connector/J Developer Guide</div>
+            <nav class="doctoc" id="doc-331">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="preface.html">Preface and Legal Notices</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-overview.html">Overview of MySQL Connector/J</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-versions.html">Compatibility with MySQL and Java Versions</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-whats-new.html">What&#039;s New in Connector/J 9.2?</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-installing.html">Connector/J Installation</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-binary-installation.html">Installing Connector/J from a Binary Distribution</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-installing-maven.html">Installing Connector/J Using Maven</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-installing-source.html">Installing from Source</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-installing-upgrading.html">Upgrading from an Older Version</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-upgrading-to-8.0.html">Upgrading to MySQL Connector/J 9.2 from Connector/J 5.1</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-java-8.html">Running on the Java 8 Platform</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-properties-changed.html">Changes in Connection Properties</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-api-changes.html">Changes in the Connector/J API</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-build-props-changes.html">Changes for Build Properties</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-test-props-changes.html">Change for Test Properties</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-exceptions-changes.html">Changes for Exceptions</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-other-changes.html">Other Changes</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-testing.html">Testing Connector/J</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-examples.html">Connector/J Examples</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-down"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference.html">Connector/J Reference</a></div></div>                        <div class="docs-submenu">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-driver-name.html">Driver/Datasource Class Name</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-jdbc-url-format.html">Connection URL Syntax</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-down"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-configuration-properties.html">Configuration Properties</a></div></div>                        <div class="docs-submenu">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-authentication.html">Authentication</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-connection.html">Connection</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-session.html">Session</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link current"><a href="connector-j-connp-props-networking.html">Networking</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-security.html">Security</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-statements.html">Statements</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-prepared-statements.html">Prepared Statements</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-result-sets.html">Result Sets</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-metadata.html">Metadata</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-blob-clob-processing.html">BLOB/CLOB processing</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-datetime-types-processing.html">Datetime types processing</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-high-availability-and-clustering.html">High Availability and Clustering</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-performance-extensions.html">Performance Extensions</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-debugging-profiling.html">Debugging/Profiling</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-exceptions-warnings.html">Exceptions/Warnings</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-tunes-for-integration-with-other-products.html">Tunes for integration with other products</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-jdbc-compliance.html">JDBC compliance</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connp-props-x-protocol-and-x-devapi.html">X Protocol and X DevAPI</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-implementation-notes.html">JDBC API Implementation Notes</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-type-conversions.html">Java, JDBC, and MySQL Types</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-date-time.html">Handling of Date-Time Values</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-time-instants.html">Preserving Time Instants</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-fractional-seconds.html">Fractional Seconds</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-YEAR.html">Handling of YEAR Values</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-charsets.html">Using Character Sets and Unicode</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-query-attributes.html">Using Query Attributes</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-using-ssl.html">Connecting Securely Using SSL</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-server-authentication.html">Setting up Server Authentication</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-client-authentication.html">Setting up Client Authentication</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-2-way-authentication.html">Setting up 2-Way Authentication</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-fips.html">JSSE in FIPS Mode</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-debugging-ssl-connection.html">Debugging an SSL Connection</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-unix-socket.html">Connecting Using Unix Domain Sockets</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-named-pipe.html">Connecting Using Named Pipes</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-authentications.html">Connecting Using Various Authentication Methods</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-using-pam.html">Connecting Using PAM Authentication</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connecting-using-kerberos.html">Connecting Using Kerberos</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-using-mfa.html">Connecting Using Multifactor Authentication</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-WebAuthn-authentication.html">Connecting Using Web Authentication (WebAuthn) Authentication</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-using-openID.html">Connecting Using OpenID Connect Authentication</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-replication-connection.html">Using Source/Replica Replication with ReplicationConnection</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-dns-srv.html">Support for DNS SRV Records</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-session-state-tracker.html">Client Session State Tracker</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-reference-error-sqlstates.html">Mapping MySQL Error Numbers to JDBC SQLState Codes</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-basic.html">JDBC Concepts</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-connect-drivermanager.html">Connecting to MySQL Using the JDBC DriverManager
+        Interface</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-statements.html">Using JDBC Statement Objects to Execute SQL</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-statements-callable.html">Using JDBC CallableStatements to Execute Stored
+        Procedures</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-last-insert-id.html">Retrieving AUTO_INCREMENT Column Values through JDBC</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-j2ee-concepts-connection-pooling.html">Connection Pooling with Connector/J</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-multi-host-connections.html">Multi-Host Connections</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-config-failover.html">Configuring Server Failover for Connections Using JDBC</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-client-side-failover-xdevapi.html">Configuring Server Failover for Connections Using X DevAPI</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-j2ee-concepts-managing-load-balanced-connections.html">Configuring Load Balancing with Connector/J</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-source-replica-replication-connection.html">Configuring Source/Replica Replication with Connector/J</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-j2ee-concepts-load-balancing-failover.html">Advanced Load-balancing and Failover Configuration</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-using-xdevapi.html">Using the X DevAPI with Connector/J: Special Topics</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-connection-compression-xdevapi.html">Connection Compression Using X DevAPI</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-schema-validation.html">Schema Validation</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-interceptors.html">Using the Connector/J Interceptor Classes</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-logging-slf4j.html">Using Logging Frameworks with SLF4J</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-opentelemetry.html">Using Connector/J with OpenTelemetry</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-tomcat.html">Using Connector/J with Tomcat</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-spring-config.html">Using Connector/J with Spring</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-spring-config-jdbctemplate.html">Using JdbcTemplate</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-spring-config-transactional.html">Transactional JDBC Access</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-spring-config-connpooling.html">Connection Pooling with Spring</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-troubleshooting.html">Troubleshooting Connector/J Applications</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-usagenotes-known-issues-limitations.html">Known Issues and Limitations</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><a class="expandable  loaded" aria-label="Subnav" href=""><span class="icon-chevron-right"></span></a></div><div class="docs-sidebar-nav-link"><a href="connector-j-support.html">Connector/J Support</a></div></div>                        <div class="docs-submenu hidden">
+                                    
+    <ul>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-support-community.html">Connector/J Community Support</a></div></div>                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="connector-j-support-bug-report.html">How to Report Connector/J Bugs or Problems</a></div></div>                    </li>
+        </ul>
+                            </div>
+                    </li>
+            <li>
+            <div><div class="docs-sidebar-nav-icon"><span class="icon-dot"></span></div><div class="docs-sidebar-nav-link"><a href="ix01.html">Index</a></div></div>                    </li>
+        </ul>
+                            </nav>
+        </div>
+
+        
+<a class="docs-sidebar-section" href=""><span class="icon-related"></span>
+    <span class="text">Related Documentation</span></a>
+<div class="docs-sidebar-accordian open">
+    <div class="text">
+        <a href="/web/20250212232939/https://dev.mysql.com/doc/relnotes/connector-j/en/">MySQL Connector/J Release Notes</a><br/>
+        </div>
+</div>
+
+    <a class="docs-sidebar-section" href=""><span class="icon-download-thin"></span>
+        <span class="text">
+            Download
+                            this Manual
+                    </span>
+    </a>
+    <div class="docs-sidebar-accordian open">
+        <div class="text">
+                                    <a href="https://web.archive.org/web/20250212232939/https://downloads.mysql.com/docs/connector-j-en.pdf">PDF (US Ltr)</a>
+            - 1.2Mb<br/>
+                                                <a href="https://web.archive.org/web/20250212232939/https://downloads.mysql.com/docs/connector-j-en.a4.pdf">PDF (A4)</a>
+            - 1.2Mb<br/>
+                                </div>
+    </div>
+
+
+        <br/><span id="wkr"><br/></span>
+    </div>
+    </div>
+
+    <div id="docs-main" class="has-toc">
+    <div id="docs-main-inner">
+
+        
+        <div id="docs-show-nav" class="left hidden" style="margin-right: 15px;">
+            <a class="docs-show-hide-nav" href="" aria-label="Show Sidebar" title="Show Sidebar"><span class="icon-arrow-small-right"></span></a>
+        </div>
+
+                        <div id="docs-breadcrumbs">
+            <a href="/web/20250212232939/https://dev.mysql.com/doc/connector-j/en/">MySQL Connector/J Developer Guide</a> &nbsp;/&nbsp;
+                            <span id="breadcrumbs-link"><a href="" id="show-breadcrumbs">...</a> &nbsp;/&nbsp;</span>
+                <span class="hidden" id="hidden-breadcrumbs">
+                                                        <a href="connector-j-reference.html">Connector/J Reference</a> &nbsp;/&nbsp;
+                                                            <a href="connector-j-reference-configuration-properties.html">Configuration Properties</a> &nbsp;/&nbsp;
+                                                                                        </span>
+                                        Networking
+                                    </div>
+        
+        <div id="docs-body">
+        
+<div class="section">
+<div class="titlepage"><div><div><h3 class="title">
+<a name="connector-j-connp-props-networking"></a>6.3.4 Networking</h3></div></div></div>
+<p>
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" type="disc">
+<li class="listitem">
+<p><a name="cj-conn-prop_socksProxyHost"></a>
+            <a class="indexterm" name="idm46445136905504"></a>
+
+            <code class="option">socksProxyHost</code>
+          </p>
+<p>
+            Name or IP address of a SOCKS host to connect through.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody><tr>
+                <th>Since Version</th>
+                <td>5.1.34</td>
+              </tr></tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_socksProxyPort"></a>
+            <a class="indexterm" name="idm46445136897120"></a>
+
+            <code class="option">socksProxyPort</code>
+          </p>
+<p>
+            Port of the SOCKS server.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>1080</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>5.1.34</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_socketFactory"></a>
+            <a class="indexterm" name="idm46445136886528"></a>
+
+            <code class="option">socketFactory</code>
+          </p>
+<p>
+            The name of the class that the driver should use for
+            creating socket connections to the server. This class must
+            implement the interface
+            'com.mysql.cj.protocol.SocketFactory' and have a public
+            no-args constructor.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>com.mysql.cj.protocol.StandardSocketFactory</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>3.0.3</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_connectTimeout"></a>
+            <a class="indexterm" name="idm46445136875664"></a>
+
+            <code class="option">connectTimeout</code>
+          </p>
+<p>
+            Timeout for socket connect (in milliseconds), with 0 being
+            no timeout.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>0</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>3.0.1</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_socketTimeout"></a>
+            <a class="indexterm" name="idm46445136865104"></a>
+
+            <code class="option">socketTimeout</code>
+          </p>
+<p>
+            Timeout, specified in milliseconds, on network socket
+            operations. Value "0" means no timeout.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>0</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>3.0.1</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_dnsSrv"></a>
+            <a class="indexterm" name="idm46445136854576"></a>
+
+            <code class="option">dnsSrv</code>
+          </p>
+<p>
+            Should the driver use the given host name to lookup for DNS
+            SRV records and use the resulting list of hosts in a
+            multi-host failover connection? Note that a single host name
+            and no port must be provided when this option is enabled.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>false</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>8.0.19</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_localSocketAddress"></a>
+            <a class="indexterm" name="idm46445136843792"></a>
+
+            <code class="option">localSocketAddress</code>
+          </p>
+<p>
+            Hostname or IP address given to explicitly configure the
+            interface that the driver will bind the client side of the
+            TCP/IP connection to when connecting.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody><tr>
+                <th>Since Version</th>
+                <td>5.0.5</td>
+              </tr></tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_maxAllowedPacket"></a>
+            <a class="indexterm" name="idm46445136835280"></a>
+
+            <code class="option">maxAllowedPacket</code>
+          </p>
+<p>
+            Maximum allowed packet size to send to server. If not set,
+            the value of system variable 'max_allowed_packet' will be
+            used to initialize this upon connecting. This value will not
+            take effect if set larger than the value of
+            'max_allowed_packet'. Also, due to an internal dependency
+            with the property 'blobSendChunkSize', this setting has a
+            minimum value of "8203" if 'useServerPrepStmts' is set to
+            "true".
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>65535</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>5.1.8</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_socksProxyRemoteDns"></a>
+            <a class="indexterm" name="idm46445136824816"></a>
+
+            <code class="option">socksProxyRemoteDns</code>
+          </p>
+<p>
+            When using a SOCKS proxy, whether the DNS lookup for the
+            database host should be performed locally or through the
+            SOCKS proxy.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>false</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>8.0.29</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_tcpKeepAlive"></a>
+            <a class="indexterm" name="idm46445136814160"></a>
+
+            <code class="option">tcpKeepAlive</code>
+          </p>
+<p>
+            If connecting using TCP/IP, should the driver set
+            'SO_KEEPALIVE'?
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>true</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>5.0.7</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_tcpNoDelay"></a>
+            <a class="indexterm" name="idm46445136803568"></a>
+
+            <code class="option">tcpNoDelay</code>
+          </p>
+<p>
+            If connecting using TCP/IP, should the driver set
+            'SO_TCP_NODELAY', disabling the Nagle Algorithm?
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>true</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>5.0.7</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_tcpRcvBuf"></a>
+            <a class="indexterm" name="idm46445136792992"></a>
+
+            <code class="option">tcpRcvBuf</code>
+          </p>
+<p>
+            If connecting using TCP/IP, should the driver set
+            'SO_RCV_BUF' to the given value? The default value of "0",
+            means use the platform default value for this property.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>0</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>5.0.7</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_tcpSndBuf"></a>
+            <a class="indexterm" name="idm46445136782368"></a>
+
+            <code class="option">tcpSndBuf</code>
+          </p>
+<p>
+            If connecting using TCP/IP, should the driver set
+            'SO_SND_BUF' to the given value? The default value of "0",
+            means use the platform default value for this property.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>0</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>5.0.7</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_tcpTrafficClass"></a>
+            <a class="indexterm" name="idm46445136771696"></a>
+
+            <code class="option">tcpTrafficClass</code>
+          </p>
+<p>
+            If connecting using TCP/IP, should the driver set traffic
+            class or type-of-service fields? See the documentation for
+            'java.net.Socket.setTrafficClass()' for more information.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>0</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>5.0.7</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_useCompression"></a>
+            <a class="indexterm" name="idm46445136760960"></a>
+
+            <code class="option">useCompression</code>
+          </p>
+<p>
+            Use zlib compression when communicating with the server?
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>false</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>3.0.17</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+<li class="listitem">
+<p><a name="cj-conn-prop_useUnbufferedInput"></a>
+            <a class="indexterm" name="idm46445136750400"></a>
+
+            <code class="option">useUnbufferedInput</code>
+          </p>
+<p>
+            Don't use 'BufferedInputStream' for reading data from the
+            server.
+          </p>
+<div class="informaltable"><table frame="box" rules="all" summary="false">
+<col style="width: 30%">
+<col style="width: 70%">
+<tbody>
+<tr>
+                <th>Default Value</th>
+                <td>true</td>
+              </tr>
+<tr>
+                <th>Since Version</th>
+                <td>3.0.11</td>
+              </tr>
+</tbody>
+</table></div>
+</li>
+</ul></div>
+<p>
+    </p>
+</div><br/>
+        </div>
+
+                <div id="docs-in-page-nav-container">
+            <div id="docs-in-page-nav">
+                
+    <a href="connector-j-connp-props-session.html" aria-label="Previous" title="Previous: Session"><span class="icon-chevron-left"></span> PREV</a> &nbsp;
+<a href="index.html" aria-label="Start" title="Start"> HOME</a> &nbsp;
+        <a aria-label="Up" href="connector-j-reference-configuration-properties.html" title="Up: Configuration Properties"> UP</a> &nbsp;
+    <a href="connector-j-connp-props-security.html" aria-label="Next" title="Next: Security">NEXT <span class="icon-chevron-right"></span></a>
+            </div>
+        </div>
+        
+         <div id="docs-body-extra">
+             
+<a class="docs-sidebar-section" href=""><span class="icon-related"></span>
+    <span class="text">Related Documentation</span></a>
+<div class="docs-sidebar-accordian">
+    <div class="text">
+        <a href="/web/20250212232939/https://dev.mysql.com/doc/relnotes/connector-j/en/">MySQL Connector/J Release Notes</a><br/>
+        </div>
+</div>
+
+    <a class="docs-sidebar-section" href=""><span class="icon-download-thin"></span>
+        <span class="text">
+            Download
+                            this Manual
+                    </span>
+    </a>
+    <div class="docs-sidebar-accordian">
+        <div class="text">
+                                    <a href="https://web.archive.org/web/20250212232939/https://downloads.mysql.com/docs/connector-j-en.pdf">PDF (US Ltr)</a>
+            - 1.2Mb<br/>
+                                                <a href="https://web.archive.org/web/20250212232939/https://downloads.mysql.com/docs/connector-j-en.a4.pdf">PDF (A4)</a>
+            - 1.2Mb<br/>
+                                </div>
+    </div>
+
+         </div>
+     </div>
+     </div>
+
+</div>
+
+<script>
+$(function() {
+    var doc = new $.doc({ 'mobile': $.browser.mobile, 'docId': 10, 'highlight': true });
+});
+</script>
+    
+
+            
+        </div>
+    </div>
+
+    <footer class="collapsed">
+        <div id="footer-bottom">
+                                    <div id="footer-collapse">
+                <a href="" id="expand-footer" aria-label="Expand Footer" title="Expand Footer"><span class="icon-plus-square"></span></a>
+            </div>
+                        <div class="footer-contact">
+                <div id="footer-contact-icon" style="display: none;">
+                    <span class="icon-call-phone"></span>
+                </div>
+                <div id="footer-contact-numbers" style="display: none;">
+                    <strong>Contact MySQL Sales</strong><br/>
+                    USA/Canada: +1-866-221-0634 &nbsp;
+                    (<a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/about/contact/phone/" class="darker-blue">More Countries &raquo;</a>)
+                </div>
+                <div id="footer-contact-copyright" style="display: inline-block;">
+                    <a href="https://web.archive.org/web/20250212232939/http://www.oracle.com/" aria-label="Oracle" title="Oracle"><span class="oracle-logo"></span></a>
+                    &nbsp; <a href="https://web.archive.org/web/20250212232939/https://www.oracle.com/legal/copyright.html">&copy; 2025 Oracle</a>
+                </div>
+            </div>
+            <div class="social-icons">
+                <a aria-label="Join us on Facebook" title="Join us on Facebook" href="https://web.archive.org/web/20250212232939/http://www.facebook.com/mysql"><span class="icon-facebook-square"></span></a>
+                <a aria-label="Follow us on X" title="Follow us on X" href="https://web.archive.org/web/20250212232939/https://x.com/mysql"><span class="icon-x-twitter-square"></span></a>
+                <a aria-label="Follow us on LinkedIn" title="Follow us on LinkedIn" href="https://web.archive.org/web/20250212232939/https://www.linkedin.com/company/mysql"><span class="icon-linkedin-square"></span></a>
+                <a aria-label="Visit our YouTube channel" title="Visit our YouTube channel" href="https://web.archive.org/web/20250212232939/http://www.youtube.com/mysqlchannel"><span class="icon-youtube-square"></span></a>
+            </div>
+            <br class="clear"/>
+        </div>
+        <div id="footer-links">
+
+            <div id="site-footer-links">
+                <div id="footer-nav"></div>
+
+                <div class="links">
+                    <ul>
+                        <li class="top"><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/products/">Products</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/products/heatwave/">HeatWave</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/products/enterprise/">MySQL Enterprise Edition</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/products/standard/">MySQL Standard Edition</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/products/classic/">MySQL Classic Edition</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/products/cluster/">MySQL Cluster CGE</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/oem/">MySQL Embedded (OEM/ISV)</a></li>
+                    </ul>
+                </div>
+
+                <div class="links">
+                    <ul>
+                        <li class="top"><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/services/">Services</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/training/">Training</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/certification/">Certification</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/support/">Support</a></li>
+                    </ul>
+                </div>
+
+                <div class="links">
+                    <ul>
+                        <li class="top"><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/downloads/">Downloads</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/downloads/mysql/">MySQL Community Server</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/downloads/cluster/">MySQL NDB Cluster</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/downloads/shell/">MySQL Shell</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/downloads/router/">MySQL Router</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/downloads/workbench/">MySQL Workbench</a></li>
+                    </ul>
+                </div>
+
+                <div class="links">
+                    <ul>
+                        <li class="top"><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/">Documentation</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/refman/en/">MySQL Reference Manual</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/workbench/en/">MySQL Workbench</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/index-cluster.html">MySQL NDB Cluster</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/index-connectors.html">MySQL Connectors</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://dev.mysql.com/doc/#topic">Topic Guides</a></li>
+                    </ul>
+                </div>
+
+                <div class="links">
+                    <ul>
+                        <li class="top"><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/about/">About MySQL</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/about/contact/">Contact Us</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://blogs.oracle.com/mysql/">Blogs</a></li>
+                                                                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/buy-mysql/">How to Buy</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/partners/">Partners</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/about/jobs/">Job Opportunities</a></li>
+                        <li><a href="https://web.archive.org/web/20250212232939/https://www.mysql.com/sitemap.html">Site Map</a></li>
+                    </ul>
+                </div>
+
+                            </div>
+
+            <div id="footer-logo">
+                <a href="https://web.archive.org/web/20250212232939/http://www.oracle.com/" aria-label="Oracle" title="Oracle"><span class="oracle-logo"></span></a>
+                &nbsp; <a href="https://web.archive.org/web/20250212232939/https://www.oracle.com/legal/copyright.html">&copy; 2025 Oracle</a>
+                <div class="footer-legal-links">
+                    <a href="https://web.archive.org/web/20250212232939/https://www.oracle.com/legal/privacy/">Privacy</a> /
+                    <a href="https://web.archive.org/web/20250212232939/https://www.oracle.com/legal/privacy/privacy-choices.html">Do Not Sell My Info</a> |
+                    <a href="https://web.archive.org/web/20250212232939/https://www.oracle.com/us/legal/terms/index.html">Terms of Use</a> |
+                    <a href="https://web.archive.org/web/20250212232939/https://www.oracle.com/us/legal/third-party-trademarks/index.html">Trademark Policy</a> |
+                    <div id="teconsent"></div>
+                </div>
+            </div>
+
+        </div>
+    </footer>
+</div>
+
+            <script>
+    if ((oracle.truste.api.getGdprConsentDecision().consentDecision) &&
+            (oracle.truste.api.getGdprConsentDecision().consentDecision.indexOf(0) != -1 ||
+             oracle.truste.api.getGdprConsentDecision().consentDecision.indexOf(2) != -1) )
+    {
+        document.write('<script src="https://web.archive.org/web/20250212232939/https://labs.mysql.com/common/js/metrics/ora_mysql.js"><\/script>');
+        document.write('<script type="text/javascript" async src="//web.archive.org/web/20250212232939/https://c.oracleinfinity.io/acs/account/wh3g12c3gg/js/mysql/odc.js?_ora.context=analytics:production"><\/script>');
+    }
+    </script>
+
+        
+    
+</body>
+</html>
+<!--
+     FILE ARCHIVED ON 23:29:39 Feb 12, 2025 AND RETRIEVED FROM THE
+     INTERNET ARCHIVE ON 06:24:07 Sep 19, 2026.
+     JAVASCRIPT APPENDED BY WAYBACK MACHINE, COPYRIGHT INTERNET ARCHIVE.
+
+     ALL OTHER CONTENT MAY ALSO BE PROTECTED BY COPYRIGHT (17 U.S.C.
+     SECTION 108(a)(3)).
+-->
+<!--
+playback timings (ms):
+  captures_list: 0.767
+  exclusion.robots: 0.132
+  exclusion.robots.policy: 0.116
+  esindex: 0.01
+  cdx.remote: 44.428
+  LoadShardBlock: 487.346 (3)
+  PetaboxLoader3.resolve: 491.669 (4)
+  PetaboxLoader3.datanode: 216.8 (4)
+  load_resource: 356.099
+  nav: 0.293 (6)
+-->
