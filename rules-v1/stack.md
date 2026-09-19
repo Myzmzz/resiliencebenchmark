@@ -162,7 +162,7 @@
 | 5 | 服务发现与配置中心 | Nacos | 4/4 | 3 |
 | 5 | 服务发现与配置中心 | ZooKeeper | 2/2 | 3 |
 | 5 | 服务发现与配置中心 | etcd | 2/2 | 4 |
-| 6 | 消息与流 | Kafka | 3/3 | 8 |
+| 6 | 消息与流 | Kafka | 3/3 | 9 |
 | 6 | 消息与流 | NATS | 1/1 | 1 |
 | 6 | 消息与流 | Pulsar | 1/1 | 3 |
 | 6 | 消息与流 | RabbitMQ | 4/4 | 8 |
@@ -190,7 +190,7 @@
 | 10 | 跨层准则与模式目录 | ChaosBlade | 1/1 | n/a（准则层，不作为 instantiations 的组件） |
 | 10 | 跨层准则与模式目录 | Google Cloud Architecture Framework | 1/1 | n/a（准则层，不作为 instantiations 的组件） |
 | 10 | 跨层准则与模式目录 | Google SRE | 4/4 | n/a（准则层，不作为 instantiations 的组件） |
-| 10 | 跨层准则与模式目录 | microservices.io | 6/6 | 1 |
+| 10 | 跨层准则与模式目录 | microservices.io | 6/6 | n/a（准则层，不作为 instantiations 的组件） |
 | 11 | 已有的检查规则集 | Istio | 1/1 | 13 |
 | 11 | 已有的检查规则集 | Kubernetes | 1/1 | 20 |
 | 11 | 已有的检查规则集 | Polaris | 2/2 | 7 |

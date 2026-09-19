@@ -3004,8 +3004,8 @@ rules:
   - component: RocketMQ
     how: 事务消息的半消息 + 本地事务回查
     config_or_code: code
-  - component: microservices.io
-    how: Saga 模式的编排式/协同式两种实现
+  - component: Kafka
+    how: 用事件驱动的协同式 saga 时，每一步的事件与补偿事件都要能被重放且幂等
     config_or_code: code
   - component: Spring Boot
     how: 每个 saga 步骤有对应补偿方法，且补偿本身幂等

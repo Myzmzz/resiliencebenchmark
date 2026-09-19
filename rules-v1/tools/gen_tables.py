@@ -228,7 +228,11 @@ def gen_stats(log, rules, advisories):
                 per_layer[lay].add(r["rule_id"])
     for layer in sorted(LAYERS):
         n = len(per_layer.get(layer, ()))
-        A("| %d | %s | %d | %s |" % (layer, LAYERS[layer], n, "⚠ 无规则" if n == 0 else ""))
+        if layer == 10:
+            note = "n/a——准则层，它的文档作为 sources 出现（见第 5 节），不作为 instantiations 的组件"
+        else:
+            note = "⚠ 无规则" if n == 0 else ""
+        A("| %d | %s | %d | %s |" % (layer, LAYERS[layer], n, note))
 
     A("\n## 9. 抓取失败的文档\n")
     fails = [v for v in log.values() if v["status"] != "ok"]
