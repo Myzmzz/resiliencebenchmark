@@ -1,0 +1,95 @@
+# doc_id: LIT-ORCAS-ISSREW18
+# url: https://www.edit.fis.uni-hamburg.de/ws/files/40890515/vanHoornAletiDuellmannPitakrat2018ORCASEfficientResilienceBenchmarkingOfMicroserviceArchitectures_camera_ready_stamp.pdf
+# retrieved: 2026-09-20
+# ---- normalized text below ----
+ORCAS: Efﬁcient Resilience Benchmarking of Microservice Architectures
+
+Andr´e van Hoorn University of Stuttgart Stuttgart, Germany
+
+Aldeida Aleti Monash University Melbourne, Australia
+
+Thomas F. D¨ullmann University of Stuttgart Stuttgart, Germany
+
+Teerat Pitakrat University of Stuttgart Stuttgart, Germany
+
+Abstract—Resilience benchmarking aims to assess a software system’s and an organization’s ability to cope with failures, e.g., by injecting faults and observing their effects in both, testing and production environments. However, existing resilience benchmarks are ad-hoc and based on randomly injected faults. In this paper, we give an overview of the vision and the current state of our ORCAS approach for a more efﬁcient resilience benchmarking for microservice architectures. ORCAS leverages the following characteristics: i) relationship between resilience patterns, antipatterns, and fault injections; ii) automatically extracted architectural knowledge to generate and reﬁne resilience benchmarks; iii) use of simulations to further reduce the number of benchmarks to execute in testing and production systems.
+
+I. INTRODUCTION
+
+The microservice architectural style [1] is gaining more and more prevalence in the industry when designing complex, cloud-based distributed systems. One of its guiding principles is design for failure, which means that a microservice is able to cope with failures of other microservices and its surrounding software/hardware infrastructure. This resilience is achieved by employing architectural resilience patterns such as circuit breaker and bulkhead [2], which have become core features of modern microservice technologies such as Hystrix,1 Kubernetes,2 and Istio.3
+
+Resilience benchmarking [3] is a well-known method to assess failure tolerance mechanisms—for instance, using fault injection [4]. Meanwhile, resilience benchmarking is not only conducted in testing environments, but also during a system’s production use [5], [6]. Current resilience benchmarking practices are ad-hoc and based on random fault injection. For instance, the Simian Army [5] shuts down or manipulates randomly selected (virtual) servers or data center regions. On the other hand, efﬁciency is one of the desired properties of fault injection, aiming to keep the number of experiments at an adequately low level to save time and costs [4].
+
+In this paper, we outline the vision and the current state of our ORCAS approach for efﬁcient resilience benchmarking of microservice architectures. The approach exploits knowledge about the relationship of resilience patterns, antipatterns, and suitable fault injections, as well as the system’s architecture to generate resilience experiments, combining simulations and testing/production-level benchmarks. ORCAS can be used to
+
+1https://github.com/Netﬂix/Hystrix/ 2http://kubernetes.io/ 3https://istio.io/
+
+detect resilience antipatterns and to assess the effectiveness of present resilience patterns. The expected beneﬁt is that the number of benchmarks to be executed against the real system are considerably reduced while achieving comparable or better benchmarking results.4
+
+II. ORCAS: CHARACTERISTICS OF THE APPROACH
+
+The research on the ORCAS approach is centered around the following three characteristics. In this project we beneﬁt from our existing experience and tooling infrastructure from previous projects, e.g., extraction of architectural information and antipatterns from monitoring data [7], [8], antipatternbased fault injection [9], [10], and the use of machine learning for architecture-based online failure management [11], [12].
+
+1) Leveraging the relationship between resilience patterns, antipatterns, and fault injections: A machine-processable taxonomy will represent knowledge about how resilience antipatterns are related, how resilience patterns help to mitigate antipatterns, and which fault injections are suitable to test resilience patterns and antipatterns. The taxonomy will include a mapping between a conceptual and a technology layer, which links generic patterns such as the circuit breaker to different implementations, e.g., the one included in the Hystrix library. 2) Considering software architectural knowledge to generate experiments: We plan to investigate approaches for generating efﬁcient resilience benchmarks based on architectural knowledge of the software systems. The core parts comprise the deﬁnition of a suitable architectural description language, techniques to automatically extract instances of the language from systems, and algorithms for generating the experiments. Initially, the generated experiments are intended to be executed on real systems in testing or production environments.
+
+3) Combining measurement-based and simulation-based resilience experiments: We aim to improve the benchmarks by using simulations in addition to executing experiments on the real system. The goal of this hybrid approach is to reduce and prioritize the number of experiments. In addition to the development and/or integration of a suitable simulator, this will result in a number of alternative algorithms for hybrid resilience benchmarking.
+
+4The name ORCAS has been chosen based on the analogy to the killer
+
+whales known for their coordinated and prey-speciﬁc hunting strategy.
+
+IV. CONCLUSIONS AND NEXT STEPS ORCAS will contribute towards more efﬁcient and effective resilience benchmarking, by injecting faults guided by the information about the architecture of the software system and the results from previously conducted experiments. The resilience model learned from hybrid experiments, i.e., combining simulations and experiments with the real system, can be used to generate better experiments for other systems in the future as well, reducing the time needed to identify system faults. In the next steps, we will reﬁne our prototypes by adding support for more (anti)patterns and fault injections, hybrid algorithms, and will proceed with the evaluation. We will quantitatively compare the ORCAS approach to others such as [13]. We are currently building up an experimental infrastructure based on modern microservice technologies. One of the core components is Istio, which has built-in support for resilience patterns and fault injection, as well as distributed tracing. We have extended our generator for microservices [10] to support Istio-based deployments. Current and future implementations are and will be publicly available.5
+
+ACKNOWLEDGMENT This work is partly funded by the Baden-W¨urttemberg Stiftung (ORCAS Project). We thank Samuel Beck, Johannes G¨unth¨or, and Christoph Zorn for their implementation support.
+
+REFERENCES
+
+[1] S. Newman, Building Microservices—Designing Fine-Grained Systems.
+
+O’Reilly Media, 2015.
+
+[2] M. Nygard, Release It!: Design and Deploy Production-Ready Software,
+
+2nd ed. Pragmatic Bookshelf, 2018.
+
+[3] M. Vieira, H. Madeira, K. Sachs, and S. Kounev, “Resilience benchmarking,” in Resilience Assessment and Evaluation of Computing Systems. Springer, 2012.
+
+[4] R. Natella, D. Cotroneo, and H. S. Madeira, “Assessing dependability with software fault injection: A survey,” ACM Comput. Surv., vol. 48, no. 3, Feb. 2016.
+
+[5] C. Rosenthal, L. Hochstein, A. Blohowiak, N. Jones, and A. Basiri, Chaos Engineering—Building Conﬁdence in System Behavior through Experiments. O’Reilly, 2017.
+
+[6] B. Beyer, N. R. Murphy, D. K. Rensin, K. Kawahara, and S. Thorne,
+
+Eds., The Site Reliability Workbook. O’Reilly, 2018.
+
+[7] C. Heger, A. van Hoorn, M. Mann, and D. Okanovic, “Application performance management: State of the art and challenges for the future,” in Proc. ICPE ’17, 2017.
+
+[8] C. V¨ogele, A. van Hoorn, E. Schulz, W. Hasselbring, and H. Krcmar, “WESSBAS: Extraction of probabilistic workload speciﬁcations for load testing and performance prediction—A model-driven approach for session-based application systems,” Journal on Software and System Modeling (SoSyM), vol. 17, no. 2, May 2018.
+
+[9] P. Keck, A. van Hoorn, D. Okanovi´c, T. Pitakrat, and T. F. D¨ullmann, “Antipattern-based problem injection for assessing performance and reliability evaluation techniques,” in Proc. ISSREW 2016. IEEE, 2016. [10] T. F. D¨ullmann and A. van Hoorn, “Model-driven generation of microservice architectures for benchmarking performance and resilience engineering approaches,” in Comp. ICPE ’17. ACM, 2017.
+
+[11] T. Pitakrat, D. Okanovi´c, A. van Hoorn, and L. Grunske, “Hora: Architecture-aware online failure prediction,” Journal of Systems and Software, vol. 137, 2018.
+
+[12] A. van Hoorn, Model-Driven Online Capacity Management
+
+for
+
+Component-Based Software Systems. Ph.D. thesis, Kiel Univ., 2014.
+
+[13] P. Alvaro, K. Andrus, C. Sanden, C. Rosenthal, A. Basiri, and L. Hochstein, “Automating failure testing research at internet scale,” in Proc. SoCC ’16. ACM, 2016.
+
+5https://github.com/orcas-elite
+
+Fig. 1. ORCAS framework architecture and workﬂow
+
+III. FRAMEWORK AND PRELIMINARY ARTIFACTS
+
+This section gives an overview of the ORCAS framework and workﬂow, as well as preliminary implementations of artifacts. 1) Framework and Workﬂow: The activities are centered around the framework architecture and workﬂow depicted in Figure 1. Architectural information is extracted from the system in production. The ORCAS decision engine processes this information to generate simulation-based and measurementthe generated based resilience experiments. In each case, experiments include a deﬁnition of the workload [8] and the faultload [4]. For measurement-based experiments, the workload is used only in testing environments where no production workload can be used. Simulation-based experiments are executed by a simulator. The results of the experiments are fed back to the ORCAS decision engine to determine new sets of experiments based on the experiment results.
+
+2) Architectural Description and Extraction: Based on our previous work [10], we have deﬁned a modeling language for microservice architectures. In addition to the services and their inter-relationships, it represents the existence of resilience patterns. Accordingly, we have implemented an approach to automatically extract instances of the architectural model from state-of-the-art monitoring tools based on the OpenTracing standard [7].
+
+3) Discrete Event Simulation: We have developed an initial version of a simulator that allows executing instances of the architectural model. In addition to the architectural model, the simulator requires the workload and faultload deﬁnitions as inputs. For the simulator, we have implemented an initial set of patterns, such as the circuit breaker. The simulation results include metrics such as errors and response times of service requests, as well as utilization of resources.
+
+4) Bayesian Algorithm for Decision Making: A ﬁrst algorithm for the ORCAS decision engine has been implemented, which is based on Bayesian inference. Starting with prior knowledge about the effectiveness of architectural patterns and antipatterns in the withstanding faults, it generates a ﬁrst set of experiments to be executed. In the next iterations, the knowledge about experiment results is taken into account to build a probabilistic model. The use of simulations alongside real experiments will improve the efﬁciency of the algorithm.
+
+Orcas Decision EngineArchitectural InformationSystemextractionExperimentrealinputgenerationexecutionWorkloadFaultloadExperimentsimSystemSimulationgenerationresultsinputinputWorkloadFaultloadresults

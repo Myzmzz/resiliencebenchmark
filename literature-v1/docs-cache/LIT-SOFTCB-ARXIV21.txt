@@ -1,0 +1,507 @@
+# doc_id: LIT-SOFTCB-ARXIV21
+# url: https://arxiv.org/pdf/2104.02463
+# retrieved: 2026-09-20
+# ---- normalized text below ----
+1
+
+Towards Soft Circuit Breaking in Service Meshes via Application-agnostic Caching Lars Larsson∗, William Tärneberg†, Cristian Klein∗, Maria Kihl†, and Erik Elmroth∗ ∗ Department of Computing Science, Umeå University, Sweden Email: {larsson, cklein, elmroth}@cs.umu.se † Department of Electrical and Information Technology, Lund University, Sweden Email: {william.tarneberg, maria.kihl}@eit.lth.se
+
+1 2 0 2
+
+r p A 6
+
+] I
+
+N . s c [
+
+1 v 3 6 4 2 0 . 4 0 1 2 : v i X r a
+
+Abstract—Service meshes factor out code dealing with intermicro-service communication, such as circuit breaking. Circuit breaking actuation is currently limited to an "on/off" switch, i.e., a tripped circuit breaker will return an application-level error indicating service unavailability to the calling micro-service. This paper proposes a soft circuit breaker actuator, which returns cached data instead of an error. The overall resilience of a cloud application is improved if constituent micro-services return stale data, instead of no data at all. While caching is widely employed for serving web service trafﬁc, its usage in inter-micro-service communication is lacking. Micro-services responses are highly dynamic, which requires carefully choosing adaptive time-tolife caching algorithms. We evaluate our approach through two experiments. First, we quantify the trade-off between trafﬁc reduction and data staleness using a purpose-build service, thereby identifying algorithm conﬁgurations that keep data staleness at about 3% or less while reducing network load by up to 30%. Second, we quantify the network load reduction with the micro-service benchmark by Google Cloud called Hipster Shop. Our approach results in caching of about 80% of requests. Results show the feasibility and efﬁciency of our approach, which encourages implementing caching as a circuit breaking actuator in service meshes.
+
+Index Terms—C.2.4 Distributed Systems, C.2.4.b Distributed
+
+applications
+
+I. INTRODUCTION
+
+Micro-services have emerged as the dominant architectural design pattern for engineering scalable and resilient cloud applications. Said pattern encourages separation of concerns and data ownership between micro-services [1], thus, leading to frequent inter-service requests for data retrieval. In fact, a single public API request may cause orders of magnitude more inter-service requests.
+
+Service meshes [2] have emerged to factor our commonalities in upstream and downstream communication between micro-services, such as load-balancing, retrying and graceful timeouts. One core feature that is gaining increasing attention is circuit breaking, i.e., reducing downstream trafﬁc in case a condition is detected that suggests overload, such as requests towards a downstream micro-service queueing up. Circuit breaking consists of three parts: sensors that observe metrics of relevance, a decision mechanism to convert observed metrics in an overload signal, and an actuator that takes action against the overload.
+
+This paper focuses on the actuator. Current circuit breaking actuators are of the "on/off"-type, i.e., a tripped circuit breaker
+
+returns a transient application-level error response indicating service unavailability. This paper evaluates an alternative circuit breaker actuator in service meshes: caching. Indeed, cloud application resilience can be improved if constituent microservices send a reply with stale data, instead of no data at all.
+
+While caching responses is not by itself novel, we are, to our knowledge, the ﬁrst to suggest and evaluate its usage as circuit breaker actuator in service meshes. Indeed, caching responses is a well-known method for making web content delivery more responsive by reducing service and network load [3], [4]. However, with the exception of database caching, caching in general is not commonly used for inter-service communication. A key difference between web content caching and inter-service caching is that the latter features highly dynamic responses, that become stale after a few seconds, as opposed to days for web content. Hence, a key question is how the timeto-live (TTL) of a request affects data staleness and network trafﬁc reduction of a realistic cloud application.
+
+To keep the risk of stale data at acceptable levels, we repurpose adaptive TTL estimation algorithms from the web content delivery ﬁeld for this new purpose (for differences between the ﬁelds, please see Section II). To provide a quantitative evaluation of the system, we have selected two dynamic TTL estimation algorithms from the web content caching literature. The selection was driven by plausability to work in the new context of inter-service communication, which has different properties than web content caching (Section IV).
+
+To evaluate the two algorithms on a realistic cloud application, we implemented a gRPC-based caching infrastructure, mimicking a service mesh (Section III), and use it to empirically quantify the applicability of caching using dynamically estimated TTLs with two suites of experiments (Section VI). The ﬁrst suite of experiments (Section VI-A) quantiﬁes the trade-off between network trafﬁc reduction and introduction of errors due to data staleness. To do so, we have developed a service and workload generator that speciﬁcally enables data staleness to be controlled and behavior to be observed. The second suite applies the conservatively conﬁgured algorithms to a realistic micro-service setting (Section VI-B). The caching infrastructure is deployed with the Hipster Shop application developed by Google Cloud Platform and use their workload generator to subject the system to simulated e-commerce users.
+
+The contributions of this paper are as follows:
+
+• We design and implementation caching as a circuit breaker for service meshes, which works even with gRPC-based communication; as expected from service meshes, the mechanism is application-agnostic and thus requires no source code changes;
+
+• We evaluate the inherent
+
+trade-offs between network trafﬁc reduction and data staleness using a simple value service.
+
+• We demonstrate network trafﬁc reduction with a real
+
+micro-service application.
+
+The results (Section VI-B4) show that about 80% of interservice requests could be answered using cached data, which also caused an overall network trafﬁc reduction by 40%. Our work suggests that caching is a feasible and efﬁcient circuit breaker actuator, and encourages its implementation in service meshes.
+
+To facilitate reproducibility and reuse of results, we make all our source code and data sets openly available for beneﬁt of the research community. Implementing additional algorithms is a straight-forward process and requires very little code.
+
+II. BACKGROUND
+
+Caching is extensively used in web content serving, and has been for a long time [3]. However, it is not commonly used in inter-service communication, and we believe there to be both technical and non-technical reasons for this. The technical ones are temporary hurdles to overcome through engineering: lack of support for caching certain HTTP verbs (gRPC uses POST for every operation, which is typically not considered cacheable), failure to communicate using the right transport protocol (HTTP/1.1 to upstream services rather than HTTP/2), etcetera. All these can be solved rather easily and be incorporated in software. While our work focuses on gRPC, which has no support for caching in its speciﬁcation (in spite of nascent support in the Protobuf service descriptor for marking operations as idempotent [5]), it should be noted that there are no technical reasons that prevent typical RESTbased services from using well-established HTTP/1.1-based caching infrastructure. And yet, it seems to be not commonly done in practice, as exempliﬁed by the fact that even a major vendor like Microsoft does not mention it in their REST API guidelines [6].
+
+The non-technical reasons are more interesting to us, as the major hurdle does not seem to be the technical challenges. A reason that cannot be ignored is that it is hard to a priori determine TTLs for responses. Software developers cannot during development reasonably know for how long responses will be valid, unless the underlying data is known to be stable for some time (e.g. weather estimates that are updated hourly). But letting software inspect responses and thereafter estimate TTLs during runtime is deﬁnitely possible, as our results show. Determining which operations are possible to cache can also present a challenge. It is generally considered good API design to separate operations that can mutate state from the ones that cannot. REST enforces this via HTTP verb mapping [7]. Because gRPC lacks caching on the protocol level, there is no such enforcement. Still, it is an ingrained best practice design
+
+2
+
+pattern and developers and operators are therefore generally aware of which operations can mutate state and can therefore inform software of it.
+
+It is a generally accepted practice to use a fast in-memory key-value store such as Redis in front of databases for read queries to avoid needlessly straining the database service with possibly complex queries (e.g., ones requiring multitable JOINs) [8], [9]. The application code is then adapted to always check the key-value store before issuing the possibly complicated database query, where the results may be cached. Thus, it is up to application developers to not only decide which operations to cache but also, possibly, for how long. The approach we take differs in that we (a) cache in-between services, not just in front of the canonical database server; (b) require no application awareness of caching — as, indeed, gRPC applications have no concept of caching; and (c) object cache time-to-live is continuously re-estimated. In this way, applications can get the beneﬁts of caching across microservice architectures where calls are performed in many steps before hitting a database, and application developers need not make their applications cache-aware.
+
+Services that use gRPC for inter-service communication often expose a REST interface toward clients. Would it therefore not be sufﬁcient to cache only the client-facing responses? We argue that it is not sufﬁcient in a micro-service application, for two reasons. Firstly, modern services typically have analytics and other batch jobs that rely on direct inter-service requests, rather than on publicly facing aggregated APIs. Second, TTLs for aggregated results are bounded by the lowest TTL among the constituent sub-results. Our results with the Hipster Shop application show that, on average, a single client request branches out and requires aggregated data from around 13 inter-service requests (Section VI-B5). Should even a single of these have low TTL and the others a high TTL, it would invalidate the aggregated response and all requests would have to be wastefully re-issued if only client-facing caching was used. This has been previously explored with regard to personalized web sites in e.g. [10].
+
+Because inter-service communication differs from web content caching, we regard the following properties as important differences:
+
+• updates are potentially more frequent, and TTLs therefore shorter. Well-designed web applications consist of immutable and therefore inﬁnitely cacheable static resources, presented via a dynamic HTML page, making the orders of magnitude smaller (in bytes) HTML page the only asset that needs a short TTL;
+
+• large variance in object popularity. Unlike web content caching, where some objects are much more popular than others due to human preference (70% of objects at a CDN were requested only once over a multi-day period [11]), API requests are highly varied and popularity distribution need not be tied to human preference; and
+
+• calculations and responses must be fast. Because clientfacing requests cause multiple inter-service requests, caching must not add signiﬁcant delays, lest the multiplicative effect be noticeable.
+
+Figure 1: Caching infrastructure architecture overview showing the old trafﬁc ﬂow as a dotted gray line and the new trafﬁc ﬂow through Cache and Estimator components in black.
+
+III. SOFT CIRCUIT BREAKER ACTUATOR: ARCHITECTURE
+
+Service meshes instantiate for each micro-service two proxies: one handling upstream calls and one handling downstream calls. This allows the service mesh to intercept all interservice calls in an application-agnostic way, and offer higherlevel communication functionality, such as circuit breaking. We hereby propose a system architecture that can readily be deployed in a service mesh.
+
+Our proposed caching circuit breaker actuator has two components: the Estimator and the Cache. Respectively, they are responsible for estimating for how long a response object is valid and for caching responses for (maximally) that amount of time.
+
+Figure 1 shows the conceptual architecture and trafﬁc ﬂow in the system. Instead of direct connection between the Client and Server (marked with dotted gray line), the newly added components are deployed and conﬁgured to intercept the trafﬁc (black lines).
+
+The Estimator and Cache components can be deployed in different conﬁgurations, i.e., in the downstream or upstream proxy of the service mesh, each favoring different aspects of a performance and cache coherency trade-off. These are discussed in Section III-C.
+
+A. Cache component
+
+Unlike HTTP/1.1, where caching is speciﬁed as part of the protocol [12], gRPC has no notion of caching (see also Section II). Accordingly, the Cache component in our proposed system must respond as the Client expects a Server to respond. This makes the Cache behave indistinguishably from a Server from the point of view of the Client, thereby allowing for seamless integration with existing gRPC applications.
+
+It is valid to add metadata in headers for gRPC responses. We use the Cache-Control header to express the TTL in seconds, similar to how HTTP/1.1 deﬁnes it. If response TTL is given in the header of a response, the Cache component will cache the response for the given amount of time. If not, or the TTL is speciﬁed as 0, the response will not be cached.
+
+B. Estimator component
+
+The Estimator component estimates how long a response to a particular request can be considered valid and therefore cached. Since gRPC Servers do not typically convey how long responses are valid, the Estimator can use multiple different algorithms to estimate object cache validity (see Section IV). When a request has been made to the Estimator, it will for a limited duration of time produce response TTL estimates
+
+3
+
+for subsequent equivalent requests. The time limit is used for housekeeping purposes: once the time limit is surpassed, the Estimator will de-allocate the memory used to calculate estimates for the particular request.
+
+Because the Estimator cannot know when a response to a request has changed, it has to continuously update its estimates. The Estimator will contact the upstream Server whenever it gets an incoming request. The reason for an incoming request must be that the Cache cannot answer a Client request from memory, which either means that the Cache has restarted or the response TTL has been surpassed. Regardless, the Estimator will contact the upstream Server and make a new TTL estimate.
+
+C. Component co-deployment
+
+Because the Cache and Estimator components are designed to seamlessly deploy into the network between Client and Server, a number of different deployment scenarios are possible. In this work, we focus solely on the case where Cache components are co-deployed with Clients, and Estimator components with Servers. We defer investigation into the consequences of the different deployment scenarios with regard to, e.g., cache consistency and trafﬁc reduction to future work. In practical terms and in the context of this work, co-deployment means that a sidecar container is started in a Kubernetes Pod. By deﬁnition, this implies that localhost networking can be used between co-deployed components. This follows an established pattern of how, e.g., service meshes such as Istio offer their services.
+
+IV. TTL ESTIMATION ALGORITHMS
+
+Meeting the requirements stated in the previous section and cognizant of differences between web content serving and inter-service request handling, we have implemented to algorithms that take very little memory and require no large body of training data to function. For comparison reasons, we have also implemented a simple static TTL “estimation” as well.
+
+A. Static TTL
+
+The Static TTL algorithm acts as a point of reference and base case. It takes as runtime conﬁguration a single parameter, β, namely the number of seconds (integer) to always statically respond with as response TTL for each incoming request. Thus, the TTL of an object x (TTLx) simply is:
+
+TTLx = β
+
+(1)
+
+Note that setting the β parameter to zero implies that no caching should be made. In doing so, we obtain a base case where the caching infrastructure is in place, but no caching is performed. Thus, neither network trafﬁc reduction nor data staleness are introduced.
+
+4
+
+B. Adaptive TTL
+
+V. IMPLEMENTATION
+
+The Adaptive TTL algorithm [13] uses a simple heuristic to estimate TTL of an object x (TTLx), based on the time interval between when the object was last modiﬁed (Mx) and the current time (t). It is parameterized by α, a real number that, while technically semantic-free [13], practically signiﬁes a linear “acceptance” of stale data by the operator. Higher values of α mean longer estimated TTL, and thus, higher risk of stale data. The estimated TTL is given by Equation 2:
+
+TTLx = (t − Mx) × α
+
+(2)
+
+While per deﬁnition α can take on any positive real value, it is unlikely to be useful if larger than 0.5. To see why, consider that α = 0.5 states that if the last modiﬁcation was 10 second ago, 5 seconds would be a reasonable TTL. This causes the system to behave in a manner inspired by the Nyqvist-Shannon Sampling Theory [14]: sampling twice as often as (is estimated to be) needed.
+
+We have implemented the Adaptive TTL algorithm as described in [13]. The memory requirements per request of the implementation includes only storing a hash value of the latest updated response and the associated time stamp when the response last changed.
+
+C. Update-risk based TTL
+
+Lee et al. introduced an Update-risk based TTL estimation scheme in [13]. According their paper, choosing a good value of α in Adaptive TTL requires guesswork and suffers because there is no clear semantic meaning to α. Instead, the Updaterisk based algorithm takes as a parameter an operator-speciﬁed acceptable update risk, ρx ∈ [0, 1), for a given object x. Low values result in low TTLs and therefore low risk of missing an update (stale data). Values close to 1 implies that a large update risk is allowed, resulting in a very large TTL, and consequently signiﬁcantly higher risk of data staleness.
+
+If we let BUDx(K) signify the “backward K-update distance” (point in time of the K th most recent response object update of x), then the estimated TTL for object x (TTLx) is given by Equation 3:
+
+TTLx = −
+
+BUDx(K) K
+
+log(1 − ρx)
+
+(3)
+
+By experimentation, the original authors found that K = 2 provides the best estimates [13], and that is what we use in our implementation as well. Intuitively, this means that the calculation determines rate of change by keeping a history of two modiﬁcation timestamps and then dividing by 2. The implementation therefore only requires keeping two response hashes and associated timestamps per request.
+
+The Update-risk based one is less reactive than Adaptive TTL in estimating update frequency, which only uses the timestamp of the single most recent modiﬁcation to do the same. It should also be noted that Lee et al. mathematically prove that setting ρ = 1 − e−α and using K = 1 makes Update-risk based behave as Adaptive TTL [13]. We did implementation, and however not verify that via practical rather implemented them separately.
+
+Our design goals for the implementation are to be extensible, suitable for research via instrumentation/observability, and easy to integrate with existing service meshes. The latter implies an application-agnostic approach, such that existing gRPC-based services can beneﬁt from it without source code modiﬁcations.
+
+Extensibility is ensured via implementing the Estimator and Cache gRPC interceptors, i.e., as plugins that capture and possibly modify requests before they are passed along to the intended process. Interceptors can be chained, thus allowing other interceptors to also impact requests and responses, which may be required to, e.g., maintain information enabling distributed tracing.
+
+Instrumentation/observability for research is implemented by letting interceptor output timestamped CSV rows with nanosecond resolution. All operations output the name of the invoked method. The Cache also states whether a response had to be passed upstream to the Estimator or could be answered using cached data. In addition to method name and timestamp, the Estimator outputs the TTL estimate for a given response. Together, the data can be used to form a picture of overall system performance.
+
+Application-agnosticism and the ability to use our caching infrastructure without source code modiﬁcation is enabled by attaching the Cache and Estimator gRPC interceptors to purpose-built reverse proxies. The code for these is autogenerated from the Protobuf service descriptor using our modiﬁed version of the gRPC code stub generator. This way, observability and conﬁgurability is also increased, because message contents can be fully inspected and used by the interceptors. This enables processing such as, e.g., blacklisting operations from caching based on the presence of some named attribute such as “user_id”.
+
+A. Cache protocol
+
+As previously mentioned, the Cache must serve responses just as a Server would have done, because to the Client gRPC applications are unaware of caching. Therefore, the Cache always serves the full response object when requested along with an HTTP 200 OK response code. For possible compatibility with third-party systems (see Section II), current or future, the Estimator communicates with the Cache via the Cache-Control header introduced in HTTP/1.1 [12] and which is valid also for HTTP/2. As such, object cache lifetimes are expressed in integer values of seconds, according to its speciﬁcation. The Estimator does not honor Max-Age headers attached to requests, because whenever it receives a request, it will always forward it to the upstream Server and respond with the freshest possible data. This is intentional, as it is the mechanism by which the Estimator can learn about response updates and make new TTL estimates. Because query requests that do not modify application state are the only ones that can safely be cached, we offer an optional blacklisting functionality in the Estimator so that operations can be excluded from caching entirely.
+
+B. Limitations
+
+Our implementation is a proof of concept for research purposes, and as such, contains some simpliﬁcations. Simpliﬁcations inevitably introduce limitations, some of which are discussed below.
+
+Although existing gRPC Clients would not be able to use the If-Modified-Since ﬂow HTTP/1.1 introduced [12], nothing would prevent our Cache component from using it toward the Estimator. However, our current implementation does not support it. Instead, the Estimator will always, if called, fetch a new response from the Server. The Estimator assumes that the Cache will only call it if the Cache needs to get a fresh copy, e.g., if the object has expired or the Cache has restarted. To be compatible with current or future generalpurpose HTTP/2-enabled caching services, we leverage the Cache-Control header as speciﬁed in the HTTP/1.1 speciﬁcation [15] (which HTTP/2 uses) to communicate TTL. Thus, we are limited to integer values of seconds for how long a response can be cached.
+
+Our current implementation targets unary gRPC operations, not streaming ones. The latter is conceptually similar to the former, but handled differently on a technical level only. To the best of our knowledge and/or imagination, none of the limitations listed here should impact the validity of our results. Caching for fractions of a second would absolutely produce different results, but the validity of the results, given these limitations, is not impacted.
+
+VI. EVALUATION The objective of this section is to establish a set of experiments that will validate the proposed caching infrastructure concept and its implementation. Further, because caching always introduces a risk of stale data to achieve a reduction in network trafﬁc, the inherent trade-offs in our proposed system must be evaluated and addressed. In particular, we must establish which trade-offs are provided by which algorithm conﬁgurations and whether the dynamic caching and supporting infrastructure approach work for real micro-service applications.
+
+First, we quantify the trade-off between network trafﬁc reduction and data staleness. The ﬁrst suite of experiments are designed to legitimize the proposed caching infrastructure and give guidance to how to conﬁgure and tune the TTL estimation algorithms. To do so, we designed a bespoke service and workload generator. Using these, we are able to eliminate noise and uncertainty inherent in large deployments and have full observability. For these experiments, we compare the dynamic behavior of the algorithms to three static baselines, as well as no caching. Second,
+
+to validate the caching infrastructure in a real setting, we perform experiments with a real micro-service application. We have chosen the “Hipster Store” by Google Cloud Platform. The focus of this experiment is two-fold: (a) to verify that our caching infrastructure works for a microservice application without any source code modiﬁcation; and (b) to see what network trafﬁc reductions can be made using caching and conservatively conﬁgured dynamic TTL estimation algorithms.
+
+5
+
+Data staleness, while often favorable compared to nonresponsive services, is generally to be avoided. However, what level of staleness is acceptable is application-dependent: certain values are never allowed to be stale (e.g. a customer’s order history), whereas others are less critical (e.g. a product recommendation). In the ﬁrst suite of experiments, any data staleness is regarded as an error, as quantifying data staleness vs. network trafﬁc reduction is what the experiment is clearly designed for. In the second suite, however, intended application-speciﬁc data staleness sensitivity of the various micro-services is not known to us. We therefore do not quantify data staleness as part of the second suite of experiments, but rather, conduct the experiments using only conservatively conﬁgured TTL estimation algorithms informed by the ﬁrst suite of experiments, to keep staleness as generally low as possible.
+
+For general applicability, we do not explicitly focus on latency or response times as part of our analysis. Latency and response times are nonlinear functions of the amount of work that a server has to do [16] and depend on a multitude of factors, such as application code, its deployment, and the underlying hardware resources, the conﬂuence of which causes unexpected behavior in both the application and the control plane [17]. Thus, a more objective and general measurement on algorithm efﬁciency and performance is to consider the number of requests that are transmitted across the network and, when a speciﬁc application is used, the number of bytes such transmissions consist of, rather than focusing unduly on the time these transmissions and request processing takes. Unless, of course, caching itself would add considerable processing time — however, our choice of algorithms (Section IV) and results (Section VI-B5) strongly indicate that this is not the case here.
+
+A. Quantifying trade-offs between network trafﬁc reduction and data staleness
+
+The Server
+
+the Value Service
+
+In the ﬁrst suite of experiments, we deploy a Client, Server, and interconnecting caching infrastructure (Cache and Estimator) like in Figure 1. The Client and Server constitute a very simple custom-made service that keeps track of a single value, the Value Service. Its simplicity allows us to accurately measure and control data staleness. of
+
+reexposes quest method (GetValue()) and an update method (SetValue(newValue)) and is multi-threaded. The Client of the Value Service uses two independent threads. One for querying the value from the Server, and one for updating it. The two Client threads share a value in a concurrency-safe way, such that the query thread can safely read what the true value should be as dictated by the updater thread. The query thread can therefore determine whether a response matched the expected value. This lets us calculate the error fraction using Equation 4:
+
+a
+
+error fraction =
+
+# queries with non-expected value # total queries
+
+(4)
+
+6
+
+Figure 2: Average request rates (requests/sec) of sinusoidal workloads with the update thread phase shifted 0, π/2, and π radians from the query thread to produce different rate relationships between the two threads. Phase shift by π/4 radians omitted for graph readability.
+
+To measure network trafﬁc reduction, we assume that the Client and Cache are co-deployed (see Section III-C) in one machine or Kubernetes Pod, and that the Estimator and Server are co-deployed in another. Thus, we calculate network trafﬁc reduction as in Equation 5:
+
+network trafﬁc reduction =
+
+# queries answered by Cache # total queries
+
+(5) 1) Workload generation and repeatability: The workload consists of two types of Client requests: updates or queries. The rates at which it does are referred to as the update rate and the query rate, respectively. Two properties of the workload are important with regard to caching: (a) the relationship (ratio) between update and query rate; and (b) how the rates change over time.
+
+The inter-rate relationship matters because the potential beneﬁt of caching is dependent on a high query rate (more requests answered from cache), but the possibility to cache is dependent on a low update rate (to avoid data staleness). The overall utility depends on the ratio between the rates, as lowering the query rate reduces the potential beneﬁt regardless of update rate, and increasing the update rate reduces the possibility to cache regardless of query rate.
+
+However, conducting an evaluation merely studying a selection of inter-rate ratios would be both unfair and misleading: not only do real users not behave like that, but some of the algorithms will be at a clear advantage in that case. Consider Equation 2 describing the Adaptive TTL algorithm. When an update is detected, it immediately reacts by lowering TTL estimates to 0. Thus, it will be called again in the immediate future, and be unlikely to ever miss an update, resulting in neither network trafﬁc reduction nor data staleness — given that behavior would not change over time, the length of the experiment would then not matter, except to artiﬁcially inﬂate the resulting numbers.
+
+To both avoid unfairness and misleading results and to capture the fact that web workloads are non-trivial and dynamically change over time, a caching system must be able to deal with update and query rate changes over time. To compactly study this behavior, we use a sinusoidal workload pattern. Both
+
+query and update threads in the Client use an individually parameterized sinusoidal function to calculate their respective rates. Our experiments vary the mean update rate between 0.05 to 1.1 (updates per second), and the mean query rate between 1 to 10 (queries per second). This constitutes a large span of values, with a factor 200 difference at its highest (0.05 updates vs. 10 queries per second). Additionally, we are interested in the performance of the TTL estimation over all possible scenarios, including update rates are low and queries are high and vice versa. Therefore, we also shift the phase of the sinusoidal functions to offset the peaks and valleys in query and update rates.
+
+The experiments are each 30 minutes long (1800 seconds), constituting a full period for the aforementioned sinusoidal workload. The duration was chosen because the time-scale and update frequency is signiﬁcantly shorter than for, e.g., web content caching, where durations of days are more common in experiments (Section VII). Figure 2 shows mean update and query rates for the duration of the experiments. We phase shift the mean update rate from full to no alignment, namely by 0, π, π/2, and π/4 radians. Intuitively, a full alignment (0 radian phase shift) means that query and update rates are both high and low at the same time. This is a service that experiences a given ratio of updates and queries at all times. In contrast, at a phase shift of π, the update rate is high when the query rate is low and vice versa. This represents the largest possible variation in difference between update and query rates — at times there are even more updates than there are queries. Thus, although the range of values is large, our experiments subject the system to different symptomatic types of workloads, e.g., read- or write-heavy, high or low overall intensity, etc.
+
+For each request, we sample the integer request delay using a Poisson process drawn from the sinusoid at that time instant, shown in Figure 2. Relying on the Poisson distribution here both mimics the true behavior of client-server systems more closely than a sinusoidal function does, and makes our results comparable to other literature in the network performance and queuing theory ﬁelds [18].
+
+The following parameters uniquely describe an experiment quantifying the trade-off between network trafﬁc reduction and
+
+data staleness: (a) the algorithm used; (b) conﬁguration of said algorithm; and (c) phase shift of update thread in relation to the query thread.
+
+We repeat each experiment 3 times with different deterministically set seed values used for drawing from the Poisson distributions determining true update and query rates. We then take the mean from these 3 repetitions with different seed values as the results for each experiment. The full data set and all scripts required to re-run the experiment in full are available as an open dataset.
+
+2) Algorithm conﬁgurations: The following algorithm and algorithm parameter combinations were used during the experiments on quantifying the trade-off between network trafﬁc reduction and data staleness:
+
+• static-0, which is the cache-free base case, where the
+
+static TTL parameter is set to 0.
+
+• static-1, static-10, and static-30, setting the static cache time parameter to 1, 10, and 30 seconds, respectively. The latter two are intended to show upper bounds on caching-related behavior. It is worth noting that the lowest possible update rate in our experiments is 0.05 updates per second, i.e. updates that are 20 seconds apart. Caching for 10 seconds would, in these extreme cases, be a very good choice (half the update rate, inspired by the NyqvistShannon Sampling Theorem [14]). Finally, caching for 30 seconds will always be bad from a data staleness perspective, but reduce network trafﬁc signiﬁcantly.
+
+• adaptive-0.1, adaptive-0.25, and adaptive-0.5, which is the Adaptive TTL with α set to 0.1 (a limit mentioned in [13] and incorrectly attributed to the HTTP/1.1 speciﬁcation), 0.25 as a conservative midway point, and 0.5, after ﬁndings by [3]. Note that Adaptive TTL uses its parameter linearly in estimating TTL (see Section IV-B). updaterisk-0.5, updaterisk-0.25, updaterisk-0.75, and updaterisk-0.90. The relatively larger number of conﬁguration parameters is due to the non-linear behavior of the Update-risk based algorithm with regard to its ρ parameter (see Section IV-C), which is harder to reason about without having access to the underlying experimental data.
+
+• updaterisk-0.1,
+
+3) Results: trade-off between network trafﬁc reduction and data staleness: The results of the experiments are presented below, followed by an analysis in Section VI-A4.
+
+Figure 3 shows the results of the experiments that evaluate the trade-off between network trafﬁc reduction and error fraction. Again, for observability, here we use our bespoke Value Service. The size of the markers correlate with the value of the algorithm’s conﬁguration parameter. All phase shifts are included, which is why for each algorithm and size of marker, there are four such markers.
+
+With regard ﬁrst to network trafﬁc reduction, Figure 3 shows that by merely issuing 1 second TTL for all responses, an 85% reduction is achieved. Because the static algorithms do not dynamically calculate TTL based on, e.g., update rate, the reductions for a given parametrization are the same across all Client updater thread phase shifts.
+
+The dynamic algorithms, Adaptive TTL and Updaterisk based, denoted in ﬁgures as “dynamic-adaptive” and
+
+7
+
+Figure 3: Trade-off between network reduction and error fraction visualized as a scatterplot. All parametrizations and phase shifts are reported per algorithm, and the size of the marker is related to the parameter given to the algorithm. The presented results are averaged over 3 repetitions of each experimental setup.
+
+“dynamic-updaterisk”, respectively, show a wider range of network request reduction. In all parametrizations, the case when updater and query threads move in synchrony (see Figure 2 with phase shift 0 radians) is the one that allows for the least amount of trafﬁc reduction. Conversely, phase shift π, the case where update rates are at their highest and query rate is at its lowest and vice versa, shows the largest amount of network request reduction. Across the most conservative conﬁgurations of the respective dynamic algorithms (their parameters set to 0.1), trafﬁc reduction is between 3–30%, with an average of 17%.
+
+The error fraction dimension of Figure 3 shows that by not taking update rate into regard and always assigning a 1-second TTL (static-1), the error fraction is between 12– 26% in these experiments. The ﬁgure also shows that the less conservative algorithm parametrizations, which produce larger TTL values of many seconds, are associated with a much higher incidence of data staleness. Conservatively conﬁgured dynamic algorithms can, on the other hand, keep error fractions in the low, single-digit, percentages. Analysis of the data shows that the reason is that they scale down TTL estimates to zero when the update rate is too high. This might seem counterintuitive, but is in-fact a reﬂection of the nature of the algorithm. The greater the ρ the larger the risk.
+
+4) Analysis: trade-off between network trafﬁc reduction and data staleness: The results presented in the previous section show that caching using dynamically estimated TTLs can greatly reduce the number of requests that must be transmitted over the network, while also keeping data staleness low. Considering only the network reduction in Figure 3, the static-1 algorithm showed great promise in its simplicity. Simply always caching for 1 second reduced the number of queries during the experiments by 85%! However, this trivial algorithm also introduces an error fraction of upwards of
+
+prohibitive 25%! In contrast, the dynamic TTL estimation algorithms manage much better with regard to data staleness. But what causes the dynamic algorithms to keep error fraction low but still makes them able to reduce network trafﬁc? Choosing two experiments with the same phase shift and algorithm, but with different parameters, highlights this. Figure 4 shows the behavior of the Update-risk based algorithm in more detail for two of its parametrizations and for the π phase shift. The more conservative conﬁguration (ρ = 0.1) estimates TTLs with 1-2 seconds at most but most often zero, whereas the conﬁguration that accepts higher risk (ρ = 0.5) increases TTL estimation signiﬁcantly. While that achieves a much higher trafﬁc reduction, it also pays the price in data staleness, with an unreasonably high error fraction throughout the experiment, except for when the cache-friendly circumstances of a peak in query rate and a valley in update rate occur at around 300 seconds into the experiment. Thus, given a sufﬁciently high query rate, any caching, even if just a single second, will yield great network trafﬁc reductions.
+
+In summary, both dynamic TTL estimation algorithms, when conﬁgured with low parameter values, keep data staleness errors at single-digit percentages while also reducing network trafﬁc by upward of 30%.
+
+B. Quantifying network load reduction in a real application
+
+Although it would be desirable to evaluate data staleness in this experiment too, this is difﬁcult to achieve. For example, if the client pays for an item to the shopping cart, this not only affects the Cart micro-service, but also a number of others, e.g., the ShippingService (see Figure 5). Hence, even if we modiﬁed the client to remember the last value set for each API call, side-effects across micro-services prevent the client from accurately predicting the freshest value for a different API call. Therefore, we shall use the insight on data staleness we gathered from the ﬁrst experiment.
+
+Based on the ﬁndings in the ﬁrst suite of experiments, our conclusion is that the more conservative parametrizations should be the most generally applicable in practical settings, bearing in mind that sensitivity to stale data is applicationspeciﬁc (Section VI).
+
+The second suite of experiments aim to show the correct functioning of our caching infrastructure with a real microservice application and to quantify the network reduction beneﬁts that may be possible when caching with conservatively estimated TTLs are used.
+
+Hipster Shop, chosen for our evaluation, is a polyglot application that consists of 11 micro-services that communicate over gRPC. See Figure 5 for an architectural overview.
+
+Note that no source code has been modiﬁed in Hipster Shop. We only modiﬁed the Kubernetes deployment manifest such that our dynamic caching infrastructure is put in place and services communicate through it. These modiﬁcations are simple and can be automated in the future, e.g., via a Kubernetes Mutating Admission Controller like contemporary service meshes do.
+
+To each service in Hipster Shop, we added an Estimator. Because not all requests can be cached, we blacklisted certain
+
+8
+
+requests (see also Section VI-B3). The Estimator components were all given the same conﬁguration, depending on which algorithm was under test (see Section VI-B1).
+
+Cache components were added to the three services in Hipster Shop that perform inter-service calls over gRPC (marked with bolder borders in Figure 5): Frontend, CheckoutService, and RecommendationService. Adding a Cache component to other services would not affect them in any way, apart from wasting resources on a component that would be dormant. Note that we do not cache non-gRPC trafﬁc, i.e. the HTTP responses to the Load Generator and the Redis communication that the CartService engages in with its database.
+
+1) Algorithm conﬁgurations: Results from the experiments using the Value Service showed that only the most conservative conﬁgurations keep data staleness relatively low. As shown in Section VI-A3, statically caching responses for even a single second introduces data staleness upward of 25%, which we deem unacceptably high for general applications.
+
+Therefore, the algorithm conﬁgurations used for this experiment were the two conﬁgurations of dynamic TTL estimation algorithms that introduced the least amount of data staleness errors, namely Adaptive TTL with α = 0.1 and Update-risk based with ρ = 0.1. For reference, we also deployed the system with the caching infrastructure in place and caching disabled (statically set TTL to 0).
+
+2) Load generation: Hipster Shop ships with its own load generator. The load generator operates in closed-loop manner [19] and waits a random amount of time (uniform distribution) before issuing the next request. The set of possible requests is pre-deﬁned, and weights are attached to the requests, which affects the probability that a particular request is randomly chosen more or less often than the others.
+
+Because the aim of this experiment is to show caching infrastructure compatibility and potential network trafﬁc reduction, we used the Hipster Shop load generator as-is. This way, we neither introduce errors due to misleading assumptions about application or user behavior nor skew results in any particular way. We conﬁgured it to simulate 100 concurrent users, rather than the 10 users that it is set to by default, because we did not merely want a trickle of background trafﬁc but a workload that resembles a modestly popular boutique ecommerce site.
+
+3) Cacheable subset of operations: Like in the Value Service, not all operations in Hipster Shop can be cached without introducing signiﬁcant application-level errors. Caching, e.g., a call to AddItem(user_id, item) such that a repeated call would be ignored by the CartService would be highly detrimental to the application: the client would get a response indicating success, but the CartService would not have registered the intent to put the item in the cart of the given user. To mitigate this, we used the cache blacklisting feature described in Section V to disallow caching of such statemodifying calls. Continuing with the CartService example, GetCart(user_id) would be possible to cache, but AddItem(...) and EmptyCart(...) would not be. Due to caching, calls to GetCart(user_id) might return the incorrect response due to data staleness, but will eventually be corrected because the two state-modifying operations were
+
+9
+
+(a) dynamic-updaterisk-0.10 (ρ = 0.1)
+
+(b) dynamic-updaterisk-0.50 (ρ = 0.5)
+
+Figure 4: Time series showing behavior of dynamic-updaterisk at two different parametrizations for the same phase shift (π in this case), averaged over 3 repetitions.
+
+Figure 5: Overview of the Hipster Shop architecture. Unless stated differently, the protocol used for inter-service communication is gRPC. Caches are added to the three components with bold border: Frontend, RecommendationService, and CheckoutService.
+
+passed to the CartService. For the full detailed list of operations that we blacklisted, we refer readers to the source code repository holding our experimental setup.
+
+4) Results: network trafﬁc reduction for a real microservice application: The results of the experiments are presented below, followed by an analysis in Section VI-B5. Based on the results obtained by the previous sets of experiments, we deployed Hipster Shop in a Kubernetes cluster (minikube instance) with our caching infrastructure. The two most conservative dynamic TTL estimation algorithm conﬁgurations were deployed (“dynamic-adaptive-0.1” and “dynamic-updaterisk0.1”) as well as the no-caching baseline (“static-0”).
+
+Figure 6 shows the amount of network trafﬁc for the three algorithm conﬁgurations, averaged in 15-second increments during the three experiment repetitions. The amount of network trafﬁc is visibly clearly reduced when caching
+
+in comparison to when it
+
+is used, is not. Table I shows key values regarding network trafﬁc, also averaged over the three experiment repetitions. Both caching algorithms achieve a trafﬁc reduction of about 40%, with the very slight advantage going to the Adaptive TTL algorithm.
+
+What caused the trafﬁc reduction is the use of cached data. Table II shows caching of requests in our experiments. The total number of requests in the application are very similar across experiments (differences related to randomness in the load generator, see Section VI-B2) and both dynamic algorithms manage to cache about 80% of responses. As stated in Section VI-B3, not all requests can be cached. Service responses are of course also not equal in size, which explains why an 80% reduction in requests could translate into a 40% reduction in network trafﬁc.
+
+010Mean query rate (req/s)Mean update rate (req/s)020Mean true TTL (s)Mean estimated TTL (s)0.00.51.0Mean traffic reduction025050075010001250150017500.000.250.50Mean error fraction010Mean query rate (req/s)Mean update rate (req/s)020Mean true TTL (s)Mean estimated TTL (s)0.00.51.0Mean traffic reduction025050075010001250150017500.000.250.50Mean error fraction10
+
+Figure 6: Network trafﬁc over time (bytes/second) in Hipster Shop for when no caching is used (static-0), and for the two most conservative dynamic estimation algorithm parametrizations from Section VI-A2 (dynamic-adaptive-0.1 and dynamicupdaterisk-0.1). Outgoing trafﬁc is shown as positive, incoming as negative. Thinner overall shape therefore implies less trafﬁc.
+
+Table I: Inter-Pod network trafﬁc in Hipster Shop. Note that trafﬁc within individual Pods does not count toward these numbers, only trafﬁc between Pods.
+
+Total bytes
+
+Received bytes
+
+Sent bytes
+
+Reduction
+
+static-0 dynamic-adaptive-0.1 dynamic-updaterisk-0.1
+
+54328661.67 32335455.67 33305797.67
+
+27382959.33 16120919.00 16731636.33
+
+26945701.67 16214536.33 16574161.00
+
+0.00 0.40 0.39
+
+Table II: Caching of requests in Hipster Shop, as reported by caches installed in the three components that make inter-service requests over gRPC (see Figure 5). Note that the total number of requests includes both those that could be cached and those that cannot, see Section VI-B3.
+
+Total requests
+
+Cached requests
+
+Upstream requests
+
+Cached request fraction
+
+static-0 dynamic-adaptive-0.1 dynamic-updaterisk-0.1
+
+254649.67 256923.67 257745.00
+
+0.00 207020.33 203750.33
+
+254649.67 49903.33 53994.67
+
+0.00 0.81 0.79
+
+5) Trafﬁc analysis: Analysis of the Hipster Shop experiment log ﬁles show that 12% of requests were not initiated by the Frontend service. Recalling Figure 5, two other services (RecommendationService and CheckoutService) also make requests to carry out their work. This implies that inter-service requests that can be answered from cache between these services and the ones they request data from beneﬁt from not only caching at the publicly facing Frontend.
+
+Although we purposefully did not seek out
+
+to include response time analysis in these experiments (for good reason: the minikube Kubernetes cluster is far from a productionready or realistic execution environment), it is worth noting that response time for most operations was cut in half with caching enabled compared to when it was not (not shown for briefness and to not place undue focus on it in this evaluation).
+
+VII. RELATED WORK
+
+Much of the literature on caching focuses on minimizing storage costs while keeping cache hit ratios at or above a certain level. This is motivated, at least in part, by the fact that efﬁciencies in this regard directly increase the costefﬁciency of content distribution networks (CDNs). In works such as [11], [20]–[22], the focus is on the cache component and how it prioritizes content such that popular items are more
+
+likely to be kept in cache and less popular ones are evicted, even if their server-supplied TTL states that they should still be considered valid.
+
+In our target domain, we have to assume that
+
+the origin server neither knows the true TTL of a response, nor supplies one. Lee et al. [13] is the source from which we have implemented both the Adaptive TTL and Update-risk based algorithms. The masters thesis by Schaarschmidt [23] contains TTL estimation algorithms that make use of machine learning, and are therefore considerably more expensive in terms of both processing and storage than the algorithms selected for our evaluation. Fawaz and Artail target a different domain, namely mobile phones relying on cached data during disconnected operation, and thus operate rather as a frontend cache than an inter-service one, they propose an simple exponentially weighted moving average to keep track of update frequency [24]. This could very well as future work be added to our caching infrastructure as an option.
+
+In particular, Batchelder et al. describe how to determine cacheability [25] and Feiertag et al. provide an algorithm for estimating TTL dynamically, based on a hit rate, a change rate, and a “freshness” of the data object [26]. Freshness is partially derived automatically, and partially provided by the developer. As this is likely a reason why inter-service caching
+
+is so uncommon, we strongly prefer not placing the burden of the latter on developers or operators.
+
+We view the two caching-related ﬁelds as complementary, because smart cache evictions to keep hit rates high and memory use efﬁcient do not make TTL estimates less useful and vice versa. Cache eviction requires some TTL (estimated or accurate) to work with, and estimated TTLs require some kind of cache to be useful.
+
+Unlike implicit cache maintenance via TTLs, explicit methods rely on the server sending out invalidation messages to caches when the underlying data changes. This technique improves cache coherency by lowering data staleness [27]. For instance, Cachematic [28] analyzes SQL queries and infers when changes may have occurred. However, multihop inter-service communication poses a challenge to the explicit approach, and relies on application-speciﬁc knowledge to understand how different operations in different services affect leverage deep knowledge into application operation semantics to determine which operations can be cached [29] to overcome this issue. In contrast, our implicit approach is application-agnostic and needs to neither infer nor be semantically informed about interservice relationships or functionality.
+
+the results of each other. Jia et al.
+
+VIII. CONCLUSION
+
+The micro-services paradigm dictates a separation of concerns and strict data ownership, which implies that services must interact frequently with each other across the network. Such communication is increasingly dealt with by service meshes, which uniformly implement features such as loadbalancing, retrying, and circuit breaking. Circuit breaking is an effective strategy to conditionally disallow requests toward thereby increasing malfunctioning or overloaded services, overall cloud application resilience.
+
+In this work, we proposed caching as a soft circuit breaker actuation mechanism. We estimate cache TTLs for responses dynamically using adaptive algorithms from the literature on serving web content. We have evaluated our approach and found that in spite of frequent updates, conservative conﬁguration of dynamically estimated TTL estimation algorithms could keep data staleness at 0–3% while reducing load by up to 30%. When used in a realistic off-the-shelf e-commerce micro-service application, 80% of requests were served cached responses and 40% fewer bytes were transferred.
+
+Completing the soft circuit breaker vision requires an improved decision mechanism, to determine when the caching circuit breaker should be activated and by how much. If resources are plentiful, there is no pressing need to introduce possible data staleness errors via caching. In such cases, all requests should be processed using the freshest possible data. But when resources are scarce, a higher risk of data staleness is acceptable. Whether to base such a decision on current resource utilization and thresholds [30] or control theory to keep, e.g., response times within a given bound [31], or via some other mechanism, remains a topic of future work.
+
+11
+
+OPEN SOURCE AND OPEN DATA NOTICE
+
+The source code and data sets used in this work are available
+
+in the following locations:
+
+• https://github.com/llarsson/grpc-caching-interceptors
+
+hosts the gRPC interceptors that implement the Caching and TTL Estimation functionalities.
+
+• https://github.com/llarsson/protobuf contains a modiﬁed Protobuf compiler that provides a reverse proxy server. • https://github.com/llarsson/value-service hosts the Client and Server of the Value Service. Follow links given therein to the Cache and Estimator repositories.
+
+• https://github.com/llarsson/value-service-experiments contains the data set from ﬁrst suite of experiments.
+
+• https://github.com/llarsson/hipster-shop is
+
+the Hipster Shop application and our scripts and Kubernetes manifests for running experiments.
+
+• https://github.com/llarsson/hipster-shop-experiments contains the data set from the second suite of experiments.
+
+REFERENCES
+
+[1] J. Lewis and M. Fowler, “Microservices,” 3 2014,
+
+library Catalog: martinfowler.com. [Online]. Available: https://martinfowler.com/articles/ microservices.html
+
+[2] W. Li, Y. Lemieux, J. Gao, Z. Zhao, and Y. Han, “Service mesh: Challenges, state of the art, and future research opportunities,” in 2019 IEEE International Conference on Service-Oriented System Engineering (SOSE).
+
+IEEE, 2019, pp. 122–1225.
+
+[3] A. Chankhunthod, P. B. Danzig, C. Neerdaels, M. F. Schwartz, and K. J. Worrell, “A hierarchical internet object cache.” in USENIX Annual Technical Conference, 1996, pp. 153–164.
+
+[4] A. Iyengar and J. Challenger, “Improving web server performance by caching dynamic data,” in Proceedings of the USENIX Symposium on Internet Technologies and Systems on USENIX Symposium on Internet Technologies and Systems, ser. USITS’97. USA: USENIX Association, 1997.
+
+[5] gRPC Authors,
+
+12 [Online]. Available: https://github.com/grpc/grpc/blob/v1.28.x/
+
+“gRPC over HTTP/2
+
+1.28.x),”
+
+(version
+
+2019. doc/PROTOCOL-HTTP2.md
+
+[6] Microsoft, “Microsoft REST API guidelines,” 2020, visited March 26, 2020. [Online]. Available: https://github.com/Microsoft/api-guidelines/ blob/master/Guidelines.md
+
+[7] R. T. Fielding, “Architectural styles and the design of network-based software architectures,” Ph.D. dissertation, University of California, Irvine, 2000.
+
+[8] B. Familiar, “IoT and microservices,” in Microservices, IoT, and Azure: Leveraging DevOps and Microservice Architecture to Deliver SaaS Solutions, B. Familiar, Ed. Apress, pp. 133–163. [Online]. Available: https://doi.org/10.1007/978-1-4842-1275-2_7
+
+[9] K. Brown and B. Woolf, “Implementation patterns for microservices architectures,” in Proceedings of the 23rd Conference on Pattern Languages of Programs, ser. PLoP ’16. The Hillside Group, pp. 1–35.
+
+[10] W. Shi, R. Wright, E. Collins, and V. Karamcheti, “Workload characterization of a personalized web site and its implications for dynamic content caching,” in Proceedings of the 7th International Workshop on Web Caching and Content Distribution (WCW’02), 2002.
+
+[11] S. Basu, A. Sundarrajan, J. Ghaderi, S. Shakkottai, and R. Sitaraman, “Adaptive TTL-Based Caching for Content Delivery,” 6 2018. [Online]. Available: https://doi.org/10.1109/TNET.2018.2818468
+
+[12] R. Fielding, J. Gettys, J. Mogul, H. Frystyk, L. Masinter, P. Leach, and T. Berners-Lee, “ Hypertext Transfer Protocol – HTTP/1.1 ,” Internet Requests for Comments, The Internet Society, RFC 2616, 6 1999. [Online]. Available: https://www.rfc-editor.org/rfc/rfc2616.txt
+
+[13] Jeong-Joon Lee, Kyu-Young Whang, Byung Suk Lee, and Ji-Woong Chang, “An update-risk based approach to ttl estimation in web caching,” in Proceedings of the Third International Conference on Web Information Systems Engineering, 2002 (WISE 2002), 12 2002.
+
+[14] C. Shannon, “Communication in the Presence of Noise,” Proceedings
+
+of the IRE, vol. 37, no. 1, pp. 10–21, 1 1949.
+
+12
+
+[15] R. Fielding, M. Nottingham, and J. Reschke, “Hypertext Transfer Protocol (HTTP/1.1): Caching,” Internet Requests for Comments, Internet Engineering Task Force IETF, RFC 7234, 6 2014. [Online]. Available: https://www.rfc-editor.org/rfc/rfc7234.txt
+
+[16] J. Cao, M. Andersson, C. Nyberg, and M. Kihl, “Web server performance modeling using an M/G/1/K*PS queue,” in 10th International Conference on Telecommunications, 2003. ICT 2003., vol. 2, 2003, pp. 1501–1506 vol.2.
+
+[17] L. Larsson, W. Tärneberg, C. Klein, E. Elmroth, and M. Kihl, “Impact of etcd deployment on kubernetes, istio, and application performance,” vol. n/a, _eprint: https://onlinelibrary.wiley.com/doi/pdf/10.1002/spe.2885. [Online]. Available: https://onlinelibrary.wiley.com/doi/abs/10.1002/spe. 2885
+
+[18] M. Harchol-Balter, Performance modeling and design of computer systems: queueing theory in action. Cambridge University Press, 2013. [19] B. Schroeder, A. Wierman, and M. Harchol-Balter, “Open versus closed:
+
+A cautionary tale.” USENIX, 2006.
+
+[20] N. Gast and B. Van Houdt, “Asymptotically Exact TTL-Approximations of the Cache Replacement Algorithms LRU(m) and h-LRU,” in 2016 28th International Teletrafﬁc Congress (ITC 28), vol. 01, 9 2016, pp. 157–165.
+
+[21] D. S. Berger, S. Henningsen, F. Ciucu, and J. B. Schmitt, “Maximizing Cache Hit Ratios by Variance Reduction,” 9 2015. [Online]. Available: https://doi.org/10.1145/2825236.2825259
+
+[22] D. S. Berger, P. Gland, S. Singla, and F. Ciucu, “Exact analysis of TTL cache networks,” Performance Evaluation, vol. 79, pp. 2–23, 9 2014. [Online]. Available: http://www.sciencedirect.com/science/article/ pii/S0166531614000649
+
+[23] M. Schaarschmidt, “Towards latency: An online learning mechanism for caching dynamic query content,” Master’s thesis, University of Cambridge Computer Laboratory, 6 2015.
+
+[24] K. Fawaz and H. Artail, “DCIM: Distributed cache invalidation method for maintaining cache consistency in wireless mobile networks,” vol. 12, no. 4, pp. 680–693, conference Name: IEEE Transactions on Mobile Computing.
+
+[25] E. M. Batchelder, J. T. Chamberlain, A. J. Wharton, and C. E. Dumont, “Method and system for automatically caching dynamic content based on a cacheability determination,” US Patent US6 351 767B1, 2, 2002, [Online]. Available: https://patents.google.com/patent/US6351767B1/en
+
+library Catalog: Google Patents.
+
+[26] M. A. Feiertag, D. S. Jordan, S. Mohan, D. M. Hoffman, and R. M. Tesh, “Updating data objects for dynamic application caching,” US Patent US6 772 203B1, 8, 2004, library Catalog: Google Patents. [Online]. Available: https://patents.google.com/patent/US6772203B1/en [27] C. Liu and P. Cao, “Maintaining strong cache consistency in the World-Wide Web,” in Proceedings of 17th International Conference on Distributed Computing Systems, 5 1997, pp. 12–21, iSSN: 1063-6927. [28] V. Holmqvist, J. Nilsfors, and P. Leitner, “Cachematic - Automatic Invalidation in Application-Level Caching Systems,” in Proceedings the 2019 ACM/SPEC International Conference on Performance of Engineering, India: Association for Computing Machinery, 4 2019, pp. 167–178. [Online]. Available: https://doi.org/10.1145/3297663.3309666
+
+ICPE ’19. Mumbai,
+
+ser.
+
+[29] T. Jia, J. Cao, Y. Yao, and Z. Ma, “BPCS: A block-based service process caching strategy to accelerate the execution of service processes,” in 2016 IEEE International Conference on Web Services (ICWS), pp. 155– 162.
+
+[30] L. Larsson, W. Tärneberg, C. Klein, and E. Elmroth, “Quality-Elasticity: Improved Resource Utilization, Throughput, and Response Times Via Adjusting Output Quality to Current Operating Conditions,” in 2019 IEEE International Conference on Autonomic Computing (ICAC), 6 2019, pp. 52–62, iSSN: 2474-0756.
+
+[31] C. Klein, M. Maggio, K.-E. Årzén, and F. Hernández-Rodriguez, “Brownout: building more robust cloud applications,” in Proceedings the 36th International Conference on Software Engineering, ser. of ICSE 2014. Hyderabad, India: Association for Computing Machinery, 5 2014, pp. 700–711. [Online]. Available: https://doi.org/10.1145/ 2568225.2568227

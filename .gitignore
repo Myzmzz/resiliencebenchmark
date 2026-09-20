@@ -19,3 +19,6 @@ artifacts/
 benchmark-wheels/
 runs/
 tmp/
+
+# 论文 PDF 原件不入库（出版商原文，9.9MB）；URL 见 literature-v1/tools/sources.tsv，可用 fetch.py 重抓
+literature-v1/docs-cache/raw/*.pdf

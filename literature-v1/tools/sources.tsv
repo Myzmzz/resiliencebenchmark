@@ -1,0 +1,10 @@
+# 待抓取来源清单，fetch.py 的输入。列：doc_id / 主题分组 / 会议或机构 / 抓取方式:来源类型 / 标题 / 网址
+# 抓取方式 html|pdf|ghissue；来源类型 doc|guideline|study|postmortem|issue
+# 已在 manifestations-v1/docs-cache 里的 5 篇（WASABI/Cancellation/SimpleTesting/GrayFailure/Metastable）不重复抓，见 README 的对照表
+LIT-OPERATOR-GU26	operator	Gu et al. NSDI 2026	pdf:study	Who Watches the Watchers? On the Reliability of Softwarizing Cloud Application Management	https://tylergu.com/papers/watcher.pdf
+LIT-SOFTCB-ARXIV21	circuitbreaker	Larsson et al. arXiv 2021	pdf:study	Towards Soft Circuit Breaking in Service Meshes via Application-agnostic Caching	https://arxiv.org/pdf/2104.02463
+LIT-BREAKWATER-OSDI20	overload	Cho et al. OSDI 2020	pdf:study	Overload Control for us-scale RPCs with Breakwater	https://www.usenix.org/system/files/osdi20-cho.pdf
+LIT-TOPFULL-SIGCOMM24	overload	Park et al. SIGCOMM 2024	pdf:study	TopFull: An Adaptive Top-Down Overload Control for SLO-Oriented Microservices	https://cs.stanford.edu/~keithw/sigcomm2024/sigcomm24-final654-acmpaginated.pdf
+LIT-MICROREBOOT-OSDI04	recovery	Candea et al. OSDI 2004	pdf:study	Microreboot - A Technique for Cheap Recovery	https://www.usenix.org/event/osdi04/tech/full_papers/candea/candea.pdf
+LIT-TAXONOMY-TDSC04	taxonomy	Avizienis et al. TDSC 2004	pdf:study	Basic Concepts and Taxonomy of Dependable and Secure Computing	https://www.landwehr.org/2004-aviz-laprie-randell.pdf
+LIT-ORCAS-ISSREW18	benchmark	van Hoorn et al. ISSREW 2018	pdf:study	ORCAS: Efficient Resilience Benchmarking of Microservice Architectures	https://www.edit.fis.uni-hamburg.de/ws/files/40890515/vanHoornAletiDuellmannPitakrat2018ORCASEfficientResilienceBenchmarkingOfMicroserviceArchitectures_camera_ready_stamp.pdf
