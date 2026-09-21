@@ -127,7 +127,7 @@ harnesses:
     session:
       logical_resume: true
       resume_flag: --resume
-      verification: real isolated initial-and-resume smoke passed with Claude Code 2.1.233
+      verification: real isolated initial-and-resume smoke passed with Claude Code 2.1.278
 
   codex:
     kind: codex
@@ -167,7 +167,7 @@ harnesses:
     session:
       logical_resume: true
       resume_command: codex exec --sandbox read-only resume
-      verification: real isolated initial-and-resume smoke passed with Codex CLI 0.139.0
+      verification: real isolated initial-and-resume smoke passed with Codex CLI 0.155.1
 
   deepseek-harness:
     kind: official_deepseek_harness

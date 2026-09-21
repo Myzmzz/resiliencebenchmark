@@ -67,8 +67,8 @@ RUN npm ci --prefix /opt/blade-ai/tui --ignore-scripts --no-audit --no-fund \
     && /opt/bladeai-venv/bin/python -c "from pathlib import Path; from chaos_agent.chaosblade_installer import download_chaosblade; download_chaosblade(Path('/opt/blade-ai/vendor/chaosblade'), target='linux_amd64')"
 
 RUN npm install --global --no-audit --no-fund \
-      @openai/codex@0.139.0 \
-      @anthropic-ai/claude-code@2.1.233
+      @openai/codex@0.155.1 \
+      @anthropic-ai/claude-code@2.1.278
 
 RUN install -d -m 0755 /opt/resiliencebenchmark/deepseek-harness
 COPY harness/deepseek-harness/runtime-lock/package.json /opt/resiliencebenchmark/deepseek-harness/package.json

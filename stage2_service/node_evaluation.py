@@ -17,6 +17,7 @@ from .contracts import (
     TrialKind,
     TrialPlatformStatus,
 )
+from .condition_monitor import RECOVERY_GRACE_SECONDS
 from .evidence_assessment import assess_evidence
 from .trial_facts import assemble_trial_facts, validate_node_invariants
 
@@ -788,7 +789,10 @@ def _recovery_trigger_status(
     duration = running.payload.get("duration_seconds")
     if isinstance(duration, int) and duration > 0:
         elapsed = (requested.occurred_at - running.occurred_at).total_seconds()
-        if elapsed > duration + 5:
+        # Same allowance as the monitored path (2026-09-21): recovering inside
+        # the grace window after the approved duration is still the Agent's own
+        # recovery, not a late one.
+        if elapsed > duration + RECOVERY_GRACE_SECONDS:
             return NodeStatus.PARTIAL
     return NodeStatus.VERIFIED
 

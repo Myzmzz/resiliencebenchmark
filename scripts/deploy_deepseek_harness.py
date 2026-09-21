@@ -28,11 +28,11 @@ IDENTITY_ENV = "RESBENCH_SSH_BOOTSTRAP_IDENTITY"
 KNOWN_HOSTS_ENV = "RESBENCH_SSH_KNOWN_HOSTS"
 
 PACKAGE_NAME = "@deepseek-ai/dsh"
-PACKAGE_VERSION = "0.1.0-rc.7"
+PACKAGE_VERSION = "0.1.5-rc.2"
 PACKAGE_SPEC = f"{PACKAGE_NAME}@{PACKAGE_VERSION}"
 INSTALL_SCRIPT = Path("harness/deepseek-harness/install.sh")
 RUNTIME_LOCK_DIR = Path("harness/deepseek-harness/runtime-lock")
-RUNTIME_LOCK_SHA256 = "3fd8d9fe3f91cc780d70dc443977edf077e054c756c1eb248b63fe2e64ad9f72"
+RUNTIME_LOCK_SHA256 = "b6167ea3a42ae58163aff6880d7914234d585c25b42b9c6f942a17f0fc38514a"
 INSTALL_ROOT = "/opt/resiliencebenchmark/deepseek-harness"
 DSH_BINARY = f"{INSTALL_ROOT}/bin/dsh"
 DEPENDENCY_TREE_FILE = "/var/lib/resiliencebenchmark/deepseek-harness-dependency-tree.json"

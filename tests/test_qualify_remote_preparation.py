@@ -48,8 +48,8 @@ class FakeRunner:
         output = "\n".join(
             [
                 f"repo_head={'a' * 40}",
-                "root_dsh=0.1.0-rc.7",
-                "resbench_dsh=0.1.0-rc.7",
+                "root_dsh=0.1.5-rc.2",
+                "resbench_dsh=0.1.5-rc.2",
                 "source_summary=ok:11",
                 "active_units=7",
                 "listeners=7",

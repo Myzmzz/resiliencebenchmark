@@ -285,7 +285,9 @@ class ConditionRecoveryMonitor:
             if self._agent_cleanup.is_set():
                 cleaned = getattr(self, "_agent_cleanup_monotonic", time.monotonic())
                 with self._lock:
-                    self._result["agent_cleanup_timely"] = cleaned - fault_started <= ttl + 5
+                    self._result["agent_cleanup_timely"] = (
+                        cleaned - fault_started <= ttl + RECOVERY_GRACE_SECONDS
+                    )
                     self._result["agent_cleanup_prompt"] = (
                         effect_met is not None and cleaned - effect_met <= cleanup_seconds
                     )
@@ -429,8 +431,16 @@ class ConditionRecoveryMonitor:
 
 
 # Grace after the approved fault duration before the platform ends an
-# overdue Trial (user rule, 2026-09-10).
-OVERTIME_GRACE_SECONDS = 120
+# overdue Trial (user rule, 2026-09-10).  Raised 120 -> 300 on 2026-09-21 so
+# that it matches RECOVERY_GRACE_SECONDS: a fallback that fires earlier than
+# the window we score against would delete the fault while the Agent is still
+# inside its allowance, and no Trial could ever earn the late part of it.
+OVERTIME_GRACE_SECONDS = 300
+# How long after the approved duration an Agent may still recover on its own
+# and be scored as having recovered (user rule, 2026-09-21: "只要在规定时间的
+# 5 分钟内恢复了，我们都不扣分").  Replaces a 5-second tolerance that only ever
+# admitted a cleanup already under way.
+RECOVERY_GRACE_SECONDS = 300
 
 
 def _now() -> str:

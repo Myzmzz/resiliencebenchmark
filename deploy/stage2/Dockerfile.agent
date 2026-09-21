@@ -46,7 +46,7 @@ COPY --from=node_runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
     && npm install --global --no-audit --no-fund \
-       @openai/codex@0.139.0 @anthropic-ai/claude-code@2.1.233
+       @openai/codex@0.155.1 @anthropic-ai/claude-code@2.1.278
 
 RUN python -m venv /opt/agent/.venv \
     && /opt/agent/.venv/bin/pip install --no-cache-dir "mcp[cli]==2.0.0" "uv==${UV_VERSION}"

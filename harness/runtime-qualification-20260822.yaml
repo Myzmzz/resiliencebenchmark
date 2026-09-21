@@ -39,7 +39,7 @@ spec:
       anthropicBaseUrlV1SuffixRemovedByAdapter: true
       safePathNativeBinary: true
     deepseekHarness:
-      version: 0.1.0-rc.7
+      version: 0.1.5-rc.2
       integrityAndDependencyLockVerified: true
   connectivitySmokes:
     codex:

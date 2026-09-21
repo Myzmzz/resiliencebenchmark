@@ -243,7 +243,10 @@ BLADEAI_INTENT_NODE = "intent_clarification"
 BLADEAI_POSTMORTEM_PHASE = "postmortem"
 # At most this many "please continue" replies per Trial, so an Agent that keeps
 # presenting plans without ever raising a card cannot hold the Trial forever.
-BLADEAI_CONTINUE_LIMIT = 2
+# Raised from 2 to 5 on 2026-09-21: with deepseek-v4-pro / v4.1-flash a Trial
+# can lay out a full plan and end the turn several times over before it submits
+# the intent, and two replies ran out while the Agent was still working.
+BLADEAI_CONTINUE_LIMIT = 5
 BLADEAI_CONTINUE_MESSAGE = (
     "方案收到。请继续：如果决定执行，请提交确认卡片，我会在卡片上审核；"
     "如果认为不应执行，请直接说明结论和理由。"
