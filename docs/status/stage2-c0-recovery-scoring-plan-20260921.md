@@ -282,3 +282,72 @@ chaosblade Git 工作树（需从 commit `98a9ddb` 用 `git archive` 导出子�
 `tests/test_stage2_condition_monitor.py`（13 项）、`tests/test_multi_level_scoring.py`、
 `tests/test_runtime_scoring.py`、`tests/test_capability_loss_scoring.py`、
 `tests/test_multi_level_evaluator.py`、`tests/test_stage2_rescore.py`（合计 32 项）—— **全部通过**。
+
+## 十一、DSH 0.1.5-rc.2 的会话 trace 捕获（2026-09-21）
+
+### 11.1 现象
+
+升级到 0.1.5-rc.2 后，DSH 通道资格本身通过（七项 base_checks 全绿、结果提交 `valid: true`），
+但能力发布被拒：`basic tool coverage is missing from actual native or MCP evidence`。
+逐家核对：codex / claude-code 的 native 侧有完整工具证据，DSH 的 native 侧为 **0 条**。
+
+### 11.2 先前的误判（已更正）
+
+上一轮看到 artifact 目录里没有 DSH 自己的事件、stderr 只有散文，判断为"0.1.5-rc.2 不再输出
+结构化 trace"。**这个判断是错的。**
+
+### 11.3 真正的根因：会话格式升代，文件名变了
+
+适配器不读 stdout，而是在 artifact 目录里找平台复制出来的 `dsh-session-*.jsonl.zstd`；
+平台则在 `$DSH_HOME` 下 `rglob("session.jsonl.zstd")` 找 DSH 自己写的会话日志。
+
+DSH 源码 `dsh-session-format/lib/index.js:472`：
+
+```js
+function sessionFormatLogFilename(version) {
+  return generation === 0 ? "session.jsonl" : `session.v${generation}.jsonl`;
+}
+```
+
+0.1.0-rc.7 写第 0 代（`session.jsonl.zstd`）；**0.1.5-rc.2 写第 3 代：`session.v3.jsonl.zstd`**。
+精确匹配旧名，因此一个文件都没捞到，适配器也就没有可回放的工具事件。
+
+本机实跑验证（0.1.5-rc.2 + 百炼 qwen3.8-max + 一次 `read` 工具调用）：
+`$DSH_HOME/sessions/<项目>/session-<uuid>/session.v3.jsonl.zstd`，23 行，
+事件类型包含 `session`、`tool/call`、`tool/result`、`assistant/message` 等——
+**与适配器解析的结构逐字段一致，事件格式没有变。**
+
+### 11.4 改动
+
+| 位置 | 改前 | 改后 |
+|---|---|---|
+| `stage2_service/harness_adapters/deepseek.py`（新增） | — | `dsh_session_logs(root)`：匹配 `session.jsonl.zstd` 与 `session.v{N}.jsonl.zstd`（N≥1、无前导零、小写），**同一会话目录只取最高代** |
+| `stage2_service/harness_adapters/deepseek.py` `on_turn_end` | 回退路径 `rglob("session.jsonl.zstd")` | `dsh_session_logs(artifact_dir)` |
+| `scripts/run_harness_trial.py` `capture_dsh_session_trace` | `sorted(dsh_home.rglob("session.jsonl.zstd"))` | `dsh_session_logs(dsh_home)` |
+
+"只取最高代"的原因：DSH 迁移会话格式时，同一目录可能新旧两代并存，两者描述同一段对话；
+全部回放会让每个工具调用出现两次，能力发布会以"工具调用身份重复"拒绝。
+命名规则与 DSH 自己的"规范名"定义一致：`.v0`、前导零、大写、未压缩、带临时后缀的都不认。
+
+### 11.5 验证
+
+- 新增单元测试 9 个（`tests/test_stage2_harness_adapters.py`：第 0 代与第 3 代都能找到、
+  同目录多代只取最高、6 种非规范名被忽略；`tests/test_run_harness_trial.py`：平台能捕获并解压
+  `session.v3.jsonl.zstd`）。
+- **用本机实跑得到的真实 0.1.5-rc.2 会话文件回放适配器**：解析出 `ToolCall read` →
+  `ToolResult completed`，调用 ID 前后一致。
+- 全量测试：`pytest tests/` 退出码 0，零失败（沙箱外）。
+
+### 11.6 更正：提交 37c026e 的测试声明
+
+`37c026e` 的提交信息写"测试：全量套件零失败"，**不准确**。全量是在改宽限期**之前**跑的；
+`OVERTIME_GRACE_SECONDS` 120→300 之后只跑了条件监视与评分的 45 个定向用例，
+`tests/test_stage2_fault_inventory.py` 中 2 条因此失败而未被发现：
+
+- `test_observer_removes_the_credited_fault_once_duration_plus_grace_has_passed`
+- `test_observer_confirms_absence_on_a_later_poll_after_an_unverified_delete`
+
+原因：外部故障观察器（`foreign_fault_observer.py`，处理 BladeAI 自建实验）同样使用
+`OVERTIME_GRACE_SECONDS`，兜底删除点随之从"批准时长 + 120"推后到"批准时长 + 300"。
+这是有意改动的正确连带结果（BladeAI 的故障同样应享有 5 分钟宽限），故更新测试期望值
+（600→700、`grace_seconds` 改为引用常量而非写死 120），并在注释中写明来由。

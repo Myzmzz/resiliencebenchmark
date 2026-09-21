@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -83,7 +84,7 @@ class DeepSeekHarnessAdapter(BaseHarnessAdapter):
     def on_turn_end(self, artifact_dir: Path) -> list[CanonicalEvent]:
         events: list[CanonicalEvent] = []
         dsh_copies = sorted(artifact_dir.rglob("dsh-session-*.jsonl.zstd"))
-        sources = dsh_copies or sorted(artifact_dir.rglob("session.jsonl.zstd"))
+        sources = dsh_copies or dsh_session_logs(artifact_dir)
         for source in sources:
             events.extend(self._events_from_zstd(source, artifact_dir))
         return events
@@ -186,6 +187,36 @@ class DeepSeekHarnessAdapter(BaseHarnessAdapter):
             raw_ref=raw_ref,
             occurred_at=occurred_at,
         )
+
+
+# DSH names each immutable session-format generation of a session log
+# ``session.jsonl`` (generation 0) or ``session.v<N>.jsonl`` (N >= 1, no
+# leading zero, lowercase), plus ``.zstd`` when compressed -- see
+# dsh-session-format ``sessionFormatLogFilename``.  0.1.0-rc.7 wrote
+# generation 0; 0.1.5-rc.2 writes ``session.v3.jsonl.zstd``.  Matching only the
+# generation-0 name silently captured no trace at all from 0.1.5-rc.2.
+_DSH_SESSION_LOG_NAME = re.compile(r"^session(?:\.v([1-9][0-9]*))?\.jsonl\.zstd$")
+
+
+def dsh_session_logs(root: Path) -> list[Path]:
+    """Return the newest compressed session log of every DSH session under ``root``.
+
+    A session directory can hold more than one generation while DSH migrates a
+    session to a newer format.  Both files describe the same conversation, so
+    replaying both would present every tool call twice; only the highest
+    generation per directory is returned.  Names DSH itself does not treat as
+    canonical (``.v0``, leading zeros, uppercase, uncompressed) are ignored.
+    """
+    newest: dict[Path, tuple[int, Path]] = {}
+    for candidate in root.rglob("session*.jsonl.zstd"):
+        match = _DSH_SESSION_LOG_NAME.match(candidate.name)
+        if match is None or not candidate.is_file():
+            continue
+        generation = int(match.group(1) or 0)
+        current = newest.get(candidate.parent)
+        if current is None or generation > current[0]:
+            newest[candidate.parent] = (generation, candidate)
+    return sorted(path for _, path in newest.values())
 
 
 def iter_zstd_jsonl_lines(path: Path) -> Iterable[str]:

@@ -1008,6 +1008,29 @@ def test_capture_dsh_session_trace_preserves_multiframe_archive_and_redacts(tmp_
     assert events[0]["payload_ref"] == "dsh-session-00.jsonl.zstd"
 
 
+def test_capture_dsh_session_trace_archives_the_0_1_5_session_generation(tmp_path):
+    """0.1.5-rc.2 writes session.v3.jsonl.zstd; the capture must still find it."""
+    zstd = pytest.importorskip("zstandard")
+    dsh_home = tmp_path / "dsh-home"
+    artifact_dir = tmp_path / "artifact"
+    session_dir = dsh_home / "sessions" / "project" / "session-1"
+    session_dir.mkdir(parents=True)
+    artifact_dir.mkdir()
+    records = [
+        {"type": "session", "id": "session-1"},
+        {"type": "tool/call", "data": {"callId": "call-1", "name": "read", "arguments": "{}"}},
+    ]
+    payload = b"".join(json.dumps(record).encode("utf-8") + b"\n" for record in records)
+    (session_dir / "session.v3.jsonl.zstd").write_bytes(zstd.ZstdCompressor().compress(payload))
+    events: list[dict] = []
+
+    refs = trial.capture_dsh_session_trace(dsh_home, artifact_dir, runtime_env(), events)
+
+    assert refs == ["dsh-session-00.jsonl.zstd", "dsh-session-00.jsonl"]
+    archived = list(trial.iter_zstd_jsonl_lines(artifact_dir / "dsh-session-00.jsonl.zstd"))
+    assert [json.loads(line)["type"] for line in archived] == ["session", "tool/call"]
+
+
 def test_deepseek_claude_model_uses_anthropic_protocol(tmp_path):
     calls = []
 

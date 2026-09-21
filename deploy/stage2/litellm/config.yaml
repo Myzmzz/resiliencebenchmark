@@ -79,22 +79,30 @@ model_list:
       api_key: os.environ/DASHSCOPE_API_KEY
 
   # ---------------------------------------------------------------------------
-  # Acucompute console. claude-opus-5 is only served over
-  # the Anthropic protocol by this account, so LiteLLM converts the OpenAI
-  # protocol the Harnesses speak into Messages API calls. gpt-5.6-sol is the
-  # BladeAI default route and uses the OpenAI-compatible endpoint.
+  # nexustokenai relay (user direction, 2026-09-21: claude-opus-5 and
+  # gpt-5.6-sol are evaluated over nexustokenai, not acucompute).
+  #
+  # The relay serves Claude only to its Anthropic-protocol account, which holds
+  # a different credential from the OpenAI-compatible one.  Measured on
+  # 2026-09-21: NEXUSTOKENAI_API_KEY on /v1/chat/completions returns 404
+  # "not supported by any configured account in this group" for claude-opus-5
+  # and /v1/models lists no Claude id at all, while
+  # NEXUSTOKENAI_ANTHROPIC_API_KEY answers on both /v1/messages and
+  # /v1/chat/completions.  So Claude keeps the Anthropic protocol and its own
+  # key; gpt-5.6-sol answers on the OpenAI-compatible endpoint with the
+  # ordinary relay key.
   # ---------------------------------------------------------------------------
   - model_name: claude-opus-5
     litellm_params:
       model: anthropic/claude-opus-5
-      api_base: https://console.acucompute.com
-      api_key: os.environ/ACUCOMPUTE_API_KEY
+      api_base: https://api.nexustokenai.com
+      api_key: os.environ/NEXUSTOKENAI_ANTHROPIC_API_KEY
 
   - model_name: gpt-5.6-sol
     litellm_params:
       model: openai/gpt-5.6-sol
-      api_base: https://console.acucompute.com/v1
-      api_key: os.environ/ACUCOMPUTE_API_KEY
+      api_base: https://api.nexustokenai.com/v1
+      api_key: os.environ/NEXUSTOKENAI_API_KEY
 
 litellm_settings:
   callbacks:

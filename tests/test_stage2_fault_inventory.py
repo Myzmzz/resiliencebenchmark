@@ -15,7 +15,7 @@ from stage2_service.fault_inventory import (
     snapshot_for_trial,
 )
 from stage2_service.contracts import RuntimeTarget, TrialRuntimeContext
-from stage2_service.condition_monitor import ConditionRecoveryMonitor
+from stage2_service.condition_monitor import OVERTIME_GRACE_SECONDS, ConditionRecoveryMonitor
 from mcp_servers.chaos_core.backends.chaosblade import _record_from_resource
 from stage2_service.foreign_fault_observer import ForeignFaultObserver
 from stage2_service.runtime_factory import DirectChaosCleanup
@@ -504,7 +504,12 @@ def _run_observer(backend, *, approved_duration_seconds, until, timeout=3.0):
 
 
 def test_observer_removes_the_credited_fault_once_duration_plus_grace_has_passed():
-    """BladeAI raises 300 s to 600 s and never recovers early; the platform steps in at 420 s."""
+    """BladeAI raises 300 s to 600 s and never recovers early; the platform steps in at 600 s.
+
+    The step-in point is approved duration + OVERTIME_GRACE_SECONDS.  It moved
+    from 420 s to 600 s on 2026-09-21 when the grace became 300 s, so that the
+    fallback no longer fires inside the recovery window the Agent is scored on.
+    """
     backend = _OverdueBackend()
 
     result, emitted = _run_observer(
@@ -513,14 +518,16 @@ def test_observer_removes_the_credited_fault_once_duration_plus_grace_has_passed
         until=lambda: backend.polls >= 10,
     )
 
-    # First seen at t=100; the poll at t=500 is 400 s in and must not act.
-    assert backend.cleanup_clock == [600.0]
+    # First seen at t=100; the poll at t=600 is 500 s in and must not act yet,
+    # the poll at t=700 is 600 s in (300 s approved + 300 s grace) and does.
+    assert OVERTIME_GRACE_SECONDS == 300
+    assert backend.cleanup_clock == [700.0]
     assert result["controller_fallback_used"] is True
     assert result["controller_fallback_reason"] == "approved_duration_exceeded"
     assert result["controller_cleanup"]["deleted_foreign_experiment"] == "blade-own"
     assert result["cleanup_attempts"] == 1
     assert result["approved_duration_seconds"] == 300
-    assert result["grace_seconds"] == 120
+    assert result["grace_seconds"] == OVERTIME_GRACE_SECONDS
     assert [kind for kind, _payload in emitted] == [
         "foreign_fault_observed",
         "foreign_fault_overtime_cleanup",
@@ -578,7 +585,8 @@ def test_observer_confirms_absence_on_a_later_poll_after_an_unverified_delete():
         until=lambda: backend.polls >= 10,
     )
 
-    assert backend.cleanup_clock == [600.0]
+    # 300 s approved + 300 s grace after first sight at t=100.
+    assert backend.cleanup_clock == [700.0]
     assert result["controller_cleanup"]["verified_absent"] is True
     assert result["controller_cleanup"]["verified_absent_by"] == "later_poll"
 

@@ -37,7 +37,7 @@ from stage2_service.harness_adapters import (
     ToolResult,
     create_adapter,
 )
-from stage2_service.harness_adapters.deepseek import iter_zstd_jsonl_lines
+from stage2_service.harness_adapters.deepseek import dsh_session_logs, iter_zstd_jsonl_lines
 from stage2_service.session import (
     HarnessSession,
     ResumeArgvBuilder,
@@ -1208,7 +1208,7 @@ def capture_dsh_session_trace(
     import zstandard
 
     references: list[str] = []
-    for index, source in enumerate(sorted(dsh_home.rglob("session.jsonl.zstd"))):
+    for index, source in enumerate(dsh_session_logs(dsh_home)):
         jsonl_name = f"dsh-session-{index:02d}.jsonl"
         jsonl_path = artifact_dir / jsonl_name
         total = 0
