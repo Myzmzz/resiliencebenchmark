@@ -351,3 +351,53 @@ function sessionFormatLogFilename(version) {
 `OVERTIME_GRACE_SECONDS`，兜底删除点随之从"批准时长 + 120"推后到"批准时长 + 300"。
 这是有意改动的正确连带结果（BladeAI 的故障同样应享有 5 分钟宽限），故更新测试期望值
 （600→700、`grace_seconds` 改为引用常量而非写死 120），并在注释中写明来由。
+
+## 十二、两个 DeepSeek 改走百炼（2026-09-21，用户拍板"改走百炼，跑完这 4 条再切"）
+
+### 12.1 起因
+
+用户最初定：deepseek v4 pro / flash 与两个 qwen 一样"用千问官方的 key"（百炼）。但网关此前把两个 DeepSeek
+路由到 `api.deepseek.com`（DeepSeek 官方 key），与用户口径不符，也与 BladeAI 手测所用通道不一致。
+
+同时查实 claude-code × DeepSeek 两条秒退（`OUTPUT_UNSTRUCTURED`，29 秒 / 53 秒）的真因：
+DeepSeek 一轮并行 3 个工具调用、结果齐全，但第 4 轮被官方 API 拒：
+`No tool output found for tool call call_01_…`。
+
+### 12.2 复现（网关同版本 LiteLLM 1.92.0 的转换函数，在网关容器内执行，不发请求）
+
+| 形态 | 转换结果 | 工具结果保留 | DeepSeek 顺序规则 |
+|---|---|---|---|
+| A 结果合并一条 | assistant(0,1,2) → tool0 → tool1 → tool2 | 3/3 | 合规 |
+| B 结果后跟提醒文本 | … → tool0 → tool1 → tool2 → user | 3/3 | 合规 |
+| C 提醒夹在同一条消息中间 | … → tool0 → tool1 → tool2 → user（LiteLLM 会把文本挪到后面） | 3/3 | 合规 |
+| D 三个结果分三条消息 | … → tool0 → tool1 → tool2 | 3/3 | 合规 |
+| **E 两个结果之间插一条单独的提醒消息** | … → tool0 → **user** → tool1 → tool2 | **3/3** | **违规（call_01 起缺结果）** |
+| F 助手消息未合并 | assistant → … → assistant(0) → assistant(1) → … | 3/3 | 违规（call_00） |
+
+E 与实测报错一字不差（call_00 找到、call_01 找不到）。**转换没有丢结果，只是插了一条普通消息**。
+
+### 12.3 百炼上的实测
+
+对百炼的 `deepseek-v4-pro-0813`、`deepseek-v4.1-flash` 各做三步：一轮并行调 2 个工具 → 带齐结果续聊 →
+故意少带一个结果续聊。两个模型都并行调了 2 个工具；带齐 200；**少一个结果也 200（不校验配对）**。
+因此切到百炼后 claude-code 不会再被拒，且模型能看到全部工具结果，评测公平。
+
+### 12.4 改动
+
+| 位置 | 改动 |
+|---|---|
+| `deploy/stage2/litellm/config.yaml` | 两个 DeepSeek 改为 DashScope + `DASHSCOPE_API_KEY`；flash 别名 `deepseek-v4-flash-0731` → **`deepseek-v4.1-flash`** |
+| `harness/models.yaml` | 同步别名、upstream_model、display_name（DeepSeek V4.1 Flash） |
+| `harness/harnesses.yaml`（4 处）、`stage2_service/contracts.py` `STAGE2_SUPPORTED_MODELS` | 别名改名 |
+| `tests/test_stage2_gateway_preflight.py`（5 处）、`tests/test_d0_shared_runtime.py`（2 处） | 别名改名 |
+| `deploy/stage2/litellm/README.md` | 别名表改为现状（此前 gpt-5.5 / claude / gpt-5.6-sol 的上游都已过时） |
+
+flash 改名而非沿用旧名：百炼的 flash 是 V4.1，官方 `deepseek-v4-flash-0731` 是另一个版本，沿用旧名会让结果表失真。
+pro 两边都是 08-13 版（百炼 ID 即 `deepseek-v4-pro-0813`），不改名。`DEEPSEEK_API_KEY` 不再被网关引用。
+
+测试：全量 pytest 退出码 0。
+
+### 12.5 切换后必须做的
+
+网关配置变更会改变 `gateway_config_sha256`，五个 slot × 三家的资格全部失效，须重做后重新发布能力；
+然后统一重跑"三家 × 两个 DeepSeek"共 6 条（含 codex 已在官方通道上跑完的 2 条、claude-code 失败的 2 条）。

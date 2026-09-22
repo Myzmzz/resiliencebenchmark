@@ -191,7 +191,7 @@ def test_preflight_requires_models_visibility_and_successful_probe(tmp_path: Pat
         snapshot,
         lambda _snapshot, _aliases: _probe_report({"qwen3.8-max": "probed_with_unsupported_capabilities"}),
     )
-    visible = set(STAGE2_SUPPORTED_MODELS) - {"deepseek-v4-flash-0731"}
+    visible = set(STAGE2_SUPPORTED_MODELS) - {"deepseek-v4.1-flash"}
     system._gateway_models = lambda: (visible, None)
     monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(_qualification_file(tmp_path)))
 
@@ -201,13 +201,13 @@ def test_preflight_requires_models_visibility_and_successful_probe(tmp_path: Pat
     assert result["model_probes"]["qwen3.8-max"]["visible_in_gateway_models"] is True
     assert result["model_probes"]["qwen3.8-max"]["probe_status"] == "probed_with_unsupported_capabilities"
     assert result["model_probes"]["qwen3.8-max"]["runnable"] is False
-    assert result["model_probes"]["deepseek-v4-flash-0731"]["visible_in_gateway_models"] is False
-    assert result["model_probes"]["deepseek-v4-flash-0731"]["probe_status"] == "supported"
-    assert result["model_probes"]["deepseek-v4-flash-0731"]["runnable"] is False
+    assert result["model_probes"]["deepseek-v4.1-flash"]["visible_in_gateway_models"] is False
+    assert result["model_probes"]["deepseek-v4.1-flash"]["probe_status"] == "supported"
+    assert result["model_probes"]["deepseek-v4.1-flash"]["runnable"] is False
     assert result["status"] == "READY"
     assert all(result["harnesses"].values())
     assert all(
-        not row["qwen3.8-max"] and not row["deepseek-v4-flash-0731"]
+        not row["qwen3.8-max"] and not row["deepseek-v4.1-flash"]
         for row in result["model_matrix"].values()
     )
     assert all(

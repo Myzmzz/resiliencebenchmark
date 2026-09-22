@@ -47,21 +47,32 @@ model_list:
       api_key: os.environ/NEXUSTOKENAI_API_KEY
 
   # ---------------------------------------------------------------------------
-  # DeepSeek official API. DeepSeek publishes undated ids (deepseek-v4-flash,
-  # deepseek-v4-pro); the dated public aliases pin the V4 Flash 07-31 and
-  # V4 Pro 08-13 releases that those ids currently serve.
+  # DeepSeek through Alibaba Cloud DashScope (user direction, 2026-09-21: the
+  # two DeepSeek models use the same DashScope key as the two Qwen models, not
+  # the DeepSeek official API).  DashScope serves them under its own ids;
+  # its flash release is V4.1, so the public alias is deepseek-v4.1-flash
+  # rather than the official API's deepseek-v4-flash-0731, which is a different
+  # release and must not be reused as a label for it.
+  #
+  # Measured on 2026-09-21: the official API rejects a request whose tool
+  # results are separated by an ordinary message ("No tool output found for
+  # tool call ...").  LiteLLM produces exactly that shape when Claude Code
+  # sends a reminder between two parallel tool results, so every Claude Code
+  # Trial on the official route failed within a minute.  DashScope accepts the
+  # same sequence, and the translation keeps all tool results, so the model
+  # still sees its complete tool output.
   # ---------------------------------------------------------------------------
-  - model_name: deepseek-v4-flash-0731
+  - model_name: deepseek-v4.1-flash
     litellm_params:
-      model: openai/deepseek-v4-flash
-      api_base: https://api.deepseek.com/v1
-      api_key: os.environ/DEEPSEEK_API_KEY
+      model: openai/deepseek-v4.1-flash
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key: os.environ/DASHSCOPE_API_KEY
 
   - model_name: deepseek-v4-pro-0813
     litellm_params:
-      model: openai/deepseek-v4-pro
-      api_base: https://api.deepseek.com/v1
-      api_key: os.environ/DEEPSEEK_API_KEY
+      model: openai/deepseek-v4-pro-0813
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api_key: os.environ/DASHSCOPE_API_KEY
 
   # ---------------------------------------------------------------------------
   # Alibaba Cloud DashScope (OpenAI-compatible mode) for Qwen 3.8.

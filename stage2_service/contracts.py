@@ -73,7 +73,7 @@ STAGE2_SUPPORTED_MODELS = (
     "gpt-5.6-sol",
     "claude-opus-5",
     "deepseek-v4-pro-0813",
-    "deepseek-v4-flash-0731",
+    "deepseek-v4.1-flash",
     "qwen3.8-max",
     "qwen3.8-flash",
 )
