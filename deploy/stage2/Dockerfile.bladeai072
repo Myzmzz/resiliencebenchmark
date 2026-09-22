@@ -1,0 +1,18 @@
+# Adds the official BladeAI 0.7.2 linux-amd64 package to a runtime-overlay image.
+#
+# Build the runtime overlay on the ORIGINAL base first (stacking overlays on
+# overlays exceeds Docker's 127-layer limit), then add this single layer:
+#
+#   docker buildx build --platform linux/amd64 -f deploy/stage2/Dockerfile.bladeai072 \
+#     --build-arg STAGE2_OVERLAY_IMAGE=<overlay image ref> <dir holding blade-ai-linux-amd64.tar.gz>
+#
+# The package is kept out of the repository (about 170 MB); the build context is
+# just the directory that holds it.  Ownership must be 10001 because blade
+# chmods its own vendored binary and the sidecar runs as 10001.
+ARG STAGE2_OVERLAY_IMAGE
+FROM ${STAGE2_OVERLAY_IMAGE}
+USER root
+ADD --chown=10001:10001 blade-ai-linux-amd64.tar.gz /opt/bladeai-072/
+RUN test -x /opt/bladeai-072/blade-ai/blade-ai \
+    && test -x /opt/bladeai-072/blade-ai/_internal/vendor/chaosblade/blade
+USER 10001:10001
