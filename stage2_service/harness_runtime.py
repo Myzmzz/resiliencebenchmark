@@ -853,6 +853,11 @@ class NativeHarnessRunner:
                 harness_name=harness.value, gateway_config_sha256=gateway_hash,
                 llm_tag=llm_tag or model_alias,
                 served_harness_token=served_harness_token,
+                # An Anthropic-backed alias is served through LiteLLM's
+                # Responses bridge, which drops Codex's tool namespaces; the
+                # relay carries them across (llm_relay, 2026-09-21).
+                flatten_tool_namespaces=bool(gateway_route)
+                and gateway_route.get("provider") == "anthropic",
             )
             relay_config.phase_ref.update(phase_ref)
             relay = resources.enter_context(TrialRelay(relay_config))

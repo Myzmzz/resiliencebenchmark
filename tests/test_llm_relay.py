@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
 from dataclasses import replace
@@ -467,3 +468,129 @@ def test_messages_accept_the_served_token_in_x_api_key_only_when_one_is_configur
 
     _config, client = relay(_ok_upstream)
     assert _post_messages_with_api_key(client, "preshared-served-key").status_code == 401
+
+
+# --- Codex tool namespaces across the Anthropic bridge (2026-09-21) ---------
+#
+# Codex 0.155 sends each MCP server's tools as one Responses "namespace" tool
+# and routes a call by (namespace, name).  LiteLLM 1.92.0's Responses ->
+# Anthropic bridge drops the namespace, so every Codex x claude-opus-5 MCP call
+# failed with "unsupported call: <name>".  For such routes the relay expands the
+# namespaces on the way up and restores them on the way down.
+
+from stage2_service.llm_relay import flatten_responses_tool_namespaces  # noqa: E402
+
+_NAMESPACED_REQUEST = {
+    "model": "gpt-5.5",
+    "stream": True,
+    "input": [
+        {"type": "message", "role": "user", "content": "check the pod"},
+        {"type": "function_call", "call_id": "c0", "namespace": "mcp__k8s_ro", "name": "k8s_list_resources", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "c0", "output": "[]"},
+    ],
+    "tools": [
+        {"type": "function", "name": "list_mcp_resources", "parameters": {"type": "object"}},
+        {"type": "namespace", "name": "mcp__k8s_ro", "description": "k8s", "tools": [
+            {"type": "function", "name": "k8s_list_resources", "parameters": {"type": "object"}},
+            {"type": "function", "name": "k8s_get_resource", "parameters": {"type": "object"}},
+        ]},
+        {"type": "namespace", "name": "mcp__harness_channel", "description": "channel", "tools": [
+            {"type": "function", "name": "harness_poll_notices", "parameters": {"type": "object"}},
+        ]},
+    ],
+}
+
+
+def _sse(*events) -> bytes:
+    return b"".join(b"data: " + json.dumps(e).encode() + b"\n\n" for e in events)
+
+
+def test_namespace_tools_are_expanded_with_their_names_unchanged():
+    captured = []
+    config, client = relay(
+        lambda request: captured.append(request) or httpx.Response(200, headers={"content-type": "application/json"}, stream=_Stream(_one_chunk(b'{"output": []}'))),
+        flatten_tool_namespaces=True,
+    )
+
+    response = client.post("/v1/responses", headers={"authorization": f"Bearer {config.relay_token}"}, json=_NAMESPACED_REQUEST)
+
+    assert response.status_code == 200
+    sent = json.loads(captured[0].content)
+    assert [t.get("type") for t in sent["tools"]] == ["function"] * 4
+    assert [t["name"] for t in sent["tools"]] == ["list_mcp_resources", "k8s_list_resources", "k8s_get_resource", "harness_poll_notices"]
+    assert "namespace" not in sent["input"][1]
+
+
+def test_streamed_function_calls_get_their_namespace_back_even_across_chunk_boundaries():
+    done = {"type": "response.output_item.done", "item": {"type": "function_call", "call_id": "c1", "name": "harness_poll_notices", "arguments": "{}"}}
+    completed = {"type": "response.completed", "response": {"output": [
+        {"type": "message", "content": []},
+        {"type": "function_call", "call_id": "c1", "name": "harness_poll_notices", "arguments": "{}"},
+    ]}}
+    text_delta = {"type": "response.output_text.delta", "delta": "thinking"}
+    body = _sse(text_delta, done, completed)
+    cut = body.index(b"harness_poll") + 4  # split one data line across two network chunks
+
+    async def two_chunks():
+        yield body[:cut]
+        yield body[cut:]
+
+    config, client = relay(
+        lambda request: httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=_Stream(two_chunks())),
+        flatten_tool_namespaces=True,
+    )
+    response = client.post("/v1/responses", headers={"authorization": f"Bearer {config.relay_token}"}, json=_NAMESPACED_REQUEST)
+
+    events = [json.loads(line[5:]) for line in response.text.splitlines() if line.startswith("data:")]
+    assert events[0] == text_delta  # unrelated events pass through unchanged
+    assert events[1]["item"]["namespace"] == "mcp__harness_channel"
+    assert events[2]["response"]["output"][1]["namespace"] == "mcp__harness_channel"
+    assert "namespace" not in events[2]["response"]["output"][0]
+
+
+def test_a_non_streamed_response_gets_its_namespace_back():
+    body = {"output": [{"type": "function_call", "call_id": "c1", "name": "k8s_get_resource", "arguments": "{}"}]}
+    config, client = relay(
+        lambda request: httpx.Response(200, headers={"content-type": "application/json"}, stream=_Stream(_one_chunk(json.dumps(body).encode()))),
+        flatten_tool_namespaces=True,
+    )
+    response = client.post("/v1/responses", headers={"authorization": f"Bearer {config.relay_token}"}, json=dict(_NAMESPACED_REQUEST, stream=False))
+
+    assert response.json()["output"][0]["namespace"] == "mcp__k8s_ro"
+
+
+def test_native_responses_routes_are_forwarded_byte_for_byte():
+    """qwen / deepseek / gpt-5.6-sol keep the namespace natively; their traffic must not change."""
+    captured = []
+    upstream_body = _sse({"type": "response.output_item.done", "item": {"type": "function_call", "name": "harness_poll_notices"}})
+    config, client = relay(lambda request: captured.append(request) or httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=_Stream(_one_chunk(upstream_body))))
+    raw = json.dumps(_NAMESPACED_REQUEST).encode()
+
+    response = client.post("/v1/responses", headers={"authorization": f"Bearer {config.relay_token}", "content-type": "application/json"}, content=raw)
+
+    assert captured[0].content == raw
+    assert response.content == upstream_body
+
+
+def test_the_messages_path_is_never_rewritten_even_on_a_bridged_route():
+    captured = []
+    config, client = relay(lambda request: captured.append(request) or httpx.Response(200, stream=_Stream(_one_chunk(b"{}"))), flatten_tool_namespaces=True)
+    raw = json.dumps(dict(_NAMESPACED_REQUEST, messages=[])).encode()
+
+    client.post("/v1/messages", headers={"authorization": f"Bearer {config.relay_token}", "content-type": "application/json"}, content=raw)
+
+    assert captured[0].content == raw
+
+
+def test_a_name_that_would_be_ambiguous_after_expansion_leaves_the_request_unchanged():
+    payload = json.loads(json.dumps(_NAMESPACED_REQUEST))
+    payload["tools"].append({"type": "namespace", "name": "mcp__other", "tools": [{"type": "function", "name": "k8s_get_resource"}]})
+    before = json.dumps(payload)
+
+    assert flatten_responses_tool_namespaces(payload) is None
+    assert json.dumps(payload) == before
+
+
+def test_a_request_without_namespaces_is_left_alone():
+    payload = {"model": "gpt-5.5", "tools": [{"type": "function", "name": "f"}]}
+    assert flatten_responses_tool_namespaces(payload) is None

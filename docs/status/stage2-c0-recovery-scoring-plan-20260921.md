@@ -437,3 +437,57 @@ OpenAI 协议路径仍只认 Bearer。安全前提已核实：中继向上游转
 
 **测试**：`tests/test_llm_relay.py` 新增 5 个用例（x-api-key 放行且不转发、错误/空令牌拒绝、OpenAI 路径仍拒、
 预共享令牌仅在配置时放行）；全量 pytest 退出码 0。
+
+## 十四、codex × claude-opus-5 的工具命名空间（2026-09-21）
+
+### 14.1 两格失败其实是两种原因（更正）
+
+三家 × 六模型矩阵里 codex 的两格失败（均 2.5 分、`OUTPUT_UNSTRUCTURED`）起初被我一并归为"工具通道问题"，**逐条查实后并不相同**：
+
+| 格 | 事实 | 结论 |
+|---|---|---|
+| codex × claude-opus-5 | stderr 16 次 `unsupported call: harness_poll_notices` 等；除 codex 自带的 2 次外无一次 MCP 调用成功 | **通道问题**，见 14.2 |
+| codex × gpt-5.6-sol | 成功调用 3 次 MCP（telemetry_workload_current、k8s_list_resources、k8s_get_resource，均 completed），随后称"当前工具接口里没有直接暴露常规终端命令"，最终断定"没有可用的故障注入接口"，从未使用就在手边的 chaos_control | **模型行为失败**，2.5 分是有效成绩 |
+
+同一矩阵中 claude-code × gpt-5.6-sol 的 10 分也查实为模型行为：只调了不返回 UID 的 `k8s_list_resources`，
+没调 `k8s_get_resource`，**编造了一个全集群都不存在的 Pod UID**（a6e11e0c-…；真实为 e2a53fc4-…）写进方案，
+平台按基线绑定拒绝建实验是正确的。同为 claude-code 的 qwen3.8-max 调了 `k8s_get_resource`，拿到了真实 UID。
+
+### 14.2 根因
+
+用 scratchpad 里单独安装的 codex 0.155.1 对着本地假服务器捕获真实请求：**0.155.1 把每个 MCP 服务器的工具打包成一个
+Responses 协议的 `namespace` 工具**（如 `{"type":"namespace","name":"mcp__harness_channel","tools":[…]}`），
+模型的 function_call 必须带回同一 `namespace`，codex 才能按（命名空间，工具名）路由。
+
+把该请求原样经集群网关发往三个模型（流式与非流式结果一致）：
+
+| 模型 | 网关路径 | 返回的调用 |
+|---|---|---|
+| qwen3.8-max | 百炼原生 Responses，网关透传 | `(mcp__harness_channel, harness_poll_notices)` ✓ |
+| gpt-5.6-sol | nexustokenai 原生 Responses，网关透传 | `(mcp__harness_channel, harness_poll_notices)` ✓ |
+| claude-opus-5 | LiteLLM Responses → chat → Anthropic 桥接 | **`(None, harness_poll_notices)`** ✗ |
+
+LiteLLM 1.92.0 `responses/litellm_completion_transformation/transformation.py:1279`
+`transform_responses_api_tools_to_chat_completion_tools` 只认 `mcp` / `web_search` / `function`，
+`namespace` 落入 else 分支原样透传，回程不还原。
+
+又用真 codex 0.155.1 对着本地假服务器验证：返回带命名空间的调用 → 路由到 MCP 工具、0 次 unsupported；
+返回裸名 → 1 次 `unsupported call`，与生产故障一致。**补回命名空间即足以修复。**
+
+### 14.3 改动：在平台推理中继里补齐（`stage2_service/llm_relay.py`）
+
+- `TrialRelayConfig.flatten_tool_namespaces`（默认 False）；控制器（`harness_runtime.py`）在该试验模型的网关路由
+  `provider == "anthropic"` 时置 True——目前只有 claude-opus-5。
+- 仅对 `/v1/responses`：上行时 `flatten_responses_tool_namespaces` 把 namespace 工具展开为同名 function 工具
+  （**工具名不变**，模型看到的与其他模型一致），并去掉历史 function_call 上的 namespace；记下"工具名 → 命名空间"。
+- 下行时 `restore_responses_tool_namespaces` 给每个 function_call 补回命名空间：流式按行缓冲改写 SSE 的 `data:` 行
+  （跨网络分块也正确），非流式改写整个 JSON。
+- 展开后若出现同名工具（映射有歧义），**请求原样放行**，不做可能错路由的改写。
+- 原生 Responses 路由（qwen / deepseek / gpt-5.6-sol）与 `/v1/messages`（claude-code、DSH）一字节不改，
+  已跑完的格子不受影响。
+
+不改网关（LiteLLM 属第三方代码，流式钩子在 Responses 桥接上的行为无把握），也不改 codex 的全局配置
+（会让同一 harness 下各模型的工具呈现方式不一致）。
+
+**测试**：`tests/test_llm_relay.py` 新增 7 个（展开且名称不变、流式跨分块还原、非流式还原、原生路由逐字节不变、
+`/v1/messages` 不改写、歧义时原样放行、无命名空间时不动）；全量 pytest 退出码 0。

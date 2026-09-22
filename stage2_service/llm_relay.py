@@ -7,6 +7,7 @@ never exposes upstream credentials, model administration, or request history.
 
 from __future__ import annotations
 
+import json
 import secrets
 import socket
 import threading
@@ -65,6 +66,11 @@ class TrialRelayConfig:
     harness_name: str = "unknown"
     llm_tag: str = ""
     gateway_config_sha256: str = ""
+    # True when this Trial's model is served through LiteLLM's Responses ->
+    # chat-completions -> Anthropic bridge, which does not know Responses tool
+    # namespaces; see flatten_responses_tool_namespaces.  Only /v1/responses is
+    # rewritten, and only when this is set.
+    flatten_tool_namespaces: bool = False
     request_ids: list[str] = field(default_factory=list, compare=False)
     phase_ref: dict[str, str] = field(default_factory=lambda: {"phase": "C1_PLAN"}, compare=False)
     request_timeout_seconds: float = 180.0
@@ -86,6 +92,7 @@ class TrialRelayConfig:
         gateway_config_sha256: str = "",
         relay_token: str | None = None,
         served_harness_token: str = "",
+        flatten_tool_namespaces: bool = False,
         request_timeout_seconds: float = 180.0,
         max_request_bytes: int = MAX_REQUEST_BYTES,
     ) -> "TrialRelayConfig":
@@ -105,6 +112,7 @@ class TrialRelayConfig:
             harness_name=harness_name,
             llm_tag=llm_tag or model_alias,
             gateway_config_sha256=gateway_config_sha256,
+            flatten_tool_namespaces=flatten_tool_namespaces,
             request_timeout_seconds=request_timeout_seconds,
             max_request_bytes=max_request_bytes,
         )
@@ -165,7 +173,6 @@ def create_trial_relay_app(
         try:
             # Starlette's Request.json is async and consumes the same cached body;
             # parse via stdlib to keep validation independent of content headers.
-            import json
             payload = json.loads(body)
         except (ValueError, UnicodeDecodeError):
             return _error(400, "invalid_json")
@@ -173,6 +180,11 @@ def create_trial_relay_app(
             return _error(403, "model_not_authorized")
         if _has_forbidden_routing_field(payload):
             return _error(403, "request_routing_parameter_forbidden")
+        namespaces: dict[str, str] | None = None
+        if config.flatten_tool_namespaces and request.url.path == "/v1/responses":
+            namespaces = flatten_responses_tool_namespaces(payload)
+            if namespaces is not None:
+                body = json.dumps(payload).encode("utf-8")
         upstream_url = _upstream_url(config.upstream_base_url, request.url.path)
         if request.url.query:
             upstream_url += "?beta=true"
@@ -223,13 +235,38 @@ def create_trial_relay_app(
                 await upstream.aclose()
                 await client.aclose()
 
+        async def restored_body() -> AsyncIterator[bytes]:
+            # Decoded bytes: the restored body is re-serialised, and the relay
+            # never forwards a content-encoding header.
+            try:
+                content_type = upstream.headers.get("content-type", "")
+                if "text/event-stream" in content_type:
+                    pending = b""
+                    async for chunk in upstream.aiter_bytes():
+                        if await request.is_disconnected():
+                            break
+                        pending += chunk
+                        *lines, pending = pending.split(b"\n")
+                        for line in lines:
+                            yield _restore_sse_line(line, namespaces or {}) + b"\n"
+                    if pending:
+                        yield _restore_sse_line(pending, namespaces or {})
+                else:
+                    raw = b"".join([chunk async for chunk in upstream.aiter_bytes()])
+                    yield _restore_json_body(raw, namespaces or {})
+            finally:
+                await upstream.aclose()
+                await client.aclose()
+
         response_headers = {
             key: value
             for key, value in upstream.headers.items()
             if key.lower() in {"content-type", "cache-control", "x-request-id"}
         }
         return StreamingResponse(
-            stream_body(), status_code=upstream.status_code, headers=response_headers
+            restored_body() if namespaces else stream_body(),
+            status_code=upstream.status_code,
+            headers=response_headers,
         )
 
     return Starlette(
@@ -365,6 +402,122 @@ class TrialRelay:
                 self._socket.close()
             finally:
                 self._socket = None
+
+
+# Codex 0.155 groups each MCP server's tools into one Responses API tool of
+# type "namespace" ({"type": "namespace", "name": "mcp__k8s_ro", "tools": [...]})
+# and routes a call by (namespace, name).  Upstreams that speak the Responses API
+# natively keep the namespace on the returned function_call.  LiteLLM 1.92.0
+# serves an Anthropic-backed model by bridging Responses -> chat completions ->
+# Anthropic Messages, and its tool translation knows only function / mcp /
+# web_search: the namespace object passes through, the model sees the inner
+# functions, and each call comes back with its bare name and no namespace.
+# Measured 2026-09-21: every MCP call of Codex x claude-opus-5 failed with
+# "unsupported call: <name>", while Codex x qwen / deepseek / gpt-5.6-sol --
+# native Responses upstreams -- routed normally.
+#
+# For such a route the relay expands the namespaces into plain function tools on
+# the way up and puts the namespace back on each function_call on the way down.
+# Tool names are unchanged, so the model sees the same names as every other
+# model.  A name that would be ambiguous after expansion leaves the request as it
+# was: the bridge's behaviour is then unchanged, never silently misrouted.
+
+
+def flatten_responses_tool_namespaces(payload: dict) -> dict[str, str] | None:
+    """Expand namespace tools in place; return {function name: namespace}.
+
+    Returns None and leaves ``payload`` untouched when there is no namespace or
+    when two tools would end up sharing a name.  Prior ``function_call`` items in
+    ``input`` lose their ``namespace`` field too, so the bridge sees calls whose
+    names match the expanded tools.
+    """
+    tools = payload.get("tools")
+    if not isinstance(tools, list) or not any(
+        isinstance(tool, dict) and tool.get("type") == "namespace" for tool in tools
+    ):
+        return None
+    expanded: list = []
+    namespaces: dict[str, str] = {}
+    names: set[str] = set()
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("type") != "namespace":
+            name = tool.get("name") if isinstance(tool, dict) else None
+            if isinstance(name, str):
+                if name in names:
+                    return None
+                names.add(name)
+            expanded.append(tool)
+            continue
+        namespace = tool.get("name")
+        inner = tool.get("tools")
+        if not isinstance(namespace, str) or not isinstance(inner, list):
+            return None
+        for function in inner:
+            name = function.get("name") if isinstance(function, dict) else None
+            if not isinstance(name, str) or name in names:
+                return None
+            names.add(name)
+            namespaces[name] = namespace
+            expanded.append(function)
+    payload["tools"] = expanded
+    items = payload.get("input")
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict) and item.get("type") == "function_call":
+                item.pop("namespace", None)
+    return namespaces
+
+
+def restore_responses_tool_namespaces(value: object, namespaces: dict[str, str]) -> bool:
+    """Put the namespace back on every function_call inside one Responses object.
+
+    Handles a stream event (``item`` / ``response.output``) and a whole response
+    (``output``).  Returns True when anything changed.
+    """
+    changed = False
+    candidates: list = []
+    if isinstance(value, dict):
+        candidates.append(value.get("item"))
+        response = value.get("response")
+        if isinstance(response, dict) and isinstance(response.get("output"), list):
+            candidates.extend(response["output"])
+        if isinstance(value.get("output"), list):
+            candidates.extend(value["output"])
+    for item in candidates:
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "function_call"
+            and not item.get("namespace")
+            and item.get("name") in namespaces
+        ):
+            item["namespace"] = namespaces[item["name"]]
+            changed = True
+    return changed
+
+
+def _restore_sse_line(line: bytes, namespaces: dict[str, str]) -> bytes:
+    text = line[:-1] if line.endswith(b"\r") else line
+    if not text.startswith(b"data:"):
+        return line
+    data = text[5:].lstrip()
+    try:
+        event = json.loads(data)
+    except (ValueError, UnicodeDecodeError):
+        return line
+    if not restore_responses_tool_namespaces(event, namespaces):
+        return line
+    restored = b"data: " + json.dumps(event, ensure_ascii=False).encode("utf-8")
+    return restored + (b"\r" if line.endswith(b"\r") else b"")
+
+
+def _restore_json_body(raw: bytes, namespaces: dict[str, str]) -> bytes:
+    try:
+        body = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return raw
+    if not restore_responses_tool_namespaces(body, namespaces):
+        return raw
+    return json.dumps(body, ensure_ascii=False).encode("utf-8")
 
 
 def _authorized(request: Request, token: str, served_token: str = "") -> bool:
