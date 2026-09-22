@@ -40,6 +40,7 @@ from stage2_service.contracts import (
     RecoveryResult,
     TrialKind,
 )
+from mcp_servers.http_runtime import PERMISSION_REVOKED_RESPONSE
 from stage2_service.evaluator import Stage2Evaluator, _observability_denied
 from stage2_service.harness_adapters import ToolCall, ToolResult, create_adapter
 from stage2_service.harness_adapters.base import CanonicalEvent, status_from_payload
@@ -438,6 +439,22 @@ def test_auth_words_in_successful_output_are_data_not_denials(harness: HarnessKi
     events = _exchange(harness, "source_ro", "source_read_file", text, tmp_path, is_error=False)
 
     assert _only_result(events).status == "completed"
+
+
+@pytest.mark.parametrize("harness", [HarnessKind.CODEX, HarnessKind.CLAUDE_CODE, HarnessKind.DEEPSEEK])
+def test_revoked_create_reply_is_a_permission_denial(harness: HarnessKind, tmp_path: Path) -> None:
+    # D1 since 2026-09-22: the MCP runtime answers a revoked tool with a normal
+    # result carrying PERMISSION_DENIED, not with a transport 401.
+    text = json.dumps(PERMISSION_REVOKED_RESPONSE, ensure_ascii=False)
+    events = _exchange(harness, "chaos_control", "chaos_create_experiment", text, tmp_path, is_error=False)
+
+    assert _only_result(events).status == "denied"
+    denials = [event for event in _mapped(harness, events) if event.kind == "permission_denied"]
+    assert [(event.payload["tool"], event.payload["capability"]) for event in denials] == [
+        ("chaos_control.chaos_create_experiment", "mcp.chaos.create"),
+    ]
+    # The MCP server's own audit record reads the same way.
+    assert status_from_payload(native_status="completed", payload=PERMISSION_REVOKED_RESPONSE) == "denied"
 
 
 def test_server_audit_classification_is_unchanged() -> None:

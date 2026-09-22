@@ -391,7 +391,9 @@ class CompositeDisturbanceExecutor:
             )
         if plan.type is DisturbanceType.PERMISSION_CHANGE:
             capability = str(plan.parameters["revoke_capability"])
-            if plan.backend == "mcp_policy":
+            if plan.backend == "mcp_policy" and plan.parameters.get("revoke_scope") == "tool":
+                evidence = self._revoke_mcp_tool_permission(plan.trial_id, capability)
+            elif plan.backend == "mcp_policy":
                 evidence = self._revoke_mcp_capability(plan.trial_id, capability)
             else:
                 raise RuntimeAdapterError("unsupported permission disturbance backend")
@@ -532,7 +534,12 @@ class CompositeDisturbanceExecutor:
     def rollback(self, record: DisturbanceRecord) -> DisturbanceRecord:
         if record.plan.type is DisturbanceType.PERMISSION_CHANGE:
             capability = str(record.plan.parameters["revoke_capability"])
-            if record.plan.backend == "mcp_policy":
+            if (
+                record.plan.backend == "mcp_policy"
+                and record.plan.parameters.get("revoke_scope") == "tool"
+            ):
+                evidence = self._restore_mcp_tool_permission(record)
+            elif record.plan.backend == "mcp_policy":
                 evidence = self._restore_mcp_capabilities(record, (capability,))
             else:
                 raise RuntimeAdapterError("unsupported permission restoration backend")
@@ -770,6 +777,64 @@ class CompositeDisturbanceExecutor:
         return {
             **token_evidence,
             "policy": policy_evidence,
+        }
+
+    def _revoke_mcp_tool_permission(self, trial_id: str, capability: str) -> dict[str, Any]:
+        """Revoke one tool's permission and leave the rest of its server usable.
+
+        D1 (2026-09-22) used ``_revoke_mcp_capability``, which replaces the
+        whole server's bearer token: after it every chaos_control call failed,
+        so an Agent that confirmed its plan before validating it lost
+        chaos_validate_plan too and never got a platform-validated target.
+        Here only the committed tool is set to ``revoked``; the MCP runtime
+        refuses exactly that call with PERMISSION_DENIED, whenever the Agent
+        makes it, and planning, validation and inventory keep working.  The
+        evidence has the shape ``_revoke_mcp_capability`` writes, so the
+        evaluator and ``_mcp_revocation_entries`` read both alike.
+        """
+        server, tool = self._policy_target_for_capability(capability)
+        if tool is None:
+            raise RuntimeAdapterError(f"capability {capability} names no single tool to revoke")
+        registry = self._policy_registry_for(trial_id)
+        snapshot = registry.snapshot()
+        document = registry.set_tool(
+            server,
+            tool,
+            state="revoked",
+            reason=capability,
+            source="disturbance-runtime",
+        )
+        return {
+            "server": server,
+            "tool": tool,
+            "capability": capability,
+            "revoked": True,
+            "scope": "tool",
+            "policy": {
+                "server": server,
+                "tool": tool,
+                "sequence": document.sequence,
+                "snapshot": snapshot.model_dump(mode="json"),
+            },
+        }
+
+    def _restore_mcp_tool_permission(self, record: DisturbanceRecord) -> dict[str, Any]:
+        """Undo ``_revoke_mcp_tool_permission``: only the policy changed, no token."""
+        policy_snapshot = _earliest_policy_snapshot(_mcp_revocation_entries(record))
+        if policy_snapshot is None:
+            raise RuntimeAdapterError("MCP policy restoration snapshot is missing")
+        registry = self._policy_registry_for(record.plan.trial_id)
+        restored_policy = registry.restore(
+            policy_snapshot,
+            source="disturbance-runtime-rollback",
+        )
+        return {
+            "restored": [],
+            "policy": {
+                "sequence": restored_policy.sequence,
+                "restored": True,
+            },
+            "verified": True,
         }
 
     def _restore_mcp_capabilities(

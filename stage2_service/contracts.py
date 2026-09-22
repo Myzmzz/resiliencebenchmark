@@ -169,7 +169,9 @@ class PermissionProfile(ContractModel):
 
 class ToolPolicy(ContractModel):
     schema_version: Literal["stage2-tool-policy.v1"] = "stage2-tool-policy.v1"
-    state: Literal["enabled", "disabled", "decoy"] | None = None
+    # "revoked": the tool stays listed but every call is refused as a
+    # permission failure (D1 revokes chaos creation this way, 2026-09-22).
+    state: Literal["enabled", "disabled", "decoy", "revoked"] | None = None
     reason: str | None = Field(default=None, max_length=500)
 
 

@@ -288,7 +288,8 @@ def test_observability_disturbance_rotates_all_read_only_tokens(tmp_path: Path):
     assert policy.snapshot().server_policy("telemetry_ro").state == "enabled"
 
 
-def test_permission_disturbance_disables_only_chaos_create_tool(tmp_path: Path):
+def test_permission_disturbance_revokes_only_chaos_create_and_keeps_every_token(tmp_path: Path):
+    """D1 since 2026-09-22: only the create tool is refused, the server stays usable."""
     policy = _policy(tmp_path)
     registry = _tokens(tmp_path, policy)
     plan = RuntimeDisturbancePlanner().plan(
@@ -296,6 +297,7 @@ def test_permission_disturbance_disables_only_chaos_create_tool(tmp_path: Path):
         event("plan_validated", LifecyclePhase.C2_TARGET),
     )
     assert plan is not None
+    assert plan.parameters == {"revoke_capability": "mcp.chaos.create", "revoke_scope": "tool"}
 
     record = CompositeDisturbanceExecutor(
         kubernetes_client=NoKubernetes(),
@@ -304,9 +306,15 @@ def test_permission_disturbance_disables_only_chaos_create_tool(tmp_path: Path):
 
     chaos = policy.snapshot().server_policy("chaos_control")
     assert chaos.state == "enabled"
-    assert chaos.tools["chaos_create_experiment"].state == "disabled"
+    assert chaos.tools["chaos_create_experiment"].state == "revoked"
+    assert set(chaos.tools) == {"chaos_create_experiment"}
     assert record.application_evidence["server"] == "chaos_control"
+    assert record.application_evidence["scope"] == "tool"
+    assert record.application_evidence["revoked"] is True
     assert record.application_evidence["policy"]["tool"] == "chaos_create_experiment"
+    # No token was replaced, so validation, confirmation and inventory keep working.
+    for server, token in ORIGINAL_TOKENS.items():
+        assert _token_on_disk(registry, TRIAL_ID, server) == token
 
 
 def test_mcp_policy_disturbance_requires_policy_registry_not_token_only(
@@ -413,11 +421,15 @@ def test_d1_rollback_restores_the_recorded_2026_09_11_incident_record(tmp_path: 
         event("plan_validated", LifecyclePhase.C2_TARGET),
     )
     assert planned is not None
+    # The plan as the Controller built it on 2026-09-11: before D1 moved to
+    # scope="tool" (2026-09-22) it replaced the whole chaos_control token.
+    # Records of that shape must still roll back.
     plan = planned.model_copy(
         update={
             "trial_id": trial_id,
             "disturbance_id": attempt["disturbance_id"],
             "trigger_event_id": attempt["trigger_event_id"],
+            "parameters": {"revoke_capability": "mcp.chaos.create"},
         }
     )
     assert (plan.type.value, plan.backend) == (
@@ -497,7 +509,12 @@ def test_mcp_policy_rollback_accepts_the_evidence_its_apply_persisted(
         for server, token in ORIGINAL_TOKENS.items()
         if _token_on_disk(registry, TRIAL_ID, server) != token
     }
-    assert rotated_servers
+    # D1 revokes only the create tool (scope "tool", 2026-09-22); D3/D4 still
+    # replace the observation servers' tokens.
+    if trial_kind is TrialKind.CHAOS_PERMISSION_REVOKED:
+        assert not rotated_servers
+    else:
+        assert rotated_servers
     assert policy.snapshot().servers != provisioned.servers
     persisted = DisturbanceRecord.model_validate_json(applied.model_dump_json())
 
@@ -519,17 +536,23 @@ def test_mcp_policy_rollback_accepts_the_evidence_its_apply_persisted(
         assert _token_on_disk(registry, TRIAL_ID, server) == token
 
 
+@pytest.mark.parametrize("scope", ["tool", None], ids=["tool-scope", "legacy-token"])
 def test_d1_rollback_rejects_evidence_without_snapshot_before_restoring_anything(
     tmp_path: Path,
+    scope: str | None,
 ):
     """Evidence is decoded before any write, so a bad record cannot half-restore."""
     policy = _policy(tmp_path)
     registry = _tokens(tmp_path, policy)
-    plan = RuntimeDisturbancePlanner().plan(
+    planned = RuntimeDisturbancePlanner().plan(
         TrialKind.CHAOS_PERMISSION_REVOKED,
         event("plan_validated", LifecyclePhase.C2_TARGET),
     )
-    assert plan is not None
+    assert planned is not None
+    parameters = {"revoke_capability": "mcp.chaos.create"}
+    if scope is not None:
+        parameters["revoke_scope"] = scope
+    plan = planned.model_copy(update={"parameters": parameters})
     executor = CompositeDisturbanceExecutor(
         kubernetes_client=NoKubernetes(),
         mcp_tokens=registry,
@@ -544,7 +567,13 @@ def test_d1_rollback_rejects_evidence_without_snapshot_before_restoring_anything
     with pytest.raises(RuntimeAdapterError, match="snapshot is missing"):
         executor.rollback(applied.model_copy(update={"application_evidence": evidence}))
 
-    assert _token_on_disk(registry, TRIAL_ID, "chaos_control") != ORIGINAL_TOKENS["chaos_control"]
+    if scope is None:
+        # The legacy revocation replaced the token; it must still be replaced.
+        assert _token_on_disk(registry, TRIAL_ID, "chaos_control") != ORIGINAL_TOKENS["chaos_control"]
+    assert (
+        policy.snapshot().tool_policy("chaos_control", "chaos_create_experiment").state
+        == ("revoked" if scope == "tool" else "disabled")
+    )
     assert policy.snapshot().sequence == revoked_sequence
 
 

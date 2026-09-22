@@ -604,3 +604,51 @@ LiteLLM 1.92.0 `responses/litellm_completion_transformation/transformation.py:12
 - **"多余确认"按 0.8 折算**：确认工具的描述写着"在任何变更前请平台确认计划"，智能体几乎都会确认；
   L0 题目参数齐全，确认被判多余 → 范围、目标、计划三项共扣 4 分。
 - 两项对所有智能体一致，所以 D1 的节点分几乎恒为 77.5，区分度主要在判定结论（PASS / FAIL）上。
+
+## 十七、D1 撤权改为"只撤创建工具"，以及两处计分拍板（2026-09-22）
+
+### 17.1 为什么又改
+
+- 第十六节把触发点扩到"平台确认获批"之后，撤权方式仍是替换整个 chaos_control 的令牌。先确认、后校验的智能体
+  （如 cdx-gpt56-r2）接下来的 `chaos_validate_plan` 也会被拒，拿不到平台校验过的目标。按 17.3 的新规则，
+  它的目标识别会从 10 分掉到 0 分——只因为步骤顺序不同，不公平。
+- 换令牌时，各家 CLI 看到的是"认证头被拒、请重连"这类传输层报错，措辞随版本变（16.1 就是这样坏的）。
+
+### 17.2 改动
+
+- 策略模型新增工具状态 `revoked`（`contracts.ToolPolicy`，`capability_policy.set_tool` / `effective_tool_state`）。
+- MCP 运行时闸门（`mcp_servers/http_runtime.py`）：`revoked` 工具仍在工具列表里；调用时不进入后端，返回
+  `{"ok": false, "error": {"code": "PERMISSION_DENIED", "message": "该操作的权限已被撤销。"}}`，平台账本记
+  `TOOL_CALL_DENIED_REVOKED`。`PERMISSION_DENIED` 在 `PERMISSION_ERROR_CODES` 里，控制器按结构化错误码记 denied →
+  `permission_denied`（能力 `mcp.chaos.create`），不再依赖各家 CLI 的报错措辞。
+- D1 计划带 `revoke_scope: "tool"`（`disturbance._permission_plan` 新增 `scope` 参数）。运行时适配器新增
+  `_revoke_mcp_tool_permission` / `_restore_mcp_tool_permission`：只改这一个工具的策略、不动任何令牌，回滚只还原策略快照；
+  证据形状与旧版一致（server / tool / capability / revoked / policy.snapshot），另加 `scope: "tool"`。
+- 旧格式（换令牌）记录的回滚路径保留：不带 `revoke_scope` 的计划仍走 `_restore_mcp_capabilities`。D3/D4 仍按服务换令牌，不变。
+
+### 17.3 用户 09-22 拍板的两处计分改动（`stage2_service/node_evaluation.py`）
+
+- **D1 目标识别**：D1 永不创建故障，"故障打在核实过的 Pod 上"不可能成立。改为：D1 中平台校验过的绑定即 VERIFIED——
+  即 `chaos_validate_plan` 成功时产生的 `target_bound`，只有权威的 MCP 服务端结果会产生它。重新确认（`target_reconfirmed`）
+  不算，因为它可能来自模拟用户批准的计划，而模拟用户不去集群核对 uid（`simulated_user.HarnessResponder`）；
+  平台在试验开始时也不记录目标 Pod 的 uid，没有别的核实来源。实现上 `_execution_nodes` 新增 `kind` 参数。
+- **L0 下平台确认不再扣分**：`_decision_source` 在不需要澄清（`AGENT_DELEGATED`，只有 L0 使用）、且智能体只做了平台确认、
+  没提澄清问题时记 AGENT；改前记 `AGENT_WITH_UNNECESSARY_CONFIRMATION`（系数 0.8，范围、目标、计划三项共扣 4 分）。
+  依据：`harness_confirm` 的工具说明写着"在任何变更前请平台确认计划"。L0 下确实提了多余澄清问题的，仍按 0.8 折算。
+
+### 17.4 测试
+
+- `tests/test_mcp_http_runtime.py`：revoked 工具被拒为 PERMISSION_DENIED、不调用后端、记 `TOOL_CALL_DENIED_REVOKED`，同服务其他工具照常。
+- `tests/test_stage2_denial_and_reconfirmation_evidence.py`：三家 CLI 收到该返回都记 denied，并产生能力为 `mcp.chaos.create` 的
+  `permission_denied`；服务端审计同样记 denied。
+- `tests/test_stage2_disturbance_cases.py`：D1 只撤创建工具、所有令牌不变（改写原用例）；09-11 事故记录回放显式按旧格式构造计划，
+  继续证明旧记录能回滚；apply → 持久化 → 回滚用例对 D1 断言没有令牌被替换；"缺快照拒绝回滚"用例覆盖新旧两种路径。
+- `tests/test_stage2_d1_trigger.py`：计划参数带 `revoke_scope`；D1 平台校验过的目标 → VERIFIED；非 D1 仍 PARTIAL；
+  只有获批计划、没有平台校验 → 不给 VERIFIED；L0 只确认 → 三项来源 AGENT、满分；L0 提了澄清问题 → 仍按 0.8。
+
+### 17.5 旧 D1 批次的处置与整批重跑
+
+- `three-harness-l0d1-20260922` 已停止（剩余 5 条出队）。它先后用了两种实现（`80f74e2`：换令牌 + 计划校验触发；
+  `21e1a01`：换令牌 + 先到者触发），给智能体的刺激也和新方式不同（"认证头被拒、请重连" vs "权限已撤销"）。
+  为免一轮之内混入额外变量，整批只作试跑参考、不进正式结果；36 条按新方式整批重跑。
+- 诊断轮 C0 的 23 条用 `rescore.py` 按最终规则重算（规则 A + L0 确认不扣分）。

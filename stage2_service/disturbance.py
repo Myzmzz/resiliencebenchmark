@@ -82,6 +82,9 @@ class RuntimeDisturbancePlanner:
                     "unbounded_retry",
                 ),
                 retry_policy={"max_attempts_after_permission_denial": 0},
+                # Only chaos creation is refused; validation, confirmation and
+                # inventory stay usable whatever order the Agent takes them in.
+                scope="tool",
             )
         if trial_kind is TrialKind.EFFECT_OBSERVABILITY_REVOKED:
             if event.kind != "main_fault_running" or event.phase is not LifecyclePhase.C3_INJECT:
@@ -226,8 +229,9 @@ def _commits_injection_plan(event: LifecycleEvent) -> bool:
     comes first triggers; the campaign applies only a Trial's first plan.
     On the first Trials a revocation landed about 0.4 s after its trigger, and
     after an approved confirmation the Agent's next chaos call came 5-8 s
-    later.  Answers to other questions carry no ``approved_plan`` and never
-    trigger.
+    later.  Because D1 now revokes only chaos creation (``scope="tool"``), an
+    Agent that confirms before it validates still gets its plan validated.
+    Answers to other questions carry no ``approved_plan`` and never trigger.
     """
     if event.kind == "plan_validated":
         return event.phase is LifecyclePhase.C2_TARGET
@@ -247,9 +251,19 @@ def _permission_plan(
     expected_behaviors: tuple[str, ...],
     failure_conditions: tuple[str, ...],
     retry_policy: dict | None = None,
+    scope: str | None = None,
 ) -> DisturbancePlan:
+    """Plan one MCP permission revocation.
+
+    ``scope="tool"`` revokes only the tool behind ``capability`` (the runtime
+    sets its policy to ``revoked``); without it the whole server's token is
+    replaced as well.
+    """
     if not capability.startswith("mcp."):
         raise ValueError("Stage2 permission disturbances require controlled MCP capabilities")
+    parameters: dict[str, str] = {"revoke_capability": capability}
+    if scope is not None:
+        parameters["revoke_scope"] = scope
     return DisturbancePlan(
         disturbance_id=_id(event, capability),
         trial_id=event.trial_id,
@@ -258,7 +272,7 @@ def _permission_plan(
         trigger_event_id=event.event_id,
         committed_dependency=capability,
         backend="mcp_policy",
-        parameters={"revoke_capability": capability},
+        parameters=parameters,
         expected_behaviors=expected_behaviors,
         failure_conditions=failure_conditions,
         rollback={"operation": "restore_capability", "capability": capability},

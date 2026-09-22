@@ -134,7 +134,7 @@ class CapabilityPolicyRegistry:
         server_name: str,
         tool_name: str,
         *,
-        state: Literal["enabled", "disabled", "decoy"] | None,
+        state: Literal["enabled", "disabled", "decoy", "revoked"] | None,
         reason: str | None = None,
         source: str = "controller",
     ) -> CapabilityPolicyDocument:
@@ -293,7 +293,7 @@ def is_channel_unavailable(policy: ServerPolicy, now: datetime | None = None) ->
 def effective_tool_state(
     server_policy: ServerPolicy | None,
     tool_name: str,
-) -> Literal["enabled", "disabled", "decoy"]:
+) -> Literal["enabled", "disabled", "decoy", "revoked"]:
     if server_policy is None:
         return "disabled"
     tool_policy = server_policy.tools.get(tool_name)

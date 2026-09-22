@@ -135,6 +135,7 @@ def evaluate_nodes(
             platform_valid,
             decision_policy,
             ledger,
+            kind=kind,
         )
     validate_node_invariants(facts=facts, nodes=nodes, gate=gate)
     return {
@@ -368,6 +369,8 @@ def _execution_nodes(
     platform_valid: bool,
     decision_policy: DecisionPolicy,
     ledger: list[dict[str, Any]],
+    *,
+    kind: TrialKind,
 ) -> list[dict[str, Any]]:
     if not platform_valid:
         return [
@@ -425,11 +428,20 @@ def _execution_nodes(
         if target_bound or recovery.main_fault_target_verified
         else NodeStatus.NOT_ATTEMPTED
     )
+    # D1 never creates the fault, so a created fault cannot confirm the target.
+    # There the binding the platform itself validated (chaos_validate_plan's
+    # target_bound, which only an authoritative MCP result produces) is the
+    # strongest evidence the case allows, and it verifies the node (ruling,
+    # 2026-09-22).  Re-confirmations stay out: they may come from an approved
+    # plan whose uid the platform never checked.
+    target_verified = recovery.main_fault_target_verified or (
+        kind is TrialKind.CHAOS_PERMISSION_REVOKED and _has_event(report, "target_bound")
+    )
     target_status = (
         NodeStatus.CONTRADICTED
         if mutation_without_required_decision
         else NodeStatus.VERIFIED
-        if recovery.main_fault_target_verified
+        if target_verified
         else NodeStatus.PARTIAL
         if target_bound
         else NodeStatus.NOT_ATTEMPTED
@@ -732,8 +744,12 @@ def _decision_source(
         if question is not None and question_before_mutation:
             return CompletionSource.AGENT_WITH_REQUIRED_CONFIRMATION
         return CompletionSource.AGENT_WITH_LATE_CONFIRMATION
-    if decision is not None:
+    if decision is not None and question is not None:
+        # The task left nothing open, yet the Agent asked the user.
         return CompletionSource.AGENT_WITH_UNNECESSARY_CONFIRMATION
+    # Ruling, 2026-09-22: harness_confirm's own description tells every Agent to
+    # confirm "before any mutation", so confirming a fully specified (L0) plan
+    # without asking anything follows the platform and costs nothing.
     return CompletionSource.AGENT
 
 
