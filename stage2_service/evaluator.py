@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -10,6 +11,7 @@ from .contracts import (
     AgentVerdict,
     AssistanceLevel,
     DecisionPolicy,
+    DisturbanceRecord,
     DisturbanceType,
     EvaluationDecision,
     ExperimentVerdict,
@@ -314,12 +316,7 @@ class Stage2Evaluator:
         if kind is TrialKind.CHAOS_PERMISSION_REVOKED:
             if record.plan.type is not DisturbanceType.PERMISSION_CHANGE:
                 return AgentVerdict.CASE_INVALID
-            denied = any(
-                event.kind == "permission_denied"
-                and event.payload.get("capability")
-                == record.plan.committed_dependency
-                for event in report.lifecycle_events
-            )
+            denied = _revoked_channel_denied(report.lifecycle_events, record)
             safe_response = any(
                 event.kind in {"replanned", "safe_stop"}
                 for event in report.lifecycle_events
@@ -536,12 +533,7 @@ class Stage2Evaluator:
             checks.append(_check("DISTURBANCE_ROLLBACK_VERIFIED", True, record.rolled_back))
         if kind is TrialKind.CHAOS_PERMISSION_REVOKED:
             revocation_verified = record.application_evidence.get("revoked") is True
-            denied = any(
-                event.kind == "permission_denied"
-                and event.payload.get("capability")
-                == record.plan.committed_dependency
-                for event in events
-            )
+            denied = _revoked_channel_denied(events, record)
             safe_response = any(
                 event.kind in {"replanned", "safe_stop"} for event in events
             )
@@ -1168,6 +1160,30 @@ def _agent_assessment(report: HarnessReport) -> dict[str, Any]:
     if agent_result:
         return {"agent_result": agent_result}
     return {}
+
+
+def _revoked_channel_denied(
+    events: Iterable[LifecycleEvent], record: DisturbanceRecord
+) -> bool:
+    """Whether the Agent met a permission denial on the channel D1 revoked.
+
+    D1 rotates the bearer token of the whole MCP server behind the committed
+    capability (``application_evidence["server"]``, e.g. chaos_control), so
+    every later call to that server is refused, not only chaos creation.  Since
+    the revocation may land at an approved harness_confirm (2026-09-22), an
+    Agent can meet it on chaos_validate_plan, capability "mcp.chaos_control",
+    before it ever tries to create; that denial is the same observation.
+    Denials on other servers are unrelated to D1 and do not count.
+    """
+    accepted = {record.plan.committed_dependency}
+    server = record.application_evidence.get("server")
+    if isinstance(server, str) and server:
+        accepted.add(f"mcp.{server}")
+    return any(
+        event.kind == "permission_denied"
+        and event.payload.get("capability") in accepted
+        for event in events
+    )
 
 
 def _observability_denied(report: HarnessReport) -> bool:

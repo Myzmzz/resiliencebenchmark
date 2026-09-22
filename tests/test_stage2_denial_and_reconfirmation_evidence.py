@@ -51,6 +51,11 @@ TRIAL_ID = "trial-test"
 
 # Harness client texts for a call made after D1 revoked mcp.chaos.create.
 CLAUDE_CODE_REAUTH_TEXT = 'MCP server "chaos_control" requires re-authorization (token expired)'
+# The same revocation as worded by claude-code 2.1.278 (2026-09-22 L0xD1, s01).
+CLAUDE_CODE_REJECTED_HEADER_TEXT = (
+    'MCP server "chaos_control" rejected the Authorization header in its config '
+    "(update it, then run /mcp to reconnect)"
+)
 DEEPSEEK_INVALID_TOKEN_TEXT = (
     "Error: Streamable HTTP error: Error POSTing to endpoint: "
     '{"error": "invalid_token", "error_description": "Authentication required"}'
@@ -369,6 +374,8 @@ CLIENT_AUTH_FAILURES = [
                  {"error": {"message": CODEX_TRANSPORT_401_MESSAGE}}, id="codex"),
     pytest.param(HarnessKind.CLAUDE_CODE, CLAUDE_CODE_REAUTH_TEXT,
                  {"text": CLAUDE_CODE_REAUTH_TEXT}, id="claude-code"),
+    pytest.param(HarnessKind.CLAUDE_CODE, CLAUDE_CODE_REJECTED_HEADER_TEXT,
+                 {"text": CLAUDE_CODE_REJECTED_HEADER_TEXT}, id="claude-code-2.1.278"),
     pytest.param(HarnessKind.DEEPSEEK, DEEPSEEK_INVALID_TOKEN_TEXT,
                  {"text": DEEPSEEK_INVALID_TOKEN_TEXT}, id="deepseek"),
 ]
@@ -444,6 +451,7 @@ def test_server_audit_classification_is_unchanged() -> None:
 
 @pytest.mark.parametrize(("harness", "text"), [
     pytest.param(HarnessKind.CLAUDE_CODE, CLAUDE_CODE_REAUTH_TEXT, id="claude-code"),
+    pytest.param(HarnessKind.CLAUDE_CODE, CLAUDE_CODE_REJECTED_HEADER_TEXT, id="claude-code-2.1.278"),
     pytest.param(HarnessKind.DEEPSEEK, DEEPSEEK_INVALID_TOKEN_TEXT, id="deepseek"),
 ])
 def test_d1_checks_pass_on_a_client_reported_denial(harness: HarnessKind, text: str, tmp_path: Path) -> None:

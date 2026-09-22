@@ -65,10 +65,7 @@ class RuntimeDisturbancePlanner:
                 },
             )
         if trial_kind is TrialKind.CHAOS_PERMISSION_REVOKED:
-            if (
-                event.kind != "plan_validated"
-                or event.phase is not LifecyclePhase.C2_TARGET
-            ):
+            if not _commits_injection_plan(event):
                 return None
             return _permission_plan(
                 event,
@@ -215,6 +212,32 @@ class RuntimeDisturbancePlanner:
 def _id(event: LifecycleEvent, suffix: str) -> str:
     digest = hashlib.sha256(f"{event.trial_id}\x1f{event.event_id}\x1f{suffix}".encode()).hexdigest()
     return f"dst-{digest[:16]}"
+
+
+def _commits_injection_plan(event: LifecycleEvent) -> bool:
+    """Whether the Agent has committed to its injection plan, so D1 may revoke.
+
+    D1 revokes chaos creation "before injection".  A validated plan used to be
+    the only trigger, but Agents that go from an approved harness_confirm
+    straight to chaos_create_experiment never validate, and their fault was
+    really created (2026-09-22 L0xD1: 5 of the first 14 Trials ended
+    CASE_INVALID with DISTURBANCE_TRIGGER_NOT_OBSERVED).  An approved
+    confirmation of an injection plan is the same commitment, so whichever
+    comes first triggers; the campaign applies only a Trial's first plan.
+    On the first Trials a revocation landed about 0.4 s after its trigger, and
+    after an approved confirmation the Agent's next chaos call came 5-8 s
+    later.  Answers to other questions carry no ``approved_plan`` and never
+    trigger.
+    """
+    if event.kind == "plan_validated":
+        return event.phase is LifecyclePhase.C2_TARGET
+    if event.kind == "user_decision_received":
+        return (
+            event.phase is LifecyclePhase.C1_PLAN
+            and event.payload.get("approved") is True
+            and isinstance(event.payload.get("approved_plan"), dict)
+        )
+    return False
 
 
 def _permission_plan(
