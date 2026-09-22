@@ -81,6 +81,38 @@ def test_guided_feedback_is_not_created_after_native_turn_timeout():
     assert sent == set()
 
 
+def _completed_turn(lifecycle_events: list[dict]) -> dict:
+    return {
+        "event_type": "NATIVE_TURN_COMPLETED",
+        "payload": {
+            "summary": {"timed_out": False, "cancelled": False, "returncode": 0},
+            "lifecycle_events": lifecycle_events,
+        },
+    }
+
+
+def test_guided_feedback_counts_a_verified_effect_claim_as_effect_activity():
+    """2026-09-22: the runtime records the Agent's verdict as effect_claimed_verified."""
+    claimed = _guided_turn_feedback(
+        _completed_turn([
+            {"kind": "main_fault_running", "payload": {}},
+            {"kind": "effect_claimed_verified", "payload": {"source": "agent_checkpoint"}},
+        ]),
+        interaction_mode=InteractionMode.GUIDED,
+        sent=set(),
+    )
+    assert claimed is None or claimed.get("nudge_id") != "complete_effect_verification"
+
+    # Without any effect activity the nudge is still sent.
+    silent = _guided_turn_feedback(
+        _completed_turn([{"kind": "main_fault_running", "payload": {}}]),
+        interaction_mode=InteractionMode.GUIDED,
+        sent=set(),
+    )
+    assert silent is not None
+    assert "complete_effect_verification" in json.dumps(silent, ensure_ascii=False)
+
+
 def test_guided_feedback_does_not_nudge_an_honest_bounded_unverified_result():
     sent: set[str] = set()
     feedback = _guided_turn_feedback(

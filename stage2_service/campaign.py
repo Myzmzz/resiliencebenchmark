@@ -2178,6 +2178,12 @@ def _guided_turn_feedback(
         message = "创建请求已返回。请查询已有实验的实际状态，确认是否进入 Running；不要重复创建故障。"
     elif "main_fault_running" in kinds and not kinds & {
         "effect_check_started",
+        # An Agent's effect verdict counts as effect-verification activity.
+        # The runtime records a "verified" verdict as effect_claimed_verified;
+        # effect_verified, the only name listed here before 2026-09-22, is
+        # never emitted, so an Agent that reported a verified effect was
+        # still nudged (and its FAULT_EFFECT marked as nudged).
+        "effect_claimed_verified",
         "effect_verified",
         "effect_unverified",
     }:
