@@ -477,6 +477,43 @@ def test_manual_prompt_is_sent_verbatim_with_its_fault_contract():
     assert "variant_set_id" not in body
 
 
+def test_both_variants_of_a_case_fit_one_batch_at_the_same_repetition():
+    """2026-09-22: the variant was not part of the cell key, so D7-A and D7-B
+    repetition 1 were refused as duplicates of each other."""
+    request = BatchRequest.model_validate(_batch([
+        _item(1, "codex", case="D7", tool_substitution_variant="A"),
+        _item(2, "codex", case="D7", tool_substitution_variant="B"),
+        _item(3, "codex", case="D6", d6_variant="A"),
+        _item(4, "codex", case="D6", d6_variant="B"),
+        _item(5, "codex", case="D6"),
+    ]))
+    assert [request.resolved(item)["d6_variant"] for item in request.items] == [None, None, "A", "B", None]
+    with pytest.raises(ValidationError, match="duplicate"):
+        BatchRequest.model_validate(_batch([
+            _item(1, "codex", case="D7", tool_substitution_variant="A"),
+            _item(2, "codex", case="D7", tool_substitution_variant="A"),
+        ]))
+
+
+def test_d6_variant_is_only_valid_for_d6():
+    with pytest.raises(ValidationError, match="d6_variant is only valid for D6"):
+        BatchRequest.model_validate(_batch([_item(1, "codex", case="D1", d6_variant="B")]))
+
+
+def test_the_d6_variant_reaches_the_controller_request():
+    controller = FakeController("otel-demo-02")
+    resolved = {
+        "autonomy_level": "L0", "harness": "codex", "model": "qwen3.8-max",
+        "llm_tag": "tag", "duration_seconds": 300, "case": "D6", "prompt_source": "manual",
+        "prompt": "请针对 otel-demo-02 的 cart 服务做一次实验。", "note": None,
+        "tool_substitution_variant": None, "d6_variant": "B",
+        "slots": {"target": "cart", "fault_type": "cpu_load",
+                  "fault_params": {"cpu_percent": 80}, "duration_seconds": 300},
+    }
+    assert build_run_request(controller, "otel-demo-02", resolved)["d6_variant"] == "B"
+    assert "d6_variant" not in build_run_request(controller, "otel-demo-02", {**resolved, "d6_variant": None})
+
+
 def test_a_pinned_namespace_must_be_a_ready_slot():
     request = BatchRequest.model_validate(_batch([_item(1, "codex", namespace="otel-demo-09")]))
     slots = [{"slot_id": "s01", "slot_index": 1, "namespace": "otel-demo-01", "phase": "Ready"}]

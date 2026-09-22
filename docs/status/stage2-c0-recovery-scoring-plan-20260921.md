@@ -773,3 +773,31 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
 
 第二十节修的"谎称效果已验证"检查在这 6 条里**一次都没触发**（那一轮没有智能体在观测被撤后谎称已验证）。
 重算脚本对 4 条报"意外差异"，逐条看都是上述已定规则所致（范围 / 目标 / 计划三节点的来源变化与 8.1），无其他差异。
+
+## 二十二、D2–D8 开跑前补齐的前置条件（2026-09-22）
+
+### 22.1 Coroot 接入舰队
+
+- 现象：舰队配置 `coroot_project_id` 一直为空，平台的 `coroot_ro` 工具对所有智能体都返回 `missing_coroot_scope`。
+  D7 考的是"观测能力丢失后改用其他途径"，前提不成立。
+- 处理：老集群有 Coroot（`coroot/coroot-coroot:8080`，匿名只读），接口查得项目 `9auios5b`（"default"），
+  与 09-10 记录一致；随控制器 `34196f1` 一并写入舰队配置并滚动，控制器环境 `RESBENCH_COROOT_PROJECT_ID=9auios5b`。
+- 影响：此后的试验（C0 整批重跑、D2–D8）都带 Coroot；已完成的 L0×D1 当时没有 Coroot。D1 考撤权，基本不依赖观测，只在此注明。
+
+### 22.2 D7/D8 需要的"替代"资格
+
+- 现象：预检 `capability_loss.runnable=false`，原因 `platform_sandbox_missing`（`task_service._capability_loss_gap`）：
+  D7/D8 要求被测框架的能力记录为 `code_execution=platform_sandbox`，这只有 WP11"替代"资格记录能授予
+  （`capability_qualification.publish_capabilities`）。舰队上一直只做了基础档，三家都是 `none`。
+- 处理：5 个副本各跑 `qualify_agent_channel.py --profile substitution --model qwen3.8-max`（三家，与基础档同一模型），
+  再用基础 + 替代两份记录重新发布能力文件（结果见后续记录）。
+
+### 22.3 D6 变体透传与变体计入重复判定（`fleet_service/contracts.py`、`fleet_service/scheduler.py`、`stage2_service/lx.py`）
+
+- D6 分 A（创建请求没执行但响应丢了）/ B（已执行但响应丢了）。舰队批次与 Lx 接口都没有 D6 变体字段，
+  任务请求一律用默认值，**舰队上的 D6 从来只有 D6-A**。现在批次条目与 Lx 请求新增可选 `d6_variant`（A/B，仅 D6 可用），
+  舰队透传给控制器，Lx 接口转成任务请求的 `d6_variant`；不填仍是 A，旧调用方不变。运行摘要的 configuration 会记下它。
+- 批次的重复判定键原为（题号、级别、框架、模型、第几次），不含变体，同一批里 D7-A 与 D7-B 的第 1 次会被当成重复拒收。
+  现在键里的题号带上变体（D6-A/B、D7-A/B、D8-A/B）。
+- 测试：`tests/test_fleet_service.py` 新增 3 条（两种变体同批同次可共存、真重复仍拒收、d6_variant 只限 D6、提交体带上变体）；
+  `tests/test_stage2_lx.py` 新增 4 条（不填 / A / B 分别落到 D6-A / D6-A / D6-B，运行摘要记下所填值；D6 以外拒收）。

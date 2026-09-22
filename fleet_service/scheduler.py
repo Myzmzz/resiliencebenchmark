@@ -509,6 +509,8 @@ def build_run_request(
         body["note"] = resolved["note"]
     if resolved.get("tool_substitution_variant"):
         body["tool_substitution_variant"] = resolved["tool_substitution_variant"]
+    if resolved.get("d6_variant"):
+        body["d6_variant"] = resolved["d6_variant"]
     if resolved.get("prompt_source") == "manual":
         body["prompt"] = resolved["prompt"]
         body["slots"] = slots

@@ -174,6 +174,9 @@ class BatchItem(FleetModel):
     autonomy_level: AutonomyLevel
     case: str = Field(min_length=1, max_length=8)
     tool_substitution_variant: Literal["A", "B"] | None = None
+    # D6 only: A hides a create that was not applied, B one that was applied
+    # but whose response was lost.  Unset keeps the Controller default (A).
+    d6_variant: Literal["A", "B"] | None = None
     harness: HarnessName
     model: str | None = None
     llm_tag: str | None = None
@@ -204,6 +207,8 @@ class BatchItem(FleetModel):
             raise ValueError(f"case {case} requires tool_substitution_variant A or B")
         if case not in CAPABILITY_LOSS_CASES and self.tool_substitution_variant is not None:
             raise ValueError("tool_substitution_variant is only valid for D7/D8")
+        if case != "D6" and self.d6_variant is not None:
+            raise ValueError("d6_variant is only valid for D6")
         if self.prompt_source == "manual" and not (self.prompt or "").strip():
             raise ValueError("prompt_source manual requires a prompt")
         if self.prompt is not None and self.prompt_source == "canonical":
@@ -211,9 +216,19 @@ class BatchItem(FleetModel):
         return self
 
     @property
-    def cell(self) -> tuple[str, str, str, str, int]:
-        """(case, level, harness, model, repetition) uniqueness key."""
-        return (self.case, self.autonomy_level, self.harness, self.model or "", self.repetition)
+    def cell(self) -> tuple[str, str, str, str, str, int]:
+        """(case with variant, level, harness, model, repetition) uniqueness key."""
+        return (self.case_label, self.autonomy_level, self.harness, self.model or "", self.repetition)
+
+    @property
+    def case_label(self) -> str:
+        """The case as it runs: D6-A/D6-B and D7-A/D7-B/D8-A/D8-B are distinct cells.
+
+        Without the variant, repetition 1 of D7-A and of D7-B looked like the
+        same cell and one batch could not hold both (2026-09-22).
+        """
+        variant = self.tool_substitution_variant or self.d6_variant
+        return f"{self.case}-{variant}" if variant else self.case
 
 
 class BatchRequest(FleetModel):
@@ -234,7 +249,7 @@ class BatchRequest(FleetModel):
                 raise ValueError(f"duplicate item_id: {item.item_id}")
             seen_ids.add(item.item_id)
             model = item.model or self.defaults.model
-            cell = (item.case, item.autonomy_level, item.harness, model, item.repetition)
+            cell = (item.case_label, item.autonomy_level, item.harness, model, item.repetition)
             if cell in seen_cells:
                 raise ValueError(
                     "duplicate (case, autonomy_level, harness, model, repetition): "
@@ -254,6 +269,7 @@ class BatchRequest(FleetModel):
             "autonomy_level": item.autonomy_level,
             "case": item.case,
             "tool_substitution_variant": item.tool_substitution_variant,
+            "d6_variant": item.d6_variant,
             "harness": item.harness,
             "model": model,
             "llm_tag": item.llm_tag or self.defaults.llm_tag or model,

@@ -25,11 +25,19 @@ from .contracts import (
     HarnessKind,
     MainFaultSpec,
     NodeStatus,
+    OperationUncertaintyVariant,
     TargetSpec,
     Stage2CaseId,
     STAGE2_SUPPORTED_MODELS,
     ToolSubstitutionVariant,
 )
+
+# The Lx facade names the D6 variants the way a batch does; the task service
+# keeps its own enum ("D6-A" / "D6-B").
+D6_VARIANTS = {
+    "A": OperationUncertaintyVariant.NOT_APPLIED,
+    "B": OperationUncertaintyVariant.APPLIED_RESPONSE_HIDDEN,
+}
 from .node_evaluation import summarize_node_results
 from .prompt_rendering import PromptHygieneError, assert_prompt_hygiene, prompt_sha256
 from .target_binding import current as current_target_binding
@@ -183,6 +191,13 @@ class LxRunRequest(LxModel):
             "B gives only a neutral exploration hint"
         ),
     )
+    # D6 hides the outcome of the Agent's create call.  Before 2026-09-22 the
+    # facade could not say which, so every Lx D6 run was D6-A (the task
+    # service default); unset still means A, so existing callers are unchanged.
+    d6_variant: Literal["A", "B"] | None = Field(
+        default=None,
+        description="D6 only: A hides a create that was not applied; B one that was applied but whose response was lost",
+    )
 
     @field_validator("case")
     @classmethod
@@ -240,6 +255,8 @@ class LxRunRequest(LxModel):
             )
         if case not in CAPABILITY_LOSS_CASE_IDS and self.tool_substitution_variant is not None:
             raise ValueError("tool_substitution_variant is only valid for D7/D8")
+        if case is not Stage2CaseId.D6 and self.d6_variant is not None:
+            raise ValueError("d6_variant is only valid for D6")
         return self
 
     @field_validator("model")
@@ -604,6 +621,7 @@ class LxService:
             # Unset for every case but D7/D8, which the task service refuses
             # without it (see LxRunRequest.validate_tool_substitution_variant).
             tool_substitution_variant=request.tool_substitution_variant,
+            d6_variant=D6_VARIANTS[request.d6_variant or "A"],
             target=target,
             main_fault=main_fault,
         )

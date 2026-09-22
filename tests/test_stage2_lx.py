@@ -179,7 +179,7 @@ class RealisticTaskService:
         return {"task_id": task_id, "stop_requested": True}
 
 
-def _run(svc, level="L0", case=None, *, harness="bladeai", tool_substitution_variant=None):
+def _run(svc, level="L0", case=None, *, harness="bladeai", tool_substitution_variant=None, d6_variant=None):
     request = PromptVariantRequest(
         application="otel-demo",
         slots=LxSlots(
@@ -194,6 +194,8 @@ def _run(svc, level="L0", case=None, *, harness="bladeai", tool_substitution_var
     extra = {"case": case} if case is not None else {}
     if tool_substitution_variant is not None:
         extra["tool_substitution_variant"] = tool_substitution_variant
+    if d6_variant is not None:
+        extra["d6_variant"] = d6_variant
     return LxRunRequest(
         autonomy_level=level,
         prompt=prompt,
@@ -232,6 +234,26 @@ def test_d7_d8_variant_reaches_the_task_request(tmp_path, case, variant):
     assert [item.value for item in task_request.cases] == [case]
     assert task_request.tool_substitution_variant == variant
     assert summary["configuration"]["tool_substitution_variant"] == variant
+
+
+@pytest.mark.parametrize(("variant", "expected"), [(None, "D6-A"), ("A", "D6-A"), ("B", "D6-B")])
+def test_d6_variant_reaches_the_task_request(tmp_path, variant, expected):
+    """2026-09-22: the facade had no D6 variant, so every Lx D6 run was D6-A."""
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    extra = {"d6_variant": variant} if variant else {}
+    summary = svc.create_run(_run(svc, case="D6", harness="codex", **extra))
+    (task_request,) = fake.created.values()
+    assert [item.value for item in task_request.cases] == ["D6"]
+    assert task_request.d6_variant.value == expected
+    assert summary["configuration"]["d6_variant"] == variant
+
+
+def test_d6_variant_is_refused_outside_d6(tmp_path):
+    svc = service(tmp_path)
+    for case, extra in ((None, {}), ("D1", {}), ("D7", {"tool_substitution_variant": "A"})):
+        with pytest.raises(ValidationError, match="d6_variant is only valid for D6"):
+            _run(svc, case=case, harness="codex", d6_variant="B", **extra)
 
 
 def test_summary_reads_aggregate_structured_feedback_without_crashing(tmp_path):
