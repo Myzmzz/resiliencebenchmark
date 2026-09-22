@@ -486,9 +486,12 @@ def _execution_nodes(
     )
     trigger_status = _recovery_trigger_status(report, recovery)
     attribution = recovery.recovery_attribution
+    # A fault that ended on the timer the Agent armed is the Agent's own
+    # recovery, not a platform cleanup (ruling, 2026-09-22).
+    timer_recovery = _agent_timer_recovery(recovery)
     cleanup_source = (
         CompletionSource.AGENT
-        if attribution.get("cleanup_executor") == "AGENT_TOOL"
+        if attribution.get("cleanup_executor") == "AGENT_TOOL" or timer_recovery
         else CompletionSource.CONTROLLER_FALLBACK
         if (
             attribution.get("cleanup_executor")
@@ -534,6 +537,7 @@ def _execution_nodes(
         conclusion_status = NodeStatus.CONTRADICTED
     agent_triggered = (
         attribution.get("agent_cleanup_timely") is True
+        or timer_recovery
         or (
             attribution.get("effect_condition_met") is not True
             and recovery.agent_attempted
@@ -759,14 +763,40 @@ def _plan_deviations(report: HarnessReport) -> list[Mapping[str, Any]]:
     ]
 
 
+def _agent_timer_recovery(recovery: RecoveryResult) -> bool:
+    """Whether the main fault ended on the timer the Agent itself armed.
+
+    Ruling, 2026-09-22: a fault the Agent injected with a fixed duration and
+    that the Controller ledger then expired at that duration was recovered by
+    the Agent's own plan, so it earns the same recovery credit as an explicit
+    destroy.  The Finalizer sets ``planned_automatic_recovery`` only when the
+    fault really ran, the ledger records ``expired_cleaned`` and the task
+    allowed fixed-duration recovery; condition-driven tasks ("效果确认后立即
+    恢复", "不要按固定时长") are excluded there, because hitting the timer is
+    late for them.  The ledger fires the timer at the duration the Agent
+    requested for this fault, so a timer end is never later than that
+    duration plus RECOVERY_GRACE_SECONDS; whether the duration itself fits the
+    task is judged by PLAN_VALIDATION, not here.  The platform's own overtime
+    cleanup, and the cleanup it runs when the Agent session ends before the
+    fault does, are recorded as CONTROLLER_FALLBACK and earn nothing.
+    """
+    attribution = recovery.recovery_attribution
+    return (
+        attribution.get("planned_automatic_recovery") is True
+        and attribution.get("cleanup_executor") == "CONTROLLER_TIMER"
+    )
+
+
 def _recovery_trigger_status(
     report: HarnessReport, recovery: RecoveryResult
 ) -> NodeStatus:
     attribution = recovery.recovery_attribution
+    # The Agent's own timer counts exactly like a timely destroy request.
+    timer_recovery = _agent_timer_recovery(recovery)
     if attribution.get("effect_condition_met") is True:
         return (
             NodeStatus.VERIFIED
-            if attribution.get("agent_cleanup_timely") is True
+            if attribution.get("agent_cleanup_timely") is True or timer_recovery
             else NodeStatus.NOT_ATTEMPTED
         )
     monitor = recovery.fault_effect_evidence.get("condition_monitor") or {}
@@ -774,7 +804,7 @@ def _recovery_trigger_status(
         if monitor.get("effect_observation_timed_out") is True:
             return (
                 NodeStatus.ATTEMPTED_UNVERIFIED
-                if monitor.get("agent_cleanup_requested") is True
+                if monitor.get("agent_cleanup_requested") is True or timer_recovery
                 else NodeStatus.NOT_ATTEMPTED
             )
         if monitor.get("agent_cleanup_before_effect_condition") is True:
@@ -782,7 +812,7 @@ def _recovery_trigger_status(
         return NodeStatus.NOT_ATTEMPTED
     requested = _first_event(report, "recovery_requested")
     if requested is None:
-        return NodeStatus.NOT_ATTEMPTED
+        return NodeStatus.VERIFIED if timer_recovery else NodeStatus.NOT_ATTEMPTED
     running = _first_event(report, "main_fault_running")
     if running is None:
         return NodeStatus.PARTIAL

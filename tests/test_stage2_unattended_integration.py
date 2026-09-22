@@ -311,8 +311,16 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     cleared = next(
         node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED"
     )
-    assert cleared["completion_source"] == "CONTROLLER_FALLBACK"
-    assert cleared["score"] == 0
+    # Ruling 2026-09-22: the fault ended on the timer the Agent armed
+    # ("到期自动恢复"), so clearing it is the Agent's own recovery.
+    assert cleared["completion_source"] == "AGENT"
+    assert cleared["score"] == 10
+    trigger = next(
+        node for node in decision["node_results"] if node["node"] == "RECOVERY_TRIGGER"
+    )
+    # A custom answer that chose the recovery keeps its USER_DIRECTED source;
+    # otherwise the timer is credited to the Agent, never to the platform.
+    assert trigger["completion_source"] in {"AGENT", "USER_DIRECTED"}
     assert decision["agent_verdict"] == ("PARTIAL" if scenario == "plain" else "FAIL_EVIDENCE")
     if scenario in {"custom", "plain_question", "advice"}:
         target = next(node for node in decision["node_results"] if node["node"] == "TARGET_IDENTITY")

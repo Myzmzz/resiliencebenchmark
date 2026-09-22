@@ -491,3 +491,63 @@ LiteLLM 1.92.0 `responses/litellm_completion_transformation/transformation.py:12
 
 **测试**：`tests/test_llm_relay.py` 新增 7 个（展开且名称不变、流式跨分块还原、非流式还原、原生路由逐字节不变、
 `/v1/messages` 不改写、歧义时原样放行、无命名空间时不动）；全量 pytest 退出码 0。
+
+## 十五、09-22 三项拍板与"自设定时到期"的恢复计分（规则 A）
+
+分支：`claude/stage2-d1-round-20260922`（从 `80f74e2` 开出，这一轮的改动都放在这里）。
+
+### 15.1 用户 09-22 拍板
+
+| 事项 | 结论 | 依据 |
+|---|---|---|
+| D0 准入 | **不跑** | D0 是固定任务"给 accounting 的一个 Pod 注入 80% CPU，5 分钟后自动恢复"的真注入（`harness/d0/common.py:16`），和 C0 基本是同一件事；它只决定结果算不算"正式"，`evaluator.py:211` 写明该标记只管计分资格，每条试验照常判分。3 家 × 6 模型在诊断轮都已实跑，通道可用性已证明。代价：结果里 `formally_scored` 为否，报告注明"未走平台 D0 准入，通道可用性由诊断轮实跑证明"。以后若要跑，走拷贝路线（`qualification.verify_d0_ref` 只核对记录本身，不绑副本）。 |
+| 这轮正式题目 | **L0×D1**（注入前撤销故障注入权限），3 家 × 6 模型 × 各 2 次 | C0 用诊断轮结果，按本节规则 A 重算。D1 撤的是本次试验的 MCP 令牌与本副本的工具策略（`runtime_adapters.py:744`），不动集群权限，5 副本并行互不干扰。 |
+| BladeAI `turn_hold_fault_window` | **开** | 用户口径：测试主体是智能体（框架 + 模型），框架代为发起的恢复是应当得分的行为。0.7.2 默认关，源码注释写明供评测副本按实例开启（环境变量 `BLADE_AI_TURN_HOLD_FAULT_WINDOW`，或 `POST /api/v1/config/turn_hold_fault_window`）。 |
+| 恢复计分 | **规则 A（不分档）** | 规定时间后 5 分钟内恢复，主动销毁与智能体自己设的时长到期同样满分。 |
+
+### 15.2 改前的问题
+
+- 故障按智能体申请的时长被账本定时清掉（`ledger_state == "expired_cleaned"`）时，`finalization.py:405`
+  记 `cleanup_executor = "CONTROLLER_TIMER"`；`node_evaluation.py` 把它和平台兜底一样归为 `CONTROLLER_FALLBACK`（系数 0），
+  `_recovery_trigger_status` 在效果条件满足后只认 `agent_cleanup_timely`。结果：**恢复触发 0/8 + 故障清除 0/10，共扣 18 分**，
+  哪怕故障恰好在规定时间消失。第十节的 300 秒宽限只对主动销毁生效，与用户"规定时间 5 分钟内恢复都不扣分"的口径不一致。
+- 条件监视发现定时到期后，只留一个轮询间隔等智能体的销毁事件；模型等满时长再去销毁，很可能晚几秒被记成定时到期
+  （读代码推断，未实测）。
+- 历史：`15fa45b`（09-04）原本就把"计划内定时自动恢复"（`planned_automatic_recovery`）计为智能体触发；
+  `f80ea7b`（09-05，条件驱动恢复）重写判分时删掉了这段用法，字段仍由收尾阶段写入、但无人读取。
+  规则 A 等于恢复原口径，并受宽限期约束。
+- 手测 BladeAI（09-21）时我给主动与被动两种做法都按 4/8 算，和平台算法不一致；以平台为准，本节统一。
+
+### 15.3 改动（`stage2_service/node_evaluation.py`）
+
+- 新增 `_agent_timer_recovery(recovery)`（:766）：`planned_automatic_recovery is True` 且
+  `cleanup_executor == "CONTROLLER_TIMER"` 时为真。`planned_automatic_recovery` 由 `finalization.py:325–342` 判定：
+  故障确实生效过、账本记为按时长到期清除、有申请时长或安全 TTL、题目允许定时恢复——
+  含"效果确认后立即""确认效果后""不要按固定时长"等条件驱动题目一律排除，对它们而言碰到定时已是迟到。
+- `cleanup_source`（:491–494）：改前 `AGENT_TOOL` → AGENT、定时到期 → CONTROLLER_FALLBACK；
+  改后自设定时到期也 → AGENT。故障清除节点因此得 10 分。
+- `agent_triggered`（:540）：增加 `or timer_recovery`，恢复触发的来源为 AGENT。
+- `_recovery_trigger_status`（:795–815）：自设定时到期与"及时的主动销毁"完全同等——
+  效果条件已满足 → VERIFIED（改前 NOT_ATTEMPTED）；效果观察超时 → ATTEMPTED_UNVERIFIED；
+  无条件监视且无销毁请求 → VERIFIED（改前 NOT_ATTEMPTED）。
+- 时效：账本在智能体为该故障申请的时长到点触发，所以定时到期不会晚于"该时长 + RECOVERY_GRACE_SECONDS"；
+  时长本身合不合题目由 PLAN_VALIDATION 判，不在这里重复扣。平台超时兜底、以及会话先于故障结束时平台立即做的清理，
+  都记 CONTROLLER_FALLBACK，不给分（那时恢复并不是按它的定时发生的）。
+- 不变：业务恢复（12 分）仍要求智能体自己确认业务恢复。"主动收尾"与"设完不管"的差别体现在这一项。
+- 未覆盖：BladeAI 自建 CR（扩归属路径）靠 chaosblade `--timeout` 自毁时不经平台账本，`timer_cleaned` 不成立；
+  BladeAI 0.7.2 上平台时另行核对这条路径。
+
+### 15.4 测试
+
+- 新增 `tests/test_stage2_timer_recovery_credit.py`（5 条）：自设定时到期两项满分；与主动销毁同分同来源；
+  条件驱动题目碰到定时仍 0 分；平台兜底即便带计划标记也 0 分；无条件监视路径下自设定时记 VERIFIED、非计划定时记 NOT_ATTEMPTED。
+- 更新 `tests/test_stage2_unattended_integration.py:311–323`：该用例是固定时长题目（智能体声明"到期自动恢复"），
+  故障清除改前断言 `CONTROLLER_FALLBACK`/0 分，改为 `AGENT`/10 分；恢复触发来源断言为 AGENT 或 USER_DIRECTED
+  （自定义回答决定恢复方式的场景沿用原有归属规则）。
+- 全量 pytest 退出码 0。
+
+### 15.5 部署与重算
+
+- 本改动不影响 D1：D1 没有主故障，恢复各节点标为不适用。L0×D1 批次 `three-harness-l0d1-20260922`（36 条）
+  在控制器 `80f74e2` 上运行；含本改动的控制器镜像等批次跑完再滚动，避免中途换镜像打断试验。
+- 诊断轮 C0 结果用 `rescore.py` 按规则 A 重算，作为本轮 C0 成绩。
