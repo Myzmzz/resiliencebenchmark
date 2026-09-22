@@ -419,3 +419,51 @@ def test_the_other_three_harnesses_are_unchanged_because_the_field_stays_empty()
     assert _post(client, "anything-else").status_code == 401
     # 空的预置令牌不能授权任何东西，空 Bearer 头也不行
     assert _post(client, "").status_code == 401
+
+
+def _post_messages_with_api_key(client, token: str, path: str = "/v1/messages"):
+    """An Anthropic-SDK client: the API key travels in x-api-key, never as Bearer."""
+    return client.post(
+        path,
+        headers={"x-api-key": token, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        json={"model": "gpt-5.5", "messages": []},
+    )
+
+
+def test_messages_accept_the_trial_token_in_x_api_key_and_never_forward_it():
+    """DSH's pi-ai anthropic-messages client sends only x-api-key (2026-09-21).
+
+    Before this, every DSH Trial on claude-opus-5 got 401 from the relay and
+    never reached the gateway, so the platform saw no gateway evidence at all.
+    """
+    captured = []
+    config, client = relay(lambda request: captured.append(request) or httpx.Response(200, stream=_Stream(_one_chunk(b"{}"))))
+
+    response = _post_messages_with_api_key(client, config.relay_token)
+
+    assert response.status_code == 200
+    assert captured[0].headers["authorization"] == "Bearer upstream-master-secret"
+    assert "x-api-key" not in captured[0].headers
+
+
+def test_messages_reject_a_wrong_token_in_x_api_key():
+    _config, client = relay(_ok_upstream)
+
+    assert _post_messages_with_api_key(client, "some-other-token").status_code == 401
+    assert _post_messages_with_api_key(client, "").status_code == 401
+
+
+@pytest.mark.parametrize("path", ["/v1/responses", "/v1/chat/completions"])
+def test_openai_protocol_paths_still_require_bearer(path):
+    """x-api-key is the Anthropic protocol's header; OpenAI-protocol paths keep Bearer only."""
+    config, client = relay(_ok_upstream)
+
+    assert _post_messages_with_api_key(client, config.relay_token, path=path).status_code == 401
+
+
+def test_messages_accept_the_served_token_in_x_api_key_only_when_one_is_configured():
+    _config, client = relay(_ok_upstream, served_harness_token="preshared-served-key")
+    assert _post_messages_with_api_key(client, "preshared-served-key").status_code == 200
+
+    _config, client = relay(_ok_upstream)
+    assert _post_messages_with_api_key(client, "preshared-served-key").status_code == 401

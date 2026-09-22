@@ -401,3 +401,39 @@ pro 两边都是 08-13 版（百炼 ID 即 `deepseek-v4-pro-0813`），不改名
 
 网关配置变更会改变 `gateway_config_sha256`，五个 slot × 三家的资格全部失效，须重做后重新发布能力；
 然后统一重跑"三家 × 两个 DeepSeek"共 6 条（含 codex 已在官方通道上跑完的 2 条、claude-code 失败的 2 条）。
+
+## 十三、切换当天查实的两个平台问题（2026-09-21）
+
+### 13.1 控制器镜像层数超限：`failed to register layer: max depth exceeded`
+
+切百炼时五个 slot 全部 ImagePullBackOff（这些 deployment 是先停旧 Pod 再起新 Pod，所以五个 slot 一起停摆；
+当时集群空闲，没有试验被中断）。原因是我今天每次都用 `Dockerfile.runtime-overlay` 叠在**上一个覆盖镜像**上：
+
+| 镜像 | 基底 | 层数 |
+|---|---|---|
+| `stage2-d0-0a24471-bladeai070-own`（原始） | — | 59 |
+| `stage2-d0-37c026e-grace300` | 原始 | 86 |
+| `stage2-d0-3e30354-dshtrace` | 37c026e | 113 |
+| `stage2-d0-8956ccb-bailian` | 3e30354 | **140 > 127 上限** |
+
+覆盖层本来就会替换全部应用代码，叠在哪一层上结果一样，所以改为**永远以原始基底构建**：
+`stage2-d0-8956ccb-bailian-flat@sha256:0fc19610…`，86 层，内容核对无误后恢复。
+**规矩：runtime-overlay 的 `STAGE2_RUNTIME_BASE` 只能是原始基底，不能是任何覆盖镜像。**
+
+### 13.2 DSH × claude-opus-5 被平台推理中继 401
+
+`dsh-opus-l0c0-r1` 21 秒失败，`GATEWAY_EVIDENCE_MISSING`；stderr：`dsh: AUTH: 401 {"error":{"message":"unauthorized"}}`。
+
+- 返回 401 的是平台自己的试验级推理中继 `stage2_service/llm_relay.py:_authorized`（127.0.0.1:18090），
+  它**只认 `Authorization: Bearer <token>`**。
+- DSH 对 claude-opus-5 使用 `anthropic-messages` 协议；pi-ai 的 Anthropic 客户端对普通 API key 走
+  `new Anthropic({ apiKey, authToken: null })`，即只发 **`x-api-key`**（仅 OAuth 与 Copilot 才用 Bearer）。
+- 所以请求在中继鉴权处被拒，网关审计里没有任何记录。claude-code × opus 能跑通，是因为平台给它配的是 Bearer 方式。
+
+**改动**：`_authorized` 在 `/v1/messages`（Anthropic 协议路径）上额外接受 `x-api-key`，同一令牌、同样的常数时间比较；
+OpenAI 协议路径仍只认 Bearer。安全前提已核实：中继向上游转发时另起一套请求头（只带网关凭证与固定字段，
+客户端头里仅透传 `anthropic-version` / `anthropic-beta`），客户端的 `x-api-key` 不会外泄；已有测试
+`test_relay_preserves_claude_messages_beta_query_and_protocol_headers` 断言了这一点。
+
+**测试**：`tests/test_llm_relay.py` 新增 5 个用例（x-api-key 放行且不转发、错误/空令牌拒绝、OpenAI 路径仍拒、
+预共享令牌仅在配置时放行）；全量 pytest 退出码 0。

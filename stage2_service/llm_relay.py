@@ -375,15 +375,32 @@ def _authorized(request: Request, token: str, served_token: str = "") -> bool:
     ``served_token`` is empty for every subprocess Harness, and an empty
     pre-shared token authorises nothing -- an empty Bearer header is rejected
     by the emptiness check, not by comparing it against "".
+
+    The Anthropic protocol authenticates with ``x-api-key`` instead of a
+    Bearer header, and Anthropic-SDK clients send nothing else for a plain API
+    key -- DSH's pi-ai ``anthropic-messages`` API does exactly that, so every
+    DSH Trial on claude-opus-5 was refused here with 401 before reaching the
+    gateway (2026-09-21).  ``/v1/messages`` therefore also accepts the same
+    tokens in ``x-api-key``; the OpenAI-protocol paths still require Bearer.
+    The header is read for authorisation only: the upstream request is built
+    from a fresh header set and never carries it.
     """
-    value = request.headers.get("authorization")
-    if value is None:
+    bearer = request.headers.get("authorization")
+    api_key = request.headers.get("x-api-key") if request.url.path == "/v1/messages" else None
+    if bearer is None and api_key is None:
         return False
-    matches_trial = secrets.compare_digest(value, f"Bearer {token}")
-    matches_served = bool(served_token) and secrets.compare_digest(
-        value, f"Bearer {served_token}"
-    )
-    return matches_trial or matches_served
+    matches = False
+    if bearer is not None:
+        matches_trial = secrets.compare_digest(bearer, f"Bearer {token}")
+        matches_served = bool(served_token) and secrets.compare_digest(
+            bearer, f"Bearer {served_token}"
+        )
+        matches = matches or matches_trial or matches_served
+    if api_key is not None:
+        key_trial = bool(token) and secrets.compare_digest(api_key, token)
+        key_served = bool(served_token) and secrets.compare_digest(api_key, served_token)
+        matches = matches or key_trial or key_served
+    return matches
 
 
 def _error(status_code: int, code: str) -> JSONResponse:
