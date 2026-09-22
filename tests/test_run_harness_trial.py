@@ -1008,6 +1008,47 @@ def test_capture_dsh_session_trace_preserves_multiframe_archive_and_redacts(tmp_
     assert events[0]["payload_ref"] == "dsh-session-00.jsonl.zstd"
 
 
+def test_capture_dsh_session_trace_redaction_keeps_every_record_valid_json(tmp_path):
+    """2026-09-22 L0xD1 dsh-dspro-r1: a quoted ``token = "..."`` in reasoning text.
+
+    Redacting the raw line removed the backslash of the escaped quote and the
+    archived record no longer parsed, which invalidated the whole Trial.
+    """
+    zstd = pytest.importorskip("zstandard")
+    dsh_home = tmp_path / "dsh-home"
+    artifact_dir = tmp_path / "artifact"
+    session_dir = dsh_home / "sessions" / "project" / "session-1"
+    session_dir.mkdir(parents=True)
+    artifact_dir.mkdir()
+    secret = runtime_env()["RESBENCH_MCP_TOKEN"]
+    reasoning = (
+        'Variant B: controller_token_ref = "734bdd7921c7a05399fa68cda331032c2af8".\n'
+        'Variant C: baseline_gate_token = "734bdd7921c7a05399fa68cda331032c2af8".\n'
+        f"Bearer {secret}"
+    )
+    records = [
+        {"type": "session", "id": "session-1"},
+        {"type": "assistant/message", "data": {"message": {"role": "assistant",
+                                                          "content": [{"type": "reasoning", "text": reasoning}]}}},
+    ]
+    payload = b"".join(json.dumps(record).encode("utf-8") + b"\n" for record in records)
+    (session_dir / "session.v3.jsonl.zstd").write_bytes(zstd.ZstdCompressor().compress(payload))
+
+    trial.capture_dsh_session_trace(dsh_home, artifact_dir, runtime_env(), [])
+
+    archived = [json.loads(line) for line in
+                trial.iter_zstd_jsonl_lines(artifact_dir / "dsh-session-00.jsonl.zstd")]
+    assert len(archived) == 2
+    text = archived[1]["data"]["message"]["content"][0]["text"]
+    assert secret not in text
+    # Only what the existing patterns name is redacted: "token = value" is,
+    # "token_ref = value" is not, exactly as before.
+    assert 'Variant C: baseline_gate_<redacted>".' in text
+    assert 'Variant B: controller_token_ref = "734bdd7921c7a05399fa68cda331032c2af8".' in text
+    for line in (artifact_dir / "dsh-session-00.jsonl").read_text(encoding="utf-8").splitlines():
+        json.loads(line)
+
+
 def test_capture_dsh_session_trace_archives_the_0_1_5_session_generation(tmp_path):
     """0.1.5-rc.2 writes session.v3.jsonl.zstd; the capture must still find it."""
     zstd = pytest.importorskip("zstandard")

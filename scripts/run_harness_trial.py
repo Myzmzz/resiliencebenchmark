@@ -1194,6 +1194,24 @@ def validate_final_agent_result(
     return "", "agent output did not contain a JSON object matching agent-result.schema.json"
 
 
+def _redact_session_line(line: str, env: Mapping[str, str]) -> str:
+    """Redact one DSH session record without breaking its JSON.
+
+    Redacting the raw line corrupted records (2026-09-22 L0xD1, dsh-dspro-r1,
+    line 143): the model's reasoning contained ``baseline_gate_token =
+    \\"...\\"``, the ``token = value`` pattern swallowed the backslash of the
+    escaped quote, and the bare quote left behind made the record invalid, so
+    the whole Trial ended ADAPTER_TRACE_INVALID.  Each string value is
+    redacted after decoding and the record is encoded again, so escaping stays
+    correct.  A line that is not JSON keeps the plain text redaction.
+    """
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return redact_text(f"{line}\n", env)
+    return json.dumps(redact_json(record, env), ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
 def capture_dsh_session_trace(
     dsh_home: Path,
     artifact_dir: Path,
@@ -1219,7 +1237,7 @@ def capture_dsh_session_trace(
                 total += len(output_line.encode("utf-8"))
                 if total > 128 * 1024 * 1024:
                     raise ValueError("DSH native trace exceeds 128 MiB archive limit")
-                destination.write(redact_text(output_line, env))
+                destination.write(_redact_session_line(line, env))
         compressed_name = f"dsh-session-{index:02d}.jsonl.zstd"
         compressed_path = artifact_dir / compressed_name
         with jsonl_path.open("rb") as original, compressed_path.open("wb") as destination:
