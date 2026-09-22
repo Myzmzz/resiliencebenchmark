@@ -716,3 +716,17 @@ LiteLLM 1.92.0 `responses/litellm_completion_transformation/transformation.py:12
 控制器未设 `RESBENCH_PLATFORM_MODEL`，所以所有试验的模拟用户都是**同一个固定模型** `STAGE2_PLATFORM_MODEL =
 deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不用智能体自己的模型"。cdx-dspro-r1 只是被测模型碰巧
 也是它。因此"换成固定模型"已经成立，本节不改代码；是否把固定模型换成别的，等用户确认（换了之后新旧试验的模拟用户不同）。
+
+### 19.5 模拟用户返回"不是 JSON"：防截断加固（`stage2_service/simulated_user.py`）
+
+- 现象：cdx-dspro-r1（本舰队）与新环境 5 个副本中 4 个 BladeAI 资格测试，都因平台模拟用户（固定的 deepseek-v4-pro-0813，
+  经百炼）返回 "Harness conversation response is not JSON" 而中断，与被测智能体无关。失败时原始回复没有落盘，无法直接查看。
+- 实测（s01 控制器内，同样的客户端参数、只要求回一个 JSON 对象，5 次）：全部合法 JSON、`finish_reason=stop`，
+  但**思考就占了 503–1,436 个输出 token**（总输出 867–1,806），波动很大。模拟用户原先的输出上限是 4,000，
+  真实确认的上下文更长（被拒后重新确认要带证据和改过的计划），思考一长就把最后的 JSON 截断。**这是推断**，
+  没能复现原始失败；加固后的报错会带上结束原因，下次可以直接确认。
+- 改动：输出上限 4,000 → `HARNESS_MODEL_MAX_COMPLETION_TOKENS = 16000`（只防截断，不改变模型本来会给出的决定）；
+  解析抽成 `parse_harness_reply`：原样 JSON、Markdown 代码块、前后夹带一句话三种都能取出对象；取不出时报错写明
+  `finish_reason` 与回复长度；数组仍按"不是对象"拒绝。模拟用户**仍是同一个固定模型**，与此前所有试验一致。
+- 测试：新增 `tests/test_stage2_simulated_user_reply_parsing.py`（四种写法都能取出对象；截断时报错带 finish_reason=length；
+  数组仍拒绝；`from_environment` 用 16,000 上限并走同一解析函数）。

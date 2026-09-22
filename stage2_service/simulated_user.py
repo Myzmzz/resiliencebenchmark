@@ -64,9 +64,54 @@ DECISION_NODES = {
     "recovery_sustain_seconds": ["BUSINESS_RECOVERY"],
 }
 HARNESS_MODEL_TIMEOUT_SECONDS = 180
+# The platform model reasons before it answers and the reasoning shares this
+# budget.  A 2026-09-22 probe of deepseek-v4-pro-0813 spent 500-1,400 of its
+# tokens reasoning over a bare confirmation; with the old 4,000 cap a longer
+# confirmation could cut the JSON off (cdx-dspro-r1 on the fleet, 4 of 5
+# BladeAI qualifications on the new environment).  Raising the cap changes no
+# decision the model would have finished anyway.
+HARNESS_MODEL_MAX_COMPLETION_TOKENS = 16000
 # Environment variable an operator may set to run the simulated user on
 # another gateway alias than STAGE2_PLATFORM_MODEL.
 PLATFORM_MODEL_ENV = "RESBENCH_PLATFORM_MODEL"
+
+
+def parse_harness_reply(content: Any, *, finish_reason: Any = None) -> Mapping[str, Any]:
+    """Decode the simulated user's reply into the one JSON object it must be.
+
+    The object is taken as sent, from a Markdown fence, or from between the
+    first ``{`` and the last ``}`` when the model adds a sentence around it.
+    Anything else is a ConversationError that names the finish reason and the
+    reply length, so a truncated reply ("length") can be told apart from one
+    that ignored the format.
+    """
+    text = (
+        content
+        if isinstance(content, str)
+        else "\n".join(
+            str(item.get("text") or "")
+            for item in content or ()
+            if isinstance(item, Mapping)
+        )
+    ).strip()
+    candidates = [text]
+    if text.startswith("```"):
+        candidates.append(text.split("\n", 1)[-1].rsplit("```", 1)[0])
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        candidates.append(text[start : end + 1])
+    for candidate in candidates:
+        try:
+            value = json.loads(candidate)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(value, Mapping):
+            raise ConversationError("Harness conversation response is not an object")
+        return value
+    raise ConversationError(
+        "Harness conversation response is not JSON "
+        f"(finish_reason={finish_reason}, {len(text)} chars)"
+    )
 
 
 def resolve_platform_model(env: Mapping[str, str] | None = None) -> str:
@@ -231,7 +276,7 @@ class HarnessResponder:
             use_responses_api=_uses_responses_api(model),
             max_retries=0,
             timeout=HARNESS_MODEL_TIMEOUT_SECONDS,
-            max_completion_tokens=4000,
+            max_completion_tokens=HARNESS_MODEL_MAX_COMPLETION_TOKENS,
             include_response_headers=True,
         )
 
@@ -242,25 +287,13 @@ class HarnessResponder:
                     ("human", json.dumps(context, ensure_ascii=False)),
                 ]
             )
-            content = response.content
-            text = (
-                content
-                if isinstance(content, str)
-                else "\n".join(
-                    str(item.get("text") or "")
-                    for item in content
-                    if isinstance(item, Mapping)
-                )
+            metadata = getattr(response, "response_metadata", None)
+            value = parse_harness_reply(
+                response.content,
+                finish_reason=(
+                    metadata.get("finish_reason") if isinstance(metadata, Mapping) else None
+                ),
             )
-            text = text.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-            try:
-                value = json.loads(text)
-            except (TypeError, ValueError) as exc:
-                raise ConversationError("Harness conversation response is not JSON") from exc
-            if not isinstance(value, Mapping):
-                raise ConversationError("Harness conversation response is not an object")
             return ModelCallResult(
                 value=value,
                 upstream_request_id=_request_id_from_response(response),
