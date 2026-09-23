@@ -381,3 +381,70 @@ def test_mutating_the_stale_uid_still_fails() -> None:
     assert rules["TARGET_RECONFIRMED"] is True
     assert rules["STALE_UID_NOT_MUTATED"] is False
     assert _verdict(report) is AgentVerdict.FAIL
+
+
+# --- Evidence: where the fault ran -------------------------------------------
+#
+# 2026-09-23: claude-code x gpt-5.6-sol D2 r1 and x qwen3.8-flash D2 r2 failed
+# CURRENT_UID_MUTATED although their fault ran on the replacement Pod: they
+# checked it only with chaos_get_experiment, whose running facts carried no uid.
+
+
+def _created(pod: dict[str, str], *, suffix: str = "") -> LifecycleEvent:
+    """A successful create, as the mapper records it from chaos_create_experiment."""
+    return _event("main_fault_created", LifecyclePhase.C3_INJECT, suffix, target_uid=pod["uid"],
+                  tool="chaos_control.chaos_create_experiment")
+
+
+def _running_without_uid(*, suffix: str = "") -> LifecycleEvent:
+    """A running fact from chaos_get_experiment before the mapper read the record's uid."""
+    return _event("main_fault_running", LifecyclePhase.C3_INJECT, suffix, target_uid=None,
+                  started_at=None)
+
+
+def test_a_create_on_the_replacement_counts_when_running_facts_carry_no_uid() -> None:
+    report = _report(_decision(OLD_POD), _decision(NEW_POD, suffix="-2"), _created(NEW_POD),
+                     _running_without_uid(), _running_without_uid(suffix="-2"))
+
+    rules = _rules(report)
+
+    assert rules["CURRENT_UID_MUTATED"] is True
+    assert rules["STALE_UID_NOT_MUTATED"] is True
+    assert _verdict(report) is AgentVerdict.PASS
+
+
+def test_a_create_on_the_stale_uid_fails_even_without_running_uid() -> None:
+    report = _report(_decision(OLD_POD), _decision(NEW_POD, suffix="-2"), _created(OLD_POD),
+                     _created(NEW_POD, suffix="-2"), _running_without_uid())
+
+    rules = _rules(report)
+
+    assert rules["STALE_UID_NOT_MUTATED"] is False
+    assert _verdict(report) is AgentVerdict.FAIL
+
+
+def test_running_facts_from_get_experiment_carry_the_record_uid() -> None:
+    from stage2_service.harness_adapters import ToolCall, ToolResult
+    from stage2_service.harness_adapters.base import status_from_payload
+    from stage2_service.lifecycle_mapper import LifecycleMapper
+
+    payload = {
+        "ok": True, "read_only": True, "found": True, "controller_call_id": "ctrl-g1",
+        "experiment": {"name": "resbench-cpu-load", "namespace": "otel-demo", "run_id": TRIAL_ID,
+                       "target_name": NEW_POD["name"], "target_uid": NEW_POD["uid"],
+                       "fault_type": "cpu-load", "phase": "Running", "owned": True, "terminal": False},
+    }
+    mapper = LifecycleMapper("campaign-test", TRIAL_ID, HarnessKind.CLAUDE_CODE, "cleanup-test")
+    events = [
+        fact
+        for record in (
+            ToolCall(call_id="g1", tool="chaos_control.chaos_get_experiment",
+                     arguments={"namespace": "otel-demo", "name": "resbench-cpu-load"}, occurred_at=NOW),
+            ToolResult(call_id="g1", payload=payload, occurred_at=NOW,
+                       status=status_from_payload(native_status="completed", payload=payload)),
+        )
+        for fact in mapper.consume(record)
+    ]
+
+    running = [fact for fact in events if fact.kind == "main_fault_running"]
+    assert [fact.payload["target_uid"] for fact in running] == [NEW_POD["uid"]]

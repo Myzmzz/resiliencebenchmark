@@ -288,8 +288,12 @@ class LifecycleMapper:
             live = data.get("live") or data.get("experiment") or data
             if isinstance(live, Mapping) and live.get("phase") == "Running":
                 self.fault_running = True
+                # chaos_get_experiment carries the uid in the experiment record,
+                # not at the top level; reading only the top level left every
+                # running fact from that tool without a target (D2, 2026-09-23).
                 emit(LifecyclePhase.C3_INJECT, "main_fault_running",
-                     target_uid=data.get("target_uid"), started_at=data.get("started_at"))
+                     target_uid=data.get("target_uid") or live.get("target_uid"),
+                     started_at=data.get("started_at") or live.get("started_at"))
         if tool.endswith(("operation_status", "inventory_run", "get_experiment", "recovery_status")):
             argument_id = args.get("operation_id") or args.get("cleanup_handle")
             result_id = data.get("operation_id") or data.get("cleanup_handle")

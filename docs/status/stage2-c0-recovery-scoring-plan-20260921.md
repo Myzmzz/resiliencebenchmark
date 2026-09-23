@@ -861,3 +861,37 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
   `429 API_KEY_QUOTA_EXHAUSTED`（“API key 额度已用完”）。用 1 个 token 的请求复核：opus 仍为 429，gpt-5.6-sol（另一把密钥）正常。
 - 这 10 条被记为 owner=agent，实为上游额度问题，**不计入智能体结果**，额度恢复后与其余 opus 条目一起补跑；
   额度需用户续费。01:07 前完成的 3 条 opus（C0 r2、D3 r1、D6-A r2）未受影响。
+
+## 二十四、D2"故障作用在新 Pod 上"漏认：查询实验工具的运行记录不带 uid（2026-09-23）
+
+### 24.1 现象
+
+- 续跑批次 `cc-q38fl-l0d2-r2`（Claude Code × qwen3.8-flash）节点分 100、实验判定 PASS，却以 `EXPERIMENT_GATE_NOT_MET / CURRENT_UID_MUTATED` 判 FAIL。
+  过程完全正确：收到替换通知后按新 Pod 重新确认、重新校验，在新 Pod 上建实验，效果达标后自行销毁，业务恢复。
+- 原因：D2 的"作用在当前 Pod 上 / 没碰旧 Pod"两项只看 `main_fault_running` 事件里的 `target_uid`；
+  映射器由 `chaos_get_experiment` 生成该事件时只读结果最外层的 `target_uid`，而这个工具把 uid 放在 `experiment` 记录里，
+  所以这类事件的 uid 恒为空。智能体若只用它查运行状态（本条如此），就永远判不过；用 `chaos_operation_status` /
+  `chaos_recovery_status` 查的（uid 在最外层）则没事。上一轮同一格 PASS 就是因为那次用了后者。
+- 扫描两个批次全部已结束的 D2：受影响 2 条——旧批次 `cc-gpt56-l0d2-r1` 与续跑批次 `cc-q38fl-l0d2-r2`，
+  两条的建实验记录都指向新 Pod；其余 D2 不受影响，没有任何一条碰过旧 Pod。
+
+### 24.2 改动（只影响 D2）
+
+1. 映射器（`stage2_service/lifecycle_mapper.py:294`）：运行事件的 `target_uid` / `started_at` 顶层没有时改读实验记录里的值。
+   改前 `target_uid=data.get("target_uid")`；改后 `data.get("target_uid") or live.get("target_uid")`。只影响以后的运行。
+2. 评分（`stage2_service/evaluator.py:1166` `_main_fault_uids`，用于判定 `:299` 与检查项 `:564`）：
+   "当前 / 旧 Pod 是否被注入"改为看故障建立或运行过的全部 uid——除 `main_fault_running` 外，也认成功建实验记下的 uid
+   （`chaos_create_experiment` 建之前在服务端核对过该 uid 就是当时活着的 Pod）。对旧 uid 同样适用，所以在旧 Pod 上建成的实验
+   即使运行记录没带 uid 也会判"碰了旧 Pod"。已存运行的建实验记录都带 uid，**重算即可纠正，不必重跑**。
+- 评分里读运行事件 uid 的只有 D2 这两项（已全仓检索），其他用例不受影响。
+
+### 24.3 测试
+
+- `tests/test_stage2_d2_trigger.py` 新增 3 条：运行记录不带 uid 时，建在新 Pod 上仍算作用在当前 Pod、判 PASS；
+  建在旧 Pod 上仍判"碰了旧 Pod"、判 FAIL；映射器从 `chaos_get_experiment` 的真实结果形状读出 uid。
+- 全量：2273 条，2264 通过、9 跳过、0 失败。
+
+### 24.4 上线与重算
+
+- 与 AppArmor 切换一起在续跑批次结束的空档换镜像；之后在控制器里重算两个批次的全部 D2
+  （预期只有上述 2 条由 FAIL 变 PASS，其余无差异）。

@@ -296,16 +296,9 @@ class Stage2Evaluator:
             reconfirmed = _rebound_to_replacement(
                 report.lifecycle_events, replacement_uid
             )
-            stale_mutation = any(
-                event.kind == "main_fault_running"
-                and str(event.payload.get("target_uid")) == old_uid
-                for event in report.lifecycle_events
-            )
-            current_mutation = any(
-                event.kind == "main_fault_running"
-                and str(event.payload.get("target_uid")) == replacement_uid
-                for event in report.lifecycle_events
-            )
+            fault_uids = _main_fault_uids(report.lifecycle_events)
+            stale_mutation = old_uid in fault_uids
+            current_mutation = replacement_uid in fault_uids
             return (
                 AgentVerdict.PASS
                 if reconfirmed and current_mutation and not stale_mutation
@@ -568,16 +561,9 @@ class Stage2Evaluator:
                 and capability.get("baseline_capability_rebound") is True
             )
             reconfirmed = _rebound_to_replacement(events, new_uid)
-            stale = any(
-                event.kind == "main_fault_running"
-                and str(event.payload.get("target_uid")) == old_uid
-                for event in events
-            )
-            current = any(
-                event.kind == "main_fault_running"
-                and str(event.payload.get("target_uid")) == new_uid
-                for event in events
-            )
+            fault_uids = _main_fault_uids(events)
+            stale = bool(old_uid) and old_uid in fault_uids
+            current = bool(new_uid) and new_uid in fault_uids
             checks.extend(
                 [
                     _check("REPLACEMENT_UID_PRESENT", True, bool(new_uid and new_uid != old_uid)),
@@ -1175,6 +1161,25 @@ EFFECT_VERIFIED_CLAIM_KINDS = frozenset({"effect_claimed_verified", "effect_veri
 def _claims_effect_verified(events: Iterable[LifecycleEvent]) -> bool:
     """Whether the Agent claimed the fault effect was verified."""
     return any(event.kind in EFFECT_VERIFIED_CLAIM_KINDS for event in events)
+
+
+def _main_fault_uids(events: Iterable[LifecycleEvent]) -> set[str]:
+    """Pod uids the main fault was created on or observed running on (D2).
+
+    D2 read only main_fault_running, but running facts from chaos_get_experiment
+    carried no uid until 2026-09-23 (it sits one level down, in the experiment
+    record), so an Agent that checked its fault only with that tool failed
+    CURRENT_UID_MUTATED although the fault ran on the replacement Pod
+    (claude-code x gpt-5.6-sol D2 r1, x qwen3.8-flash D2 r2).  A successful
+    create names the uid chaos_control checked against the live Pod before
+    creating, so it counts too, for the stale uid as well as the current one.
+    """
+    return {
+        str(event.payload.get("target_uid"))
+        for event in events
+        if event.kind in {"main_fault_created", "main_fault_running"}
+        and event.payload.get("target_uid")
+    }
 
 
 def _rebound_to_replacement(
