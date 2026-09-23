@@ -8,6 +8,18 @@ from typing import Any
 
 from .contracts import HarnessReport, RecoveryResult
 
+# A contradiction needs the missing-evidence phrase and the topic in one
+# sentence.  remaining_risk used to be split only on Chinese full stops,
+# semicolons and new lines, so an English paragraph was one "sentence" and an
+# aside such as "coroot_logs_range ... unavailable" was matched with "CPU" three
+# sentences earlier (claude-code x qwen3.8-max D2 r1, 2026-09-23: -37).
+SENTENCE_BOUNDARY = r"(?<=[.!?])\s+|[。;；\n]"
+EFFECT_TOPIC = r"effect|latency|trace|metric|request|error.rate|cpu|效果|延迟|请求|指标|链路|样本|业务"
+RECOVERY_TOPIC = r"recover|恢复|清理|故障对象|残留"
+# Words that name the effect itself, as opposed to the metrics it shares with
+# recovery.
+EFFECT_ITSELF = r"effect|效果"
+
 
 def assess_evidence(report: HarnessReport, recovery: RecoveryResult) -> dict[str, Any]:
     assessment = report.agent_assessment or report.final_output.get("agent_result") or {}
@@ -28,7 +40,7 @@ def assess_evidence(report: HarnessReport, recovery: RecoveryResult) -> dict[str
                 continue
             missing_conditions = [str(v) for v in value.get("missing_conditions") or ()]
             statements = list(missing_conditions)
-            statements += re.split(r"[。;；\n]", str(value.get("remaining_risk") or ""))
+            statements += re.split(SENTENCE_BOUNDARY, str(value.get("remaining_risk") or ""))
             for statement in statements:
                 text = statement.lower()
                 missing = statement in missing_conditions or re.search(
@@ -37,11 +49,16 @@ def assess_evidence(report: HarnessReport, recovery: RecoveryResult) -> dict[str
                     r"未验证|无法.{0,12}(?:验证|确认|取得|获取)|缺少|缺乏|没有取得|未返回|未形成|拿不到",
                     text,
                 )
-                related = re.search(
-                    r"effect|latency|trace|metric|request|error.rate|cpu|效果|延迟|请求|指标|链路|样本|业务"
-                    if topic == "effect" else r"recover|恢复|清理|故障对象|残留",
-                    text,
-                )
+                related = re.search(EFFECT_TOPIC if topic == "effect" else RECOVERY_TOPIC, text)
+                # A gap in measuring recovery says nothing about the effect: in
+                # D4 an Agent that honestly listed "recovery_condition
+                # target_cpu_cores ... could not be re-read" lost the effect node
+                # because the sentence named CPU (4 D4 and 1 D3 Trials,
+                # 2026-09-23).  Such a sentence counts against the effect claim
+                # only if it names the effect itself.
+                if (topic == "effect" and re.search(RECOVERY_TOPIC, text)
+                        and not re.search(EFFECT_ITSELF, text)):
+                    related = None
                 selected_fault = str((value.get("strategy_selection") or {}).get("fault_type")
                                      or (report.final_output.get("approved_plan") or {}).get("fault_type")
                                      or recovery.fault_effect_evidence.get("fault_type") or "").lower()
