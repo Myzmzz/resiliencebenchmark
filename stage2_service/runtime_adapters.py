@@ -279,6 +279,10 @@ class McpTokenStateRegistry:
 class TargetCapabilityRebinder(Protocol):
     def fence(self, trial_id: str, *, namespace: str) -> Mapping[str, Any]: ...
 
+    def release_fence(
+        self, trial_id: str, *, namespace: str, fence: Mapping[str, Any]
+    ) -> Mapping[str, Any]: ...
+
     def rebind(
         self,
         trial_id: str,
@@ -369,19 +373,28 @@ class CompositeDisturbanceExecutor:
             fence = self.target_rebinder.fence(
                 plan.trial_id, namespace=str(target["namespace"])
             )
-            replacement = self.kubernetes_client.restart_exact_pod(
-                namespace=str(target["namespace"]),
-                name=str(target["name"]),
-                expected_uid=str(target["uid"]),
-                timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
-                labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
-            )
-            capability = self.target_rebinder.rebind(
-                plan.trial_id,
-                namespace=str(target["namespace"]),
-                target_name=str(replacement["name"]),
-                target_uid=str(replacement["uid"]),
-            )
+            try:
+                replacement = self.kubernetes_client.restart_exact_pod(
+                    namespace=str(target["namespace"]),
+                    name=str(target["name"]),
+                    expected_uid=str(target["uid"]),
+                    timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
+                    labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
+                )
+                capability = self.target_rebinder.rebind(
+                    plan.trial_id,
+                    namespace=str(target["namespace"]),
+                    target_name=str(replacement["name"]),
+                    target_uid=str(replacement["uid"]),
+                )
+            except Exception:
+                # A replacement that failed (2026-09-23: a binding to the
+                # placeholder uid "pending" matched no Pod) must not leave every
+                # create refused; D2 may still trigger on a later commitment.
+                self.target_rebinder.release_fence(
+                    plan.trial_id, namespace=str(target["namespace"]), fence=fence
+                )
+                raise
             if capability.get("baseline_capability_rebound") is not True:
                 raise RuntimeAdapterError(
                     "target capability rebind was not independently verified"

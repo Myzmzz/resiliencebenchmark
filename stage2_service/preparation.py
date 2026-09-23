@@ -139,6 +139,7 @@ class ApplicationTrafficCapabilityIssuer:
         if payload.get("trial_id") != trial_id or payload.get("namespace") != namespace:
             raise PreparationError("trial baseline capability identity changed before fence")
         fenced_at = datetime.now(UTC).isoformat()
+        previous = {"target_name": payload.get("target_name"), "target_uid": payload.get("target_uid")}
         payload.update(
             {
                 "target_name": REPLACEMENT_PENDING_TARGET,
@@ -152,7 +153,40 @@ class ApplicationTrafficCapabilityIssuer:
             "namespace": namespace,
             "baseline_capability_fenced": True,
             "fenced_at": fenced_at,
+            "previous_binding": previous,
         }
+
+    def release_fence(
+        self, trial_id: str, *, namespace: str, fence: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Put back the binding fence() replaced, when the Pod replacement failed.
+
+        Only a capability still bound to the pending target is restored; one that
+        rebind() already moved to a replacement is left alone.
+        """
+
+        token_hash = self._token_hashes.get(trial_id)
+        if token_hash is None:
+            raise PreparationError("trial baseline capability is not available for fence release")
+        path = self.ledger_dir / f"{token_hash}.json"
+        if not path.is_file() or path.is_symlink():
+            raise PreparationError("trial baseline capability ledger is missing or unsafe")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("trial_id") != trial_id or payload.get("namespace") != namespace:
+            raise PreparationError("trial baseline capability identity changed before fence release")
+        if payload.get("target_uid") != REPLACEMENT_PENDING_TARGET:
+            return {"trial_id": trial_id, "namespace": namespace, "fence_released": False}
+        previous = fence.get("previous_binding")
+        previous = previous if isinstance(previous, Mapping) else {}
+        payload.update(
+            {
+                "target_name": previous.get("target_name"),
+                "target_uid": previous.get("target_uid"),
+                "fence_released_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        _atomic_json(path, payload)
+        return {"trial_id": trial_id, "namespace": namespace, "fence_released": True}
 
     def rebind(
         self,

@@ -569,6 +569,31 @@ def _bladeai_intensity_source(result: Any) -> str | None:
     return _bladeai_proposal_source(result, "intensity_source")
 
 
+def _record_and_dispatch(events, lifecycle: list, dispatch) -> list:
+    """Record every mapped lifecycle fact, then raise the first observer error.
+
+    One tool result can map to several facts (validate_plan: target_bound, then
+    plan_validated).  The observer applies disturbances, and when an apply fails
+    it raises; recording used to stop at that fact, so the facts after it were
+    lost from the Trial report (2026-09-23 dsh x deepseek-v4-pro D2 r2: D2 on a
+    placeholder uid failed to apply and plan_validated was lost, so
+    PLAN_VALIDATION scored 0).  Every fact is now recorded and offered to the
+    observer; the first error is raised afterwards, as before.
+    """
+    feedbacks: list = []
+    error: BaseException | None = None
+    for event in events:
+        lifecycle.append(event)
+        try:
+            feedbacks.extend(dispatch(event))
+        except Exception as exc:  # noqa: BLE001 - re-raised once the batch is recorded
+            if error is None:
+                error = exc
+    if error is not None:
+        raise error
+    return feedbacks
+
+
 class NativeHarnessRunner:
     def __init__(
         self,
@@ -1247,13 +1272,17 @@ class NativeHarnessRunner:
                     clarification = _clarification_request_from_item(item, trial_id)
                     if clarification is not None:
                         update_question(clarification)
-                for event in mapped:
-                    event = event.model_copy(update={
-                        "occurred_at": canonical.occurred_at,
-                        "payload": {**event.payload, "source": source, **({"replayed": True} if replay else {})},
-                    })
-                    lifecycle.append(event)
-                    feedbacks.extend(dispatch_observer(event))
+                feedbacks.extend(_record_and_dispatch(
+                    [
+                        event.model_copy(update={
+                            "occurred_at": canonical.occurred_at,
+                            "payload": {**event.payload, "source": source, **({"replayed": True} if replay else {})},
+                        })
+                        for event in mapped
+                    ],
+                    lifecycle,
+                    dispatch_observer,
+                ))
             return feedbacks
 
         def observe_realtime(event: ToolCall | ToolResult, source: str) -> Mapping[str, Any]:

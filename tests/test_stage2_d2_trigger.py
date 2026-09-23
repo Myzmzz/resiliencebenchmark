@@ -192,6 +192,10 @@ class RecordingRebinder:
         self.calls.append(f"rebind:{kwargs['target_uid']}")
         return {"baseline_capability_rebound": True, **kwargs}
 
+    def release_fence(self, trial_id: str, *, namespace: str, fence: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(f"release:{trial_id}:{namespace}")
+        return {"fence_released": True}
+
 
 def test_d2_fences_the_create_gate_before_deleting_the_old_pod(tmp_path: Path) -> None:
     calls: list[str] = []
@@ -448,3 +452,101 @@ def test_running_facts_from_get_experiment_carry_the_record_uid() -> None:
 
     running = [fact for fact in events if fact.kind == "main_fault_running"]
     assert [fact.payload["target_uid"] for fact in running] == [NEW_POD["uid"]]
+
+
+# --- A failed replacement: the fence is released and no fact is lost ---------
+#
+# 2026-09-23 dsh x deepseek-v4-pro D2 r2 validated a plan whose target uid was
+# the placeholder "pending"; D2 triggered on that binding and restart_exact_pod
+# refused it (no Pod has that uid).  The fence stayed until a later commitment
+# triggered D2 again, and plan_validated, mapped after target_bound from the
+# same result, never reached the Trial report.
+
+
+class FailingKubernetes:
+    def __init__(self, calls: list[str]):
+        self.calls = calls
+
+    def restart_exact_pod(self, **kwargs: Any) -> dict[str, str]:
+        self.calls.append(f"restart:{kwargs['expected_uid']}")
+        raise RuntimeError("target Pod UID drifted before restart; refusing stale-target deletion")
+
+
+def test_a_failed_replacement_releases_the_fence(tmp_path: Path) -> None:
+    calls: list[str] = []
+    plan = _plan(_bound({**OLD_POD, "uid": "pending"}))
+    assert plan is not None
+
+    with pytest.raises(RuntimeError, match="drifted"):
+        CompositeDisturbanceExecutor(
+            kubernetes_client=FailingKubernetes(calls),
+            mcp_tokens=McpTokenStateRegistry(tmp_path / "tokens"),
+            target_rebinder=RecordingRebinder(calls),
+        ).apply(plan)
+
+    assert calls == [f"fence:{TRIAL_ID}:otel-demo", "restart:pending", f"release:{TRIAL_ID}:otel-demo"]
+
+
+def test_release_restores_the_binding_the_fence_replaced(tmp_path: Path) -> None:
+    issuer = ApplicationTrafficCapabilityIssuer(
+        ledger_dir=tmp_path / "baseline", controller_pod_uid="controller-pod-uid",
+        traffic_evidence=Traffic(),
+    )
+    token = issuer.issue(TRIAL_ID, namespace="otel-demo", target=None)
+    ledger_path = next((tmp_path / "baseline").glob("*.json"))
+
+    fence = issuer.fence(TRIAL_ID, namespace="otel-demo")
+    released = issuer.release_fence(TRIAL_ID, namespace="otel-demo", fence=fence)
+    ledger = json.loads(ledger_path.read_text())
+
+    assert fence["previous_binding"] == {"target_name": None, "target_uid": None}
+    assert released["fence_released"] is True
+    assert ledger["target_name"] is None and ledger["target_uid"] is None
+    # The agent-selected capability binds to the first live target again.
+    backend = InMemoryChaosBackend(pod_uids={("otel-demo", OLD_POD["name"]): OLD_POD["uid"]})
+    service = ChaosControlService(RuntimeConfig(
+        execute_enabled=True, kubeconfig="/tmp/controller.kubeconfig",
+        cleanup_kubeconfig="/tmp/finalizer.kubeconfig", namespace_allowlist=frozenset({"otel-demo"}),
+        controller_token_ref="k8s://resbench/controller-token#token",
+        controller_pod_uid="controller-pod-uid", allowed_fault_types=frozenset({"network-delay"}),
+        decision_policy="agent_delegated", ledger_dir=tmp_path / "ledger",
+        baseline_ledger_dir=tmp_path / "baseline",
+    ), backend)
+    assert _create(service, token, OLD_POD)["ok"] is True
+
+
+def test_release_leaves_a_rebound_capability_alone(tmp_path: Path) -> None:
+    issuer = ApplicationTrafficCapabilityIssuer(
+        ledger_dir=tmp_path / "baseline", controller_pod_uid="controller-pod-uid",
+        traffic_evidence=Traffic(),
+    )
+    issuer.issue(TRIAL_ID, namespace="otel-demo", target=None)
+    fence = issuer.fence(TRIAL_ID, namespace="otel-demo")
+    issuer.rebind(TRIAL_ID, namespace="otel-demo", target_name=NEW_POD["name"], target_uid=NEW_POD["uid"])
+
+    released = issuer.release_fence(TRIAL_ID, namespace="otel-demo", fence=fence)
+    ledger = json.loads(next((tmp_path / "baseline").glob("*.json")).read_text())
+
+    assert released["fence_released"] is False
+    assert ledger["target_uid"] == NEW_POD["uid"]
+
+
+def test_an_observer_error_does_not_drop_the_facts_after_it() -> None:
+    from stage2_service.harness_runtime import _record_and_dispatch
+
+    facts = [_bound({**OLD_POD, "uid": "pending"}),
+             _event("plan_validated", LifecyclePhase.C2_TARGET, target=dict(OLD_POD))]
+    seen: list[str] = []
+
+    def dispatch(fact: LifecycleEvent) -> list[str]:
+        seen.append(fact.kind)
+        if fact.kind == "target_bound":
+            raise RuntimeError("disturbance application failed")
+        return ["feedback"]
+
+    lifecycle: list[LifecycleEvent] = []
+    with pytest.raises(RuntimeError, match="application failed"):
+        _record_and_dispatch(facts, lifecycle, dispatch)
+
+    assert [fact.kind for fact in lifecycle] == ["target_bound", "plan_validated"]
+    assert seen == ["target_bound", "plan_validated"]

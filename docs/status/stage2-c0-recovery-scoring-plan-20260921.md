@@ -981,3 +981,37 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
   因截断失败的条目补跑一次，彻底解决要靠中转站修复（用户已答应反馈）。
 - 仓库路由表 `deploy/stage2/litellm/config.yaml` 的 claude-opus-5 同步加 `fake_stream: true` 并写明原因；与舰队线上配置逐路由核对一致。
 - 上线方式：新建 ConfigMap `litellm-config-fleet-fs`，舰队配置 `litellm_config_map` 指向它（回退只需改回 `litellm-config-fleet`），随控制器镜像一起滚动。
+
+## 二十八、扰动施加失败的两处后遗症（2026-09-23，重算时发现）
+
+### 28.1 现象
+
+- 重算整轮时，`dsh-dspro-l0d2-r2`（DSH × deepseek-v4-pro）回放出的事件比存档多一条 `plan_validated`。
+- 该运行里智能体第一次校验计划时把目标 uid 写成字面上的 `"pending"`，`chaos_validate_plan` 判了通过（它不核对 uid，建实验时才核对），
+  D2 因此在假绑定上触发；替换 Pod 时 uid 对不上，施加失败（`APPLICATION_FAILED / KubernetesRuntimeError`）。76 秒后智能体按真实 Pod
+  重新确认获批，D2 再次触发并施加成功，最终 PASS。
+- 两处后遗症：
+  1. 编排在施加失败时抛出异常，运行时"逐条记录并交编排处理"的循环就此中断，同一批里排在 `target_bound` 后面的 `plan_validated`
+     没有记进报告，PLAN_VALIDATION 因此 0/10（平台原因少 10 分）。
+  2. 第二十三节加的"替换期间拦截建实验"在替换失败时不撤销：直到下一次触发并重新绑定成功前，所有建实验都会被拒。
+     这次恰好 76 秒后重新触发；如果没有，这条就会因平台原因再也注入不了。
+- 本轮全部扰动用例里只有这一条出现过施加失败。
+
+### 28.2 改动
+
+1. `stage2_service/harness_runtime.py:572` `_record_and_dispatch`：一批事件全部记录、全部交给编排；某条出错时先记下，最后抛出第一个错误。
+   对外行为不变（错误照样抛出），只是后面的事件不再丢。
+2. `stage2_service/runtime_adapters.py:394`、`stage2_service/preparation.py:159` `release_fence`：替换 Pod 或重新绑定失败时，
+   把基线能力恢复成拦截前的绑定（`fence()` 现在在返回值里带上原绑定），再照常报告施加失败；若 `rebind` 已经换了绑定则不动。
+- 未改：`chaos_validate_plan` 不核对 uid 是智能体可见的工具行为，本轮不改，报告注明、下一轮前修。
+
+### 28.3 测试与处理
+
+- `tests/test_stage2_d2_trigger.py` 新增 4 条：替换失败时撤销拦截；撤销后恢复原绑定、建实验重新可用；已重新绑定的不被撤销；
+  编排报错不再丢后面的事件。`tests/test_stage2_disturbance_cases.py` 替身补 `release_fence`。全量 2292 条，2283 通过、9 跳过、0 失败。
+- `dsh-dspro-l0d2-r2` 列入重跑（平台原因少记一条事件）。
+
+### 28.4 同期：opus 密钥额度再次用完（约 14:00 UTC）
+
+- 充值后跑了约 25 条 opus（含网关绕法上线后的重跑），NEXUSTOKENAI_ANTHROPIC_API_KEY 再次 `API_KEY_QUOTA_EXHAUSTED`；重跑批次里剩余 opus 条目快速失败，待续费后再补。
+- 网关绕法上线后 Claude Code × opus 已有完整跑完的运行（D6-B r2），说明截断对 `/v1/messages` 已解决；Codex 路径仍受中转站影响。

@@ -232,6 +232,10 @@ class Rebinder:
         self.fenced = {"trial_id": trial_id, **kwargs}
         return {"baseline_capability_fenced": True}
 
+    def release_fence(self, trial_id, **kwargs):
+        self.released = {"trial_id": trial_id, **kwargs}
+        return {"fence_released": True}
+
     def rebind(self, trial_id, **kwargs):
         self.call = {"trial_id": trial_id, **kwargs}
         return {"baseline_capability_rebound": True, **kwargs}
