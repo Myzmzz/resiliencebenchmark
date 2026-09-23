@@ -103,11 +103,22 @@ model_list:
   # key; gpt-5.6-sol answers on the OpenAI-compatible endpoint with the
   # ordinary relay key.
   # ---------------------------------------------------------------------------
+  #
+  # fake_stream (2026-09-23): after the account was recharged, the relay ends a
+  # streamed Claude message with stop_reason "error" whenever text is followed
+  # by a tool_use block, and drops the tool call; LiteLLM maps the unknown
+  # reason to "stop", so Claude Code and deepseek-harness end their session as
+  # if the model had finished (3/3 streamed probes).  Non-streamed requests
+  # return the tool call (8/8).  fake_stream asks the relay without streaming
+  # and streams the answer to the client (13/13 probes on /v1/messages).  It
+  # does not reach /v1/responses, the Codex path, which still loses about one
+  # tool call in three until the relay is fixed.
   - model_name: claude-opus-5
     litellm_params:
       model: anthropic/claude-opus-5
       api_base: https://api.nexustokenai.com
       api_key: os.environ/NEXUSTOKENAI_ANTHROPIC_API_KEY
+      fake_stream: true
 
   - model_name: gpt-5.6-sol
     litellm_params:

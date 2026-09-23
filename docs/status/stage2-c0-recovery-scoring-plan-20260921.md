@@ -972,3 +972,12 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
   "向上游非流式、对客户端模拟流式"（先在独立临时 Pod 验证），并由用户向中转站反馈；受影响条目绕法上线后重跑。
 - **操作事故**：我在 s02 的 litellm 容器（限额 2Gi）里另起测试进程，09:16 该容器 OOMKilled 重启，打断 `dsh-q38max-l0d3-r2`，按平台原因重跑。
   此后网关试验只在独立临时 Pod 或空档进行。
+
+### 27.1 opus 网关绕法的验证与上线（2026-09-23）
+
+- 验证全程在 03 节点的独立临时 Pod（与舰队同镜像、同密钥、同配置，只给 claude-opus-5 加 `fake_stream: true`）里做，测完即删：
+  `/v1/messages` 流式带工具请求 13/13 返回完整 tool_use（线上未加开关时 3/3 被截断）；线上非流式 8/8 正常。
+  `/v1/responses`（Codex 走的接口）不认该开关，加与不加都约 1/3 只返回文字、网关记 `Unmapped finish_reason 'error'`——Codex × opus 仍受中转站影响，
+  因截断失败的条目补跑一次，彻底解决要靠中转站修复（用户已答应反馈）。
+- 仓库路由表 `deploy/stage2/litellm/config.yaml` 的 claude-opus-5 同步加 `fake_stream: true` 并写明原因；与舰队线上配置逐路由核对一致。
+- 上线方式：新建 ConfigMap `litellm-config-fleet-fs`，舰队配置 `litellm_config_map` 指向它（回退只需改回 `litellm-config-fleet`），随控制器镜像一起滚动。
