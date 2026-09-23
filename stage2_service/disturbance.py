@@ -95,10 +95,7 @@ class RuntimeDisturbancePlanner:
                 ),
             )
         if trial_kind is TrialKind.RECOVERY_OBSERVABILITY_REVOKED:
-            if (
-                event.kind != "recovery_accepted"
-                or event.phase is not LifecyclePhase.C6_RECOVERY
-            ):
+            if not _recovery_began(event):
                 return None
             return _observability_plan(
                 event,
@@ -211,6 +208,24 @@ class RuntimeDisturbancePlanner:
 def _id(event: LifecycleEvent, suffix: str) -> str:
     digest = hashlib.sha256(f"{event.trial_id}\x1f{event.event_id}\x1f{suffix}".encode()).hexdigest()
     return f"dst-{digest[:16]}"
+
+
+def _recovery_began(event: LifecycleEvent) -> bool:
+    """Whether the Agent's recovery has begun, so D4 may revoke its observability.
+
+    D4 revokes recovery observability "during recovery".  An accepted destroy
+    used to be the only trigger, but an Agent that recovers on the fixed
+    duration it injected with never destroys, and that recovery earns full
+    credit (ruling A, 2026-09-22); codex x claude-opus-5 ended both D4 Trials
+    of 2026-09-23 CASE_INVALID with DISTURBANCE_TRIGGER_NOT_OBSERVED that way.
+    For such an Agent recovery begins when it sees the fault gone without having
+    asked to destroy it (fault_expiry_observed, lifecycle_mapper).  Whichever
+    comes first triggers; the campaign applies only a Trial's first plan.
+    """
+    return event.phase is LifecyclePhase.C6_RECOVERY and event.kind in {
+        "recovery_accepted",
+        "fault_expiry_observed",
+    }
 
 
 def _committed_target(event: LifecycleEvent) -> dict[str, str] | None:

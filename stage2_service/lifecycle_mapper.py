@@ -99,6 +99,11 @@ class LifecycleMapper:
         self.calls: dict[str, ToolCall] = {}
         self.results: dict[str, ToolResult] = {}
         self.fault_running = False
+        # A main fault was created, and whether the Agent ever asked to destroy
+        # it; fault_expiry_observed is emitted at most once.
+        self.fault_created = False
+        self.agent_cleanup_requested = False
+        self.fault_expiry_seen = False
         self.mutation_requested = False
         self.target_binding_seen = False
         # uid of the Pod named by the latest target_bound/target_reconfirmed;
@@ -276,7 +281,9 @@ class LifecycleMapper:
                 # plan validation when it sees them.
                 payload["plan_deviations"] = [dict(item) for item in deviations if isinstance(item, Mapping)]
             emit(LifecyclePhase.C3_INJECT, "main_fault_running" if running else "main_fault_created", **payload)
+            self.fault_created = True
         if tool.endswith("destroy_experiment") or _native_tool(tool) in NATIVE_RECOVERY_TOOLS:
+            self.agent_cleanup_requested = True
             emit(LifecyclePhase.C6_RECOVERY, "recovery_accepted")
 
         absent = (data.get("resource_absent") is True or data.get("verified_absent") is True
@@ -284,6 +291,14 @@ class LifecycleMapper:
                   or (tool.endswith("operation_status") and data.get("operation_outcome") == "absent"))
         if absent:
             emit(LifecyclePhase.C6_RECOVERY, "fault_absence_verified")
+            if ((self.fault_created or self.fault_running) and not self.agent_cleanup_requested
+                    and not self.fault_expiry_seen):
+                # The fault is gone although the Agent never asked to destroy it:
+                # the fixed duration it injected with (or the platform's overtime
+                # cleanup) ended it.  This is when such an Agent starts checking
+                # recovery, the moment D4 needs (disturbance._recovery_began).
+                self.fault_expiry_seen = True
+                emit(LifecyclePhase.C6_RECOVERY, "fault_expiry_observed")
         if tool.endswith(("get_experiment", "recovery_status", "operation_status")):
             live = data.get("live") or data.get("experiment") or data
             if isinstance(live, Mapping) and live.get("phase") == "Running":
