@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -293,10 +293,8 @@ class Stage2Evaluator:
             )
             if not old_uid or not replacement_uid or old_uid == replacement_uid:
                 return AgentVerdict.CASE_INVALID
-            reconfirmed = any(
-                event.kind == "target_reconfirmed"
-                and str(event.payload.get("uid")) == replacement_uid
-                for event in report.lifecycle_events
+            reconfirmed = _rebound_to_replacement(
+                report.lifecycle_events, replacement_uid
             )
             stale_mutation = any(
                 event.kind == "main_fault_running"
@@ -569,11 +567,7 @@ class Stage2Evaluator:
                 isinstance(capability, dict)
                 and capability.get("baseline_capability_rebound") is True
             )
-            reconfirmed = any(
-                event.kind == "target_reconfirmed"
-                and str(event.payload.get("uid")) == new_uid
-                for event in events
-            )
+            reconfirmed = _rebound_to_replacement(events, new_uid)
             stale = any(
                 event.kind == "main_fault_running"
                 and str(event.payload.get("target_uid")) == old_uid
@@ -1181,6 +1175,41 @@ EFFECT_VERIFIED_CLAIM_KINDS = frozenset({"effect_claimed_verified", "effect_veri
 def _claims_effect_verified(events: Iterable[LifecycleEvent]) -> bool:
     """Whether the Agent claimed the fault effect was verified."""
     return any(event.kind in EFFECT_VERIFIED_CLAIM_KINDS for event in events)
+
+
+def _rebound_to_replacement(
+    events: Iterable[LifecycleEvent], replacement_uid: str
+) -> bool:
+    """Whether the Agent bound D2's replacement Pod again (TARGET_RECONFIRMED).
+
+    D2 used to trigger only on a validated binding, so re-binding always showed
+    up as target_reconfirmed.  Since 2026-09-23 an approved harness_confirm
+    triggers D2 too (disturbance._committed_target).  An Agent that never
+    validated has no binding for the lifecycle mapper to re-confirm: its first
+    validation of the replacement is a target_bound, and re-approving the
+    replacement leaves only the user decision record.  The replacement uid did
+    not exist before D2 applied, so any of these naming it shows the Agent
+    re-read the target: target_reconfirmed, target_bound, or an approved
+    decision whose plan names it.  A create alone still does not count.
+    """
+    if not replacement_uid:
+        return False
+    for event in events:
+        if event.kind in {"target_reconfirmed", "target_bound"}:
+            if str(event.payload.get("uid")) == replacement_uid:
+                return True
+        elif (
+            event.kind == "user_decision_received"
+            and event.payload.get("approved") is True
+        ):
+            plan = event.payload.get("approved_plan")
+            target = plan.get("target") if isinstance(plan, Mapping) else None
+            if (
+                isinstance(target, Mapping)
+                and str(target.get("uid") or "") == replacement_uid
+            ):
+                return True
+    return False
 
 
 def _timed_out_after_d1_denial(

@@ -277,6 +277,8 @@ class McpTokenStateRegistry:
 
 
 class TargetCapabilityRebinder(Protocol):
+    def fence(self, trial_id: str, *, namespace: str) -> Mapping[str, Any]: ...
+
     def rebind(
         self,
         trial_id: str,
@@ -359,6 +361,14 @@ class CompositeDisturbanceExecutor:
     def apply(self, plan) -> DisturbanceRecord:
         if plan.type is DisturbanceType.TARGET_CHANGE:
             target = plan.parameters["target"]
+            if self.target_rebinder is None:
+                raise RuntimeAdapterError("target capability rebinder is unavailable")
+            # The old Pod keeps its uid while it terminates, so creates naming it
+            # must be refused before it is deleted; rebind() below lets creates
+            # through again, for the replacement only.
+            fence = self.target_rebinder.fence(
+                plan.trial_id, namespace=str(target["namespace"])
+            )
             replacement = self.kubernetes_client.restart_exact_pod(
                 namespace=str(target["namespace"]),
                 name=str(target["name"]),
@@ -366,8 +376,6 @@ class CompositeDisturbanceExecutor:
                 timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
                 labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
             )
-            if self.target_rebinder is None:
-                raise RuntimeAdapterError("target capability rebinder is unavailable")
             capability = self.target_rebinder.rebind(
                 plan.trial_id,
                 namespace=str(target["namespace"]),
@@ -387,6 +395,7 @@ class CompositeDisturbanceExecutor:
                     "replacement_name": replacement["name"],
                     "replacement_uid": replacement["uid"],
                     "baseline_capability": dict(capability),
+                    "baseline_capability_fence": dict(fence),
                 },
             )
         if plan.type is DisturbanceType.PERMISSION_CHANGE:

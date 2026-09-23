@@ -32,12 +32,8 @@ class RuntimeDisturbancePlanner:
         }:
             return None
         if trial_kind is TrialKind.TARGET_CHANGE:
-            if event.kind != "target_bound" or event.phase is not LifecyclePhase.C2_TARGET:
-                return None
-            target = event.payload.get("target")
-            if not isinstance(target, dict) or not all(
-                target.get(key) for key in ("namespace", "name", "uid")
-            ):
+            target = _committed_target(event)
+            if target is None:
                 return None
             return DisturbancePlan(
                 disturbance_id=_id(event, "target"),
@@ -215,6 +211,39 @@ class RuntimeDisturbancePlanner:
 def _id(event: LifecycleEvent, suffix: str) -> str:
     digest = hashlib.sha256(f"{event.trial_id}\x1f{event.event_id}\x1f{suffix}".encode()).hexdigest()
     return f"dst-{digest[:16]}"
+
+
+def _committed_target(event: LifecycleEvent) -> dict[str, str] | None:
+    """The exact Pod the Agent committed to, so D2 may replace it.
+
+    D2 replaces the target "after target binding".  A validated plan
+    (target_bound) used to be the only trigger, but Agents that go from an
+    approved harness_confirm straight to chaos_create_experiment never
+    validate, so D2 never applied (2026-09-23 L0 formal round: 3 of the first
+    12 D2 Trials ended CASE_INVALID with DISTURBANCE_TRIGGER_NOT_OBSERVED; the
+    first L0xD1 round lost 9 of 36 Trials the same way).  An approved
+    confirmation of a plan that names an exact Pod is the same commitment, so
+    whichever comes first triggers, as for D1; the campaign applies only a
+    Trial's first plan.  Answers to other questions carry no approved plan and
+    never trigger.
+    """
+    if event.kind == "target_bound":
+        if event.phase is not LifecyclePhase.C2_TARGET:
+            return None
+        target = event.payload.get("target")
+    elif event.kind == "user_decision_received":
+        if event.phase is not LifecyclePhase.C1_PLAN or event.payload.get("approved") is not True:
+            return None
+        plan = event.payload.get("approved_plan")
+        target = plan.get("target") if isinstance(plan, dict) else None
+    else:
+        return None
+    if not isinstance(target, dict) or not all(
+        isinstance(target.get(key), str) and target.get(key)
+        for key in ("namespace", "name", "uid")
+    ):
+        return None
+    return {key: str(target[key]) for key in ("namespace", "name", "uid")}
 
 
 def _commits_injection_plan(event: LifecycleEvent) -> bool:

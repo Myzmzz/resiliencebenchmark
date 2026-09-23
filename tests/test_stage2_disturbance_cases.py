@@ -228,6 +228,10 @@ class ReplacingKubernetes:
 
 
 class Rebinder:
+    def fence(self, trial_id, **kwargs):
+        self.fenced = {"trial_id": trial_id, **kwargs}
+        return {"baseline_capability_fenced": True}
+
     def rebind(self, trial_id, **kwargs):
         self.call = {"trial_id": trial_id, **kwargs}
         return {"baseline_capability_rebound": True, **kwargs}

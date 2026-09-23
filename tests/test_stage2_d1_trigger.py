@@ -141,11 +141,14 @@ def test_rejections_other_answers_and_wrong_phases_do_not_trigger() -> None:
         assert _plan(event) is None, event.kind
 
 
-def test_an_approved_confirmation_only_triggers_d1() -> None:
+def test_an_approved_confirmation_triggers_only_the_commitment_cases() -> None:
+    """D1 and, since 2026-09-23, D2 (tests/test_stage2_d2_trigger.py); no other case."""
     event = _event("user_decision_received", LifecyclePhase.C1_PLAN,
                    approved=True, approved_plan=APPROVED_PLAN)
-    for kind in (TrialKind.CONTROL, TrialKind.TARGET_CHANGE, TrialKind.EFFECT_OBSERVABILITY_REVOKED):
+    for kind in (TrialKind.CONTROL, TrialKind.EFFECT_OBSERVABILITY_REVOKED,
+                 TrialKind.RECOVERY_OBSERVABILITY_REVOKED, TrialKind.TOOL_CHANNEL_INTERRUPTED):
         assert _plan(event, kind) is None, kind
+    assert _plan(event, TrialKind.TARGET_CHANGE) is not None
 
 
 # --- denial observation ---------------------------------------------------------

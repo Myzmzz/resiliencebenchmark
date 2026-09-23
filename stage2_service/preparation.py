@@ -49,6 +49,11 @@ class TrafficEvidenceProvider(Protocol):
 # Controller, and the 30-minute Trial cap still ends every run.
 BASELINE_CAPABILITY_TTL_SECONDS = 30 * 24 * 60 * 60
 
+# The target a fenced capability is bound to while D2 replaces the Trial's
+# target Pod.  Kubernetes names cannot contain underscores and no Pod has this
+# uid, so chaos_control's baseline gate matches no target until rebind().
+REPLACEMENT_PENDING_TARGET = "__target_replacement_pending__"
+
 
 class ApplicationTrafficCapabilityIssuer:
     """Issue a create gate from application-owned traffic evidence, not a workload Job."""
@@ -109,6 +114,45 @@ class ApplicationTrafficCapabilityIssuer:
         self._token_hashes[trial_id] = token_hash
         self._binding_versions[trial_id] = int(payload["binding_version"])
         return token
+
+    def fence(self, trial_id: str, *, namespace: str) -> Mapping[str, Any]:
+        """Refuse every create while the Controller replaces the Trial's target Pod.
+
+        D2 deletes the bound Pod and calls rebind() once the replacement is
+        Ready, 4.6-7.7 s later in the 2026-09-23 formal round.  In between the
+        old Pod is still Terminating with its uid, so a create naming it passed
+        the user-decision, baseline and uid checks and could start a fault on a
+        Pod that was going away.  D2 may now trigger at an approved
+        harness_confirm, after which Agents call create 5-8 s later, so that
+        window is no longer rare.  Bound to a target no Pod can have, the
+        baseline gate refuses every create and points the Agent to the
+        Controller's rebind; rebind() then names the replacement.
+        """
+
+        token_hash = self._token_hashes.get(trial_id)
+        if token_hash is None:
+            raise PreparationError("trial baseline capability is not available for fence")
+        path = self.ledger_dir / f"{token_hash}.json"
+        if not path.is_file() or path.is_symlink():
+            raise PreparationError("trial baseline capability ledger is missing or unsafe")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("trial_id") != trial_id or payload.get("namespace") != namespace:
+            raise PreparationError("trial baseline capability identity changed before fence")
+        fenced_at = datetime.now(UTC).isoformat()
+        payload.update(
+            {
+                "target_name": REPLACEMENT_PENDING_TARGET,
+                "target_uid": REPLACEMENT_PENDING_TARGET,
+                "fenced_at": fenced_at,
+            }
+        )
+        _atomic_json(path, payload)
+        return {
+            "trial_id": trial_id,
+            "namespace": namespace,
+            "baseline_capability_fenced": True,
+            "fenced_at": fenced_at,
+        }
 
     def rebind(
         self,
