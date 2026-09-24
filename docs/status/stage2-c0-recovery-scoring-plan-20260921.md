@@ -1015,3 +1015,19 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
 
 - 充值后跑了约 25 条 opus（含网关绕法上线后的重跑），NEXUSTOKENAI_ANTHROPIC_API_KEY 再次 `API_KEY_QUOTA_EXHAUSTED`；重跑批次里剩余 opus 条目快速失败，待续费后再补。
 - 网关绕法上线后 Claude Code × opus 已有完整跑完的运行（D6-B r2），说明截断对 `/v1/messages` 已解决；Codex 路径仍受中转站影响。
+
+## 二十九、D7/D8 在舰队上开跑的三项前置条件（2026-09-24）
+
+1. **节点 AppArmor**：agent-runtime 要挂 `localhost/resbench-agent-runtime`，平台代码沙箱才能起来。用户 09-24 在 tcse-v100-01/02 加载
+   （debug 容器用的是 agent 镜像、PATH 没有 /usr/sbin，须写 `/usr/sbin/apparmor_parser` 全路径）；舰队配置
+   `agent_runtime_apparmor_profile=localhost/resbench-agent-runtime`，5 副本带注解正常启动。
+2. **框架能力（替代档资格）**：`capability_qualification.publish_capabilities` 要求记录的 `gateway_config_sha256` 等于当前网关配置，
+   09-23 为 opus 改了网关（第 27.1 节），旧的基础档记录发布不上，**基础档与替代档都在 09-24 重做**（qwen3.8-max）：
+   基础档 5×3 全过；替代档首轮 DSH 4/5 因"查 Coroot 之前先跑了一次 Python"未过顺序检查、Codex 1/5 Coroot 调用失败，重测全过。
+   发布参数：`--artifact-root /var/lib/resbench-stage2/fleet/artifacts --gateway-config /etc/litellm/config.yaml`。5 副本 `capability_loss.runnable=true`。
+3. **能力丢失资格证据（漏做，已补）**：D7/D8 触发时还要读控制器私有目录的 `capability-loss-qualification.json`（D7 历史观测样本、
+   D8 两个执行器的金丝雀记录，按副本命名空间签发、默认 24 小时有效）。舰队副本上没有这份文件，首批 7 条 D7/D8 全在触发时
+   `CASE_INVALID / qualification_evidence_missing_or_invalid`（之后全部工具被拒），已停批（`formal-d7d8-20260924`）。
+   生成：在各副本 stage2 容器、无试验运行时执行 `python -m stage2_service.capability_loss.qualification_probe`（D7 各读一次 Coroot/遥测；
+   D8 用 Chaos Mesh 与 ChaosBlade 各做一个 1 ms 延迟、15 秒的金丝雀并验证清除）。补齐后重交全部 120 条。
+- 预检 `capability_loss.runnable` 只看框架能力，不看这份证据，所以预检"可运行"并不代表 D7/D8 能触发——下一轮前应把证据检查并入预检。
