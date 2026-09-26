@@ -1,0 +1,97 @@
+# Chaos Mesh：旧集群 + 舰队 5 副本（D8 用）
+#
+# 与 values-old-cluster.yaml 唯一的区别是作用域：
+#   clusterScoped: false + targetNamespace: otel-demo   ->   clusterScoped: true（不限命名空间）
+# 原因：舰队的副本命名空间是 otel-demo-01..05，命名空间模式下 Controller 不 reconcile
+# 这些命名空间里的 NetworkChaos/PodChaos/StressChaos，D8（注入工具替换）根本无法生效。
+# Chart 2.7.3 的 targetNamespace 只接受单个命名空间，没有多命名空间列表，所以只能改为集群级。
+#
+# 影响面（已核对）：
+#   * 三个 mutating webhook 只作用于 chaos-mesh.org 的三种 CR（不是 Pod），且本来就是
+#     集群级（namespaceSelector 为空），所以这次改动不会给其他租户的 Pod 加任何 webhook。
+#   * Chart 在集群级模式下会为 Controller 建 ClusterRole（对 pods 与三种 CR 的集群级权限），
+#     这是本次改动真正扩大的权限面。
+#   * 平台侧执行/清理身份的 RBAC 无需改动：otel-demo-01..05 里已有 resbench-stage2-executor
+#     （create/get/list 三种 CR）与 resbench-stage2-finalizer（get/list/delete/patch），实测
+#     `kubectl auth can-i create networkchaos.chaos-mesh.org -n otel-demo-01 --as=…executor` = yes。
+#
+# 回滚：helm rollback chaos-mesh 2，或用 values-old-cluster.yaml 再 upgrade 一次。
+# Only the old coroot-config cluster; install with the official 2.7.3 chart.
+clusterScoped: true
+timezone: UTC
+enableProfiling: false
+enableCtrlServer: false
+
+images:
+  registry: ghcr.io
+  tag: v2.7.3
+
+controllerManager:
+  image:
+    registry: 1.94.151.57:85
+    repository: observe/chaos-mesh
+    tag: v2.7.3-stage2-20260905@sha256:f621818e987a75e933d5fb0c5e9c0abb0b72285dadea50f1a4b3719041214bfc
+  replicaCount: 1
+  # targetNamespace 在集群级模式下不生效，故删除（原值：otel-demo）
+  allowHostNetworkTesting: false
+  nodeSelector:
+    kubernetes.io/hostname: tcse-v100-03
+  leaderElection:
+    enabled: true
+  # Keep the official engine registration. In 2.7.3 selective *-records
+  # registration returns from the whole bootstrap loop on the first omitted
+  # implementation; a three-kind list would silently omit required controllers.
+  # Benchmark exposure is restricted by its MCP tools and executor/finalizer
+  # RBAC, not by this upstream bootstrap flag. See README.md.
+  enabledControllers: ["*"]
+  enabledWebhooks:
+    - networkchaos
+    - podchaos
+    - stresschaos
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+chaosDaemon:
+  image:
+    registry: 1.94.151.57:85
+    repository: observe/chaos-daemon
+    tag: v2.7.3-stage2-20260905@sha256:bd42d0f88a33f01a0c547e33cd036d40ea09fd7508082ffb7778040672526d4a
+  runtime: docker
+  socketPath: /var/run/docker.sock
+  mtls:
+    enabled: true
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values: [tcse-v100-01, tcse-v100-02, tcse-v100-03]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+dashboard:
+  create: false
+  securityMode: true
+dnsServer:
+  create: false
+bpfki:
+  create: false
+prometheus:
+  create: false
+
+webhook:
+  FailurePolicy: Fail
+  timeoutSeconds: 5
+  CRDS: [networkchaos, podchaos, stresschaos]
