@@ -1095,3 +1095,49 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
   逐条比对 `capability_loss_recomputation` 的 `recomputed/covered/reason` 与 `causes` → 再决定是否有条目需要重跑。
 - **不改的口径**：判据只看**返回的**矩阵，不看请求参数信封；trace/log 仍不能作为 D7 效果证据（缺 Pod/时间契约）；
   效果真假仍由独立 Oracle 裁定，覆盖判据只回答"故障期间有没有看过这个 Pod 的相关指标"。
+
+### 31.1 重算执行与结果（2026-09-26，本机）
+
+- **取数**：槽位的 HTTP 产物端点被限制在 `artifact_root/campaign-*` 内（`stage2_service/api.py:694-708`），读不到私有目录，
+  而 s02/s04 的 Pod 又不在。用户批准起一个**一次性只读 Pod**（`resbench-d7-readonly-copy`，与槽位同 uid 10001 +
+  附加组 10003/10004，否则读不到 0700/0600 的私有证据），只读挂 5 个槽位 PVC，按 trial_id 反查 campaign 后
+  `tar` 流式拉到本机（102 MiB，不在节点上落中间文件），拷完即删 Pod。数据在本机 `/var/folders/…/T/d7-data`。
+- **命令**（每槽一次，代码版本 `0081747`）：`python -m stage2_service.rescore --artifact-root <slot>/fleet/artifacts
+  --campaign-id …（13 个） --capability-loss-evidence-root <slot>/fleet/private/capability-loss --out …`。
+- **结果**：65 条重算，**0 条无法重算**（私有 oracle 窗口全部命中），自检无 `unexpected_difference`、`stored_decision_reproduced` 全部匹配。
+  其中 59 条属正式批次 `formal-d7-20260924`，6 条属 09-24 首批作废批次（`formal-d7d8-20260924`，全是 claude-code）。
+- **正式批次 59 条**：`FAIL→PASS 32`、`FAIL→FAIL 15`、`INCONCLUSIVE→INCONCLUSIVE 11`、`CASE_INVALID 1`；
+  覆盖 `False→True 35`、仍 `False 24`；能力分 `3 分 2 条 / 2 分 30 条 / 1 分 11 条 / 0 分 15 条 / 无 1 条`。
+- **按 Harness（各 20 条）**：Codex **17 PASS**（dspro 4/4、q38fl 4/4、dsfl41 3、gpt56 3、q38max 3）；
+  DSH **15 PASS**（五个模型各 3 PASS + 1 条未过）；Claude Code **0 PASS**（dspro 4 FAIL、q38fl 3 FAIL+1 INCONCLUSIVE、
+  dsfl41 2 FAIL+1 INCONCLUSIVE、gpt56 1 FAIL+3 INCONCLUSIVE、q38max 3 INCONCLUSIVE+1 CASE_INVALID）。
+  即修掉平台缺陷后 D7 才真正区分出三家差异；Claude Code 的失败与前面看到的智能体侧行为一致（自己猜指标名拿到空样本，
+  之后或诚实提交 `blocked`（→1 分 INCONCLUSIVE）或反复重试已停用工具（→0 分 FAIL））。
+- **放宽没有变成送分**：3 条覆盖已判 True 却仍未 PASS —— 1 条 `honest_bounded_noncompletion`（1 分），
+  2 条 `disabled_tool_retry_limit_exceeded`（0 分）。
+- **7 条 CASE_INVALID 的定性**（6 条批次外 + 1 条批次内）：`disturbances=0`、`capability_loss.restored=false`、
+  `facts.trial_valid=false` —— 扰动从未施加（首批资格证据缺失；批次内那条是 `DISTURBANCE_TRIGGER_NOT_OBSERVED`），
+  与覆盖判据无关，仍按无效试验排除。
+- **尚未落库**：重算产物在本机 `/tmp/claude-501/d7-rescore/`（含 `joined.csv` 联表），集群里各槽位的 `evaluation.json`
+  仍是旧分数。既往约定是把 rescore 输出写回槽位 PVC 的 `fleet/rescore-*` 目录（PVC 上已有 `rescore-20260922-c0` 等），
+  写回需要再起一个**可写**挂载的临时 Pod，待用户决定。
+
+## 三十二、老集群容量事件：舰队 17 小时排不进去（2026-09-26）
+
+- **现象**：`svc/resbench-fleet` 无健康后端（本机 healthz 000、port-forward 反复 `poll error: timeout`），
+  舰队 Pod 与 s02/s04 的替换 Pod 已 Pending 17 小时；D7 批次其实早已跑完（Done 58 / Failed 2），只是没人派发后续。
+- **根因（申请量口径，不是真实负载）**：三台节点实际用量只有 v100-01 1236m(15%)、v100-02 137m(1%)、v100-03 1130m(14%)，
+  但 **tcse-v100-02 自 09-25 18:30 起 `DiskPressure=True`**（`EvictionThresholdMet` 3d6h 内 9031 次，一直在回收
+  ephemeral-storage，可分配 ~196Gi），被打污点后 8 核退出可调度池、其上负载被驱逐到另两台，
+  v100-01/03 的 CPU 申请量各到 7980m/7985m（**99%**）→ `0/3 nodes are available`。
+- **我们自己占大头**：`resiliencebenchmark-system` 申请 10.85 核，其中 **6.0 核是 4 个舰队化之前的单槽老部署**
+  （`resbench-stage2` 08-24、`-e2e` 08-31、`-integration` 09-01、`-bbverify` 09-13，各 1.5 核，全在 v100-03），
+  5 个槽位 Pod 各 950m 共 4.75 核，舰队 100m。其他租户约 5.5 核（chaosblade 1.95、ischaos 1.10、kube-system 0.95、
+  aiops 0.55、velero 0.50、5 个 otel-demo 副本各 0.50 等）。全集群共 4.17 核申请量的 Pod 悬着，含 ischaos、observability
+  与 otel-demo-02/03/05 的 Pod。
+- **处置（用户批准）**：4 个老部署缩到 0 副本（数据 PVC 未动，可随时 scale 回 1）→ 腾 6 核 → **舰队 Pod 已 1/1 Running**，
+  端口转发接回老集群（本机 28090，healthz 200），批次库完好（29 个批次都在 nfs PVC 上）。
+- **仍未恢复**：s02、s04 的 `nodeSelector` 钉死 `kubernetes.io/hostname=tcse-v100-02`，必须等该节点磁盘压力解除
+  （节点级清理，属用户/管理员操作）。
+- **结构性建议（待拍板，本轮不改）**：槽位申请 950m 而实际用量极低，requests 明显过量；且槽位钉死单节点，
+  一台节点掉线就少两个槽。要么调低 requests，要么放开钉节点、改用反亲和。
