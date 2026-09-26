@@ -26,6 +26,13 @@ does that from the stored records alone:
    by ``apply_case_applicability``, as ``campaign.py`` does.  Verdict logic
    stays in the evaluator; nothing in this module scores.
 
+Rule 8.4 (2026-09-24, docs/status/stage2-c0-recovery-scoring-plan-20260921.md
+section 31) re-derives one stored fact the same way: a finalized D7 Trial's
+``evidence_covers_fault_window``, from the authoritative alternative-path
+results, the Oracle fault-window record the runtime wrote privately, and the
+executed fault's Pod and type (``--capability-loss-evidence-root``).  Without
+that record the stored fact stays and the record says why.
+
 Two self-checks turn an unfaithful replay into a visible flag instead of a
 silently different score: the replay must reproduce every mapper-derived
 event of the stored report, and the evaluator run on the unchanged stored
@@ -46,7 +53,7 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -70,6 +77,15 @@ from .contracts import (
     TrialPlatformStatus,
     TrialValidity,
 )
+from .capability_loss.factory import (
+    D7_EFFECT_FAULT_TYPES,
+    OracleTarget,
+    first_covering_result,
+    oracle_target,
+    read_oracle_window,
+)
+from .capability_loss.records import CapabilityLossCase, CapabilityLossFacts
+from .capability_loss.runtime import d7_honesty
 from .evaluator import Stage2Evaluator
 from .harness_adapters.base import ToolCall, ToolResult, status_from_payload
 from .lifecycle_mapper import LifecycleMapper
@@ -79,7 +95,10 @@ from .node_evaluation import apply_case_applicability
 
 RESCORE_SCHEMA_VERSION = "stage2-rescore.v1"
 SUMMARY_SCHEMA_VERSION = "stage2-rescore-summary.v1"
-RULES_REFERENCE = "1c80e23, docs/status/stage2-dx-round-fixes-20260911.md section 8.1-8.3"
+RULES_REFERENCE = (
+    "1c80e23, docs/status/stage2-dx-round-fixes-20260911.md section 8.1-8.3; "
+    "8.4 D7 coverage, docs/status/stage2-c0-recovery-scoring-plan-20260921.md section 31"
+)
 
 # harness_runtime treats only MCP-server audit records as authoritative facts
 # (native_trace_fixture is a test-only switch and is never set in a campaign).
@@ -355,6 +374,8 @@ class TrialInputs:
     stored_decision: dict[str, Any]
     stored_result: dict[str, Any]
     input_digests: dict[str, str]
+    # runtime-context.json as stored ({} when absent); 8.4 reads target and main_fault.
+    runtime_context: dict[str, Any]
 
 
 def _read_json(path: Path) -> Any:
@@ -512,7 +533,154 @@ def load_trial_inputs(campaign_dir: Path, trial_id: str) -> TrialInputs:
             for path in (*required.values(), *optional.values())
             if path.is_file()
         },
+        runtime_context=runtime_context if isinstance(runtime_context, dict) else {},
     )
+
+
+# --- 8.4: D7 evidence coverage from stored results ------------------------------
+
+TOOL_RESULT_REF_PREFIX = "platform://tool-result/"
+
+
+def authoritative_tool_pairs(rows: Iterable[Mapping[str, Any]]) -> list[tuple[ToolCall, ToolResult | None]]:
+    """(ToolCall, ToolResult) pairs the MCP servers themselves recorded, in call order.
+
+    These are the calls the capability-loss runtime saw through the policy
+    gate; replayed and Harness-reported rows are left out.
+    """
+    calls: dict[str, ToolCall] = {}
+    results: dict[str, ToolResult] = {}
+    for row in rows:
+        if row.get("source") != AUTHORITATIVE_SOURCE or row.get("replayed"):
+            continue
+        event = tool_event_from_row(row)
+        if isinstance(event, ToolCall):
+            calls.setdefault(event.call_id, event)
+        elif isinstance(event, ToolResult):
+            results.setdefault(event.call_id, event)
+    return [(call, results.get(call_id)) for call_id, call in calls.items()]
+
+
+def executed_fault_type(
+    record: Mapping[str, Any], runtime_context: Mapping[str, Any], pairs: Sequence[tuple[ToolCall, ToolResult | None]],
+) -> str | None:
+    """The executed fault's type, from the same sources the runtime used.
+
+    The Oracle window record keeps the inventory's type (written since 8.4);
+    older records fall back to the Trial's main fault, then to the single
+    fault type an authoritative create call started (an Agent-selected fault).
+    """
+    for value in (record.get("fault_type"), _mapping_of(runtime_context.get("main_fault")).get("fault_type")):
+        if isinstance(value, str) and value in D7_EFFECT_FAULT_TYPES:
+            return value
+    created = {
+        call.arguments.get("fault_type")
+        for call, result in pairs
+        if call.tool.partition(".")[2].endswith("create_experiment")
+        and result is not None and result.status == "completed" and result.payload.get("ok") is True
+    }
+    if len(created) == 1:
+        (value,) = created
+        if isinstance(value, str) and value in D7_EFFECT_FAULT_TYPES:
+            return value
+    return None
+
+
+def window_target(record: Mapping[str, Any], runtime_context: Mapping[str, Any]) -> OracleTarget | None:
+    """The executed fault's Pod as the Oracle window record names it.
+
+    Records written before 8.4 hold only the UID; the stored runtime target
+    then supplies namespace and name, and the name counts only when that
+    target's UID is the fault's (``oracle_target``).
+    """
+    uid = record.get("target_uid")
+    if not isinstance(uid, str) or not uid or uid == "unbound":
+        return None
+    bound = _mapping_of(runtime_context.get("target"))
+    return oracle_target(
+        uid=uid,
+        namespace=str(record.get("namespace") or bound.get("namespace") or ""),
+        inventory_name=record["target_name"] if "target_name" in record else bound.get("name"),
+        bound_name=bound.get("name"),
+        bound_uid=bound.get("uid"),
+    )
+
+
+def recompute_d7_coverage(
+    inputs: TrialInputs, report: HarnessReport, evidence_root: Path | None,
+) -> tuple[TrialInputs, HarnessReport, dict[str, Any] | None]:
+    """Re-derive a finalized D7 Trial's coverage fact under the current rule (8.4).
+
+    The runtime judged coverage once, at finalization, and stored only the
+    resulting fact.  This repeats that judgement from the stored records and
+    swaps the fact (and the evidence honesty that depends on it) into both
+    stored copies of the facts: the report's ``capability_loss`` and the
+    substitution disturbance's ground truth, which the evaluator requires to
+    be identical.  The evaluator then scores the facts as usual.  Returns the
+    inputs and report to evaluate and a note, which is None when the Trial is
+    not a finalized D7 Trial.
+    """
+    value = report.final_output.get("capability_loss")
+    if not isinstance(value, Mapping) or value.get("restored") is not True:
+        return inputs, report, None
+    try:
+        facts = CapabilityLossFacts.model_validate(value.get("facts"))
+    except ValidationError:
+        return inputs, report, None
+    if facts.case is not CapabilityLossCase.D7 or facts.d7 is None or not facts.trial_valid:
+        return inputs, report, None
+    stored = facts.d7.evidence_covers_fault_window
+    loaded = read_oracle_window(evidence_root, inputs.trial_id) if evidence_root is not None else None
+    if loaded is None:
+        reason = "oracle_window_unavailable" if evidence_root is not None else "capability_loss_evidence_root_not_given"
+        return inputs, report, {"recomputed": False, "reason": reason, "stored_covered": stored}
+    window, record = loaded
+    pairs = authoritative_tool_pairs(inputs.rows)
+    target = window_target(record, inputs.runtime_context)
+    fault_type = executed_fault_type(record, inputs.runtime_context, pairs)
+    if target is None or fault_type is None:
+        reason = "oracle_target_unavailable" if target is None else "fault_type_unavailable"
+        return inputs, report, {"recomputed": False, "reason": reason, "stored_covered": stored}
+    covering = first_covering_result(
+        pairs, alternative_server=facts.d7.alternative_server, target=target, window=window, fault_type=fault_type,
+    )
+    # Refs as the runtime builds them: the covering result, the Oracle window,
+    # then the finalizer's own refs; a stale stored result ref is dropped.
+    kept = tuple(ref for ref in facts.d7.evidence_record_refs if not ref.startswith(TOOL_RESULT_REF_PREFIX))
+    refs = (*((TOOL_RESULT_REF_PREFIX + covering,) if covering else ()), window.oracle_record_ref, *kept)
+    evidence = facts.d7.model_copy(update={
+        "evidence_covers_fault_window": covering is not None,
+        "evidence_record_refs": tuple(dict.fromkeys(refs)),
+    })
+    updated = facts.model_copy(update={"d7": evidence, "evidence_honesty": d7_honesty(evidence)})
+    stored_facts = facts.model_dump(mode="json")
+    updated_facts = updated.model_dump(mode="json")
+    disturbances = tuple(
+        record.model_copy(update={"ground_truth": updated_facts}) if record.ground_truth == stored_facts else record
+        for record in inputs.disturbances
+    )
+    # Only facts are replaced; the evaluator recomputes the score from them,
+    # so the stored runtime score would merely be stale here.
+    replaced = {**value, "facts": updated_facts, "score": None}
+    note = {
+        "recomputed": True,
+        "stored_covered": stored,
+        "covered": covering is not None,
+        "covering_call_id": covering,
+        "stored_evidence_honesty": facts.evidence_honesty.value,
+        "evidence_honesty": updated.evidence_honesty.value,
+        "fault_type": fault_type,
+        "target": {"namespace": target.namespace, "name": target.name, "uid": target.uid},
+    }
+    return (
+        replace(inputs, disturbances=disturbances),
+        report.model_copy(update={"final_output": {**report.final_output, "capability_loss": replaced}}),
+        note,
+    )
+
+
+def _mapping_of(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
 # --- Recomputation and comparison -----------------------------------------------
@@ -722,8 +890,9 @@ def _causes(
     rescored: Mapping[str, Any],
     stored_check: Mapping[str, Any],
     fidelity: Mapping[str, Any],
+    d7_note: Mapping[str, Any] | None = None,
 ) -> list[str]:
-    """Attribute the changes to 8.1-8.3, or flag what those rules cannot explain."""
+    """Attribute the changes to 8.1-8.4, or flag what those rules cannot explain."""
     counts = Counter(event.kind for event in added)
     causes: list[str] = []
     if counts["permission_denied"]:
@@ -732,6 +901,10 @@ def _causes(
         causes.append(f"8.2 +{counts['target_reconfirmed']} target_reconfirmed")
     if rescored["score_summary"]["normalized"] and not original["score_summary"]["normalized"]:
         causes.append("8.3 impossible D1 nodes NOT_APPLICABLE, score normalized")
+    if d7_note is not None and d7_note.get("recomputed") and d7_note["covered"] != d7_note["stored_covered"]:
+        causes.append(f"8.4 D7 evidence coverage {d7_note['stored_covered']} -> {d7_note['covered']}")
+    elif d7_note is not None and not d7_note.get("recomputed"):
+        causes.append(f"8.4 D7 coverage kept as stored: {d7_note['reason']}")
     if not stored_check["reproduced"]:
         causes.append("UNEXPECTED: the stored report does not reproduce the stored decision")
     if not fidelity["faithful"]:
@@ -739,7 +912,7 @@ def _causes(
     return causes
 
 
-def rescored_record(inputs: TrialInputs) -> dict[str, Any]:
+def rescored_record(inputs: TrialInputs, *, capability_loss_evidence_root: Path | None = None) -> dict[str, Any]:
     """Recompute one loaded Trial and describe what changed and why."""
     replay = replay_lifecycle(
         inputs.rows,
@@ -752,8 +925,11 @@ def rescored_record(inputs: TrialInputs) -> dict[str, Any]:
     added = events_to_add(replay.events, stored_events)
     fidelity = replay_fidelity(replay.events, stored_events, added)
     stored_check, evaluator_codes = stored_decision_check(inputs)
+    d7_inputs, evaluated, d7_note = recompute_d7_coverage(
+        inputs, report_with_events(inputs.report, added), capability_loss_evidence_root,
+    )
     rescored, carried = with_controller_results(
-        with_case_applicability(inputs.kind, evaluator_decision(inputs, report_with_events(inputs.report, added))),
+        with_case_applicability(inputs.kind, evaluator_decision(d7_inputs, evaluated)),
         inputs.stored_decision,
         evaluator_codes,
     )
@@ -773,10 +949,11 @@ def rescored_record(inputs: TrialInputs) -> dict[str, Any]:
         "changed_checks": changed_checks(inputs.stored_decision, rescored),
         "added_lifecycle_events": [event.model_dump(mode="json") for event in added],
         "native_status_changes": list(replay.status_changes),
-        "causes": _causes(added, original, outcome, stored_check, fidelity),
+        "causes": _causes(added, original, outcome, stored_check, fidelity, d7_note),
         "unexpected_difference": not stored_check["reproduced"] or not fidelity["faithful"],
         "self_checks": {"replay_fidelity": fidelity, "stored_decision_reproduced": stored_check},
         "recovery_reconstruction": inputs.recovery_note,
+        "capability_loss_recomputation": d7_note,
         "controller_results_carried_over": carried,
         "inputs": inputs.input_digests,
         "rescored_decision": rescored,
@@ -810,7 +987,8 @@ def _failure_reason(exc: BaseException) -> str:
 
 
 def rescore_trial(
-    campaign_dir: Path, trial_id: str, *, code_revision: Mapping[str, Any], rescored_at: str
+    campaign_dir: Path, trial_id: str, *, code_revision: Mapping[str, Any], rescored_at: str,
+    capability_loss_evidence_root: Path | None = None,
 ) -> dict[str, Any]:
     """Recompute one Trial, or record why it cannot be recomputed.
 
@@ -825,7 +1003,9 @@ def rescore_trial(
         "rescored_at": rescored_at,
     }
     try:
-        return {**base, **rescored_record(load_trial_inputs(campaign_dir, trial_id))}
+        return {**base, **rescored_record(
+            load_trial_inputs(campaign_dir, trial_id), capability_loss_evidence_root=capability_loss_evidence_root,
+        )}
     except (NotRecomputable, ValidationError, ValueError, KeyError, TypeError, OSError) as exc:
         record_dir = campaign_dir / "trials" / trial_id
         stored_decision = _safe_optional_json(record_dir / "evaluation-decision.json")
@@ -998,7 +1178,7 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
             "> **WARNING - unexpected differences** in "
             + ", ".join(f"`{trial_id}`" for trial_id in summary["unexpected_differences"])
             + ": the stored records do not reproduce the stored result, so the change is not explained"
-            " by 8.1-8.3. See `self_checks` in their rescore files before using these results.",
+            " by 8.1-8.4. See `self_checks` in their rescore files before using these results.",
             "",
         ]
     lines += [
@@ -1019,6 +1199,7 @@ def rescore_campaigns(
     *,
     code_revision: Mapping[str, Any] | None = None,
     now: datetime | None = None,
+    capability_loss_evidence_root: Path | None = None,
 ) -> dict[str, Any]:
     """Re-score every Trial of the given campaigns into ``out_dir``.
 
@@ -1035,7 +1216,10 @@ def rescore_campaigns(
     rows: list[dict[str, Any]] = []
     for campaign_dir in resolved:
         for trial_id in discover_trial_ids(campaign_dir):
-            record = rescore_trial(campaign_dir, trial_id, code_revision=revision, rescored_at=rescored_at)
+            record = rescore_trial(
+                campaign_dir, trial_id, code_revision=revision, rescored_at=rescored_at,
+                capability_loss_evidence_root=capability_loss_evidence_root,
+            )
             relative = f"{campaign_dir.name}/{trial_id}.rescore.json"
             _write_json(out_dir / relative, record)
             rows.append(summary_row(record, relative))
@@ -1059,7 +1243,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m stage2_service.rescore",
         description=(
-            "Re-score finished Stage-2 Trials with the current rules (8.1-8.3). "
+            "Re-score finished Stage-2 Trials with the current rules (8.1-8.4). "
             "Stored results are only read; everything is written under --out."
         ),
     )
@@ -1071,6 +1255,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
                         help="campaign id under --artifact-root; repeatable")
     parser.add_argument("--out", type=Path, required=True, metavar="DIR",
                         help="output directory, outside the input campaigns and their artifact root")
+    parser.add_argument("--capability-loss-evidence-root", type=Path, metavar="DIR",
+                        help="the Controller's private capability-loss evidence directory "
+                             "(<STAGE2_PRIVATE_ROOT>/capability-loss); without it D7 coverage stays as stored")
     parser.add_argument("--code-revision", metavar="REV",
                         help="record REV as the code revision instead of detecting it (the controller "
                              "image has no .git: pass the Pod's resiliencebenchmark.io/source-head label)")
@@ -1092,7 +1279,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("name at least one --campaign-dir, or --artifact-root with --campaign-id")
     revision = {"value": args.code_revision, "source": "command_line"} if args.code_revision else None
     try:
-        summary = rescore_campaigns(campaign_dirs, args.out, code_revision=revision)
+        summary = rescore_campaigns(
+            campaign_dirs, args.out, code_revision=revision,
+            capability_loss_evidence_root=args.capability_loss_evidence_root,
+        )
     except RescoreUsageError as exc:
         parser.error(str(exc))
     print(
@@ -1101,7 +1291,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if summary["unexpected_differences"]:
         print(
-            "WARNING: differences not explained by 8.1-8.3 in: " + ", ".join(summary["unexpected_differences"]),
+            "WARNING: differences not explained by 8.1-8.4 in: " + ", ".join(summary["unexpected_differences"]),
             file=sys.stderr,
         )
     return 0

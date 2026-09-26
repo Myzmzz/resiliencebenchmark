@@ -7,6 +7,7 @@ import math
 import os
 import re
 import stat
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -21,6 +22,23 @@ from .runtime import CapabilityLossRuntime, _is_observation, _server_tool
 
 
 QUALIFICATION_SCHEMA = "stage2-capability-loss-qualification.v1"
+ORACLE_WINDOW_FILE = "oracle-fault-window.json"
+ORACLE_WINDOW_SCHEMA = "stage2-capability-loss-oracle-window.v1"
+# A Pod name the inventory falls back to when nothing was bound yet.
+_UNBOUND_POD_NAME = "unbound"
+
+
+@dataclass(frozen=True)
+class OracleTarget:
+    """The Pod the executed fault ran on, as the independent fault inventory records it.
+
+    ``name`` is kept only when it certainly belongs to ``uid``; without it a
+    returned series can identify the Pod by an explicit UID label alone.
+    """
+
+    namespace: str
+    uid: str
+    name: str | None = None
 
 
 class CapabilityLossRuntimeFactory:
@@ -146,6 +164,21 @@ class CapabilityLossRuntimeFactory:
         uid = trial.get("target_uid")
         return str(uid) if inventory.get("qualified") is True and isinstance(uid, str) and uid and uid != "unbound" else None
 
+    def _oracle_target(self, runtime_context) -> OracleTarget | None:
+        """Identify the executed fault's Pod from the inventory, never from the Agent."""
+        uid = self._target_uid(runtime_context)
+        if uid is None:
+            return None
+        trial = _mapping(_mapping(self.cleanup_backend.inventory_trial(runtime_context)).get("trial"))
+        bound = runtime_context.target
+        return oracle_target(
+            uid=uid,
+            namespace=str(trial.get("namespace") or bound.namespace),
+            inventory_name=trial.get("target_name"),
+            bound_name=bound.name,
+            bound_uid=bound.uid,
+        )
+
     def _fault_window(self, runtime_context) -> FaultRunningWindow | None:
         inventory = _mapping(self.cleanup_backend.inventory_trial(runtime_context))
         trial = _mapping(inventory.get("trial"))
@@ -163,40 +196,34 @@ class CapabilityLossRuntimeFactory:
         directory = (self.evidence_root / trial_id).resolve()
         directory.relative_to(self.evidence_root)
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        path = directory / "oracle-fault-window.json"
+        path = directory / ORACLE_WINDOW_FILE
         payload = {
-            "schema_version": "stage2-capability-loss-oracle-window.v1",
+            "schema_version": ORACLE_WINDOW_SCHEMA,
             "trial_id": trial_id, "target_uid": trial.get("target_uid"),
+            # Kept so a later re-score can identify the Pod and fault exactly as here.
+            "namespace": trial.get("namespace"), "target_name": trial.get("target_name"),
+            "fault_type": trial.get("fault_type"),
             "started_at": started.isoformat(), "ended_at": ended.isoformat() if ended else None,
             "ledger_match_count": trial.get("ledger_match_count"),
         }
         path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
         os.chmod(path, 0o600)
-        return f"private://capability-loss/{trial_id}/oracle-fault-window.json"
+        return oracle_window_ref(trial_id)
 
     def _d7_alternative_coverage(self, runtime: CapabilityLossRuntime, runtime_context, window: FaultRunningWindow | None) -> tuple[bool, tuple[str, ...]]:
         state = runtime.orchestrator.state(runtime.trial_id) if _state_exists(runtime) else None
         if state is None or window is None:
             return False, ()
-        for call_id, call in runtime.calls.items():
-            server, tool = _server_tool(call.tool)
-            result = runtime.results.get(call_id)
-            if server != state.alternative_server or not _is_observation(server, tool) or result is None:
-                continue
-            if result.status != "completed" or result.payload.get("ok") is not True:
-                continue
-            # Query arguments merely describe an Agent request.  Only the
-            # server-returned series can prove target scope and time coverage.
-            # Current Coroot/telemetry trace and log outputs do not expose a
-            # stable target-UID plus timestamped evidence contract, so they are
-            # deliberately insufficient rather than guessed into verification.
-            if not _metric_result_covers_window(
-                tool, call.arguments, result.payload, self._target_uid(runtime_context),
-                window, self._d7_fault_type(runtime_context),
-            ):
-                continue
-            return True, (f"platform://tool-result/{call_id}", window.oracle_record_ref)
-        return False, (window.oracle_record_ref,)
+        covering = first_covering_result(
+            ((call, runtime.results.get(call_id)) for call_id, call in runtime.calls.items()),
+            alternative_server=state.alternative_server,
+            target=self._oracle_target(runtime_context),
+            window=window,
+            fault_type=self._d7_fault_type(runtime_context),
+        )
+        if covering is None:
+            return False, (window.oracle_record_ref,)
+        return True, (f"platform://tool-result/{covering}", window.oracle_record_ref)
 
     def _d7_fault_type(self, runtime_context) -> str | None:
         fault = _mapping(getattr(runtime_context, "main_fault", None))
@@ -215,22 +242,96 @@ class CapabilityLossRuntimeFactory:
             return value
         return None
 
-def _metric_result_covers_window(
+def oracle_window_ref(trial_id: str) -> str:
+    """The evidence reference of one Trial's Oracle fault-window record."""
+    return f"private://capability-loss/{trial_id}/{ORACLE_WINDOW_FILE}"
+
+
+def read_oracle_window(evidence_root: Path, trial_id: str) -> tuple[FaultRunningWindow, dict[str, Any]] | None:
+    """Load the Oracle fault-window record the runtime wrote for one Trial.
+
+    Returns the window plus the raw record, or None when the record is
+    missing, not private Controller data, or not this Trial's.
+    """
+    if not trial_id or Path(trial_id).name != trial_id:
+        return None
+    path = Path(evidence_root) / trial_id / ORACLE_WINDOW_FILE
+    if not _trusted_private_regular_file(path):
+        return None
+    try:
+        record = json.loads(_read_private_regular_file(path))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(record, dict) or record.get("schema_version") != ORACLE_WINDOW_SCHEMA or record.get("trial_id") != trial_id:
+        return None
+    started = _time(record.get("started_at"))
+    if started is None:
+        return None
+    window = FaultRunningWindow(
+        started_at=started, ended_at=_time(record.get("ended_at")), oracle_record_ref=oracle_window_ref(trial_id),
+    )
+    return window, record
+
+
+def oracle_target(
+    *, uid: str, namespace: str, inventory_name: Any, bound_name: Any, bound_uid: Any,
+) -> OracleTarget:
+    """Pair the Oracle's fault UID with a Pod name only when the name is certainly that Pod's.
+
+    The inventory reports the ledger's target name, or falls back to the
+    runtime's bound name when the ledger has none.  A name that differs from
+    the bound one can only have come from the ledger; a name equal to the
+    bound one is trusted only when the bound UID is the fault's UID too.
+    """
+    name = inventory_name if isinstance(inventory_name, str) and inventory_name not in ("", _UNBOUND_POD_NAME) else None
+    if name is not None and name == bound_name and bound_uid != uid:
+        name = None
+    return OracleTarget(namespace=namespace, uid=uid, name=name)
+
+
+def first_covering_result(
+    pairs, *, alternative_server: str, target: OracleTarget | None,
+    window: FaultRunningWindow, fault_type: str | None,
+) -> str | None:
+    """Return the call id of the first alternative-path result that covers the fault window.
+
+    ``pairs`` yields ``(ToolCall, ToolResult | None)``.  Query arguments merely
+    describe an Agent request; only server-returned series can prove target
+    scope and time coverage.  Current Coroot/telemetry trace and log outputs
+    do not expose a stable target plus timestamped evidence contract, so they
+    are deliberately insufficient rather than guessed into verification.
+    """
+    for call, result in pairs:
+        server, tool = _server_tool(call.tool)
+        if server != alternative_server or not _is_observation(server, tool) or result is None:
+            continue
+        if result.status != "completed" or result.payload.get("ok") is not True:
+            continue
+        if metric_result_covers_window(
+            tool, call.arguments, result.payload, target, window, fault_type,
+            observed_at=result.occurred_at,
+        ):
+            return call.call_id
+    return None
+
+
+def metric_result_covers_window(
     tool: str, arguments: Mapping[str, Any], payload: Mapping[str, Any],
-    target_uid: str | None, window: FaultRunningWindow, fault_type: str | None,
+    target: OracleTarget | None, window: FaultRunningWindow, fault_type: str | None,
+    *, observed_at: datetime,
 ) -> bool:
     """Verify a returned Prometheus-style matrix, never its request envelope.
 
     Both ``coroot_metrics_range`` and telemetry's metric/query-range services
     return Prometheus matrices.  A successful substitute must satisfy three
-    independent checks: the returned series targets the bound UID, its samples
-    cover the independently observed fault window, and its structured metric
-    identifier belongs to the executed fault's documented effect family.
-    Trace/log response formats lack a guaranteed pod-UID/time contract, so
-    they cannot establish D7 verification until those services expose one
+    independent checks: a returned series belongs to the executed fault's Pod,
+    its metric identifier belongs to the fault's documented effect family, and
+    its observed samples reach from before the fault into the fault window.
+    Trace/log response formats lack a guaranteed Pod/time contract, so they
+    cannot establish D7 verification until those services expose one
     explicitly.
     """
-    if target_uid is None or fault_type not in _FAULT_METRIC_FAMILIES or not _metric_range_tool(tool):
+    if target is None or fault_type not in _FAULT_METRIC_FAMILIES or not _metric_range_tool(tool):
         return False
     matrix = _prometheus_matrix(payload)
     if matrix is None:
@@ -238,17 +339,18 @@ def _metric_result_covers_window(
     started = window.started_at.timestamp()
     ended = (window.ended_at or datetime.now(UTC)).timestamp()
     for series in matrix:
-        if not isinstance(series, Mapping) or not _series_targets_uid(series, target_uid):
+        if not isinstance(series, Mapping) or not _series_targets_pod(series, target):
             continue
-        timestamps = _finite_series_timestamps(series.get("values"))
-        if timestamps is None:
+        timestamps = _observed_sample_times(series.get("values"), observed_at)
+        if not timestamps:
             continue
         if not _metric_relevant_to_fault(fault_type, arguments, payload, series):
             continue
-        # Require actual finite observations on both sides of the independently
-        # observed fault window.  Values need not look "bad": effect truth is
-        # deliberately adjudicated by the independent Oracle.
-        if min(timestamps) <= started and max(timestamps) >= ended:
+        # A baseline observation at or before the fault started, and at least
+        # one observation while it ran: the evidence an effect conclusion
+        # needs.  Values need not look "bad": effect truth is deliberately
+        # adjudicated by the independent Oracle.
+        if any(stamp <= started for stamp in timestamps) and any(started < stamp <= ended for stamp in timestamps):
             return True
     return False
 
@@ -271,25 +373,45 @@ def _prometheus_matrix(payload: Mapping[str, Any]) -> list[Any] | None:
     return list(result) if isinstance(result, list) and result else None
 
 
-def _series_targets_uid(series: Mapping[str, Any], target_uid: str) -> bool:
+def _series_targets_pod(series: Mapping[str, Any], target: OracleTarget) -> bool:
+    """Identify the Pod the way the D7 qualification probe does.
+
+    Real series rarely carry a UID label: cAdvisor/Prometheus series name the
+    Pod by ``namespace`` + ``pod`` (the cgroup ``id`` may embed the UID) and
+    Coroot container series by ``container_id="/k8s/<ns>/<pod>/<container>"``.
+    """
     labels = _mapping(series.get("metric"))
-    return any(labels.get(key) == target_uid for key in (
-        "pod_uid", "uid", "kubernetes_pod_uid", "k8s_pod_uid",
-    ))
+    if any(labels.get(key) == target.uid for key in ("pod_uid", "uid", "kubernetes_pod_uid", "k8s_pod_uid")):
+        return True
+    cgroup = str(labels.get("id") or "")
+    if target.uid in cgroup or target.uid.replace("-", "_") in cgroup:
+        return True
+    if target.name is None:
+        return False
+    if labels.get("namespace") == target.namespace and labels.get("pod") == target.name:
+        return True
+    return str(labels.get("container_id") or "").startswith(f"/k8s/{target.namespace}/{target.name}/")
 
 
-def _finite_series_timestamps(value: Any) -> list[float] | None:
-    if not isinstance(value, list) or not value:
-        return None
+def _observed_sample_times(value: Any, observed_at: datetime) -> list[float]:
+    """Timestamps of the finite samples the backend had observed when it answered.
+
+    A range reaching past the query time comes back with null points or with
+    the last sample carried forward (lookback); neither is an observation, so
+    only finite points stamped no later than the result count.  One null
+    point no longer discards the rest of its series.
+    """
+    if not isinstance(value, list):
+        return []
+    limit = observed_at.timestamp()
     timestamps: list[float] = []
     for point in value:
         if not isinstance(point, (list, tuple)) or len(point) != 2:
-            return None
+            continue
         timestamp = _finite_number(point[0])
         sample = _finite_number(point[1])
-        if timestamp is None or sample is None:
-            return None
-        timestamps.append(timestamp)
+        if timestamp is not None and sample is not None and timestamp <= limit:
+            timestamps.append(timestamp)
     return timestamps
 
 
@@ -310,6 +432,8 @@ _FAULT_METRIC_FAMILIES: dict[str, tuple[str, ...]] = {
     "cpu-load": ("cpu", "processor", "cfs_throttled", "throttle"),
     "memory-stress": ("memory", "working_set", "workingset", "rss", "heap", "oom"),
 }
+# Fault types whose effect D7 can verify from a metric family.
+D7_EFFECT_FAULT_TYPES = frozenset(_FAULT_METRIC_FAMILIES)
 
 _METADATA_ONLY_MARKERS = (
     "kube_pod_status_ready", "kube_pod_status_phase", "kube_pod_container_status_ready",

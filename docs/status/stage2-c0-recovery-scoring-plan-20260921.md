@@ -1031,3 +1031,67 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
    生成：在各副本 stage2 容器、无试验运行时执行 `python -m stage2_service.capability_loss.qualification_probe`（D7 各读一次 Coroot/遥测；
    D8 用 Chaos Mesh 与 ChaosBlade 各做一个 1 ms 延迟、15 秒的金丝雀并验证清除）。补齐后重交全部 120 条。
 - 预检 `capability_loss.runnable` 只看框架能力，不看这份证据，所以预检"可运行"并不代表 D7/D8 能触发——下一轮前应把证据检查并入预检。
+
+## 三十、3 条卡死 abort 的人工解除（2026-09-24，用户拍板"方案 2：人工确认后解除"）
+
+- **现象**：D7 首批停批后，s02/s03/s05 三个槽位的 abort 长期停在 failed，槽位不回到 Ready，排队条目派不出去。
+- **根因**：`stage2_service/task_service.py:1634` `_abort_environment_result()` 只有在"未观测到故障或扰动变异"时才先做只读环境校验并跳过重置；
+  一旦试验已变异（D7/D8 必然改过能力策略，多数还建过混沌资源），就直接调 `control_backend.reset_environment`，
+  即 `stage2_service/reset.py:188` `_full_reinstall()` 的 OTel Demo Helm 卸载/重装。舰队槽位的 ServiceAccount 没有这个写权限
+  → 重装失败 → abort 失败 → 槽位卡死。这就是记在报告待注明项里的"abort 全量重置的 RBAC 缺口"。
+- **用户决定**：不扩 RBAC，走方案 2 —— 人工确认后解除。
+- **执行**：解除前对 3 个副本命名空间做了只读核对（残留混沌资源、能力策略、业务流量），确认不需要全量重装后把 3 条 failed abort
+  标记为已解除；解除时刻 **s02 06:40:41 / s05 06:40:46 / s03 06:41:04（UTC）**。解除后 3 槽恢复 Ready，排队条目继续派发。
+- **遗留（要认）**：解除用的一次性脚本 `resolve_failed_abort.py` 写在会话 scratchpad 里，随会话失效、**没有入库**，核对输出同样已丢失，
+  本节只保留结论与时刻。若还要做同样操作，必须重写成 `scripts/` 下的正式脚本（带干跑与逐槽确认），不要再临时拼。
+- **口径教训**：**停批要"排空"（drain，等运行中的试验自己收尾），不要对带已变异试验的槽位用"停止"** —— 停止必然触发上面这条 RBAC 敏感的全量重置。
+- **待办（本轮不改）**：要么给舰队槽位一条"只重置本副本命名空间"的受限路径（不做 Helm 全量重装），
+  要么让 abort 在 RBAC 不足时降级为"只读校验 + 标记待人工处理"，避免槽位无声卡死。
+
+## 三十一、D7 证据覆盖判据修复（2026-09-24 起，平台缺陷、非智能体问题）
+
+- **现象**：已完成的 24 条 D7 **全部** `evidence_covers_fault_window=false`，连带 `evidence_honesty=contradicted`、`final_score=0`、FAIL。
+- **定性**：判据缺陷，两个互相独立的原因：
+  1. **目标识别只认显式 UID 标签**，而真实链路从不返回这种标签：telemetry_ro 按 `namespace`+`pod` 聚合；cAdvisor 原始序列把 UID 埋在
+     cgroup `id` 里；Coroot 用 `container_id=/k8s/<ns>/<pod>/<container>` + `app_id`。而这些形状恰恰是 D7 资格探针**接受**的
+     → "探针说能跑、评分说没证据"。
+  2. **窗口判据要求"窗口结束时刻仍有样本 + 所有点有限"**。Coroot 对越过 now 的 range 查询只能返回 null 间隙或前向承载值，结构上做不到。
+- **证据**：对 23 条有效替代查询做规则模拟（脚本与输出在已失效的 scratchpad：`d7_rule_sim.py` / `d7-rule-sim.txt`）：
+  现判据 **0 条 PASS**；换成"目标对齐 + 故障前有基线且窗口内至少一个有限样本"后 **7 条 PASS**（另两种候选口径命中同样这 7 条）。
+  同时确认**部分 Claude Code 失败是智能体侧真问题**：自己猜指标名（`target_cpu_cores`、`cpu_usage_percent`）拿到空样本，
+  最后诚实提交 `blocked` —— Coroot 工具的 docstring 里其实列了正确名字。
+- **改法**（分支 `claude/stage2-d1-round-20260922`）：
+  1. **覆盖判据重写**：`stage2_service/capability_loss/factory.py:318` `metric_result_covers_window()`，
+     配 `factory.py:376` `_series_targets_pod()`、`factory.py:396` `_observed_sample_times()`。
+     目标识别接受四类真实形状（`pod_uid`/`uid`/`kubernetes_pod_uid`/`k8s_pod_uid`；cgroup `id` 含 uid，含 `-`→`_` 变体；
+     `namespace`+`pod` 且 Pod 名可信；Coroot `container_id` 前缀 `/k8s/<ns>/<name>/`）；
+     样本判据改为"存在 ≤ 窗口起点的基线样本，且存在落在 (起点, 终点] 内、时间戳不晚于该次调用观测时刻的有限样本"，
+     一个 null 点不再整条丢弃。删除旧的 `_series_targets_uid` / `_finite_series_timestamps`。
+  2. **Pod 名可信度**：`factory.py:276` `oracle_target()` —— 只有当清单名与运行时绑定名不同（说明来自账本自己），
+     或绑定 UID 与故障 UID 相同（说明绑定就是这个 Pod）时才用 Pod 名；否则 `name=None`，只按 UID 类形状识别，
+     避免把"同命名空间同应用的另一个副本"当成目标。未绑定哨兵名 `unbound` 一律丢弃。
+  3. **事后可重算**：`factory.py:195` `_write_oracle_window()` 现在把 `namespace`、`target_name`、`fault_type` 一并写进控制器私有记录，
+     并返回 `oracle_window_ref()`（`factory.py:245`）；`factory.py:250` `read_oracle_window()` 供重算读取
+     （拒绝路径穿越、非私有文件、schema/trial 不匹配、缺 `started_at`）。`runtime.py:392` 抽出 `d7_honesty()`，运行时与重算共用同一条诚实性规则。
+  4. **重算规则 8.4**：`stage2_service/rescore.py:609` `recompute_d7_coverage()`，配 `rescore.py:545` `authoritative_tool_pairs()`
+     （只认 `source=AUTHORITATIVE_SOURCE` 且非重放的行）、`rescore.py:564` `executed_fault_type()`、`rescore.py:589` `window_target()`；
+     新增 CLI `--capability-loss-evidence-root DIR`（`rescore.py:1284`）。它用权威 `ToolResult` 行 + 私有 oracle 窗口重算覆盖，
+     命中时把 `platform://tool-result/<call_id>` 放到 `evidence_record_refs` 首位，并**同时替换** report 与 disturbance `ground_truth`
+     两份 facts —— 评估器 `evaluator.py:56-61` 要求二者严格相等，否则整条被判 CASE_INVALID；
+     无法重算时给明确原因码（`capability_loss_evidence_root_not_given` / `oracle_window_unavailable` / `oracle_target_unavailable` /
+     `fault_type_unavailable`），并在 `causes` 里写 `8.4 D7 coverage kept as stored: <reason>`。
+- **测试**：
+  - `tests/test_capability_loss_factory.py`（+162 行）：真实标签形状参数化、别的 Pod 拒绝、Pod 名可信度、null/前向承载/观测时刻的样本口径，
+    以及一条端到端（断言 `evidence_covers_fault_window is True`、`evidence_record_refs[0] == "platform://tool-result/alternative"`、
+    私有记录字段、`read_oracle_window` 往返与穿越拒绝）。其中 `:424` 那条"只有基线与故障结束后样本 → 不算覆盖"正是本轮的行为变化点。
+  - `tests/test_stage2_rescore.py`（+137 行）：8.4 三条（重算成功 False→True 且 FAIL→PASS、无私有窗口时保持原值并给原因码、
+    绑定 UID 是别的 Pod 时不启用 Pod 名）。**踩坑**：fixture 里的 facts 必须写成 `CapabilityLossFacts` 往返后的形状（带 `d8: null`），
+    否则 `ground_truth != facts`，评估器把整条判成 CASE_INVALID、根本走不到重算（见 `tests/test_stage2_rescore.py:648` 附近注释）。
+  - `tests/test_stage2_substitution_runner.py:178` `_matrix_payload()` 补一个窗口内样本（原 fixture 只有"故障前 + 故障结束后"两点，按新判据不算覆盖）。
+  - `tests/test_coroot_ro_mcp.py` 跟到新公开 API（`OracleTarget` + `metric_result_covers_window(..., observed_at=...)`）。
+  - 全套：**2300 passed / 9 skipped**（沙箱外 `uv run --python 3.11 --with pytest`；沙箱内跑会因禁止本地端口绑定而误报 2 条失败）。
+- **部署情况**：代码**未提交、未部署**，已完成的 D7 条目仍是旧判据的分数。落地顺序：提交推送 → 在 5 个副本的 stage2 容器内对已完成的 D7 跑
+  `python -m stage2_service.rescore --capability-loss-evidence-root /var/lib/resbench-stage2/private/capability-loss …` →
+  逐条比对 `capability_loss_recomputation` 的 `recomputed/covered/reason` 与 `causes` → 再决定是否有条目需要重跑。
+- **不改的口径**：判据只看**返回的**矩阵，不看请求参数信封；trace/log 仍不能作为 D7 效果证据（缺 Pod/时间契约）；
+  效果真假仍由独立 Oracle 裁定，覆盖判据只回答"故障期间有没有看过这个 Pod 的相关指标"。

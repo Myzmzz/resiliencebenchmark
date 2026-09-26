@@ -6,8 +6,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from stage2_service.capability_loss.factory import CapabilityLossRuntimeFactory, QUALIFICATION_SCHEMA
-from stage2_service.capability_loss.records import CapabilityLossCase, CapabilityLossVariant
+from stage2_service.capability_loss.factory import (
+    CapabilityLossRuntimeFactory,
+    OracleTarget,
+    QUALIFICATION_SCHEMA,
+    metric_result_covers_window,
+    oracle_target,
+    read_oracle_window,
+)
+from stage2_service.capability_loss.records import CapabilityLossCase, CapabilityLossVariant, FaultRunningWindow
 from stage2_service.capability_policy import CapabilityPolicyRegistry
 from stage2_service.contracts import BladeAINativePermissions, PermissionProfile, RuntimeTarget, TrialRuntimeContext
 from stage2_service.harness_adapters.base import ToolCall, ToolResult
@@ -18,21 +25,23 @@ NOW = datetime(2026, 9, 5, 12, 0, tzinfo=UTC)
 
 
 class Cleanup:
-    def __init__(self, fault_type: str = "network-delay") -> None:
+    def __init__(self, fault_type: str = "network-delay", target_name: str | None = None) -> None:
         self.fault_type = fault_type
+        self.target_name = target_name
 
     def inventory_trial(self, _runtime):
-        return {
-            "qualified": True,
-            "trial": {
-                "ledger_match_count": 1,
-                "ever_active": True,
-                "target_uid": "uid-actual",
-                "fault_type": self.fault_type,
-                "started_at": (NOW - timedelta(seconds=30)).isoformat(),
-                "ended_at": (NOW - timedelta(seconds=5)).isoformat(),
-            },
+        trial = {
+            "ledger_match_count": 1,
+            "ever_active": True,
+            "target_uid": "uid-actual",
+            "fault_type": self.fault_type,
+            "started_at": (NOW - timedelta(seconds=30)).isoformat(),
+            "ended_at": (NOW - timedelta(seconds=5)).isoformat(),
         }
+        if self.target_name is not None:
+            # What the ledger records for the executed fault's Pod.
+            trial.update({"namespace": "otel-demo", "target_name": self.target_name})
+        return {"qualified": True, "trial": trial}
 
 
 def _context(*, fault_type: str | None = "network-delay") -> TrialRuntimeContext:
@@ -60,18 +69,22 @@ def _qualification(path: Path, *, expires_at=NOW + timedelta(minutes=1)) -> None
     os.chmod(path, 0o600)
 
 
-def _factory(tmp_path: Path, *, cleanup_fault_type: str = "network-delay"):
+def _factory(tmp_path: Path, *, cleanup_fault_type: str = "network-delay", target_name: str | None = None):
     qualification = tmp_path / "qualification.json"
     _qualification(qualification)
     ledger = PlatformLedger(tmp_path / "ledger")
     policy = CapabilityPolicyRegistry(tmp_path / "policy", ledger=ledger)
     policy.initialize("trial-1", PermissionProfile(profile_id="p0", mcp_servers=("telemetry_ro", "coroot_ro"), bladeai_native=BladeAINativePermissions()))
-    return CapabilityLossRuntimeFactory(cleanup_backend=Cleanup(cleanup_fault_type), qualification_path=qualification, evidence_root=tmp_path / "evidence", now=lambda: NOW), policy, ledger
+    cleanup = Cleanup(cleanup_fault_type, target_name=target_name)
+    return CapabilityLossRuntimeFactory(cleanup_backend=cleanup, qualification_path=qualification, evidence_root=tmp_path / "evidence", now=lambda: NOW), policy, ledger
 
 
 def _metric_payload(*, uid: str = "uid-actual", metric: str = "http_server_duration_milliseconds_bucket", values=None) -> dict:
+    # A baseline before the fault (window NOW-30s..NOW-5s), one sample while
+    # it ran, and one after it.
     values = values if values is not None else [
         [(NOW - timedelta(seconds=40)).timestamp(), "1.0"],
+        [(NOW - timedelta(seconds=20)).timestamp(), "3.0"],
         [NOW.timestamp(), "2.0"],
     ]
     return {
@@ -331,3 +344,122 @@ def test_symlink_private_parent_is_not_trusted(tmp_path: Path):
 
     assert result.allowed is False
     assert result.payload["error"]["code"] == "CASE_INVALID"
+
+
+# --- Pod identity and sample times as real backends return them (2026-09-24) ---
+# Fleet D7 runs showed telemetry_ro series labelled only namespace+pod and
+# Coroot series labelled by container_id: no UID label, so the UID-only rule
+# could never be met, and Coroot answers a range reaching past "now" with null
+# or carried-forward points.
+
+WINDOW = FaultRunningWindow(
+    started_at=NOW - timedelta(seconds=30), ended_at=NOW - timedelta(seconds=5), oracle_record_ref="private://oracle",
+)
+LEDGER_POD = OracleTarget(namespace="otel-demo", uid="uid-actual", name="cart-7ffd4d6f-x24ls")
+
+
+def _at_offset(seconds: int) -> float:
+    return (NOW + timedelta(seconds=seconds)).timestamp()
+
+
+def _matrix(labels: dict, values=None) -> dict:
+    values = values if values is not None else [[_at_offset(-40), "1.0"], [_at_offset(-20), "3.0"]]
+    return {"ok": True, "data": {"resultType": "matrix", "result": [{"metric": labels, "values": values}]}}
+
+
+@pytest.mark.parametrize("tool,metric,labels", [
+    # telemetry_ro aggregates by (namespace, pod): no UID label at all.
+    ("telemetry_prom_metric_range", "container_cpu_usage_seconds_total",
+     {"namespace": "otel-demo", "pod": "cart-7ffd4d6f-x24ls"}),
+    # Coroot container series name the Pod inside container_id.
+    ("coroot_metrics_range", "container_resources_cpu_usage_seconds_total",
+     {"__name__": "container_resources_cpu_usage_seconds_total", "app_id": "/k8s/otel-demo/cart",
+      "container_id": "/k8s/otel-demo/cart-7ffd4d6f-x24ls/cart"}),
+    # Raw cAdvisor series embed the UID in the cgroup path (systemd driver).
+    ("telemetry_prom_query_range", "container_cpu_usage_seconds_total",
+     {"id": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-poduid_actual.slice"}),
+])
+def test_d7_identifies_the_fault_pod_by_the_labels_real_backends_return(tool: str, metric: str, labels: dict):
+    assert metric_result_covers_window(tool, {"metric": metric}, _matrix(labels), LEDGER_POD, WINDOW, "cpu-load", observed_at=NOW)
+
+
+@pytest.mark.parametrize("labels", [
+    {"namespace": "otel-demo", "pod": "cart-7ffd4d6f-other"},
+    {"namespace": "otel-demo-02", "pod": "cart-7ffd4d6f-x24ls"},
+    {"container_id": "/k8s/otel-demo/cart-7ffd4d6f-x24ls-b/cart"},
+    {"app_id": "/k8s/otel-demo/cart"},
+])
+def test_d7_rejects_series_of_another_pod_or_without_pod_identity(labels: dict):
+    assert not metric_result_covers_window(
+        "coroot_metrics_range", {"metric": "container_resources_cpu_usage_seconds_total"},
+        _matrix(labels), LEDGER_POD, WINDOW, "cpu-load", observed_at=NOW,
+    )
+
+
+def test_d7_pod_name_counts_only_when_it_certainly_belongs_to_the_fault_uid():
+    unnamed = OracleTarget(namespace="otel-demo", uid="uid-actual")
+    labels = {"namespace": "otel-demo", "pod": "cart-7ffd4d6f-x24ls"}
+
+    assert not metric_result_covers_window(
+        "telemetry_prom_metric_range", {"metric": "container_cpu_usage_seconds_total"},
+        _matrix(labels), unnamed, WINDOW, "cpu-load", observed_at=NOW,
+    )
+    # The inventory fell back to the bound name while the bound UID is another Pod's.
+    assert oracle_target(uid="uid-actual", namespace="otel-demo", inventory_name="cart-a",
+                         bound_name="cart-a", bound_uid="uid-other").name is None
+    # A name that differs from the bound one can only be the ledger's own.
+    assert oracle_target(uid="uid-actual", namespace="otel-demo", inventory_name="cart-b",
+                         bound_name="cart-a", bound_uid="uid-other").name == "cart-b"
+    assert oracle_target(uid="uid-actual", namespace="otel-demo", inventory_name="cart-a",
+                         bound_name="cart-a", bound_uid="uid-actual").name == "cart-a"
+    assert oracle_target(uid="uid-actual", namespace="otel-demo", inventory_name="unbound",
+                         bound_name="unbound", bound_uid="unbound").name is None
+
+
+@pytest.mark.parametrize("values,observed_offset,covered", [
+    # A null point (a Coroot gap) no longer discards the finite ones.
+    ([[_at_offset(-40), "1"], [_at_offset(-35), None], [_at_offset(-20), "3"]], 0, True),
+    # No baseline: every sample lies inside the fault window.
+    ([[_at_offset(-25), "3"], [_at_offset(-10), "3"]], 0, False),
+    # Baseline and post-fault samples only: nothing observed while it ran.
+    ([[_at_offset(-40), "1"], [_at_offset(0), "1"]], 0, False),
+    # Asked 5 s into the fault: a later-stamped point was carried forward, not observed.
+    ([[_at_offset(-40), "1"], [_at_offset(-20), "3"]], -25, False),
+    ([[_at_offset(-40), "1"], [_at_offset(-28), "3"], [_at_offset(-20), "3"]], -25, True),
+])
+def test_d7_counts_finite_samples_observed_by_query_time_from_baseline_into_the_window(values, observed_offset: int, covered: bool):
+    labels = {"namespace": "otel-demo", "pod": "cart-7ffd4d6f-x24ls"}
+    observed_at = NOW + timedelta(seconds=observed_offset)
+
+    assert metric_result_covers_window(
+        "telemetry_prom_metric_range", {"metric": "container_cpu_usage_seconds_total"},
+        _matrix(labels, values), LEDGER_POD, WINDOW, "cpu-load", observed_at=observed_at,
+    ) is covered
+
+
+def test_d7_factory_accepts_real_prometheus_series_of_the_ledger_pod_and_records_the_pod(tmp_path: Path):
+    factory, policy, ledger = _factory(tmp_path, cleanup_fault_type="cpu-load", target_name="cart-7ffd4d6f-x24ls")
+    context = _context(fault_type=None)
+    runtime = factory.build("trial-1", "D7", "A", context, policy, ledger)
+    primary = ToolCall(call_id="primary", tool="coroot_ro.coroot_metrics_range", arguments={}, occurred_at=NOW)
+    assert runtime.before_call(primary).allowed is False
+    alternative = ToolCall(
+        call_id="alternative", tool="telemetry_ro.telemetry_prom_metric_range",
+        arguments={"metric": "container_cpu_usage_seconds_total", "labels": {"pod": "cart-7ffd4d6f-x24ls"}},
+        occurred_at=NOW,
+    )
+    assert runtime.before_call(alternative).allowed is True
+    payload = _matrix({"namespace": "otel-demo", "pod": "cart-7ffd4d6f-x24ls"})
+    runtime.after_result(alternative, ToolResult(call_id="alternative", status="completed", payload=payload, occurred_at=NOW))
+
+    inputs = factory.finish_inputs(runtime, context, {"fault_effect_verified": True})
+
+    assert inputs["oracle"]["evidence_covers_fault_window"] is True
+    assert inputs["oracle"]["evidence_refs"][0] == "platform://tool-result/alternative"
+    record = json.loads((tmp_path / "evidence" / "trial-1" / "oracle-fault-window.json").read_text(encoding="utf-8"))
+    assert (record["namespace"], record["target_name"], record["fault_type"]) == ("otel-demo", "cart-7ffd4d6f-x24ls", "cpu-load")
+    window, loaded = read_oracle_window(tmp_path / "evidence", "trial-1")
+    assert loaded == record
+    assert window.oracle_record_ref == "private://capability-loss/trial-1/oracle-fault-window.json"
+    assert read_oracle_window(tmp_path / "evidence", "../trial-1") is None
+    assert read_oracle_window(tmp_path / "evidence", "trial-2") is None

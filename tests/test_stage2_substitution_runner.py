@@ -179,7 +179,11 @@ def _matrix_payload() -> dict[str, object]:
     metric = "http_server_duration_milliseconds_bucket"
     return {"ok": True, "metric": metric, "data": {"resultType": "matrix", "result": [{
         "metric": {"__name__": metric, "pod_uid": "uid-actual"},
-        "values": [[(NOW - timedelta(seconds=40)).timestamp(), "1.0"], [NOW.timestamp(), "2.0"]],
+        # Baseline before the fault, one sample while it ran (the window is
+        # [NOW-30s, NOW-5s], see FakeCleanup), one after it ended.
+        "values": [[(NOW - timedelta(seconds=40)).timestamp(), "1.0"],
+                   [(NOW - timedelta(seconds=20)).timestamp(), "3.0"],
+                   [NOW.timestamp(), "2.0"]],
     }]}}
 
 
