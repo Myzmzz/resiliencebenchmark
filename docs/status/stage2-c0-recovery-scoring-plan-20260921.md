@@ -1118,9 +1118,13 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
 - **7 条 CASE_INVALID 的定性**（6 条批次外 + 1 条批次内）：`disturbances=0`、`capability_loss.restored=false`、
   `facts.trial_valid=false` —— 扰动从未施加（首批资格证据缺失；批次内那条是 `DISTURBANCE_TRIGGER_NOT_OBSERVED`），
   与覆盖判据无关，仍按无效试验排除。
-- **尚未落库**：重算产物在本机 `/tmp/claude-501/d7-rescore/`（含 `joined.csv` 联表），集群里各槽位的 `evaluation.json`
-  仍是旧分数。既往约定是把 rescore 输出写回槽位 PVC 的 `fleet/rescore-*` 目录（PVC 上已有 `rescore-20260922-c0` 等），
-  写回需要再起一个**可写**挂载的临时 Pod，待用户决定。
+- **已落库（2026-09-26，用户批准）**：重算产物一份留在本机持久目录
+  `…/韧性测试工具 benchmark/d7-rescore-20260926/`（含 `joined.csv` 联表与每槽 `NOTE.md`），
+  一份写回各槽位 PVC 的 `fleet/rescore-d7-20260926/`（与既有 `rescore-20260922-*` 并列）。
+  写回方式：一次性 Pod `resbench-d7-writeback`，与槽位同 uid/附加组、**可写**挂 5 个 PVC，
+  本地 `tar` 流式写入后逐槽 md5 校验一致（每槽 16 个文件），用完删 Pod。
+  **没有覆盖任何原始记录**：`trials/*/evaluation-decision.json` 仍是 09-24 的旧判据结果，
+  引用 D7 分数时以 `rescore-d7-20260926/` 下的 `*.rescore.json` 与 `summary.md` 为准（NOTE.md 里写明了这一点）。
 
 ## 三十二、老集群容量事件：舰队 17 小时排不进去（2026-09-26）
 
@@ -1165,3 +1169,16 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
 - **结论**：修掉平台缺陷后，D7 的区分度是真的 —— Codex 17/20 PASS、DSH 15/20、Claude Code 0/20；
   CC 的零通过是智能体侧能力问题（不会按替代后端的指标命名去发现证据，且把探索预算耗光），
   不是判据过严：放宽后仍有 3 条 covers=True 因诚实有界未完成或重试超限而未 PASS。
+
+### 32.1 磁盘清理与槽位恢复（2026-09-26，用户批准"可以进行清理"）
+
+- **删了什么**：tcse-v100-02 上属于本项目的 **87 个终止态 Pod**（`resiliencebenchmark-system` 9 Failed + 2 Succeeded，
+  原单副本 `otel-demo` 13+10，`otel-demo-01..05` 合计 44）。只删 Failed/Succeeded，不动 Pending，
+  所以没有碰到正在等调度的 s02/s04 替换副本。试验产物在 v100-01 的 NFS 上（`192.168.0.197` = v100-01），一条没动。
+- **效果有限，要认**：删完 nodefs 仍是 **166.8/196.6 GiB（84.8%）**，只降了约 0.2 个百分点 ——
+  大头不是我们的 Pod。v100-02 上还剩 41 个终止态 Pod 属别的租户（chaosblade 12、velero 4、ischaos 4、observability 2、
+  coroot 1、default 1，另有 16 Completed、9 Evicted），其中 `chaosblade-box` 与 `svc-k8s-graph` 各重启 **9290 次**、
+  长期崩溃刷日志。这些没有动。
+- **`DiskPressure` 在 16:05:52Z 自行转为 False**（污点消失），s02/s04 随即调度成功，
+  **5 个槽位现在全部 4/4 Running、舰队侧全部 Ready**。但 84.8% 离再次触发驱逐只差几个百分点，
+  真正的处理是节点级的（镜像 GC、容器日志轮转或扩容），归用户/管理员，Kubernetes 层面的清理治不了根。
