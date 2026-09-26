@@ -1141,3 +1141,27 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
   （节点级清理，属用户/管理员操作）。
 - **结构性建议（待拍板，本轮不改）**：槽位申请 950m 而实际用量极低，requests 明显过量；且槽位钉死单节点，
   一台节点掉线就少两个槽。要么调低 requests，要么放开钉节点、改用反亲和。
+
+### 31.2 未覆盖 24 条的逐条归因（2026-09-26，用 8.4 同一套推导）
+
+按"第一道不满足的条件"归类（故障类型 24 条全是 `cpu-load`）：
+
+| Harness | 条数 | 归因 |
+|---|---|---|
+| Claude Code | 19 | 替代服务器（coroot_ro）**一次矩阵都没返回**：95 次 `coroot_metrics_range` 全部零序列，另有 12 次 range、10 次 traces、8 次 logs 被拒 |
+| Codex | 1 | 替代服务器（telemetry_ro）全空：4 次 series、2 次 range、1 次 jaeger 都零序列 |
+| DSH | 3 | 替代服务器全空（1 条 coroot_ro、2 条 telemetry_ro；后者 `telemetry_workload_current`/`prom_metric_series`/`prom_metric_instant` 均零序列） |
+| DSH | 1 | 有矩阵且有数据，但**缺故障前基线**（只在故障期间/之后查） |
+
+- **Claude Code 为什么全空**：它对 Coroot 一直用 cAdvisor/Prometheus 的指标名与自己臆造的名字
+  （`container_cpu_usage_seconds_total`、`cpu_usage`、`cpu_usage_percent`、`cpu_usage_cores`、`cpu_used_cores`、
+  `target_cpu_cores`、`target_latency_ms`…），而 Coroot 实际提供的是 `container_resources_*` 一族
+  （Codex 命中 80 次、DSH 命中 84 次）。CC 在替代服务器上的命中率是 **0/413 次 range 调用有矩阵**；
+  它拿到过数据的那 58 次 `container_cpu_usage_seconds_total` 全部来自**被停用的主服务器 telemetry_ro**（停用前）。
+- **被拒的调用不是平台误拦**：错误码是 `EXPLORATION_BUDGET_EXHAUSTED / exploration_time_exhausted`，
+  即 D7 的探索时限被前面那些无效查询耗尽，用例的预算门按设计生效。
+- 三家的替代查询效率对照：Codex 387 次 range 调用 **57%** 返回≥1 序列，DSH 332 次 **50%**，Claude Code 413 次（最多）**16%**
+  （且全部来自主服务器停用前）。
+- **结论**：修掉平台缺陷后，D7 的区分度是真的 —— Codex 17/20 PASS、DSH 15/20、Claude Code 0/20；
+  CC 的零通过是智能体侧能力问题（不会按替代后端的指标命名去发现证据，且把探索预算耗光），
+  不是判据过严：放宽后仍有 3 条 covers=True 因诚实有界未完成或重试超限而未 PASS。
