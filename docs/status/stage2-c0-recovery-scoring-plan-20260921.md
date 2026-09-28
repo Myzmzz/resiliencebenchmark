@@ -1182,3 +1182,78 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
 - **`DiskPressure` 在 16:05:52Z 自行转为 False**（污点消失），s02/s04 随即调度成功，
   **5 个槽位现在全部 4/4 Running、舰队侧全部 Ready**。但 84.8% 离再次触发驱逐只差几个百分点，
   真正的处理是节点级的（镜像 GC、容器日志轮转或扩容），归用户/管理员，Kubernetes 层面的清理治不了根。
+
+## 三十三、D8 开跑：Chaos Mesh 改集群级 + v100-02 磁盘复查 + 60 条已提交（2026-09-27/28）
+
+本轮无新代码改动：阶段 A 用的 values 文件已在 `492be08` 提交（`deploy/chaos-mesh/values-old-cluster-fleet.yaml`），
+本节记录**部署事实、实测证据与未做的事**。
+
+### 33.1 阶段 A：Chaos Mesh 命名空间级 → 集群级（helm revision 3，已部署）
+
+- **命令**：`helm upgrade chaos-mesh chaos-mesh --repo https://charts.chaos-mesh.org --version 2.7.3
+  --namespace chaos-mesh --values deploy/chaos-mesh/values-old-cluster-fleet.yaml --wait --timeout 10m`（未用 `--force`）。
+- **revision**：1 failed → 2 failed（本次变为 superseded）→ **3 deployed / "Upgrade complete"**（这次 `--wait` 没超时）。
+- **改前/改后实测**（`deploy/chaos-controller-manager` 容器 env）：`CLUSTER_SCOPED` **false → true**；
+  `TARGET_NAMESPACE` `otel-demo` → `chaos-mesh`（集群级下不生效）；`ENABLE_FILTER_NAMESPACE` 仍 false。
+- **RBAC 变化**（dry-run 与 `helm get manifest` 逐对象对比，24 个对象中 2 增 2 删 10 改）：
+  - 删 `RoleBinding/otel-demo/chaos-mesh-chaos-controller-manager-target-namespace` 与同名 dashboard 绑定；
+    增 **`ClusterRoleBinding`** 同名两个 → 那个真正有权力的 `…-target-namespace` ClusterRole
+    （pods/configmaps/secrets 的 get/list/watch/delete/update/patch、pods create、`chaos-mesh.org/*`）
+    由"仅 otel-demo"变为全集群。这是本次唯一实质扩权，与任务书判断一致。
+  - `ClusterRole/…-controller-manager-cluster-level` 仅增加**只读** `namespaces`、`services`。
+  - 三个 webhook 配置（mutation / validation / validation-auth）**只有 `caBundle` 变**（证书轮换），
+    rules 与 namespaceSelector 未变 → 没有给任何其他租户的 Pod 挂 webhook。
+  - `DaemonSet/chaos-daemon` 只有 `rollme` 注解变 → 3 个 daemon 滚动重启，26s 内全部 1/1 Running（这正是 09-05 两次 `--wait` 超时的原因）。
+- **改前安全核查**：全集群 `networkchaos/podchaos/stresschaos/timechaos/dnschaos/httpchaos/iochaos/jvmchaos/kernelchaos/schedules/workflows`
+  **0 个 CR** → 集群级不会把别人的遗留注入突然激活。
+- **真实生效验证**（01:48Z，otel-demo-01）：建 `NetworkChaos/d8-scope-verify-canary`（action delay、latency 1ms、duration 15s、mode one、
+  `app.kubernetes.io/component=cart`）：
+  - +6s：`Selected=True`、`AllInjected=True`；Controller 在 otel-demo-01 里**创建了 `PodNetworkChaos/cart-7ffd4d6f-rv4pc`**（需集群级权限）。
+  - +28s：`AllInjected=False`、`AllRecovered=True`（15s 到点自动恢复）。cart Pod 全程 1/1 Running、0 重启、age 未变。
+  - 删除 CR：NetworkChaos 已消失（`No resources found`）。派生的 `PodNetworkChaos` 仍在，但 **`spec` 已空 `{}`、
+    ownerReference 指向该 Pod**（Chaos Mesh 正常行为，随 Pod 回收）；全库 grep 平台代码**不引用 PodNetworkChaos**，
+    探针的 `_destroy_and_verify` 只校验实验 CR 缺席、run_id 无残留、fence 标签与 Pod uid → 该空壳不影响 D8，故未手工删。
+- **独立二次验证**：33.3 的 5 槽探针用平台自己的 executor/finalizer 身份在 `otel-demo-01..05` 里各跑通一次 Chaos Mesh 金丝雀。
+
+### 33.2 阶段 B：v100-02 磁盘（集群层已做；节点层只做只读诊断）
+
+- **集群层**：删 tcse-v100-02 上 **24 Failed + 11 Succeeded = 35 个终止态 Pod**（chaosblade 12、velero 4、ischaos 6、ai-obs 4、
+  observability 3、default 2、aiops/metallb-system/rca-viz 各 1），复查两者均为 **0**；未碰 Running/Pending。
+- **结果**：nodefs（`/dev/vda1`，即 kubelet nodefs）**145G/197G = 77%（df）/ 73.3%（kubelet summary，余 44.0 GiB）**，
+  对比 32.1 记录的 166.8GiB/84.8%；`DiskPressure=False`（自 09-26 12:05 -0400 = 16:05Z），
+  驱逐硬阈值 `nodefs.available<10%`（≈19.7G）→ 余量充足。
+- **节点层（只读）**：本机对 v100-02 **无直连凭据**（`coroot-node2`/122.112.193.220 拒绝 publickey，ssh config 里也没有 v100-02 条目），
+  诊断经 `tcse-v100-03`（1.94.151.57，用户已配免密）跳到内网 `192.168.0.138` 完成，未猜密码、未用 sshpass。
+  - **任务书那几条节点命令在这台机上基本无效**：`/var/log/pods` 只有 480K（Docker runtime 下全是符号链接，
+    真身在 `/var/lib/docker/containers`，合计 2.3G）→ `find -size +200M` 结果为空、无从截断；journal 仅 1.1G；
+    **Docker Root Dir = `/data/docker`（`/dev/vdb` 787G、余 478G）**，`docker system df` 报的 45.08GB 可回收全在 imagefs 上
+    → 对 nodefs 零帮助，且 `-a` 会删掉同机其他租户的镜像。
+  - **nodefs 真正的大头**（`du -x /`，合计 140G）：`/var` 36G（其中 **`/var/lib/docker` 30G 是 data-root 迁移后的残留**，
+    目录 mtime 2025-10-20，而 Docker Root Dir 已在 `/data/docker`）、`/root` 33G（miniforge3 13G、.cache 5G、.vscode-server 4.3G）、
+    `/usr` 27G、`/home/Jayx` 16G、`/mnt/cache` 16G、`/tmp` 12G（gradio 7.1G、audio-separator-models 3.3G）。
+  - **没有一项属本项目** → 节点层**未做任何删除/截断/vacuum/prune**。建议管理员：确认无容器仍引用后回收残留
+    `/var/lib/docker`（≈30G）、清理 `/tmp`（12G），或扩容 `/dev/vda1`；`docker image prune` 不要用于 nodefs 目的。
+- 未做：改 `/etc/docker/daemon.json`、重启 docker/kubelet、动 AppArmor（按边界只写建议）。
+
+### 33.3 阶段 C：资格探针 5/5 通过、预检全绿、60 条已提交
+
+- **探针**（`python -m stage2_service.capability_loss.qualification_probe --ttl-hours 48`，逐槽、槽内无试验运行时执行，01:58–02:01Z）：
+
+| 槽 | ok | D7（coroot_ro + telemetry_ro 各 1 采样） | D8 Chaos Mesh create/destroy | D8 ChaosBlade create/destroy | 证据过期时间 |
+|---|---|---|---|---|---|
+| s01 | True | 通过 | True/True | True/True | 2026-09-30T01:59:08Z |
+| s02 | True | 通过 | True/True | True/True | 2026-09-30T01:59:39Z |
+| s03 | True | 通过 | True/True | True/True | 2026-09-30T02:00:11Z |
+| s04 | True | 通过 | True/True | True/True | 2026-09-30T02:00:43Z |
+| s05 | True | 通过 | True/True | True/True | 2026-09-30T02:01:14Z |
+
+  5 槽 `loader_accepted=true`、`failures=[]`、`alerts=[]`；09-24 的旧 D7 样本按 `reason: expired` 丢弃（`existing_file: merged`）。
+  金丝雀目标为 `cart`，Mesh 侧 network-delay 1ms/15s、ChaosBlade 侧 cpu-load 1%/15s。
+- **预检**：5 槽 `capability_loss.runnable=true`、`supported=true`、cases `D7-A/D7-B/D8-A/D8-B`、
+  gated harnesses = codex/claude-code/deepseek-harness（已知缺陷：该字段不读资格证据，故以探针为准）。
+- **dry-run 与轮次文件核对**：60 条、30 个 harness×model×variant 组合各 2 次、12 波每波 5 条、每槽 12 条、
+  与 `d8-round-20260927.json` 的 item_id 集合完全一致（无缺漏无多余）、全 `L0/D8/canonical`、不含 opus。
+- **提交**：02:03:25Z 起 `formal-d8-20260927` state=Running、**Running 5 / Queued 55**。
+  时间线（每 5 分钟一行，含 counts、failure_owners、reason_codes、失败条目）写在
+  `…/benchmark/d8-monitor-20260927.log`。
+- **待补**：批次跑完后的 60 条 verdict / final_score / reason_codes 汇总表（不改分数，按平台 `capability_loss_score.final_score` 出）。
