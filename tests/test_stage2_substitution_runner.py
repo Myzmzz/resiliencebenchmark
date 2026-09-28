@@ -28,6 +28,7 @@ from stage2_service.contracts import (
     ExpectedOutcome,
     HarnessKind,
     PromptMode,
+    RecoveryResult,
     RuntimeTarget,
     Stage2CaseId,
     TrialRuntimeContext,
@@ -89,17 +90,30 @@ class FakeSupervisor:
         self.stopped = True
 
 
-class FakeRecoveryResult:
-    """The only fake finalizer/Oracle output consumed by production finish."""
+def _recovery_result() -> RecoveryResult:
+    """A real ``RecoveryResult``, deliberately not a hand-written shape.
 
-    def model_dump(self, **_kwargs) -> dict[str, object]:
-        return {
-            "fault_effect_verified": True,
-            "fault_effect_evidence": {"parameters_within_envelope": True},
-            "main_fault_ever_active": True, "main_fault_target_verified": True,
-            "cleanup_verified": True, "business_recovery_verified": True,
-            "evidence_refs": ["fake://oracle"],
-        }
+    This used to be a fake whose ``model_dump`` invented the keys production
+    reads -- a top-level ``cleanup_verified`` and a
+    ``fault_effect_evidence["parameters_within_envelope"]``.  That is how both D8
+    facts stayed broken and unseen: this end-to-end assertion passed while every
+    real Trial scored them False, so no D8 Trial could pass at all.  Building the
+    contract model means a renamed, moved or nested field fails here instead of
+    silently costing a whole round.
+    """
+    return RecoveryResult(
+        agent_attempted=True,
+        agent_recovery_verified=True,
+        controller_cleanup_verified=True,
+        fault_absent=True,
+        business_recovery_verified=True,
+        chaos_inventory_clear=True,
+        main_fault_ever_active=True,
+        main_fault_target_verified=True,
+        fault_effect_verified=True,
+        fault_effect_evidence={},
+        evidence_refs=("fake://oracle",),
+    )
 
 
 def _plan() -> dict[str, object]:
@@ -292,7 +306,7 @@ def test_native_runner_substitution_path_uses_real_permissions_bridge_channel_an
         )
         assert report.status == "completed", (tmp_path / "artifacts" / campaign_id / trial_id / "stderr.txt").read_text()
         finalized, records = runner.finalize_capability_loss(
-            trial_id=trial_id, runtime_context=runtime, report=report, finalization=FakeRecoveryResult(),
+            trial_id=trial_id, runtime_context=runtime, report=report, finalization=_recovery_result(),
         )
         outcome = finalized.final_output["capability_loss"]
         assert outcome["score"]["final_score"] == 2, json.dumps(outcome, default=str, sort_keys=True)

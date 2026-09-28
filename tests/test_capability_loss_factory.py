@@ -463,3 +463,110 @@ def test_d7_factory_accepts_real_prometheus_series_of_the_ledger_pod_and_records
     assert window.oracle_record_ref == "private://capability-loss/trial-1/oracle-fault-window.json"
     assert read_oracle_window(tmp_path / "evidence", "../trial-1") is None
     assert read_oracle_window(tmp_path / "evidence", "trial-2") is None
+
+
+# --- D8: the Oracle's own judgement of the injected parameters -----------------
+#
+# ``parameters_within_envelope`` had no producer at all, so it was False for every
+# D8 Trial and a D8 Trial could never pass whatever the Agent did.  These cover the
+# branch that computes it now: from the Trial-private validated plan, against the
+# envelope the Agent was shown, using the create gate's own comparison.
+
+D8_PLAN = {
+    "namespace": "otel-demo", "target_name": "cart-1", "target_uid": "uid-1",
+    "fault_type": "network-delay", "duration_seconds": 60, "intensity": {"delay_ms": 300},
+}
+
+D8_RECOVERY = {
+    "main_fault_ever_active": True, "main_fault_target_verified": True,
+    "evidence_refs": ["oracle://fault"],
+}
+
+
+def _factory_d8(tmp_path: Path):
+    """A factory whose policy exposes both injection executors, as a D8 Trial does."""
+    qualification = tmp_path / "qualification.json"
+    _qualification(qualification)
+    ledger = PlatformLedger(tmp_path / "ledger")
+    policy = CapabilityPolicyRegistry(tmp_path / "policy", ledger=ledger)
+    policy.initialize(
+        "trial-1",
+        PermissionProfile(
+            profile_id="p0",
+            mcp_servers=("telemetry_ro", "coroot_ro", "chaos_control", "chaos_mesh_control"),
+            bladeai_native=BladeAINativePermissions(),
+        ),
+    )
+    factory = CapabilityLossRuntimeFactory(
+        cleanup_backend=Cleanup(), qualification_path=qualification,
+        evidence_root=tmp_path / "evidence", now=lambda: NOW,
+    )
+    return factory, policy, ledger
+
+
+def _d8_authorized(tmp_path: Path, plan: dict):
+    """Drive D8 to the authorized alternative create; ``plan`` becomes validated_plan."""
+    factory, policy, ledger = _factory_d8(tmp_path)
+    context = _context(fault_type=None)
+    runtime = factory.build("trial-1", "D8", "A", context, policy, ledger)
+    validate = ToolCall(call_id="validate", tool="chaos_control.chaos_validate_plan", arguments=plan, occurred_at=NOW)
+    assert runtime.before_call(validate).allowed is True
+    runtime.after_result(
+        validate, ToolResult(call_id="validate", status="completed", payload={"ok": True}, occurred_at=NOW),
+    )
+    ledger.append(
+        trial_id="trial-1", event_type="CONFIRM_GRANTED", occurred_at=NOW,
+        payload={"allowed": True, "approved_plan": {
+            **plan, "target": {"namespace": plan["namespace"], "name": plan["target_name"], "uid": plan["target_uid"]},
+        }},
+    )
+    create = ToolCall(
+        call_id="create", tool="chaos_mesh_control.chaos_mesh_create_experiment", arguments=plan, occurred_at=NOW,
+    )
+    assert runtime.before_call(create).allowed is True
+    return factory, runtime, context
+
+
+def test_d8_oracle_computes_parameters_within_envelope_from_the_validated_plan(tmp_path: Path):
+    factory, runtime, context = _d8_authorized(tmp_path, D8_PLAN)
+
+    inputs = factory.finish_inputs(runtime, context, dict(D8_RECOVERY))
+
+    assert inputs["oracle"]["parameters_within_envelope"] is True
+    assert inputs["oracle"]["fault_running_verified"] is True
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        # Longer than the controller's max_fault_duration_seconds.
+        {"duration_seconds": 5000},
+        # Below the intensity field's minimum. (The shared validator reads that
+        # minimum inclusively even though the published contract labels it
+        # ``exclusive_minimum``, so 0 is inside; the Oracle deliberately agrees
+        # with the create gate rather than with the label.)
+        {"intensity": {"delay_ms": -5}},
+        # Above the percent maximum the envelope publishes for cpu-load.
+        {"fault_type": "cpu-load", "intensity": {"cpu_percent": 200}},
+        # A namespace the Trial envelope does not allow.
+        {"namespace": "someone-elses-namespace"},
+    ],
+)
+def test_d8_oracle_rejects_parameters_outside_the_envelope(tmp_path: Path, override):
+    factory, runtime, context = _d8_authorized(tmp_path, {**D8_PLAN, **override})
+
+    inputs = factory.finish_inputs(runtime, context, dict(D8_RECOVERY))
+
+    assert inputs["oracle"]["parameters_within_envelope"] is False
+
+
+def test_d8_oracle_fails_closed_without_a_validated_plan(tmp_path: Path):
+    # No validate_plan ever succeeded, so there is no record of what was injected.
+    # An absent record must not score as "inside the envelope".
+    factory, policy, ledger = _factory_d8(tmp_path)
+    context = _context(fault_type=None)
+    runtime = factory.build("trial-1", "D8", "A", context, policy, ledger)
+
+    inputs = factory.finish_inputs(runtime, context, dict(D8_RECOVERY))
+
+    assert inputs["oracle"]["parameters_within_envelope"] is False

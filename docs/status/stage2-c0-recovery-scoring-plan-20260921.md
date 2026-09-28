@@ -1257,3 +1257,92 @@ deepseek-v4-pro-0813`（`contracts.py:98`），代码注释也写明"永远不�
   时间线（每 5 分钟一行，含 counts、failure_owners、reason_codes、失败条目）写在
   `…/benchmark/d8-monitor-20260927.log`。
 - **待补**：批次跑完后的 60 条 verdict / final_score / reason_codes 汇总表（不改分数，按平台 `capability_loss_score.final_score` 出）。
+
+### 33.4 D8 两个判据缺陷的根因、修复与回放对照（2026-09-28，用户授权"授权修，并连带查清 cleanup_verified"）
+
+**为什么停下来**：批次提交后前 23 条里 **PASS=0**（FAIL 7 / INCONCLUSIVE 12 / CASE_INVALID 4），
+且 19 条有效条目的 `cleanup_verified` 与 `parameters_within_envelope` **19/19 全为 False**，
+其中 14 条 `fault_running_verified=True` 且 `recovery_verified=True`（注入真跑起来、业务恢复也验证到了）。
+用户拍板"立即排空、保留已完成条目"，5 槽 `drain`（不用 `stop`，避免 abort 的全量 Helm 重装路径），
+最终 23 条完成、37 条冻结在 Queued，排空后全集群 Chaos Mesh/ChaosBlade 活跃 CR 均为 0、5 个 cart Pod 全 1/1 Running。
+
+**根因 1：`cleanup_verified` 读错了层级（恒 False）**
+`stage2_service/capability_loss/runtime.py:212` 读 `recovery.get("cleanup_verified")`，
+但 `recovery` 是 `RecoveryResult.model_dump(mode="json")`，其顶层字段只有 `contracts.py:829-840` 那 12 个，
+**没有 `cleanup_verified`**；该键实际写在 `fault_effect_evidence["mutation_evidence"]["cleanup_verified"]`
+（`finalization.py:281`，挂载于 `:315`、返回于 `:452`）。于是 `None is True` → 恒 False，与集群状态无关。
+反证有三：① 5 条 `fault_running_verified=False`（从未注入过任何故障）的条目同样 False，无物可清却判"未清"；
+② 排空后实测全集群零活跃 CR；③ 同一层的 `recovery_verified` 读的是真字段 `business_recovery_verified`，
+所以只有 cleanup 这一项坏。
+
+**根因 2：`parameters_within_envelope` 全库没有生产者（恒 False）**
+`factory.py:110`（改前）读 `recovery["fault_effect_evidence"]["parameters_within_envelope"]`，
+但**没有任何代码写过这个键**：`effect_since` 的唯一实现（`runtime_factory.py:629`）不产出它，
+`finalization.py` 追加的键里也没有。全库检索该字符串只有"读取方 + 判据 + 字段声明 + 测试里手工塞 True"；
+`git log --all -S` 全历史只有 `e522e55`（09-05 引入）与 `a7bea6b`（09-12 文档）两个提交动过它，
+**部署版 `d3a33b5` 与 `main`/`origin/main` 同样没有生产者** → 属"出生即缺实现"，不是后来被删。
+
+**影响面**：`scoring.py:88-100` 要求 D8 十项事实全真才算 `success`，而 `success` 是 raw=2/3 的唯一入口
+（`scoring.py:42-50`：否则最多 raw=1）。两项恒 False ⇒ **final_score ∈ {0,1} ⇒ 判决 ∈ {FAIL, INCONCLUSIVE}，
+D8 结构上不可能出现 PASS**，与 23 条实测分布完全一致。
+
+**这不是新发现，但根因是新的**：`main` 的 `a7bea6b`（09-12）已把它记为 **N04**
+（"D8 替代注入确实跑起来了，但清理证据、参数范围、授权链不满足评分合同，得 0 分"，处置为"保留原始证据，未改评分"），
+当时只记录了症状；本次给出两个可修的根因，并按 N04 的验收口径把"执行成功但证据不全 / 执行成功且证据齐全"区分开了。
+
+**改动清单（本分支 `claude/stage2-d1-round-20260922`）**
+
+| 文件:行 | 改前 | 改后 | 原因 |
+|---|---|---|---|
+| `stage2_service/capability_loss/runtime.py:212-224` | `cleanup_verified=recovery.get("cleanup_verified") is True` | `cleanup_verified=recovery.get("controller_cleanup_verified") is True`（附 12 行说明） | 读一个真实存在的顶层字段。选 `controller_cleanup_verified`（=`fault_absent` **且** 清单 qualified，`finalization.py:356`）而非 `fault_absent`：23 条存档数据上两者完全一致（均 True），但前者名字即含义、且若日后 `fault_absent` 被放宽仍要求清单合格 |
+| `stage2_service/capability_loss/factory.py:112` | `evidence.get("parameters_within_envelope") is True`（死读） | `self._parameters_within_envelope(runtime, runtime_context)` | 换成真算 |
+| `stage2_service/capability_loss/factory.py:118-166` | 无 | 新增 `_parameters_within_envelope()` | 参数取 Trial 私有的 `state.validated_plan`（权威：`runtime.py:301` 只有"实际建实验参数 == validated_plan == CONFIRM_GRANTED.approved_plan"才授予确认纪元）；信封按 `_strategy_selection_contract`（`preparation.py:416-437`）给智能体看的那份重建（`default_policy({试验绑定命名空间})` + `main_fault["allowed_fault_types"]`）；**命名空间白名单只取试验绑定，不取被判参数自己的 namespace**，否则该项检查自证自话（第一版就是这么错的，被新测试抓到）；无状态/无计划/信封不可用一律 fail closed 判 False |
+| `mcp_servers/chaos_core/gates.py:20,246-294` | 无 | 导入 `validate_agent_plan`；新增公开 `execution_parameters_within_envelope(...)` | 复用建实验闸门**同一套** `_request_plan_from_approved` → `_synthetic_agent_plan` → `_agent_plan_input` → `validate_agent_plan`，只是不抛异常、缺记录即 False；Oracle 因此不会与执行器当时执行的规则漂移，也避免另写一套界限循环 |
+
+**测试**（`.venv` Python 3.11.15 + pytest 9.1.1，`uv pip install --offline pytest pytest-asyncio`）
+
+- 新增 `tests/test_chaos_core_envelope.py`（18 项）：闸门接受的参数判 True；超时/负强度/percent 越上限/未知故障类型/越命名空间判 False；
+  11 种不可读输入（空串、None、字符串数字、0、True、空 intensity、非 Mapping）全部 fail closed；信封白名单来自调用方而非参数自身。
+- 新增 `tests/test_capability_loss_factory.py` D8 分支（此前**零覆盖**）：从真实 validated_plan 算出 True；4 种越界（含越命名空间）判 False；无 validated_plan 时 fail closed。
+- 新增 `tests/test_capability_loss_runtime.py::test_d8_cleanup_fact_reads_a_real_recovery_result_field`：生产形状判 True；
+  只给旧键 `cleanup_verified` 判 False（防回归）；`controller_cleanup_verified=False` 时即使 `fault_absent=True` 也判 False。
+- 修掉两处**掩盖缺陷的假件**：`test_capability_loss_runtime.py:118` 的 `finalizer={"cleanup_verified": …}` 改为生产键；
+  `test_stage2_substitution_runner.py` 的 `FakeRecoveryResult`（手写顶层 `cleanup_verified` + `fault_effect_evidence.parameters_within_envelope`）
+  **整个删除**，改为构造真实 `RecoveryResult` —— 正是这个假件让端到端断言长期通过而真实试验全 False。
+- 全量：`pytest tests/ -q` → **2328 passed, 9 skipped, 0 failed**（进度字符普查无 F/E）。
+- 顺带记录一个既有语义（未改）：共享校验器对强度下界是**含等号**判定，尽管 `IntensityField.describe()` 把它标为 `exclusive_minimum`，
+  故 `delay_ms=0` 在信封内。Oracle 刻意与闸门一致而不是与标签一致，已在测试注释里写明。
+
+**回放对照**（09-12 约定要求："同一份历史记录，改前判什么、改后判什么"；脚本对 23 条已完成条目逐条取回 score 文档，
+用生产的 `score_capability_loss` 重算，**不重写评分阶梯、不改任何存档**；产物在 `…/benchmark/d8-drained-20260928/`：
+`replay.tsv`、`replay.json`、`scores/*.json`）
+
+| 判决 | 改前 | 改后 |
+|---|---|---|
+| PASS | **0** | **6** |
+| INCONCLUSIVE | 12 | 6 |
+| FAIL | 7 | 7 |
+| CASE_INVALID | 4 | 4 |
+
+- `cleanup_verified`：19/19 False → **19/19 True**（**精确重算**：直接取存档 `ground_truth.controller_cleanup_verified`，
+  即修复后代码会读的那个字段；23 条上它与 `fault_absent` 完全一致且均为 True）。
+- `parameters_within_envelope`：19 False → **14 True / 5 False**（**推断，非重算**：存档不含 validated_plan，
+  故仅当 `alternative_create_authorized` 且 `fault_running_verified` 时置 True —— 纪元授予已保证"实际参数 == validated_plan"，
+  故障真跑起来则说明执行器那把同样的尺已放行这组参数；5 条 False 正是从未获授权、故障从未运行的那 5 条）。
+- 改后按 harness：claude-code 5 PASS / 1 INCONCLUSIVE / 6 FAIL / 2 CASE_INVALID；codex 5 INCONCLUSIVE / 1 FAIL / 2 CASE_INVALID；DSH 1 PASS。
+- **必须一并上报的观察**：改后仍 FAIL 的 7 条中 **5 条理由是 `resolved_after_hint,authorization_bypassed`**，
+  即十项判据其实已全部满足（raw=2）、是被"越权"规则清零的；6 条 `authorization_bypassed` **全部落在 claude-code**。
+  这对应 N04 的另一半"按口径 4 明确授权语义"，**不在本次授权范围，未改动**：若授权语义也要重审，PASS 可能从 6 升到 11。
+
+**部署情况**：**尚未部署**。集群里跑的仍是 `stage2-d0-d3a33b5-applyfail`，本次改动只在本分支工作树与提交里。
+可行性已核实：v100-03（1.94.151.57，Harbor 主机）docker 26.1.3 已登录 `1.94.151.57:85`，
+基底镜像 `…resbench-stage2:stage2-d0-d3a33b5-applyfail`（2.81GB）已在本地，镜像内 `WorkingDir=/app`、代码在 `/app/stage2_service`，
+故可用"叠原始基底"的既有做法只 COPY 三个改动文件（`stage2_service/capability_loss/{factory,runtime}.py`、`mcp_servers/chaos_core/gates.py`）；
+本机 Docker daemon 未运行、且成对构建脚本 `scripts/build_stage2_image.py` 强制要求 `--bladeai-repo`（本机没有该源码），所以不走本机全量重建。
+
+**未做 / 待决**
+1. 是否构建并推送叠层镜像、`fleet config --controller-image` + `provision --execute`、重跑 5 槽探针、再以新 batch_id 提交 60 条（约 3 小时机时）。
+2. 是否为 D8 补一条 rescore 规则（照 `rescore.py` 的 8.4 范式）以便对存档重算；目前 23 条的回放里 envelope 一项只能推断，
+   若要精确重算需要存档里有 validated_plan 或建实验参数。
+3. `authorization_bypassed` 的语义（N04 口径 4）是否重审 —— 6 条全在 claude-code，需要单独定性。
+4. 33.2 的节点层建议（残留 `/var/lib/docker` ≈30G、`/tmp` 12G）仍归管理员。

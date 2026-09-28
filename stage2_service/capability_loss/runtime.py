@@ -209,7 +209,19 @@ class CapabilityLossRuntime:
                 bound_target_uid=self.bound_target_uid or "unbound",
                 parameters_within_envelope=data.get("parameters_within_envelope") is True,
                 fault_running_verified=data.get("fault_running_verified") is True,
-                cleanup_verified=recovery.get("cleanup_verified") is True,
+                # ``recovery`` is a dumped RecoveryResult, whose only absence
+                # signals are the top-level ``fault_absent`` and
+                # ``controller_cleanup_verified``; the key this used to read
+                # (``cleanup_verified``) exists one level down, inside
+                # ``fault_effect_evidence["mutation_evidence"]``, so the fact was
+                # False for every D8 Trial whatever the cluster state was.  Of the
+                # two, ``controller_cleanup_verified`` is the stricter and the one
+                # whose name says what the fact means: absence verified *and* the
+                # post-trial inventory qualified (every executor readable).  Today
+                # the two are equivalent because ``fault_absent`` already requires
+                # a qualified inventory; naming the stricter one keeps this honest
+                # if that is ever relaxed.
+                cleanup_verified=recovery.get("controller_cleanup_verified") is True,
                 recovery_verified=recovery.get("business_recovery_verified") is True,
                 oracle_record_refs=tuple(str(item) for item in data.get("evidence_refs", ()) if item),
             )

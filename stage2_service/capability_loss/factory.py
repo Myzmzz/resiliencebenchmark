@@ -12,13 +12,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from controller.safety import default_policy
+from mcp_servers.chaos_core.gates import execution_parameters_within_envelope
 from stage2_service.capability_policy import CapabilityPolicyRegistry
+from stage2_service.plan_schema import PlanSafetyEnvelope
 from stage2_service.target_binding import current as current_target_binding
 from stage2_service.platform_ledger import PlatformLedger
 
 from .precheck import CapabilityLossPrecheck, PrecheckResult
 from .records import CapabilityLossCase, CapabilityLossVariant, D7HistoricalSample, D8CanaryEvidence, FaultRunningWindow
-from .runtime import CapabilityLossRuntime, _is_observation, _server_tool
+from .runtime import CapabilityLossRuntime, _execution_plan, _is_observation, _safe_state, _server_tool
 
 
 QUALIFICATION_SCHEMA = "stage2-capability-loss-qualification.v1"
@@ -104,14 +107,62 @@ class CapabilityLossRuntimeFactory:
                 "evidence_refs": tuple(dict.fromkeys((*refs, *tuple(recovery.get("evidence_refs") or ())))),
             }
         else:
-            evidence = _mapping(recovery.get("fault_effect_evidence"))
             oracle = {
                 "target_uid": self._target_uid(runtime_context),
-                "parameters_within_envelope": evidence.get("parameters_within_envelope") is True,
+                "parameters_within_envelope": self._parameters_within_envelope(runtime, runtime_context),
                 "fault_running_verified": recovery.get("main_fault_ever_active") is True and recovery.get("main_fault_target_verified") is True,
                 "evidence_refs": tuple(recovery.get("evidence_refs") or ()),
             }
         return {"oracle": oracle, "finalizer": recovery}
+
+    def _parameters_within_envelope(self, runtime: CapabilityLossRuntime, runtime_context) -> bool:
+        """D8 Oracle: were the parameters actually injected inside the Trial envelope?
+
+        Nothing produced this fact before, so it read False for every D8 Trial and
+        ``_success`` could never hold -- a D8 Trial could not pass at all, whatever
+        the Agent did (docs/status/stage2-c0-recovery-scoring-plan-20260921.md
+        section 33.4).
+
+        The parameters come from the Trial-private capability-loss state, which is
+        authoritative rather than merely convenient: the confirmation epoch, and
+        with it ``alternative_create_authorized``, is granted only when the create
+        arguments equal ``validated_plan``, so the stored plan is what was injected.
+        The envelope is rebuilt the way ``_strategy_selection_contract`` built the
+        one the Agent was shown, and the comparison is the create gate's own, so
+        this Oracle judges by the rule the executor already enforced instead of
+        inventing a second one.
+
+        Fail closed: no state, no validated plan, or an unusable envelope is "not
+        within the envelope".  A missing record must never score as compliant.
+        """
+        try:
+            state = _safe_state(runtime.orchestrator, runtime.trial_id)
+        except Exception:  # noqa: BLE001 - an unreadable state is "not within"
+            return False
+        plan = _execution_plan(_mapping(getattr(state, "validated_plan", None))) if state is not None else {}
+        main_fault = _mapping(getattr(runtime_context, "main_fault", None))
+        target = getattr(runtime_context, "target", None)
+        # The envelope's namespace allowlist comes from the Trial binding, never
+        # from the plan being judged: building it from the plan's own namespace
+        # would make the namespace check vacuously true.
+        bound_namespace = str(getattr(target, "namespace", "") or "")
+        allowed = tuple(str(item) for item in (main_fault.get("allowed_fault_types") or ()) if item)
+        try:
+            envelope = PlanSafetyEnvelope.from_controller_policy(
+                default_policy({bound_namespace}) if bound_namespace else default_policy(set()),
+                allowed_fault_types=allowed or None,
+            )
+        except Exception:  # noqa: BLE001 - an unusable envelope is "not within"
+            return False
+        return execution_parameters_within_envelope(
+            namespace=str(plan.get("namespace") or ""),
+            target_name=str(plan.get("target_name") or ""),
+            target_uid=str(plan.get("target_uid") or ""),
+            fault_type=str(plan.get("fault_type") or ""),
+            duration_seconds=plan.get("duration_seconds"),
+            intensity=plan.get("intensity"),
+            envelope=envelope,
+        )
 
     def _qualification(self, runtime_context) -> dict[str, Any] | None:
         if not _trusted_private_regular_file(self.qualification_path):
