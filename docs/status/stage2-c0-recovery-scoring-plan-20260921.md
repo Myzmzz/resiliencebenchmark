@@ -1540,3 +1540,60 @@ N04 要求的"三种情况分数不同"因此无法实现。
 2. 只在该尝试**之后没有**合规创建（无 `alternative_create_authorized=True`）时才清零 —— 直接对应 N04 的三分类。
 3. 区分两个产生点：MCP 时序疏失与原生禁用工具分别记分（后者更重）。
 4. 维持现状，但在报告与论文里把 `FAIL_SAFETY` 明确定义为"曾尝试未获批准的变更且被平台拒绝"，避免读者误解为"突破了边界"。
+
+## 三十四、老集群 5 槽舰队彻底拆除（2026-10-08，用户指令）
+
+**指令与范围**：用户要求"把 otel-demo-xx 全都卸载掉"，并明确选择**彻底拆舰队（走 `delete-slot`）**、
+但**保留基础 `otel-demo` 命名空间**。只动老集群 `122.112.193.220`；新环境 `62.234.93.223` 与第三套环境一律未碰。
+
+**拆前盘点（决定了拆法）**
+- `otel-demo-01..05`：各 6 个 deploy（cart / frontend / valkey-cart / flagd / load-generator / otel-collector）、6 svc、5 cm、10 secret；
+  合计 **35 个容器、申请 2.50 核 / 7.82 GiB**。各自唯一的 PVC `otel-demo-workload-results` 状态为 **Lost**（后端 PV 早已不可用，无数据可丢）。
+- **评测记录不在这些命名空间里**：`resbench-fleet-state`(2Gi)、`resbench-stage2-data`(20Gi)、`resbench-stage2-s01..s05-data`(各 8Gi)
+  都在 `resiliencebenchmark-system` 且 Bound。
+- `delete_slot`（`fleet_service/provisioner.py:244-263`）会删 4 类对象：槽位 deployment、service、**数据 PVC**、命名空间，并从舰队库移除槽位。
+  → 故先确认回收行为：`sc/nfs-client` 参数 **`archiveOnDelete=true`**，NFS 服务器 `192.168.0.197:/data/share`。
+- 拆前把舰队状态存了本地快照：`…/benchmark/fleet-teardown-snapshot-20261008/`（config、status、31 个批次的清单、200 条审计）。
+
+**执行**
+1. 每个槽先 `delete-slot <slot> --confirm <ns>` dry-run 核对（只列 4 类对象，无意外项），再 `--execute`；5 个槽全部 exit=0。
+2. 附带清理副本专属的集群级残留：`otel-collector-otel-demo-01..05` 的 **5 个 ClusterRoleBinding + 5 个 ClusterRole**
+   （Helm chart `opentelemetry-collector-0.142.2` 所建，带 `meta.helm.sh/release-namespace: otel-demo-0X` 注解；
+   release 元数据随命名空间消失，`helm uninstall` 已不可用，只能手删）。删前已确认**基础 `otel-demo` 无同名对象**，不存在误删；
+   这些角色授的是集群级只读（pods/namespaces/replicasets 的 get/list/watch），subject 已随命名空间消失，属悬挂权限。
+   删后复扫：指向 `otel-demo-0X` 的 clusterrole / clusterrolebinding 均为 **0**。
+
+**拆除后验证**
+- 命名空间：只剩 **`otel-demo`（Active 262d）**，`otel-demo-01..05` 已消失。
+- **基础 `otel-demo` 完好**：23 个 Pod 全 Running、23 deploy、21 svc，未受任何影响。
+- `resiliencebenchmark-system`：`resbench-fleet` 1/1 Running；4 个舰队化之前的老部署仍 **0/0**（按要求保持）；
+  **`resbench-fleet-state` 与 `resbench-stage2-data` 两块 PVC 仍 Bound**（不在 delete-slot 范围内）。
+- **舰队库完好**：`/api/v1/fleet/batches` 仍返回 **31 个批次**；`formal-d8-20260928` 的 **60 条 verdict 全部仍可读**
+  （PASS 23 / INCONCLUSIVE 15 / FAIL 12 / CASE_INVALID 10），拆除后的副本存于快照目录 `formal-d8-20260928-after-teardown.json`。
+- 5 个 PV 已被 provisioner 回收（日志 `delete "pvc-…": started → volume deleted → persistentvolume deleted → succeeded`，01:55–01:58Z）。
+- 节点 CPU 申请量（拆除后）：v100-01 **4330m(54%)**、v100-02 **800m(10%)**、v100-03 **2910m(36%)**；三节点均 Ready。
+  对比 09-26 容量事件时 v100-01/03 各约 7980m(99%)，申请量压力已显著缓解。
+
+**数据去向与一处未能核实的事**
+- 5 个槽位数据 PVC 删除后，按 `archiveOnDelete=true`，其目录应被**改名归档**而非删除，预期位置：
+  `192.168.0.197:/data/share/archived-resiliencebenchmark-system-resbench-stage2-s0X-data-pvc-<uid>-<时间戳>`
+  （uid 依次为 s01 `28ca46a1…`、s02 `98567df3…`、s03 `8a399e7b…`、s04 `f0b64446…`、s05 `61fa6ac3…`）。
+- **我未能直接核实归档是否存在**：本机对 v100-01（192.168.0.197）无 SSH 凭据（publickey 被拒），
+  而 provisioner 容器是 distroless（`exec sh` 报 `executable file not found`），日志里的 "volume deleted"
+  是 external-provisioner 库的通用消息、不能区分归档与删除。需在有 v100-01 访问权的环境执行
+  `ls -1d /data/share/archived-*resbench-stage2-s0*` 确认。
+- 不受影响的本地副本：本轮 60 条的逐条 facts/判决已在 `…/benchmark/d8-round-20260928/`（`collected.json`、`RESULTS.md`），
+  旧轮 23 条与回放在 `…/benchmark/d8-drained-20260928/`，D7 重算在 `…/benchmark/d7-rescore-20260926/`。
+  随槽位控制器一起消失的只是"逐 run 的深度明细接口"（`services "resbench-stage2-s04" not found`）。
+
+**本次未动的东西**
+- `resbench-fleet` 部署与其 `resbench-fleet-state` PVC（舰队控制面与批次库，用户未要求拆）。
+- 4 个老部署（`resbench-stage2`、`-e2e`、`-integration`、`-bbverify`）保持 0 副本。
+- 基础 `otel-demo` 命名空间（用户明确要求保留）及其相关 ClusterRoleBinding（如 `resbench-mcp-chaos-global-otel-demo`）。
+- Chaos Mesh 仍是 33.1 改后的**集群级**（revision 3）；如需回到命名空间级：`helm rollback chaos-mesh 2`
+  或用 `deploy/chaos-mesh/values-old-cluster.yaml` 再 upgrade 一次。
+- `resiliencebenchmark-system` 里 5 个 37 天前的终止态 Pod（`resbench-stage2-matrix-*`：1 Completed + 4 Error）—— 未动，待用户决定。
+
+**如何重建 5 槽舰队**：`fleet_ctl.py config`（补齐 controller/agent/litellm 镜像等全部字段，注意 33.5 记录的
+"PUT /config 是整体替换"陷阱）→ `provision --execute` 建命名空间与槽位 → 用 `scripts/deploy_application.py`
+按 replica 规则重新部署 5 份 otel-demo 副本（`provision` 本身**不**部署 SUT 应用负载）→ 重跑资格探针 → 提交批次。
