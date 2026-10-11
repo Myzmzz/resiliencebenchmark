@@ -1,0 +1,529 @@
+schema_version: resilience-defect-registry.v6
+registry_version: generic-chaosblade-10.v4
+chaosblade_capability_registry: chaosblade-1.8.0-k8s-profiles-v1
+description: >
+  Ten system-independent resilience defect patterns. Each pattern is anchored
+  to qualified ChaosBlade atomic faults, but an atomic fault is only the trigger:
+  a match still requires a latent condition, causal propagation, an independent
+  runtime Oracle, and recovery criteria.
+
+templates:
+  - template_id: RD-01
+    risk_name: 下游调用缺少超时和取消边界
+    consequence_name: 请求长时间阻塞，超时后内部工作仍继续
+    plain_summary: 下游服务响应变慢时，本服务没有及时超时或取消，用户请求会一直等待，内部工作也可能继续占用资源。
+    domain: dependency_latency
+    prompt_file: rd01_network_latency.md
+    d_class: {fixed: null, allowed: [D1, D2, D4, D5, D6]}
+    applicability: 系统存在位于可达业务路径的同步或请求绑定跨进程、跨Pod或外部依赖调用。
+    latent_condition: >
+      依赖调用缺少有效Deadline、超时或取消传播，
+      或内层预算超过外层剩余预算，使子调用在父请求失败后仍继续执行。
+    activation: 对精确绑定的Pod注入有界ChaosBlade pod-network delay，在稳定业务负载下观察延迟是否被限定在预期边界内。
+    mechanism: 网络延迟→子调用超过父请求预算→用户超时后内部工作仍持续→请求边界失效。
+    unacceptable_outcome: 用户延迟或错误率超过SLO，子调用在父请求结束后继续产生副作用或占用资源。
+    graph_focus: [request entry, dependency call, client wrapper, deadline, timeout, cancellation, remaining budget]
+    kubernetes_kinds: [Deployment, StatefulSet, Service, ConfigMap, Gateway, VirtualService]
+    atomic_faults:
+      - fault_type: network-delay
+        actuator: ChaosBlade
+        scope: pod
+        target: network
+        action: delay
+        command_kind: k8s pod-network delay
+        fault_semantics: persistent
+        required_parameters: [time, interface, names, namespace, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+    required_static_evidence:
+      - 可达业务入口到目标依赖的真实调用边
+      - 超时、Deadline、取消和剩余预算的实际创建、传播与消费位置
+      - 源码组件与可注入Pod/依赖的同一快照绑定
+    counter_evidence:
+      - 网关、Service Mesh、统一客户端或拦截器已施加更短的有效超时
+      - 取消传播到所有子调用且立即终止内部工作
+      - 每个子调用的超时不大于父请求的剩余预算
+    runtime_oracles:
+      - 独立负载端的延迟分位、成功率和超时率
+      - 父子Span结束顺序、取消后子工作数和在途请求
+      - ChaosBlade对精确Pod UID生效的独立证据
+    recovery_criteria:
+      - ChaosBlade实验已清理且网络延迟效果消失
+      - 队列、在途请求和连接占用回到基线
+      - 业务SLO在规定恢复窗口内恢复
+    boundary_exclusions:
+      - 主导机制是多层重试或远程写入未知结果时路由到RD-02
+      - 主导机制是两条业务路径共享资源导致跨路径饿饿时路由到RD-09
+      - 延迟已被有效预算限定且取消正确传播时不匹配
+
+  - template_id: RD-02
+    risk_name: 网络丢包时重试和幂等保护不足
+    consequence_name: 请求被放大，写操作重复或数据不一致
+    plain_summary: 网络偶发丢包时，系统可能反复重试、把同一笔写操作执行多次，或把已成功的操作误判为失败。
+    domain: dependency_loss
+    prompt_file: rd02_network_loss.md
+    d_class: {fixed: null, allowed: [D1, D2, D3, D5]}
+    applicability: 系统存在跨网络调用、消息交互或远程写操作，且临时丢包可形成超时、部分成功或未知结果。
+    latent_condition: >
+      同一逻辑操作存在无全局预算的多层重试、缺少退避/抖动，
+      或可重试写操作没有幂等键、去重、事务边界与结果对账机制。
+    activation: 对单一依赖或调用方Pod注入有界ChaosBlade pod-network loss，使部分请求进入已执行但响应未知或重试路径。
+    mechanism: 丢包→超时/未知结果→重试放大或重复副作用→依赖过载、级联错误或业务不一致。
+    unacceptable_outcome: 下游尝试量显著高于逻辑操作量，健康路径受重试风暴影响，或出现重复/丢失业务状态。
+    graph_focus: [remote write, retry wrapper, SDK retry, interceptor, backoff, jitter, idempotency key, deduplication, transaction, reconciliation]
+    kubernetes_kinds: [Deployment, StatefulSet, Service, ConfigMap, Gateway, VirtualService]
+    atomic_faults:
+      - fault_type: network-loss
+        actuator: ChaosBlade
+        scope: pod
+        target: network
+        action: loss
+        command_kind: k8s pod-network loss
+        fault_semantics: persistent
+        required_parameters: [percent, interface, names, namespace, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+    required_static_evidence:
+      - 可达业务路径上的精确远程操作和调用层次
+      - 每层重试的attempt、timeout、backoff、jitter与共享预算证据
+      - 写操作幂等、去重、事务或对账边界证据
+    counter_evidence:
+      - 单层有界重试且共享剩余Deadline
+      - 写操作具有端到端幂等键与服务端去重
+      - 断路器、退避抖动和全局尝试上限已覆盖真实调用路径
+    runtime_oracles:
+      - 单个逻辑操作的下游尝试数、重试率与入口/下游RPS比值
+      - 错误率、延迟、依赖负载与健康路径SLO
+      - 业务副作用的唯一性、完整性和对账结果
+    recovery_criteria:
+      - ChaosBlade丢包实验已清理且尝试率回到基线
+      - 重试积压清空，依赖负载和SLO恢复
+      - 业务状态对账通过，无未处理重复或丢失操作
+    boundary_exclusions:
+      - 仅有延迟预算或取消传播错误而没有重试/写入未知结果时路由到RD-01
+      - 主导机制是Pod中断后的本地持久化或重放错误时路由到RD-10
+      - 只存在单层有界重试且幂等边界完整时不匹配
+
+  - template_id: RD-03
+    risk_name: CPU过载时缺少准入和拒绝保护
+    consequence_name: 请求持续堆积，延迟和超时不断上升
+    plain_summary: CPU已经接近上限时，系统仍不断接收新请求，导致队列越来越长、响应越来越慢。
+    domain: cpu_pressure
+    prompt_file: rd03_cpu_pressure.md
+    d_class: {fixed: null, allowed: [D1, D4]}
+    applicability: 系统组件在有限CPU配额内处理请求、任务或消息，且存在可达业务负载与可观测SLO。
+    latent_condition: >
+      入场流量、工作并发和CPU配额没有稳定边界，
+      且缺少限流、负载拒绝、有界队列或CPU感知的Worker配置。
+    activation: 对精确Pod注入有界ChaosBlade pod-cpu fullload，在固定负载下检查系统是否进入可控降级而非无界排队。
+    mechanism: CPU压力/节流→有效处理能力下降→新工作继续入场并无界排队→超时、错误和恢复拖尾。
+    unacceptable_outcome: 有界CPU压力下新工作持续争抢已耗尽容量，导致SLO违反、队列无界增长或恢复超时。
+    graph_focus: [request admission, rate limiter, load shedding, rejection, worker count, executor, bounded queue]
+    kubernetes_kinds: [Deployment, StatefulSet, Service, ConfigMap, HorizontalPodAutoscaler]
+    atomic_faults:
+      - fault_type: cpu-load
+        actuator: ChaosBlade
+        scope: pod
+        target: cpu
+        action: fullload
+        command_kind: k8s pod-cpu fullload
+        fault_semantics: persistent
+        required_parameters: [cpu-percent, names, namespace, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Container]
+    required_static_evidence:
+      - 容器CPU request/limit、进程CPU感知和Worker/线程并发参数的对应关系
+      - 可达入口的限流、拒绝、队列上限与过载退化证据
+      - 源码组件到目标Pod/容器的同一快照绑定
+    counter_evidence:
+      - 入场限制和拒绝策略能在队列耗尽前生效
+      - Worker数根据cgroup/CPU配额调整且存在有界队列
+      - HPA/扩容能在队列达到拒绝阈值前实际生效
+    runtime_oracles:
+      - 目标CPU使用率、cgroup throttling和运行队列压力
+      - 入口成功率、延迟、拒绝率与有效处理吞吐
+      - 队列深度、在途数和实际处理吞吐
+    recovery_criteria:
+      - ChaosBlade CPU压力已清理且CPU/throttling回到基线
+      - 队列在规定时间内排空且无持续饿饿
+      - 业务SLO与有效吞吐恢复
+    boundary_exclusions:
+      - 主导机制是关键与非关键路径共享同一资源对象时路由到RD-09
+      - 主导压力来自内存预算、Cache或Buffer时路由到RD-04
+      - 无可达负载或实际容量上限时不因“没有限流”单独匹配
+
+  - template_id: RD-04
+    risk_name: 内存预算和数据结构容量缺少上限
+    consequence_name: 服务OOM、卡顿或反复重启
+    plain_summary: 内存接近上限时，缓存、队列或数据结构仍继续增长，最终导致OOM、服务重启或长时间卡顿。
+    domain: memory_pressure
+    prompt_file: rd04_memory_pressure.md
+    d_class: {fixed: null, allowed: [D1, D4, D6]}
+    applicability: 系统组件在有限容器内存中维护Heap、Cache、Queue、Buffer或本地状态，且内存压力可影响业务路径。
+    latent_condition: >
+      Runtime内存预算与容器Limit之间缺少Native/线程栈/运行时余量，
+      或Cache、Queue、Buffer无界/不释放，且没有容量上限、淘汰、背压或拒绝边界。
+    activation: 对精确Pod注入有界ChaosBlade pod-mem load，检查预算、背压、降级和恢复边界是否有效。
+    mechanism: 内存压力→GC/回收抖动、分配失败或OOM→进程重启或有效吞吐下降→业务不可用或恢复超时。
+    unacceptable_outcome: 有界内存压力造成SLO违反、反复OOM/重启，或清理后内存与吞吐无法及时恢复。
+    graph_focus: [runtime startup, heap budget, cache, queue, buffer, allocation, release, eviction, backpressure]
+    kubernetes_kinds: [Deployment, StatefulSet, ConfigMap]
+    atomic_faults:
+      - fault_type: memory-load
+        actuator: ChaosBlade
+        scope: pod
+        target: mem
+        action: load
+        command_kind: k8s pod-mem load
+        fault_semantics: persistent
+        required_parameters: [mode, mem-percent, names, namespace, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Container]
+    required_static_evidence:
+      - 容器memory request/limit与Runtime Heap/内存参数的同容器关联
+      - Cache、Queue、Buffer的容量、释放、淘汰、背压与拒绝证据
+      - 源码组件到目标Pod/容器的同一快照绑定
+    counter_evidence:
+      - Runtime预算显式保留Native、线程栈和运行时余量
+      - 主要Cache/Queue/Buffer有硬上限、释放路径与背压
+      - 超过软阈值时会稳定退化或拒绝新工作而不是继续分配
+    runtime_oracles:
+      - 目标working set/RSS、cgroup memory event、GC停顿与OOM/restart计数
+      - 队列、Cache、Buffer占用和背压/拒绝信号
+      - 业务SLO、有效吞吐、重启计数与内存回落时间
+    recovery_criteria:
+      - ChaosBlade内存压力已清理，残留压力进程和故障对象不存在
+      - 内存/GC/重启行为稳定且无持续重启循环
+      - 业务SLO、有效吞吐和内存占用在恢复窗口内达标
+    boundary_exclusions:
+      - 主导损害是Pod重启后的状态丢失、部分写入或重放时路由到RD-10
+      - 主导压力是CPU准入或处理并发边界时路由到RD-03
+      - 仅内存使用较高但预算、淘汰、背压和恢复边界正确时不匹配
+
+  - template_id: RD-05
+    risk_name: 关键服务缺少可接替的有效副本
+    consequence_name: 单个实例故障导致整体服务不可用
+    plain_summary: 关键服务没有能够真正接替工作的副本，任意一个Pod故障都会让整个业务路径中断。
+    domain: instance_interruption
+    prompt_file: rd05_instance_interruption.md
+    d_class: {fixed: null, allowed: [D1, D2, D6]}
+    applicability: 系统的业务路径依赖Kubernetes Pod实例，且Pod删除、持续不可用或替换是可能的运行时事件。
+    latent_condition: >
+      关键路径只有一个有效实例，或多副本不等价、无拓扑隔离或无可用故障转移，
+      使一个Pod中断可以清空Service的实际服务容量。
+    activation: 使用ChaosBlade pod-pod delete执行一次性删除，或pod-pod fail使同一Pod持续不可用，分别验证替换恢复和持续容量丢失。
+    mechanism: Pod删除/持续不可用→Ready Endpoint或有效容量丢失→无等价副本承接流量→业务不可用。
+    unacceptable_outcome: 单个Pod中断即使关键业务SLO违反，或声明的副本无法真正承接流量。
+    graph_focus: [critical route, service dependency, equivalent backend, failover path, single point]
+    kubernetes_kinds: [Deployment, StatefulSet, Service, EndpointSlice, PodDisruptionBudget]
+    atomic_faults:
+      - fault_type: pod-delete
+        actuator: ChaosBlade
+        scope: pod
+        target: pod
+        action: delete
+        command_kind: k8s pod-pod delete
+        fault_semantics: one_shot
+        required_parameters: [names, namespace, evict-count, kubeconfig, timeout]
+      - fault_type: pod-fail
+        actuator: ChaosBlade
+        scope: pod
+        target: pod
+        action: fail
+        command_kind: k8s pod-pod fail
+        fault_semantics: persistent
+        required_parameters: [names, namespace, evict-count, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Deployment, StatefulSet]
+    required_static_evidence:
+      - 可达关键业务路径与Service→Workload→Pod的同快照绑定
+      - 有效副本、拓扑分散、PDB与Ready Endpoint证据
+      - 副本是否能处理同一业务契约与承接同一Service流量的证据
+    counter_evidence:
+      - 存在可验证的等价Ready副本与拓扑故障隔离
+      - Service在单个Pod失效时仍保留可验证的Ready Endpoint与有效容量
+      - 副本跨故障域分布且实际承载同一业务负载
+    runtime_oracles:
+      - 绑定Pod UID消失或持续不可用的独立Kubernetes证据
+      - Ready Endpoint数、有效服务容量与剩余副本承载流量
+      - 关键路径成功率、延迟与容量恢复时间
+    recovery_criteria:
+      - ChaosBlade对象和故障效果已清理，一次性delete需确认旧UID不再被误用
+      - 新或剩余实例实际承载业务流量，不仅是Pod Ready
+      - 业务SLO与有效服务容量在恢复窗口内达标
+    boundary_exclusions:
+      - 主导机制是Pod终止过程中在途请求或消息处理不安全时路由到RD-07
+      - 主导机制是替换实例启动、就绪或恢复振荡时路由到RD-08
+      - 主导机制是中断后的状态丢失、部分写入或重放时路由到RD-10
+      - "仅`replicas: 1`而无关键路径和实际容量清空证据时不匹配"
+
+  - template_id: RD-06
+    risk_name: 健康检查与真实业务状态不一致
+    consequence_name: 故障实例继续接收流量或正常实例被重启
+    plain_summary: 探针显示Pod正常，但真实请求仍然失败；或只是下游变慢，就把本来正常的Pod反复重启。
+    domain: health_routing_semantics
+    prompt_file: rd06_health_routing.md
+    d_class: {fixed: null, allowed: [D2, D4, D6]}
+    applicability: 系统通过Liveness、Readiness、Startup Probe或应用Health Handler决定Pod生命周期与Service流量路由。
+    latent_condition: >
+      Liveness依赖慢下游或外部系统，Readiness未覆盖必需初始化/服务能力，
+      Health Handler无条件返回健康，或Probe阈值与真实处理时间不一致。
+    activation: >
+      使用network-delay使健康检查依赖变慢，或使用pod-fail使精确Pod持续不可用，
+      分别验证健康分类与Service Endpoint路由是否符合实际服务能力。
+    mechanism: 依赖延迟/Pod不可用→Probe或Health Handler误分类→流量继续进入失效实例或健康实例被重启→可用性损害。
+    unacceptable_outcome: Pod显示Ready但业务不可用，或仅因下游变慢就触发不必要重启/重启风暴并违反SLO。
+    graph_focus: [health route, liveness handler, readiness handler, startup state, downstream call, serving state, initialization flag]
+    kubernetes_kinds: [Deployment, StatefulSet, Pod, Service, EndpointSlice]
+    atomic_faults:
+      - fault_type: network-delay
+        actuator: ChaosBlade
+        scope: pod
+        target: network
+        action: delay
+        command_kind: k8s pod-network delay
+        fault_semantics: persistent
+        required_parameters: [time, interface, names, namespace, kubeconfig, timeout]
+      - fault_type: pod-fail
+        actuator: ChaosBlade
+        scope: pod
+        target: pod
+        action: fail
+        command_kind: k8s pod-pod fail
+        fault_semantics: persistent
+        required_parameters: [names, namespace, evict-count, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+    required_static_evidence:
+      - Probe path/command与真实Health Handler、初始化状态和下游调用的对应关系
+      - timeoutSeconds、periodSeconds、failureThreshold、initialDelaySeconds与StartupProbe的实际配置
+      - Workload、Service、EndpointSlice与源码Health Handler的同快照绑定
+    counter_evidence:
+      - Liveness只检查进程内部不可恢复状态，不依赖外部系统
+      - Readiness在必需初始化或服务能力缺失时及时移出Endpoint
+      - StartupProbe与Probe阈值覆盖已验证的最坏启动/处理时间
+    runtime_oracles:
+      - Probe结果、Pod Condition、Ready Endpoint数与重启计数
+      - 独立业务请求的成功率、延迟与实际服务能力
+      - ChaosBlade对精确目标的故障生效证据
+    recovery_criteria:
+      - ChaosBlade故障已清理且Probe与Endpoint状态稳定
+      - 无持续重启或Ready/NotReady振荡
+      - 真实业务SLO恢复，不仅是Pod Condition恢复
+    boundary_exclusions:
+      - 仅有依赖超时/Deadline错误而健康信号与路由正确时路由到RD-01
+      - 仅在新实例启动/恢复期间过早Ready或振荡时路由到RD-08
+      - 未配置Probe且没有可证明的健康路由契约时不单独匹配
+
+  - template_id: RD-07
+    risk_name: 服务关闭前未排空在途工作
+    consequence_name: 已接收的请求或消息丢失、重复执行
+    plain_summary: Pod关闭时没有先停止新流量并等待已接收的请求或消息完成，导致工作丢失或重复执行。
+    domain: graceful_termination
+    prompt_file: rd07_graceful_termination.md
+    d_class: {fixed: D1, allowed: [D1]}
+    applicability: 系统Pod处理有明确开始/完成边界的HTTP、RPC、长连接、消息消费或后台任务，且运行中可被终止。
+    latent_condition: >
+      Pod终止时没有先停止接收新工作、摘除流量、传播取消并排空在途工作，
+      或消息确认/副作用边界使终止可造成丢失或重复处理。
+    activation: 使用一次性ChaosBlade pod-pod delete中断一个精确Pod，并将中断时间对齐到已证明的在途请求或工作窗口。
+    mechanism: Pod终止→新流量未摘除或在途工作未排空→连接/处理被截断或确认边界错位→请求丢失、重复或SLO违反。
+    unacceptable_outcome: 终止导致已接收请求/消息静默丢失、重复副作用、长连接异常中断，或业务错误率超过SLO。
+    graph_focus: [signal handler, server shutdown, connection drain, inflight registry, cancellation, message acknowledgement, worker stop, side effect boundary]
+    kubernetes_kinds: [Deployment, StatefulSet, Pod, Service]
+    atomic_faults:
+      - fault_type: pod-delete
+        actuator: ChaosBlade
+        scope: pod
+        target: pod
+        action: delete
+        command_kind: k8s pod-pod delete
+        fault_semantics: one_shot
+        required_parameters: [names, namespace, evict-count, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Deployment, StatefulSet]
+    required_static_evidence:
+      - SIGTERM/关闭回调、Server Shutdown、连接排空与在途工作等待的真实调用路径
+      - preStop、terminationGracePeriodSeconds、Service Endpoint摘除与应用关闭时序
+      - 消息确认、事务提交、副作用完成与任务停止的先后关系
+    counter_evidence:
+      - 终止时先从Service摘除并停止接收新工作
+      - 宽限期覆盖已验证的最大在途处理时间，超时后有明确取消/重放契约
+      - 副作用与消息确认顺序安全，重放受幂等或去重保护
+    runtime_oracles:
+      - 旧Pod UID消失、Endpoint摘除和在途工作数的时序
+      - 终止窗口内请求/消息的完成、丢失、重复与延迟
+      - 独立业务状态对账与业务SLO
+    recovery_criteria:
+      - 一次性删除的旧UID不再被当作有效目标，无ChaosBlade残留
+      - 所有测试在途工作完成或按契约安全重放，无未对账状态
+      - 新或剩余实例承载流量且业务SLO恢复
+    boundary_exclusions:
+      - 仅因单副本容量被清空而无在途工作安全机制时路由到RD-05
+      - 主导机制是替换Pod启动、就绪或恢复振荡时路由到RD-08
+      - 主导机制是持久状态部分写入、检查点或重放错误时路由到RD-10
+
+  - template_id: RD-08
+    risk_name: 实例恢复流程过早就绪或无法收敛
+    consequence_name: Pod显示正常但业务迟迟不能恢复
+    plain_summary: 新Pod过早显示Ready，或恢复时不断重试和重建连接，导致看起来恢复了，但真实业务仍然失败。
+    domain: startup_recovery_convergence
+    prompt_file: rd08_recovery_convergence.md
+    d_class: {fixed: null, allowed: [D2, D4, D6]}
+    applicability: Pod中断后需要通过替换实例、连接重建、状态加载、缓存预热、注册或重试才能恢复完整服务能力。
+    latent_condition: >
+      Readiness在必需初始化/状态加载完成前即成功，启动重试缺少退避抖动或上限，
+      多实例同步恢复会冲击依赖，或恢复程序不能收敛到稳定服务状态。
+    activation: >
+      使用pod-delete触发替换实例，或使用pod-fail形成持续不可用后的恢复过程，
+      观察新UID从启动、Ready到实际承载业务的全链路。
+    mechanism: 实例中断→替换/重启→过早Ready或无界重试→失效流量进入、依赖被恢复风暴冲击或Ready振荡→恢复超时。
+    unacceptable_outcome: 新Pod已Ready但业务仍不可用，恢复期间形成连接/重试风暴，或系统在Ready/NotReady、重启之间振荡而无法在窗口内恢复SLO。
+    graph_focus: [startup initialization, readiness state, cache warmup, connection rebuild, retry backoff, jitter, registration, recovery state machine]
+    kubernetes_kinds: [Deployment, StatefulSet, Pod, Service, EndpointSlice, ConfigMap]
+    atomic_faults:
+      - fault_type: pod-delete
+        actuator: ChaosBlade
+        scope: pod
+        target: pod
+        action: delete
+        command_kind: k8s pod-pod delete
+        fault_semantics: one_shot
+        required_parameters: [names, namespace, evict-count, kubeconfig, timeout]
+      - fault_type: pod-fail
+        actuator: ChaosBlade
+        scope: pod
+        target: pod
+        action: fail
+        command_kind: k8s pod-pod fail
+        fault_semantics: persistent
+        required_parameters: [names, namespace, evict-count, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Deployment, StatefulSet]
+    required_static_evidence:
+      - 启动初始化、状态加载、缓存预热、依赖连接与Readiness转换的真实代码路径
+      - StartupProbe/Readiness阈值、重启策略、滚动发布与Service Endpoint的配置证据
+      - 启动重试的上限、退避、抖动、依赖预算与收敛状态证据
+    counter_evidence:
+      - Readiness只在所有必需初始化和服务能力完成后成功
+      - 恢复重试有硬上限、指数退避与抖动，不会在多实例间同步放大
+      - 业务预热/状态加载完成可被独立验证，流量逐步重进入
+    runtime_oracles:
+      - 新Pod UID的创建、Started、Ready、Endpoint加入和首次成功业务时间线
+      - 恢复期依赖连接/重试率、Ready振荡、重启次数与负载成功率
+      - 业务SLO达到并持续稳定的恢复时间
+    recovery_criteria:
+      - ChaosBlade故障已清理，新或剩余实例UID稳定
+      - Ready Endpoint与实际业务成功能力一致，无重试/连接风暴
+      - 业务SLO在规定窗口内恢复并持续一个稳定观察窗口
+    boundary_exclusions:
+      - 稳态运行期的Probe/Health Handler误分类而非启动/恢复收敛问题时路由到RD-06
+      - 仅因无等价副本导致容量清空时路由到RD-05
+      - 主导机制是持久状态丢失或错误重放时路由到RD-10
+
+  - template_id: RD-09
+    risk_name: 关键和非关键功能共享可耗尽资源
+    consequence_name: 非关键功能耗尽资源并拖垮关键功能
+    plain_summary: 关键和非关键功能共用同一个线程池、连接池或队列，非关键功能耗尽资源后，关键功能也无法工作。
+    domain: shared_resource_bulkhead
+    prompt_file: rd09_shared_resource_bulkhead.md
+    d_class: {fixed: D1, allowed: [D1]}
+    applicability: 系统存在至少两条可达业务路径，其中至少一条为关键路径，且它们可能共享执行器、连接池、队列、信号量或CPU时间配额。
+    latent_condition: >
+      关键与非关键路径共享同一可耗尽资源实例，没有独立池、分区配额、预留容量或优先级，
+      使一条慢/高耗路径可以耗尽另一条关键路径所需容量。
+    activation: >
+      对非关键依赖使用network-delay使其持有共享资源，或对共享Pod使用cpu-load降低总执行容量，
+      并独立观察关键与非关键路径。
+    mechanism: 非关键路径延迟/CPU压力→共享池/队列/执行器被占满→关键路径无可用配额→跨路径饿饿与SLO违反。
+    unacceptable_outcome: 故障仅作用于非关键依赖/路径时，关键路径仍因共享资源耗尽而超时、错误或吞吐下降。
+    graph_focus: [critical entry, noncritical entry, shared executor, connection pool, queue, semaphore, worker group, resource identity, quota, priority]
+    kubernetes_kinds: [Deployment, StatefulSet, Service, ConfigMap]
+    atomic_faults:
+      - fault_type: network-delay
+        actuator: ChaosBlade
+        scope: pod
+        target: network
+        action: delay
+        command_kind: k8s pod-network delay
+        fault_semantics: persistent
+        required_parameters: [time, interface, names, namespace, kubeconfig, timeout]
+      - fault_type: cpu-load
+        actuator: ChaosBlade
+        scope: pod
+        target: cpu
+        action: fullload
+        command_kind: k8s pod-cpu fullload
+        fault_semantics: persistent
+        required_parameters: [cpu-percent, names, namespace, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Container, ServiceDependency]
+    required_static_evidence:
+      - 两条以上可达业务入口到同一资源对象/配置实例的真实调用路径
+      - 共享执行器、池、队列、信号量或Worker Group的对象身份与容量/配额证据
+      - 关键性契约、路径分类与可注入非关键依赖/目标的绑定证据
+    counter_evidence:
+      - 关键与非关键路径使用不同的资源实例或有硬分区配额
+      - 关键路径具有可验证的预留容量、优先级或独立拒绝/退化边界
+      - 非关键路径的资源持有时间受超时/取消严格限定且不会耗尽全局配额
+    runtime_oracles:
+      - 关键与非关键路径各自的成功率、延迟、吞吐和拒绝率
+      - 共享资源的活跃数、等待数、队列深度、获取时间与分区配额
+      - ChaosBlade故障仅作用于选定目标的独立证据
+    recovery_criteria:
+      - ChaosBlade故障已清理，共享资源等待/占用回到基线
+      - 关键与非关键路径的队列均在规定窗口内排空
+      - 关键路径SLO恢复且无持续跨路径饿饿
+    boundary_exclusions:
+      - 只有单条路径的入场/无界队列问题时路由到RD-03
+      - 只有依赖超时/取消边界错误而没有两条路径共享资源身份证据时路由到RD-01
+      - 共用同一进程或Pod不等于共享同一可耗尽资源实例，无对象身份证据时不匹配
+
+  - template_id: RD-10
+    risk_name: 状态写入、确认和重放缺少一致性保护
+    consequence_name: 服务重启后数据丢失、重复或状态不完整
+    plain_summary: 服务在写数据或确认消息时被中断，恢复后可能丢数据、重复执行同一操作，或留下不完整状态。
+    domain: state_durability_replay
+    prompt_file: rd10_state_durability.md
+    d_class: {fixed: null, allowed: [D1, D2, D3, D6]}
+    applicability: 系统Pod执行有持久副作用、消息确认、检查点、本地状态或可重放操作，且在状态转换期间可能被中断/重启。
+    latent_condition: >
+      状态写入、事务提交、消息确认、检查点和对外副作用之间不原子，
+      或重启/重放缺少幂等键、去重、WAL/Outbox/Inbox、补偿与状态对账。
+    activation: >
+      使用pod-delete在已证明的状态转换窗口中断精确Pod，
+      或使用memory-load引发可观测的内存压力/重启以区分持久化与重放契约。
+    mechanism: 状态转换中断/重启→写入、确认、副作用或检查点部分完成→恢复时错误重放或无法重建→业务状态丢失、重复或不一致。
+    unacceptable_outcome: 出现重复扣款/订单/消息、已确认数据丢失、部分状态或无法自动对账恢复的业务不一致。
+    graph_focus: [state transition, transaction commit, message acknowledgement, checkpoint, local state, write ahead log, outbox, inbox, idempotency, deduplication, replay, compensation]
+    kubernetes_kinds: [Deployment, StatefulSet, Pod, ConfigMap, PersistentVolumeClaim]
+    atomic_faults:
+      - fault_type: pod-delete
+        actuator: ChaosBlade
+        scope: pod
+        target: pod
+        action: delete
+        command_kind: k8s pod-pod delete
+        fault_semantics: one_shot
+        required_parameters: [names, namespace, evict-count, kubeconfig, timeout]
+      - fault_type: memory-load
+        actuator: ChaosBlade
+        scope: pod
+        target: mem
+        action: load
+        command_kind: k8s pod-mem load
+        fault_semantics: persistent
+        required_parameters: [mode, mem-percent, names, namespace, kubeconfig, timeout]
+    fault_target_kinds: [Pod, Container, StatefulSet]
+    required_static_evidence:
+      - 一条可达业务路径上状态读写、确认、副作用与检查点的真实顺序
+      - 事务、WAL、Outbox/Inbox、幂等键、去重、重放与补偿的实际存储/消费证据
+      - 组件本地状态、PVC/外部持久化与可注入Pod的同快照绑定
+    counter_evidence:
+      - 状态转换在单一原子事务或可证明的WAL/Outbox契约内完成
+      - 重放使用持久幂等键与服务端去重，检查点与副作用顺序安全
+      - 中断后状态可通过独立对账自动重建，且未完成操作有明确补偿边界
+    runtime_oracles:
+      - 中断时间与事务、确认、检查点和副作用事件的精确关系
+      - 重启/重放后业务实体的唯一性、完整性、顺序性与余额/数量对账
+      - Pod UID/restart、ChaosBlade故障效果与业务SLO的独立证据
+    recovery_criteria:
+      - ChaosBlade故障已清理，目标Pod/替换实例身份已重新绑定
+      - 业务状态对账通过，无未处理重复、丢失、部分写入或持续补偿积压
+      - 新操作的幂等/重放契约与业务SLO均恢复
+    boundary_exclusions:
+      - 远程网络丢包引起的多层重试或未知响应为主，而非本地中断/重放时路由到RD-02
+      - 仅有单副本容量丢失或故障转移失效时路由到RD-05
+      - 仅有终止期间在途请求中断，不涉及持久状态、确认或重放时路由到RD-07
+      - 业务路径无状态副作用、持久写入、消息确认或检查点时不匹配

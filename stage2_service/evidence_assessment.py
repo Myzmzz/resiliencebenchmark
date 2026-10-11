@@ -70,7 +70,11 @@ def assess_evidence(report: HarnessReport, recovery: RecoveryResult) -> dict[str
                     related = None
                 if topic == "effect" and "memory" in selected_fault and not re.search(r"mem|内存|效果|effect", text):
                     related = None
-                if topic == "effect" and _RECOVERY_PHASE.search(text):
+                # A sentence about the recovery phase is not the Agent doubting
+                # the effect it verified (2026-09-10 L2xC0) -- unless it names
+                # the effect itself, which still contradicts (2026-09-23).
+                if (topic == "effect" and _RECOVERY_PHASE.search(text)
+                        and not re.search(EFFECT_ITSELF, text)):
                     related = None
                 key = (field, statement)
                 if missing and related and key not in seen:
