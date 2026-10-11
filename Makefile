@@ -1,4 +1,4 @@
-.PHONY: sync validate validate-workloads test test-mcp dry-run qualify inventory-images qualify-mcp-dry qualify-remote-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-deepseek-dry deploy-app-dry reset-episode-dry trial-dry
+.PHONY: sync validate validate-workloads test test-mcp dry-run qualify inventory-images qualify-mcp-dry qualify-remote-dry probe-models-dry render-sock-shop materialize-sources verify-sources mirror-sock-shop-dry build-train-ticket-workload-dry deploy-mcp-dry activate-mcp-episode-dry deploy-app-dry reset-episode-dry trial-dry
 .PHONY: resilience-agent-test resilience-agent-smoke-offline resilience-agent-configure-key resilience-agent-check-model
 .PHONY: backend-dev frontend-dev frontend-build test-backend test-frontend
 
@@ -52,9 +52,6 @@ deploy-mcp-dry:
 
 activate-mcp-episode-dry:
 	uv run python scripts/activate_mcp_episode.py --episode tasks/examples/public/episode.timeout-missing.v0.1.yaml
-
-deploy-deepseek-dry:
-	uv run python scripts/deploy_deepseek_harness.py
 
 deploy-app-dry:
 	uv run python scripts/deploy_application.py --application otel-demo --mode activate

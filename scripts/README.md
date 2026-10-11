@@ -2,7 +2,7 @@
 
 ## CodeGraph语义韧性扫描
 
-`run_semantic_scan.py`是12类可故障验证模板的本地扫描入口。它验证代码库路径，由Controller创建/同步CodeGraph索引，解析Kubernetes/Helm期望配置，再调用LangChain/LangGraph子Agent与Verifier。它不读取集群密钥，不执行故障。
+`run_semantic_scan.py`是10个ChaosBlade原子故障锚定的通用模板扫描入口。它验证代码库路径，由Controller创建/同步CodeGraph索引，解析Kubernetes/Helm期望配置，再调用LangChain/LangGraph子Agent与Verifier。它不读取集群密钥，不执行故障。
 
 ```bash
 uv run python scripts/run_semantic_scan.py --validate-only
@@ -88,7 +88,6 @@ python3 scripts/benchmark_prepare.py qualify-cluster \
 - `render_sock_shop.py`：从固定上游 SHA 渲染 Sock Shop，只允许受控对象类型并强制镜像 digest。
 - `mirror_images.py`：默认 dry-run；显式 `--execute` 后使用临时 Docker 配置和 Harbor Robot Account 复制固定镜像，不在输出中保留凭据。仅当 Harbor 明确是 HTTP registry 时设置 `HARBOR_INSECURE=true`；其他值或默认均保持 TLS 校验。
 - `train_ticket_workload.py`：渲染和管理 controller-owned Train-Ticket Job；真实 start 要求 Secret 引用、host allowlist、PVC 和 digest-pinned workload image。
-- `deploy_deepseek_harness.py`：默认 dry-run；真实安装仅允许 strict known_hosts 与公钥 BatchMode SSH，不支持 password 或 `sshpass`。
 - `inventory_runtime_images.py`：显式 kubeconfig 的只读 Pod 镜像盘点；输出脱敏 repository tail、运行时 digest、readiness 和逐 namespace 资格状态，用于建立 source commit 与部署镜像之间的证据链。
 - `build_train_ticket_workload.py`：默认 dry-run 的固定 buildx 入口，构建 controller-owned Python workload，并在 push 后返回可固定的 manifest digest。
 - `deploy_mcp_host.py`：把当前已提交 HEAD 作为受管 release 传到目标主机，物化锁定源码并安装 4 个 Streamable HTTP 与 3 个 BladeAI SSE systemd unit；不创建或覆盖运行时 secret。

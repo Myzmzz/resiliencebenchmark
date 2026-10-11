@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { routeChildren } from "../routes";
@@ -21,10 +21,10 @@ describe("AppLayout", () => {
     }
   });
 
-  it("未实现页面渲染占位组件与里程碑标签", () => {
-    renderAt("/episodes/defects");
-    expect(screen.getByRole("heading", { name: /缺陷库/ })).toBeInTheDocument();
-    expect(screen.getByText("M4")).toBeInTheDocument();
+  it("侧边栏暴露第一阶段缺陷验证入口", () => {
+    renderAt("/environments/infrastructure");
+    fireEvent.click(screen.getByText("题库"));
+    expect(screen.getByText("第一阶段 · 核心测试")).toBeInTheDocument();
   });
 
   it("评测深层路由保持对应菜单选中", () => {

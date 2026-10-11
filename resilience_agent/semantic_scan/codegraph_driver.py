@@ -62,6 +62,7 @@ class CodeGraphDriver:
             raise CodeGraphError(f"CodeGraph command is unavailable: {config.command}")
         self.command = resolved or config.command
         self._manifest: CodeGraphManifest | None = None
+        self.last_index_action: str | None = None
         self._command_lock = threading.Lock()
         self._cache_lock = threading.RLock()
         self._query_cache: dict[tuple[str, ...], Any] = {}
@@ -72,16 +73,24 @@ class CodeGraphDriver:
             raise CodeGraphError("CodeGraph index has not been qualified")
         return self._manifest
 
+    def status_snapshot(self) -> dict[str, Any]:
+        """Return CodeGraph's read-only index status without indexing or syncing."""
+        return self._status()
+
     def ensure_index(self) -> CodeGraphManifest:
         status = self._status()
         if not status.get("initialized"):
+            self.last_index_action = "indexed"
             self._run("init", str(self.codebase.path))
             self._run("index", str(self.codebase.path), "--quiet")
         elif self.config.force_reindex:
+            self.last_index_action = "reindexed"
             self._run("index", str(self.codebase.path), "--force", "--quiet")
         else:
+            self.last_index_action = "reused"
             pending = status.get("pendingChanges")
             if isinstance(pending, dict) and any(int(value or 0) for value in pending.values()):
+                self.last_index_action = "synced"
                 self._run("sync", str(self.codebase.path))
         status = self._status()
         if not status.get("initialized") or int(status.get("nodeCount") or 0) <= 0:
@@ -124,6 +133,19 @@ class CodeGraphDriver:
 
     def callees(self, symbol: str, *, limit: int | None = None) -> Any:
         return self._relationship("callees", symbol, limit)
+
+    def impact(self, symbol: str, *, depth: int = 2) -> Any:
+        if not symbol or len(symbol) > 300:
+            raise CodeGraphError("CodeGraph symbol must contain 1-300 characters")
+        return self._cached_json(
+            "impact",
+            symbol,
+            "--path",
+            str(self.codebase.path),
+            "--depth",
+            str(depth),
+            "--json",
+        )
 
     def context(
         self,

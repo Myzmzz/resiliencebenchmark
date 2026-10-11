@@ -20,8 +20,10 @@ components:
     podAnnotations:
       resource.opentelemetry.io/service.namespace: ${OTEL_DEMO_POSTGRES_PASSWORD}-demo
     resources:
+      requests:
+        memory: 256Mi
       limits:
-        memory: 120Mi
+        memory: 512Mi
     useDefault:
       env: true
   ad:

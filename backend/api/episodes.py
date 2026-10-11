@@ -17,6 +17,6 @@ def get_episodes(settings: Settings = Depends(get_settings)) -> List[Episode]:
     Get all episode (evaluation unit) configurations.
 
     Returns:
-        List of episodes from tasks/examples/
+        List of episodes from tasks/examples/public/
     """
     return parse_episodes(settings.repo_path)

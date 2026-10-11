@@ -27,7 +27,7 @@ kubernetes:
     - alias: benchmark-kubernetes
       path: ../../environment/kubernetes/otel-demo
 
-templates_path: ../templates/resilience-defects-v2.yaml
+templates_path: ../templates/resilience-defects-generic.v4.yaml
 prompts_root: ../prompts/semantic_scan
 output_dir: ../../artifacts/semantic-scan
 
@@ -50,13 +50,11 @@ planning_mode: model
 active_template_ids:
   - RD-01
   - RD-02
+  - RD-03
+  - RD-04
   - RD-05
   - RD-06
   - RD-07
   - RD-08
   - RD-09
   - RD-10
-  - RD-11
-  - RD-12
-  - RD-13
-  - RD-14

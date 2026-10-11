@@ -1,7 +1,8 @@
 [Unit]
 Description=ResilienceBenchmark MCP chaos_control
-After=network-online.target
+After=network-online.target resbench-chaos-controller.service
 Wants=network-online.target
+Requires=resbench-chaos-controller.service
 
 [Service]
 Type=simple
@@ -33,7 +34,8 @@ SystemCallArchitectures=native
 CapabilityBoundingSet=
 AmbientCapabilities=
 StateDirectory=resiliencebenchmark/chaos-control/active
-ReadOnlyPaths=/opt/resiliencebenchmark/repo /etc/resiliencebenchmark -/var/lib/resiliencebenchmark/chaos-control/baseline
+StateDirectoryMode=0700
+ReadOnlyPaths=/opt/resiliencebenchmark/repo /etc/resiliencebenchmark -/var/lib/resiliencebenchmark/chaos-control/baseline -/var/lib/resiliencebenchmark/chaos-control/controller
 ReadWritePaths=/var/lib/resiliencebenchmark/chaos-control/active
 UMask=0077
 

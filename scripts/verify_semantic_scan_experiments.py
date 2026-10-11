@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify one full OTel scan plus RD-14 positive and negative controls."""
+"""Verify one full OTel scan plus RD-05 positive and negative controls."""
 
 from __future__ import annotations
 
@@ -54,14 +54,14 @@ def verify(
     negative = _load(root, negative_run)
     coverage = {item.template_id: item.status for item in otel.coverage}
     if set(coverage) != set(ACTIVE_TEMPLATE_IDS):
-        raise ValueError("OTel run did not cover all twelve active templates")
+        raise ValueError("OTel run did not cover all ten active templates")
     if any(status == "scan_failed" for status in coverage.values()):
         raise ValueError("OTel run contains failed template agents")
     if positive.question_eligible_count != 1 or len(positive.matches) != 1:
         raise ValueError("positive control did not produce one eligible match")
     match = positive.matches[0]
-    if match.template_id != "RD-14" or match.confidence < 0.85:
-        raise ValueError("positive control did not confirm high-confidence RD-14")
+    if match.template_id != "RD-05" or match.confidence < 0.85:
+        raise ValueError("positive control did not confirm high-confidence RD-05")
     if negative.matches or negative.question_eligible_count != 0:
         raise ValueError("negative control produced a false-positive match")
     if negative.coverage[0].status not in {"not_found", "not_matched"}:
@@ -82,8 +82,8 @@ def verify(
         "status": "passed",
         "runs": {
             "otel_demo_full": otel_run,
-            "rd14_positive": positive_run,
-            "rd14_negative": negative_run,
+            "rd05_positive": positive_run,
+            "rd05_negative": negative_run,
         },
         "otel_demo": {
             "templates_covered": len(coverage),

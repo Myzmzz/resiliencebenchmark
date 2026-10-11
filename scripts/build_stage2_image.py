@@ -7,17 +7,13 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = REPO_ROOT.parent
-BLADEAI_REPO = WORKSPACE_ROOT / "bladeai-source/blade-ai"
 OTEL_SOURCE = WORKSPACE_ROOT / "benchmark-sources/materialized/otel-demo-2.2.0"
-BLADEAI_TAG = "blade-ai-v0.6.1"
 OTEL_CHART_VERSION = "0.40.5"
 OTEL_CHART_SHA256 = "92dd3c2e0d5d7a0db76cb3aefb21ae90adccf915c37803c82d454f5c74fc1d7a"
 DEFAULT_REPOSITORY = "1.94.151.57:85/observe/resbench-stage2"
@@ -36,10 +32,18 @@ def source_digest() -> str:
         REPO_ROOT / "controller",
         REPO_ROOT / "disturbances",
         REPO_ROOT / "evaluator",
+        REPO_ROOT / "environment/kubernetes/otel-demo",
         REPO_ROOT / "tasks/episodes/otel-demo/EPI-OTEL-CART-DEADLINE-001",
         REPO_ROOT / "deploy/stage2",
     ]
-    files = sorted(path for root in roots for path in root.rglob("*") if path.is_file())
+    root_files = [
+        REPO_ROOT / "pyproject.toml",
+        REPO_ROOT / "uv.lock",
+        REPO_ROOT / "scripts/deploy_application.py",
+    ]
+    files = sorted(
+        [*root_files, *(path for root in roots for path in root.rglob("*") if path.is_file())]
+    )
     for path in files:
         digest.update(path.relative_to(REPO_ROOT).as_posix().encode())
         digest.update(b"\0")
@@ -69,31 +73,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host-proxy", default=DEFAULT_HOST_PROXY)
     parser.add_argument("--metadata", type=Path, default=REPO_ROOT / "artifacts/stage2/image.json")
     args = parser.parse_args(argv)
-    if not BLADEAI_REPO.is_dir() or not OTEL_SOURCE.is_dir():
-        raise RuntimeError("BladeAI or OTel source checkout is missing")
+    if not OTEL_SOURCE.is_dir():
+        raise RuntimeError("OTel source checkout is missing")
     content_sha = source_digest()
     image = f"{args.repository}:stage2-{content_sha[:12]}"
     with tempfile.TemporaryDirectory(prefix="resbench-stage2-build-") as raw:
         temporary = Path(raw)
-        bladeai = temporary / "bladeai"
-        bladeai.mkdir()
         chart_context = temporary / "otel-chart"
         chart_context.mkdir()
-        archive = subprocess.Popen(
-            ["git", "archive", BLADEAI_TAG],
-            cwd=BLADEAI_REPO,
-            stdout=subprocess.PIPE,
-        )
-        assert archive.stdout is not None
-        extract = subprocess.run(
-            ["tar", "-x", "-C", str(bladeai)],
-            stdin=archive.stdout,
-            check=False,
-            timeout=120,
-        )
-        archive.stdout.close()
-        if archive.wait(timeout=30) or extract.returncode:
-            raise RuntimeError("could not materialize pinned BladeAI source")
         chart = subprocess.run(
             [
                 "helm",
@@ -135,8 +122,6 @@ def main(argv: list[str] | None = None) -> int:
                 "--build-arg",
                 f"NO_PROXY={DEFAULT_NO_PROXY}",
                 "--build-context",
-                f"bladeai-src={bladeai}",
-                "--build-context",
                 f"otel-src={OTEL_SOURCE}",
                 "--build-context",
                 f"otel-chart={chart_context}",
@@ -164,9 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         "schema_version": "stage2-image.v1",
         "image": image,
         "digest": digest,
-        "immutable_ref": f"{args.repository}@{digest}",
+        "immutable_ref": f"{image}@{digest}",
         "source_sha256": content_sha,
-        "bladeai_ref": BLADEAI_TAG,
         "otel_chart": f"opentelemetry-demo-{OTEL_CHART_VERSION}@sha256:{OTEL_CHART_SHA256}",
         "platform": "linux/amd64",
     }

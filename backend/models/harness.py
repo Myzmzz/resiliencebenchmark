@@ -60,23 +60,6 @@ class HarnessSafety(BaseModel):
     deny_unscoped_shell: Optional[bool] = Field(None, alias="deny_unscoped_shell")
 
 
-class HarnessVersionPin(BaseModel):
-    """Harness version pin information."""
-
-    upstream: Optional[str] = None
-    distribution: Optional[str] = None
-    channel: Optional[str] = None
-    package_version: Optional[str] = Field(None, alias="package_version")
-    npm_dist_tag_policy: Optional[str] = Field(None, alias="npm_dist_tag_policy")
-    npm_integrity: Optional[str] = Field(None, alias="npm_integrity")
-    runtime_lock: Optional[str] = Field(None, alias="runtime_lock")
-    runtime_lock_sha256: Optional[str] = Field(None, alias="runtime_lock_sha256")
-    git_tag: Optional[str] = Field(None, alias="git_tag")
-    commit: Optional[str] = None
-    verification_status: Optional[str] = Field(None, alias="verification_status")
-    note: Optional[str] = None
-
-
 class HarnessConfig(BaseModel):
     """Harness configuration."""
 
@@ -91,7 +74,6 @@ class HarnessConfig(BaseModel):
     trace: Optional[Dict[str, str]] = None
     models: HarnessModels
     safety: HarnessSafety
-    version_pin: Optional[HarnessVersionPin] = Field(None, alias="version_pin")
 
 
 class HarnessesRegistry(BaseModel):

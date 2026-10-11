@@ -6,6 +6,7 @@ import type { HarnessesRegistry } from "../types/harness";
 import type { Episode } from "../types/episode";
 import type { MCPToolsRegistry } from "../types/mcp";
 import type { ObservabilityStack } from "../types/observability";
+import type { CoreFeatureCatalog, CoreTestPreview, CoreTestRun } from "../types/phase1";
 
 export interface RepoCheck {
   path: string;
@@ -59,4 +60,49 @@ export async function fetchObservability(): Promise<ObservabilityStack> {
   const response = await fetch("/api/v1/observability");
   if (!response.ok) throw new Error(`Failed to fetch observability: ${response.status}`);
   return (await response.json()) as ObservabilityStack;
+}
+
+async function phase1Response<T>(response: Response): Promise<T> {
+  if (response.ok) return (await response.json()) as T;
+  let detail = `HTTP ${response.status}`;
+  try {
+    const body = (await response.json()) as { detail?: string };
+    if (body.detail) detail = body.detail;
+  } catch {
+    // Keep the HTTP status when the proxy did not return JSON.
+  }
+  throw new Error(detail);
+}
+
+export async function fetchCoreFeatures(): Promise<CoreFeatureCatalog> {
+  return phase1Response(await fetch("/api/v1/phase1/core/features"));
+}
+
+export async function previewCoreFeature(
+  featureId: string,
+  inputs: Record<string, unknown>,
+): Promise<CoreTestPreview> {
+  return phase1Response(
+    await fetch(`/api/v1/phase1/core/features/${encodeURIComponent(featureId)}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inputs }),
+    }),
+  );
+}
+
+export async function startCoreRun(preview: CoreTestPreview): Promise<CoreTestRun> {
+  return phase1Response(
+    await fetch(`/api/v1/phase1/core/previews/${encodeURIComponent(preview.previewId)}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed: true, inputDigest: preview.inputDigest }),
+    }),
+  );
+}
+
+export async function fetchCoreRun(runId: string): Promise<CoreTestRun> {
+  return phase1Response(
+    await fetch(`/api/v1/phase1/core/runs/${encodeURIComponent(runId)}`),
+  );
 }

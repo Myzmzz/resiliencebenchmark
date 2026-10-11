@@ -1,0 +1,231 @@
+schema_version: resilience-defect-pattern-catalog.v1
+catalog_id: risk-consequence-universal-20
+catalog_version: 2026-08-31.v1
+status: research_archive
+public_evidence_included: false
+description: >
+  基于公开资料归纳的20个通用韧性缺陷模式。缺陷名称固定为
+  “风险：<risk_name>；后果：<consequence_name>”。ChaosBlade只是触发器，
+  模式进入可执行Episode前仍需要目标绑定、独立Oracle、安全与恢复判据。
+qualified_fault_types: [network-delay, network-loss, cpu-load, memory-load, pod-delete, pod-fail]
+
+patterns:
+  - pattern_id: RDP-01
+    family: dependency_boundary
+    risk_name: 跨进程调用缺少连接超时、请求超时与取消传播
+    consequence_name: 请求长期阻塞，调用方资源持续占用并违反SLO
+    defect_name: "风险：跨进程调用缺少连接超时、请求超时与取消传播；后果：请求长期阻塞，调用方资源持续占用并违反SLO"
+    mechanism_summary: 慢依赖使子调用持续等待，父请求无法在业务预算内释放资源。
+    applicable_fault_types: [network-delay]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [可达的跨进程调用边, 超时与取消的创建、传播和消费位置]
+    runtime_evidence_required: [父子请求时序, 延迟、在途数与SLO]
+
+  - pattern_id: RDP-02
+    family: dependency_boundary
+    risk_name: 子调用超时预算大于父请求剩余预算
+    consequence_name: 父请求先失败，子调用继续执行并产生无效工作或延迟副作用
+    defect_name: "风险：子调用超时预算大于父请求剩余预算；后果：父请求先失败，子调用继续执行并产生无效工作或延迟副作用"
+    mechanism_summary: 内层预算倒置或丢失Deadline，使子工作超出用户可见请求生命周期。
+    applicable_fault_types: [network-delay]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [父子调用链, 各层Deadline、timeout与剩余预算]
+    runtime_evidence_required: [父Span与子Span结束顺序, 超时后仍执行的子工作]
+
+  - pattern_id: RDP-03
+    family: dependency_boundary
+    risk_name: 持续故障的依赖缺少断路器或快速失败边界
+    consequence_name: 线程、连接和内存持续等待故障依赖，并拖垮无关业务路径
+    defect_name: "风险：持续故障的依赖缺少断路器或快速失败边界；后果：线程、连接和内存持续等待故障依赖，并拖垮无关业务路径"
+    mechanism_summary: 故障依赖持续接收新调用，每个调用都持有资源直到超时。
+    applicable_fault_types: [network-delay, network-loss]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [依赖调用与保护包装路径, 断路状态、阈值和快速失败反证]
+    runtime_evidence_required: [故障期调用尝试量, 共享资源占用与无关路径SLO]
+
+  - pattern_id: RDP-04
+    family: retry
+    risk_name: 多个调用层分别重试但没有全局重试预算
+    consequence_name: 一次用户操作被乘法放大，故障服务无法恢复并形成级联故障
+    defect_name: "风险：多个调用层分别重试但没有全局重试预算；后果：一次用户操作被乘法放大，故障服务无法恢复并形成级联故障"
+    mechanism_summary: 网关、应用、SDK和存储层的独立尝试数相乘。
+    applicable_fault_types: [network-loss]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [同一逻辑操作的重试层次, 尝试数、退避与总预算]
+    runtime_evidence_required: [逻辑操作与下游尝试数比值, 依赖负载与恢复时间]
+
+  - pattern_id: RDP-05
+    family: retry
+    risk_name: 重试使用固定间隔且没有指数退避和随机抖动
+    consequence_name: 大量客户端同时重试，形成周期性流量尖峰和惊群效应
+    defect_name: "风险：重试使用固定间隔且没有指数退避和随机抖动；后果：大量客户端同时重试，形成周期性流量尖峰和惊群效应"
+    mechanism_summary: 同时失败的客户端按相同节奏再次到达，持续重新压垮依赖。
+    applicable_fault_types: [network-loss]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [重试调度算法, backoff、jitter、最大尝试和Retry-After处理]
+    runtime_evidence_required: [重试到达时间分布, 周期性依赖负载尖峰]
+
+  - pattern_id: RDP-06
+    family: retry
+    risk_name: 可重试的写操作缺少幂等键、服务端去重或唯一约束
+    consequence_name: 响应丢失后重试造成重复扣款、重复订单、重复消息或重复资源
+    defect_name: "风险：可重试的写操作缺少幂等键、服务端去重或唯一约束；后果：响应丢失后重试造成重复扣款、重复订单、重复消息或重复资源"
+    mechanism_summary: 远程操作已成功但响应未达，调用方无法识别重试是同一逻辑操作。
+    applicable_fault_types: [network-loss]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [写操作与副作用路径, 幂等键生成、传播、存储和去重证据]
+    runtime_evidence_required: [相同逻辑操作的实体唯一性, 写入结果与调用尝试对账]
+
+  - pattern_id: RDP-07
+    family: overload
+    risk_name: 系统达到处理上限后仍继续接收新工作，没有准入控制或负载丢弃
+    consequence_name: 在途请求和队列持续增长，延迟坍塌、内存耗尽或服务崩溃
+    defect_name: "风险：系统达到处理上限后仍继续接收新工作，没有准入控制或负载丢弃；后果：在途请求和队列持续增长，延迟坍塌、内存耗尽或服务崩溃"
+    mechanism_summary: 处理速率低于到达速率时新工作仍继续入场，耗尽有限资源。
+    applicable_fault_types: [cpu-load, memory-load]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [入场路径与容量上限, 限流、并发Limiter、拒绝与负载丢弃反证]
+    runtime_evidence_required: [到达率、处理率、队列和在途数, 业务SLO与恢复时间]
+
+  - pattern_id: RDP-08
+    family: overload
+    risk_name: 队列缺少长度、消息年龄、重试次数或死信边界
+    consequence_name: 积压无法追平，过期工作长期阻塞新工作并持续消耗存储与内存
+    defect_name: "风险：队列缺少长度、消息年龄、重试次数或死信边界；后果：积压无法追平，过期工作长期阻塞新工作并持续消耗存储与内存"
+    mechanism_summary: 依赖变慢或消费者失效时生产者继续入队，无活性判定和过期清理。
+    applicable_fault_types: [network-delay, cpu-load]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [队列创建、持久化与消费路径, 长度、保留、消息年龄、DLQ和重试上限]
+    runtime_evidence_required: [队列深度与最旧消息年龄, 入队/出队速率与恢复窗口]
+
+  - pattern_id: RDP-09
+    family: isolation
+    risk_name: 关键与非关键业务路径共享同一可耗尽执行资源
+    consequence_name: 非关键功能耗尽资源后，关键功能也超时或不可用
+    defect_name: "风险：关键与非关键业务路径共享同一可耗尽执行资源；后果：非关键功能耗尽资源后，关键功能也超时或不可用"
+    mechanism_summary: 慢或高耗路径占满共享线程池、连接池、队列或信号量。
+    applicable_fault_types: [network-delay, cpu-load]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [两条以上可达路径, 引用同一资源对象与缺少分区配额的证据]
+    runtime_evidence_required: [分路径SLO, 共享资源占用、等待和配额]
+
+  - pattern_id: RDP-10
+    family: overload
+    risk_name: 扩容策略只观察本地CPU或队列，没有限制所有消费者对下游的总请求速率
+    consequence_name: 扩容将更多流量压向真正的瓶颈依赖，局部拥塞升级为级联故障
+    defect_name: "风险：扩容策略只观察本地CPU或队列，没有限制所有消费者对下游的总请求速率；后果：扩容将更多流量压向真正的瓶颈依赖，局部拥塞升级为级联故障"
+    mechanism_summary: 消费者数量增长快于依赖容量，队列与依赖压力形成正反馈。
+    applicable_fault_types: [cpu-load]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [HPA/消费者扩容指标, 下游总请求限额、背压与扩容上限]
+    runtime_evidence_required: [副本数与下游RPS变化, 队列、依赖负载与端到端SLO]
+
+  - pattern_id: RDP-11
+    family: resource_budget
+    risk_name: CPU配额与Worker、线程或请求并发参数不匹配，进程也不感知cgroup配额
+    consequence_name: 持续CPU节流、上下文切换和排队，最终造成Deadline Miss与吞吐下降
+    defect_name: "风险：CPU配额与Worker、线程或请求并发参数不匹配，进程也不感知cgroup配额；后果：持续CPU节流、上下文切换和排队，最终造成Deadline Miss与吞吐下降"
+    mechanism_summary: 应用并发高于容器实际CPU处理能力，所有请求同时变慢。
+    applicable_fault_types: [cpu-load]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [CPU request/limit, Worker、线程池和CPU感知参数]
+    runtime_evidence_required: [CPU使用率与cgroup throttling, 队列、延迟与吞吐]
+
+  - pattern_id: RDP-12
+    family: resource_budget
+    risk_name: Heap、Cache、Queue或Buffer预算逼近容器内存上限，没有Native内存与页缓存余量
+    consequence_name: GC抖动、OOMKill、反复重启或长时间业务卡顿
+    defect_name: "风险：Heap、Cache、Queue或Buffer预算逼近容器内存上限，没有Native内存与页缓存余量；后果：GC抖动、OOMKill、反复重启或长时间业务卡顿"
+    mechanism_summary: 应用可管理内存与容器硬上限之间缺少运行时和非堆余量。
+    applicable_fault_types: [memory-load]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [memory request/limit, Heap、Cache、Queue、Buffer上限与淘汰/背压]
+    runtime_evidence_required: [working set/RSS、GC、OOM和restart, 业务SLO与内存回落]
+
+  - pattern_id: RDP-13
+    family: recovery_feedback
+    risk_name: 故障恢复路径依赖同步重连、同时重试、绕过缓存、临时扩容或受损控制面
+    consequence_name: 初始故障消失后系统仍持续过载，无法自行恢复并进入亚稳态故障
+    defect_name: "风险：故障恢复路径依赖同步重连、同时重试、绕过缓存、临时扩容或受损控制面；后果：初始故障消失后系统仍持续过载，无法自行恢复并进入亚稳态故障"
+    mechanism_summary: 恢复动作自身增加负载，资源耗尽正反馈在触发移除后仍持续。
+    applicable_fault_types: [pod-delete, pod-fail, network-loss]
+    evidence_mode: runtime_primary
+    static_evidence_required: [恢复、重连、重试、缓存绕过与扩容路径, 退避、抖动、总预算与静态稳定反证]
+    runtime_evidence_required: [触发移除后仍持续的负载/积压, 恢复动作与资源耗尽的正反馈时序]
+
+  - pattern_id: RDP-14
+    family: health_semantics
+    risk_name: 故障检测器只观察进程或控制面状态，不观察真实业务路径
+    consequence_name: 实例被判定健康并继续接收流量，但用户请求已经失败
+    defect_name: "风险：故障检测器只观察进程或控制面状态，不观察真实业务路径；后果：实例被判定健康并继续接收流量，但用户请求已经失败"
+    mechanism_summary: 平台和应用对“失败”的观测不一致，形成灰色故障。
+    applicable_fault_types: [network-delay, pod-fail]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [Probe/Health Handler与业务依赖路径, Service和Endpoint路由契约]
+    runtime_evidence_required: [Pod Condition与Ready Endpoint, 同时期真实业务成功率]
+
+  - pattern_id: RDP-15
+    family: health_semantics
+    risk_name: Liveness依赖慢下游，或失败阈值比正常延迟波动更激进
+    consequence_name: 下游变慢时正常实例被不断重启，剩余实例负载增加并形成重启级联
+    defect_name: "风险：Liveness依赖慢下游，或失败阈值比正常延迟波动更激进；后果：下游变慢时正常实例被不断重启，剩余实例负载增加并形成重启级联"
+    mechanism_summary: 可恢复的外部延迟被误分类为容器内部不可恢复故障。
+    applicable_fault_types: [network-delay]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [Liveness Handler的下游调用, Probe超时、周期、失败阈值与StartupProbe]
+    runtime_evidence_required: [Probe失败与重启时序, 剩余副本负载与业务SLO]
+
+  - pattern_id: RDP-16
+    family: health_semantics
+    risk_name: Readiness或Startup在初始化、状态加载、缓存预热或连接建立完成前成功
+    consequence_name: 流量过早进入未准备好的新实例，Pod显示Ready但业务失败或反复振荡
+    defect_name: "风险：Readiness或Startup在初始化、状态加载、缓存预热或连接建立完成前成功；后果：流量过早进入未准备好的新实例，Pod显示Ready但业务失败或反复振荡"
+    mechanism_summary: 平台Ready转换早于真实服务能力建立，恢复流量进入失效窗口。
+    applicable_fault_types: [pod-delete, pod-fail]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [启动初始化与Readiness转换路径, StartupProbe/Readiness阈值与Endpoint配置]
+    runtime_evidence_required: [新Pod的Started/Ready/Endpoint/首次成功业务时间线, Ready振荡与恢复SLO]
+
+  - pattern_id: RDP-17
+    family: availability
+    risk_name: 关键服务有效副本不足，副本不等价或全部位于同一故障域
+    consequence_name: 单个Pod、节点或可用区故障即可清空实际服务容量
+    defect_name: "风险：关键服务有效副本不足，副本不等价或全部位于同一故障域；后果：单个Pod、节点或可用区故障即可清空实际服务容量"
+    mechanism_summary: 关键业务路径缺少在故障域之间独立的等价处理能力。
+    applicable_fault_types: [pod-delete, pod-fail]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [关键路径与Service/Workload绑定, 副本、Endpoint、拓扑分散与等价性]
+    runtime_evidence_required: [故障期Ready Endpoint与实际容量, 关键路径SLO]
+
+  - pattern_id: RDP-18
+    family: lifecycle
+    risk_name: Pod终止前未停止新流量、排空在途请求、关闭连接或安全完成消息确认
+    consequence_name: 已接收请求或消息丢失、重复处理，长连接被强制中断
+    defect_name: "风险：Pod终止前未停止新流量、排空在途请求、关闭连接或安全完成消息确认；后果：已接收请求或消息丢失、重复处理，长连接被强制中断"
+    mechanism_summary: 终止信号、Endpoint摘除、在途排空与副作用/确认顺序不完整。
+    applicable_fault_types: [pod-delete]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [SIGTERM/Shutdown/排空与确认路径, preStop、terminationGracePeriodSeconds与Service Endpoint时序]
+    runtime_evidence_required: [旧Pod UID、Endpoint摘除与在途工作时序, 丢失/重复对账与SLO]
+
+  - pattern_id: RDP-19
+    family: state_consistency
+    risk_name: 数据库写入与消息发布或远程副作用是两个独立操作，没有Outbox、Saga补偿或等价原子边界
+    consequence_name: 一部分操作成功、另一部分失败，导致跨服务业务状态永久不一致
+    defect_name: "风险：数据库写入与消息发布或远程副作用是两个独立操作，没有Outbox、Saga补偿或等价原子边界；后果：一部分操作成功、另一部分失败，导致跨服务业务状态永久不一致"
+    mechanism_summary: 一次业务操作跨越多个无共享事务的存储/服务，中断后无重建边界。
+    applicable_fault_types: [network-loss, pod-delete]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [本地事务与远程消息/副作用顺序, Outbox、Saga、WAL、补偿与对账反证]
+    runtime_evidence_required: [精确中断时序, 跨服务业务实体完整性对账]
+
+  - pattern_id: RDP-20
+    family: message_consistency
+    risk_name: 消息确认、消费Offset、检查点与业务输出不在同一原子边界，重放也没有去重
+    consequence_name: 消费者崩溃后出现消息丢失、重复处理、乱序或部分状态
+    defect_name: "风险：消息确认、消费Offset、检查点与业务输出不在同一原子边界，重放也没有去重；后果：消费者崩溃后出现消息丢失、重复处理、乱序或部分状态"
+    mechanism_summary: 消息处理结果与消费位置更新顺序不原子，崩溃恢复从错误位置继续。
+    applicable_fault_types: [pod-delete, network-loss]
+    evidence_mode: static_plus_runtime
+    static_evidence_required: [消息处理、业务输出与Offset/ack/checkpoint顺序, 事务、幂等、去重与重放反证]
+    runtime_evidence_required: [中断前后Offset与业务输出, 丢失、重复、乱序和对账结果]

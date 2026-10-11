@@ -1,0 +1,50 @@
+schema_version: episode-public.v0.1
+episode_id: EPI-OTEL-ACCOUNTING-CPU-D0-001
+title: OTel accounting high CPU five-minute D0 qualification
+status: locked
+application:
+  name: otel-demo
+  namespace: otel-demo
+  candidate_services: [accounting]
+  release_ref: otel-demo-2.2.0
+agent_goal: Execute one real high-CPU fault against one accounting Pod for five minutes, then recover and verify recovery.
+environment_snapshot:
+  snapshot_id: d0-remote-runtime
+  health_prerequisites:
+    - Exactly one accounting Pod is Ready when the Trial starts.
+    - No D0-created ChaosBlade resource remains from the previous Trial.
+  reset_contract:
+    - Remove only resources created by the current D0 Trial.
+    - Confirm the accounting Pod is Ready before continuing.
+workload:
+  profile: no formal business workload baseline; direct fault-effect observation only
+  slo:
+    - The accounting Pod remains observable through Kubernetes and Metrics API.
+observability:
+  metrics: [Kubernetes Metrics API CPU]
+  traces: []
+  logs: []
+  kubernetes: [Pod identity and Ready status, ChaosBlade CR inventory]
+source_access:
+  mode: none
+  allowed_paths: []
+  forbidden_paths: [/workspace/private, /workspace/ground_truth]
+action_space:
+  allowed_trigger_classes: [cpu-load]
+  allowed_target_scope: [one accounting Pod in otel-demo]
+  forbidden_actions:
+    - Do not target another namespace or service.
+    - Do not run more than one active fault.
+    - Do not modify source code or deployment manifests.
+budget:
+  max_experiments: 1
+  max_duration_minutes: 5
+  max_concurrent_faults: 1
+safety_constraints:
+  - The Agent must discover the current Pod name and UID itself.
+  - The Agent must recover the fault after five minutes.
+expected_agent_output:
+  - Fault target, effect evidence, recovery action, and recovery evidence.
+leakage_controls:
+  - The exact Pod name and UID are not present in the Agent prompt.
+  - Independent observer results are not exposed to the Agent.

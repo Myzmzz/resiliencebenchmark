@@ -18,6 +18,7 @@ import EvaluationTaskMonitorPage from "./features/evaluation/pages/EvaluationTas
 import EvaluationUnitDetailPage from "./features/evaluation/pages/EvaluationUnitDetailPage";
 import EvaluationResultsPage from "./features/evaluation/pages/EvaluationResultsPage";
 import EvaluationResultDetailPage from "./features/evaluation/pages/EvaluationResultDetailPage";
+import Phase1DefectsPage from "./pages/Phase1DefectsPage";
 import "./features/evaluation/evaluation.css";
 
 /** 子路由集中定义，测试用 createMemoryRouter 复用。 */
@@ -37,7 +38,7 @@ export const routeChildren: RouteObject[] = [
   { path: "agents/units", element: <EpisodesPage /> },
   { path: "agents/skills", element: <PlaceholderPage title="Skill 管理" milestone="Phase 2" /> },
   // 题库（M4）
-  { path: "episodes/defects", element: <PlaceholderPage title="缺陷库" milestone="M4" /> },
+  { path: "episodes/defects", element: <Phase1DefectsPage /> },
   { path: "episodes/disturbances", element: <PlaceholderPage title="扰动库" milestone="M4" /> },
   { path: "episodes/list", element: <PlaceholderPage title="Episode 管理" milestone="M4" /> },
   // 评测

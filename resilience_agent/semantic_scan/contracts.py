@@ -88,7 +88,7 @@ class ResidualHypothesis(ContractModel):
 
 
 class TemplateFinding(ContractModel):
-    finding_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])-F[0-9]{2,4}$")
+    finding_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)-F[0-9]{2,4}$")
     proposed_d_class: DClass
     evidence_explanation: str = Field(min_length=8, max_length=4000)
     evidence_ids: list[str] = Field(default_factory=list, max_length=40)
@@ -119,7 +119,7 @@ class TemplateAgentOutput(ContractModel):
     """Structured response produced by one template-specialized subagent."""
 
     schema_version: Literal["template-agent-output.v1"] = "template-agent-output.v1"
-    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])$")
+    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)$")
     defect_name: str = Field(min_length=3, max_length=200)
     scan_status: Literal["not_found", "candidate", "insufficient_evidence", "scan_failed"]
     findings: list[TemplateFinding] = Field(default_factory=list, max_length=20)
@@ -136,8 +136,8 @@ class TemplateAgentOutput(ContractModel):
 
 class VerificationDecision(ContractModel):
     schema_version: Literal["verification-decision.v1"] = "verification-decision.v1"
-    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])$")
-    finding_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])-F[0-9]{2,4}$")
+    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)$")
+    finding_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)-F[0-9]{2,4}$")
     verdict: Literal["confirmed", "rejected", "inconclusive"]
     evidence_reproducible: bool
     mechanism_static_support: Literal["strong", "partial", "weak"]
@@ -158,8 +158,8 @@ class TemplateMatch(ContractModel):
     schema_version: Literal["resilience-template-match.v1"] = (
         "resilience-template-match.v1"
     )
-    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])$")
-    finding_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])-F[0-9]{2,4}$")
+    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)$")
+    finding_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)-F[0-9]{2,4}$")
     defect_name: str
     d_class: DClass
     evidence_explanation: str
@@ -180,7 +180,7 @@ class TemplateMatch(ContractModel):
 
 
 class TemplateCoverage(ContractModel):
-    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])$")
+    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)$")
     status: Literal[
         "matched",
         "not_found",
@@ -236,7 +236,7 @@ class SemanticScanReport(ContractModel):
 
 
 class TemplatePlan(ContractModel):
-    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|1[0-4])$")
+    template_id: str = Field(pattern=r"^RD-(?:0[1-9]|10)$")
     codegraph_focus: list[str] = Field(min_length=1, max_length=12)
     kubernetes_focus: list[str] = Field(default_factory=list, max_length=12)
     priority: Literal["low", "medium", "high"]
@@ -245,23 +245,21 @@ class TemplatePlan(ContractModel):
 
 class CoordinatorPlan(ContractModel):
     schema_version: Literal["semantic-scan-plan.v1"] = "semantic-scan-plan.v1"
-    plans: list[TemplatePlan] = Field(min_length=1, max_length=12)
+    plans: list[TemplatePlan] = Field(min_length=1, max_length=10)
 
     @model_validator(mode="after")
     def validate_templates(self) -> CoordinatorPlan:
         allowed = {
             "RD-01",
             "RD-02",
+            "RD-03",
+            "RD-04",
             "RD-05",
             "RD-06",
             "RD-07",
             "RD-08",
             "RD-09",
             "RD-10",
-            "RD-11",
-            "RD-12",
-            "RD-13",
-            "RD-14",
         }
         observed = [item.template_id for item in self.plans]
         if len(observed) != len(set(observed)) or not set(observed) <= allowed:

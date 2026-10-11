@@ -11,7 +11,6 @@ from backend.models.harness import (
     HarnessMCP,
     HarnessModels,
     HarnessSafety,
-    HarnessVersionPin,
     HarnessesRegistry,
 )
 
@@ -60,10 +59,6 @@ def parse_harnesses(repo_path: Path) -> Optional[HarnessesRegistry]:
             if "safety" in harness_data:
                 safety = HarnessSafety(**harness_data["safety"])
                 harness_data_with_id["safety"] = safety
-
-            if "version_pin" in harness_data:
-                version_pin = HarnessVersionPin(**harness_data["version_pin"])
-                harness_data_with_id["version_pin"] = version_pin
 
             harnesses.append(HarnessConfig(**harness_data_with_id))
 

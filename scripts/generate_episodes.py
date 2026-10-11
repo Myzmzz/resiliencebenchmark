@@ -14,7 +14,7 @@ from resilience_agent.semantic_scan.episode_generator import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG = REPO_ROOT / "resilience_agent/config/episode-generation.rd14-positive.yaml"
+DEFAULT_CONFIG = REPO_ROOT / "resilience_agent/config/episode-generation.rd05-positive.yaml"
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -76,19 +76,17 @@ class SemanticScanConfig(ConfigModel):
         default_factory=lambda: [
             "RD-01",
             "RD-02",
+            "RD-03",
+            "RD-04",
             "RD-05",
             "RD-06",
             "RD-07",
             "RD-08",
             "RD-09",
             "RD-10",
-            "RD-11",
-            "RD-12",
-            "RD-13",
-            "RD-14",
         ],
         min_length=1,
-        max_length=12,
+        max_length=10,
     )
     planning_mode: Literal["model", "deterministic"] = "model"
 

@@ -291,39 +291,6 @@ function HarnessDetails({ harness }: { harness: HarnessConfig }) {
         </>
       )}
 
-      {harness.version_pin && (
-        <>
-          <Title level={5} style={{ marginTop: 24 }}>版本锁定</Title>
-          <Descriptions column={1} bordered size="small">
-            {harness.version_pin.upstream && (
-              <Descriptions.Item label="上游">{harness.version_pin.upstream}</Descriptions.Item>
-            )}
-            {harness.version_pin.package_version && (
-              <Descriptions.Item label="包版本">{harness.version_pin.package_version}</Descriptions.Item>
-            )}
-            {harness.version_pin.commit && (
-              <Descriptions.Item label="提交">
-                <code>{harness.version_pin.commit}</code>
-              </Descriptions.Item>
-            )}
-            {harness.version_pin.verification_status && (
-              <Descriptions.Item label="验证状态">
-                <Tag color="green">{harness.version_pin.verification_status}</Tag>
-              </Descriptions.Item>
-            )}
-          </Descriptions>
-          {harness.version_pin.note && (
-            <Alert
-              message="备注"
-              description={harness.version_pin.note}
-              type="info"
-              showIcon
-              style={{ marginTop: 16 }}
-            />
-          )}
-        </>
-      )}
-
       {harness.isolation && Object.keys(harness.isolation).length > 0 && (
         <>
           <Title level={5} style={{ marginTop: 24 }}>隔离配置</Title>

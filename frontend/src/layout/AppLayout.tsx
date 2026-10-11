@@ -3,6 +3,7 @@ import type { MenuProps } from "antd";
 import { Boxes, Bot, Library, Gauge, Database } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import HealthIndicator from "../components/HealthIndicator";
+import AppErrorBoundary from "../components/AppErrorBoundary";
 import { menuSelectionForPath } from "./menuSelection";
 
 const iconStyle = { width: 16, height: 16, verticalAlign: -3 };
@@ -41,7 +42,7 @@ const menuItems: MenuProps["items"] = [
     icon: <Library style={iconStyle} />,
     label: "题库",
     children: [
-      { key: "/episodes/defects", label: "缺陷库" },
+      { key: "/episodes/defects", label: "第一阶段 · 核心测试" },
       { key: "/episodes/disturbances", label: "扰动库" },
       { key: "/episodes/list", label: "Episode 管理" },
     ],
@@ -89,7 +90,9 @@ export default function AppLayout() {
           <HealthIndicator />
         </Layout.Header>
         <Layout.Content style={{ background: "#F8FAFC" }}>
-          <Outlet />
+          <AppErrorBoundary key={pathname}>
+            <Outlet />
+          </AppErrorBoundary>
         </Layout.Content>
       </Layout>
     </Layout>

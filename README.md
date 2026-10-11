@@ -78,6 +78,21 @@ cd resiliencebenchmark
 find . -maxdepth 2 -type f | sort
 ```
 
+## 第一阶段缺陷验证台
+
+仓库内置一个面向开发者的核心功能测试工作台，覆盖 GitHub 源码拉取、CodeGraph 建图与查询、模板/缺陷扫描、Kubernetes Manifest/Live 扫描、Evidence 转换和当前合同回放。GitHub 拉取由用户定义仓库 URL、revision、目标目录、认证方式和期望账号；系统生成固定 clone/checkout 命令，凭据只使用本机 `gh`/Git credential，不接受或保存 Token。浏览器不能提交任意命令，每个功能都映射到固定执行器和严格输入合同。
+
+执行采用两阶段门禁：用户先编辑完整 JSON 输入并生成预览；后端只做路径规范化、Schema 校验和操作展开，不执行功能。用户核对输入摘要、实际操作和风险提示并明确勾选确认后，才创建一次异步运行。页面轮询展示有序执行日志、耗时、错误和最终结构化结果；单项完成后不会自动串联下一项或进入端到端流程。
+
+分别启动后端和前端：
+
+```bash
+make backend-dev
+make frontend-dev
+```
+
+访问 `http://127.0.0.1:5173/episodes/defects`。Git clone、CodeGraph 重建和模型扫描可能耗时较长或写入本地状态，预览中会单独标注；Kubernetes Live 扫描只执行读取，不提供 create/update/delete 能力。
+
 环境准备阶段可以执行静态验证、dry-run 和显式 kubeconfig 的只读集群资格检查；在 `benchmarkfactory.yaml` 的故障执行门槛全部通过前，不应执行真实故障注入。
 
 ```bash
@@ -107,12 +122,12 @@ make render-sock-shop
 make mirror-sock-shop-dry
 ```
 
-本阶段还提供四类 Agent 可用 MCP 的仓库实现：`k8s_ro` 负责受限 Kubernetes 只读对象、事件和 Pod 日志；`telemetry_ro` 负责 Prometheus、Jaeger、Loki 的结构化限窗查询；`source_ro` 负责锁定源码快照读取；`chaos_control` 负责带 baseline ledger、目标 UID 校验、持久截止时间和 cleanup ledger 的 ChaosBlade 控制。仓库已包含 loopback systemd 单元、固定提交部署器、端点资格检查和 Codex/Claude Code/DeepSeek Harness 单次运行器；本地的认证 HTTP/SSE 契约已通过，远端安装与 Harness 真实调用仍未资格化。每个 Episode 必须单独收窄 namespace、Telemetry service 和 Source application；共享集群的 Telemetry 还必须有上游强制 label scope，结果后过滤本身不构成硬租户隔离。
+本阶段还提供四类 Agent 可用 MCP 的仓库实现：`k8s_ro` 负责受限 Kubernetes 只读对象、事件和 Pod 日志；`telemetry_ro` 负责 Prometheus、Jaeger、Loki 的结构化限窗查询；`source_ro` 负责锁定源码快照读取；`chaos_control` 负责带 baseline ledger、目标 UID 校验、持久截止时间和 cleanup ledger 的 ChaosBlade 控制。Benchmark 维护 BladeAI、Codex、Claude Code、DeepSeek Harness 的评测适配、Trial 隔离、静态权限 Profile、工具边界、轨迹归一化和结果校验；Harness 的安装、版本固定和主机部署由外部环境准备负责。每个 Episode 必须单独收窄 namespace、Telemetry service 和 Source application；共享集群的 Telemetry 还必须有上游强制 label scope，结果后过滤本身不构成硬租户隔离。权限 Profile 与手动资格检查说明见 [`harness/permission-profiles/README.md`](harness/permission-profiles/README.md)。
 
 ## 下一阶段
 
 1. 使用轮换后的 Harbor Robot Account 完成 Sock Shop digest 镜像同步并恢复 14 个 Deployment。
-2. 固定 SSH host key 并授权部署公钥，在目标主机运行固定版本的 DeepSeek Harness 安装脚本并执行 headless 资格检查。
+2. 由环境准备方提供可执行的 Harness 命令和运行时身份证据，Benchmark 仅执行 headless 调用资格检查。
 3. 按 `environment/mcp/runtime-contract.yaml` 安装 MCP host，每 Episode 渲染独立作用域，再验证 k8s、telemetry、source 和 chaos-control 实际端点。
 4. 轮换模型网关凭据后执行七模型 capability probe，冻结可比较的 Harness × Model 单元。
 5. 对历史 ChaosBlade 资源完成所有权确认和数据面残留核对，然后解锁首批 6–10 个 Episode。

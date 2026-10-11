@@ -327,6 +327,24 @@ def test_chaos_unit_allows_only_active_ledger_write_and_baseline_read_only():
     assert "-/var/lib/resiliencebenchmark/chaos-control/baseline" in text
 
 
+def test_manual_chaos_controller_is_private_and_required_by_write_service():
+    unit_dir = REPO_ROOT / "environment/mcp/host/systemd"
+    controller = (unit_dir / "resbench-chaos-controller.service").read_text(
+        encoding="utf-8"
+    )
+    chaos = (unit_dir / "resbench-mcp-chaos-control.service").read_text(
+        encoding="utf-8"
+    )
+
+    assert "User=resbench-chaos-control" in controller
+    assert "PrivateNetwork=yes" in controller
+    assert "StateDirectory=resiliencebenchmark/chaos-control/controller" in controller
+    assert "ReadWritePaths=/var/lib/resiliencebenchmark/chaos-control/controller" in controller
+    assert "Requires=resbench-chaos-controller.service" in chaos
+    assert "-/var/lib/resiliencebenchmark/chaos-control/controller" in chaos
+    assert "StateDirectoryMode=0700" in chaos
+
+
 def test_env_examples_do_not_contain_endpoint_or_secret_values():
     env_dir = REPO_ROOT / "environment/mcp/host/env"
     for path in env_dir.glob("*.env.example"):

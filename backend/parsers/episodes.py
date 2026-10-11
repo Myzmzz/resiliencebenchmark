@@ -19,7 +19,7 @@ from backend.models.episode import (
 
 def parse_episodes(repo_path: Path) -> List[Episode]:
     """
-    Parse all episode YAML files from tasks/examples/.
+    Parse current public Episode YAML files from tasks/examples/public/.
 
     Args:
         repo_path: Path to the resiliencebenchmark repository
@@ -27,15 +27,16 @@ def parse_episodes(repo_path: Path) -> List[Episode]:
     Returns:
         List of Episode objects
     """
-    episodes_dir = repo_path / "tasks" / "examples"
+    episodes_dir = repo_path / "tasks" / "examples" / "public"
 
     if not episodes_dir.exists():
         return []
 
     episodes = []
 
-    # Search for episode YAML files recursively
-    for yaml_file in episodes_dir.rglob("episode.*.yaml"):
+    # Historical multi-level examples use a different contract and are not part
+    # of the current public Episode API.
+    for yaml_file in episodes_dir.glob("episode.*.yaml"):
         try:
             episode = _parse_episode_file(yaml_file)
             if episode:

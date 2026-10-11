@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--validate-only",
         action="store_true",
-        help="Validate paths, prompts and the twelve-template registry without calling a model.",
+        help="Validate paths, prompts and the ten-template registry without calling a model.",
     )
     parser.add_argument("--run-id")
     parser.add_argument("--resume", action="store_true")

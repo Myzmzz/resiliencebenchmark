@@ -29,9 +29,10 @@ class EvidenceLedger:
                 if isinstance(node, dict):
                     candidates.append(self._node(node, query))
         elif isinstance(payload, dict):
-            for node in payload.get("nodes", []):
-                if isinstance(node, dict):
-                    candidates.append(self._node(node, query))
+            for key in ("nodes", "entryPoints", "affected"):
+                for node in payload.get(key, []):
+                    if isinstance(node, dict):
+                        candidates.append(self._node(node, query))
             for key in ("callers", "callees"):
                 for node in payload.get(key, []):
                     if isinstance(node, dict):
@@ -119,6 +120,12 @@ class EvidenceLedger:
         path = node.get("filePath")
         start = node.get("startLine")
         end = node.get("endLine")
+        start_line = int(start) if start else None
+        end_line = int(end) if end else None
+        if start_line is not None and end_line is None:
+            end_line = start_line
+        if end_line is not None and start_line is None:
+            start_line = end_line
         return self._make(
             kind=EvidenceKind.CODEGRAPH_NODE,
             statement=(
@@ -126,8 +133,8 @@ class EvidenceLedger:
                 f"selected by query: {query[:160]}"
             ),
             path=str(path) if path else None,
-            start_line=int(start) if start else None,
-            end_line=int(end) if end else None,
+            start_line=start_line,
+            end_line=end_line,
             symbol=str(node.get("qualifiedName") or node.get("name") or ""),
             source_hash=_sha(node),
         )

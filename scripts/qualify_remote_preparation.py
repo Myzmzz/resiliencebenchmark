@@ -71,7 +71,6 @@ def dry_run_report(env: Mapping[str, str], kubeconfig: Path | None, node: str | 
             "strict-ssh-key-authentication",
             "pinned-remote-repository-head",
             "source-manifest-eleven-locks",
-            "deepseek-root-and-resbench-version",
             "seven-mcp-units-and-listeners",
             "chaos-execution-disabled",
             "minimum-host-memory-available",
@@ -128,8 +127,6 @@ def ssh_base(runtime: Mapping[str, str]) -> list[str]:
 
 REMOTE_CHECK_SCRIPT = r'''set -eu
 repo_head="$(tr -d '\n' </opt/resiliencebenchmark/repo/.resbench-head)"
-root_dsh="$(/opt/resiliencebenchmark/deepseek-harness/bin/dsh --version)"
-resbench_dsh="$(runuser -u resbench -- /opt/resiliencebenchmark/deepseek-harness/bin/dsh --version)"
 source_summary="$(/opt/resiliencebenchmark/repo/.venv/bin/python - <<'PY'
 import json
 from pathlib import Path
@@ -159,8 +156,6 @@ listeners="$(ss -ltnH | awk '$4 ~ /127.0.0.1:18(08[1-4]|18[1-3])$/ {n++} END{pri
 chaos_execute="$(awk -F= '$1=="RESBENCH_CHAOS_EXECUTE_ENABLED" {gsub(/"/, "", $2); print $2}' /etc/resiliencebenchmark/mcp/chaos_control.env)"
 mem_available="$(awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo)"
 printf 'repo_head=%s\n' "$repo_head"
-printf 'root_dsh=%s\n' "$root_dsh"
-printf 'resbench_dsh=%s\n' "$resbench_dsh"
 printf 'source_summary=%s\n' "$source_summary"
 printf 'active_units=%s\n' "$active_units"
 printf 'listeners=%s\n' "$listeners"
@@ -248,8 +243,6 @@ def run_qualification(
             [
                 {"name": "ssh_and_remote_checks", "passed": True},
                 {"name": "repository_head", "passed": remote.get("repo_head") == runtime[EXPECTED_HEAD_ENV]},
-                {"name": "deepseek_root_version", "passed": remote.get("root_dsh") == "0.1.0-rc.7"},
-                {"name": "deepseek_resbench_version", "passed": remote.get("resbench_dsh") == "0.1.0-rc.7"},
                 {"name": "source_manifest", "passed": remote.get("source_summary") == "ok:11"},
                 {"name": "mcp_units", "passed": remote.get("active_units") == "7"},
                 {"name": "mcp_listeners", "passed": remote.get("listeners") == "7"},

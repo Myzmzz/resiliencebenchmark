@@ -1,15 +1,32 @@
 # Resilience Analysis Agent
 
-## V2：CodeGraph + Kubernetes + LangChain语义扫描
+## V6：“风险—后果”格式的ChaosBlade通用缺陷扫描
 
-当前生产候选实现已收敛为12类可用ChaosBlade验证的韧性缺陷。Controller通过显式配置的代码库路径执行CodeGraph `init/index/sync`；LangChain子Agent只能使用受限的`query/callers/callees/context`和结构化Kubernetes配置查询。
+当前活动注册表收敛为10个系统无关的韧性缺陷模式，并与已资格化的ChaosBlade 1.8.0 Kubernetes原子故障直接关联：
+
+每个缺陷名称由结构化字段自动生成：`风险：<risk_name>；后果：<consequence_name>`。
+
+| ID | 风险 | 后果 | ChaosBlade |
+| --- | --- | --- | --- |
+| RD-01 | 下游调用缺少超时和取消边界 | 请求长时间阻塞，超时后内部工作仍继续 | `network-delay` |
+| RD-02 | 网络丢包时重试和幂等保护不足 | 请求被放大，写操作重复或数据不一致 | `network-loss` |
+| RD-03 | CPU过载时缺少准入和拒绝保护 | 请求持续堆积，延迟和超时不断上升 | `cpu-load` |
+| RD-04 | 内存预算和数据结构容量缺少上限 | 服务OOM、卡顿或反复重启 | `memory-load` |
+| RD-05 | 关键服务缺少可接替的有效副本 | 单个实例故障导致整体服务不可用 | `pod-delete` / `pod-fail` |
+| RD-06 | 健康检查与真实业务状态不一致 | 故障实例继续接收流量或正常实例被重启 | `network-delay` / `pod-fail` |
+| RD-07 | 服务关闭前未排空在途工作 | 已接收的请求或消息丢失、重复执行 | `pod-delete` |
+| RD-08 | 实例恢复流程过早就绪或无法收敛 | Pod显示正常但业务迟迟不能恢复 | `pod-delete` / `pod-fail` |
+| RD-09 | 关键和非关键功能共享可耗尽资源 | 非关键功能耗尽资源并拖垮关键功能 | `network-delay` / `cpu-load` |
+| RD-10 | 状态写入、确认和重放缺少一致性保护 | 服务重启后数据丢失、重复或状态不完整 | `pod-delete` / `memory-load` |
+
+界面分列展示风险、后果与`plain_summary`。ChaosBlade只提供触发扰动；模板内部仍必须证明适用前提、潜伏条件、因果传播、不可接受结果、独立Oracle与恢复判据。
 
 编排使用LangGraph：
 
 ```text
 CodeGraph/K8s资格化
   -> 扫描计划
-  -> 12个模板专用无状态子Agent（隔离上下文）
+  -> 10个模板专用无状态子Agent（隔离上下文）
   -> 独立反证Verifier
   -> 确定性证据/D类/故障/目标/置信度门
   -> semantic-scan-report.json
@@ -24,13 +41,15 @@ uv run python scripts/run_semantic_scan.py \
   --config resilience_agent/config/semantic-scan.otel-demo.yaml
 ```
 
-RD-14正负对照：
+RD-05实例中断正负对照：
 
 ```bash
 uv run python scripts/run_semantic_scan.py \
-  --config resilience_agent/config/semantic-scan.rd14-positive.yaml
+  --config resilience_agent/config/semantic-scan.rd05-positive.yaml \
+  --run-id semantic-rd05-positive-v1
 uv run python scripts/run_semantic_scan.py \
-  --config resilience_agent/config/semantic-scan.rd14-negative.yaml
+  --config resilience_agent/config/semantic-scan.rd05-negative.yaml \
+  --run-id semantic-rd05-negative-v1
 ```
 
 一次网关/模型故障不会丢失进度：指定原Run ID加`--resume`即可重试未完成模板，前提是CodeGraph和Kubernetes输入Hash与检查点一致。
@@ -41,8 +60,8 @@ uv run python scripts/run_semantic_scan.py \
 
 ```bash
 uv run python scripts/generate_episodes.py \
-  --config resilience_agent/config/episode-generation.rd14-positive.yaml \
-  --scan-report artifacts/semantic-scan/semantic-rd14-positive-v4/semantic-scan-report.json
+  --config resilience_agent/config/episode-generation.rd05-positive.yaml \
+  --scan-report artifacts/semantic-scan/semantic-rd05-positive-v1/semantic-scan-report.json
 ```
 
 内部Episode保留缺陷证据、机制链、精确Pod UID、命令、扰动和Oracle；公开题目由`prompts/episode/agent_task.md`渲染，并在落盘前执行确定性泄漏检查。

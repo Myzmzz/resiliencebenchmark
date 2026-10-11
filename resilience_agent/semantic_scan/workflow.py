@@ -1,4 +1,4 @@
-"""LangGraph workflow coordinating twelve isolated LangChain subagents."""
+"""LangGraph workflow coordinating ten isolated LangChain subagents."""
 
 from __future__ import annotations
 

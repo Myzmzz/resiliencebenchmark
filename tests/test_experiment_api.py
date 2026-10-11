@@ -16,17 +16,25 @@ def client():
 
 
 def test_get_experiment_no_kubeconfig(client):
-    """测试无 KUBECONFIG 时返回模拟数据。"""
-    with patch.dict(os.environ, {"KUBECONFIG": ""}, clear=False):
+    """未显式配置 Benchmark kubeconfig 时返回未配置，不伪造集群。"""
+    with patch.dict(
+        os.environ,
+        {
+            "KUBECONFIG": "/tmp/unrelated-cluster-config",
+            "BENCHMARK_KUBECONFIG": "",
+        },
+        clear=False,
+    ):
         response = client.get("/api/v1/experiments/environment")
         assert response.status_code == 200
         data = response.json()
 
-        # 应该返回模拟数据
-        assert data["api_server"] == "https://10.0.0.12:6443"
-        assert data["k8s_version"] == "v1.29.3"
-        assert data["connection_status"] == "连接正常"
-        assert data["summary"]["node_count"] == 6
-        assert data["summary"]["namespace_count"] == 12
-        assert data["summary"]["pod_count"] == 86
-        assert data["summary"]["abnormal_pod_count"] == 3
+        assert data["api_server"] == ""
+        assert data["k8s_version"] == ""
+        assert data["connection_status"] == "未配置"
+        assert data["summary"] == {
+            "node_count": 0,
+            "namespace_count": 0,
+            "pod_count": 0,
+            "abnormal_pod_count": 0,
+        }

@@ -68,8 +68,27 @@ def test_semantic_config_registry_and_prompt_package_are_complete() -> None:
     prompts = PromptRepository(config.prompts_root)
 
     assert tuple(item.template_id for item in registry.templates) == ACTIVE_TEMPLATE_IDS
-    assert len({item.prompt_file for item in registry.templates}) == 12
+    assert len({item.prompt_file for item in registry.templates}) == 10
+    assert len({item.domain for item in registry.templates}) == 10
     assert all(item.fault_types for item in registry.templates)
+    assert all(item.plain_summary for item in registry.templates)
+    assert all(
+        item.defect_name == f"风险：{item.risk_name}；后果：{item.consequence_name}"
+        for item in registry.templates
+    )
+    assert all(item.boundary_exclusions for item in registry.templates)
+    assert {
+        fault.fault_type
+        for template in registry.templates
+        for fault in template.atomic_faults
+    } == {
+        "network-delay",
+        "network-loss",
+        "cpu-load",
+        "memory-load",
+        "pod-delete",
+        "pod-fail",
+    }
     common = prompts.read("common_system.md")
     verifier = prompts.read("verifier.md")
     assert "CodeGraph" in common
@@ -100,12 +119,12 @@ def test_tool_result_is_strictly_bounded() -> None:
     assert result["truncated_to_context_budget"] is True
 
     positive = load_semantic_scan_config(
-        REPO_ROOT / "resilience_agent/config/semantic-scan.rd14-positive.yaml"
+        REPO_ROOT / "resilience_agent/config/semantic-scan.rd05-positive.yaml"
     )
     negative = load_semantic_scan_config(
-        REPO_ROOT / "resilience_agent/config/semantic-scan.rd14-negative.yaml"
+        REPO_ROOT / "resilience_agent/config/semantic-scan.rd05-negative.yaml"
     )
-    assert positive.active_template_ids == negative.active_template_ids == ["RD-14"]
+    assert positive.active_template_ids == negative.active_template_ids == ["RD-05"]
     assert positive.kubernetes.authoritative_for_namespace is True
     assert negative.kubernetes.authoritative_for_namespace is True
 
@@ -205,6 +224,7 @@ def test_codegraph_driver_controller_initializes_and_indexes_once(tmp_path: Path
     manifest = driver.ensure_index()
 
     assert manifest.node_count == 2
+    assert driver.last_index_action == "indexed"
     assert manifest.index_sha256
     assert any("init" in call for call in calls)
     assert any("index" in call for call in calls)
@@ -329,7 +349,7 @@ class FakeAgents:
         )
 
     def analyze(self, template, context):
-        if template.template_id != "RD-14":
+        if template.template_id != "RD-05":
             return (
                 TemplateAgentOutput(
                     template_id=template.template_id,
@@ -357,13 +377,13 @@ class FakeAgents:
         evidence_id = evidence.evidence_id
         return (
             TemplateAgentOutput(
-                template_id="RD-14",
+                template_id="RD-05",
                 defect_name=template.defect_name,
                 scan_status="candidate",
-                explanation="Synthetic RD-14 candidate result.",
+                explanation="Synthetic RD-05 candidate result.",
                 findings=[
                     TemplateFinding(
-                        finding_id="RD-14-F01",
+                        finding_id="RD-05-F01",
                         proposed_d_class=DClass.D1,
                         evidence_explanation="One critical route is served by one unprotected replica.",
                         evidence_ids=[evidence_id],
@@ -461,8 +481,11 @@ spec:
     ).run()
 
     assert report.question_eligible_count == 1
-    assert report.matches[0].template_id == "RD-14"
-    assert report.matches[0].defect_name == "单副本与中断保护缺失"
+    assert report.matches[0].template_id == "RD-05"
+    assert report.matches[0].defect_name == (
+        "风险：关键服务缺少可接替的有效副本；"
+        "后果：单个实例故障导致整体服务不可用"
+    )
     assert report.matches[0].evidence_explanation
     assert report.matches[0].mechanism_chain
     assert report.matches[0].available_fault_types[0].fault_type == "pod-delete"
@@ -489,7 +512,7 @@ spec:
         + "\n",
         encoding="utf-8",
     )
-    active_templates = ["RD-01", "RD-02", "RD-05", "RD-06"]
+    active_templates = ["RD-01", "RD-02", "RD-03", "RD-04"]
     config = load_semantic_scan_config(CONFIG)
     config = config.model_copy(
         update={
@@ -695,7 +718,7 @@ def test_provider_structured_output_failure_falls_back_to_tool_strategy() -> Non
 
     result = agents._invoke_with_structured_fallback(
         "provider",
-        {"task": "RD-09"},
+        {"task": "RD-04"},
         TemplateAgentOutput,
         fallback_factory=lambda: "tool",
     )
@@ -741,9 +764,12 @@ def _episode_source_report() -> SemanticScanReport:
         source_hash="a" * 64,
     )
     match = TemplateMatch(
-        template_id="RD-14",
-        finding_id="RD-14-F001",
-        defect_name="单副本与中断保护缺失",
+        template_id="RD-05",
+        finding_id="RD-05-F001",
+        defect_name=(
+            "风险：关键服务缺少可接替的有效副本；"
+            "后果：单个实例故障导致整体服务不可用"
+        ),
         d_class=DClass.D1,
         evidence_explanation="One critical cart workload has one declared replica.",
         evidence=[evidence],
@@ -780,12 +806,12 @@ def _episode_source_report() -> SemanticScanReport:
         provenance={"verified_evidence_ids": [evidence.evidence_id]},
     )
     return SemanticScanReport(
-        run_id="semantic-rd14-positive-fixture",
+        run_id="semantic-rd05-positive-fixture",
         generated_at="2026-08-24T00:00:00Z",
         codegraph=CodeGraphManifest(
             codegraph_version="0.9.4",
             codebase_path="/fixture",
-            source_identity="rd14-positive-v1",
+            source_identity="rd05-instance-positive-v1",
             initialized=True,
             file_count=1,
             node_count=6,
@@ -801,12 +827,12 @@ def _episode_source_report() -> SemanticScanReport:
             manifest_sha256="c" * 64,
             authoritative_for_namespace=True,
         ),
-        template_registry_version="active-chaosblade-12.v1",
+        template_registry_version="generic-chaosblade-10.v4",
         model={"provider": "fixture"},
         matches=[match],
         coverage=[
             TemplateCoverage(
-                template_id="RD-14",
+                template_id="RD-05",
                 status="matched",
                 explanation="Fixture match confirmed.",
             )
@@ -820,7 +846,7 @@ def test_episode_compiler_generates_one_private_and_one_public_task_per_match(
     tmp_path: Path,
 ) -> None:
     config = load_episode_generation_config(
-        REPO_ROOT / "resilience_agent/config/episode-generation.rd14-positive.yaml"
+        REPO_ROOT / "resilience_agent/config/episode-generation.rd05-positive.yaml"
     ).model_copy(update={"output_dir": tmp_path})
 
     report = EpisodeCompiler(config).compile(_episode_source_report())
@@ -856,7 +882,7 @@ def test_episode_compiler_reports_duplicate_findings_without_aborting(
     tmp_path: Path,
 ) -> None:
     config = load_episode_generation_config(
-        REPO_ROOT / "resilience_agent/config/episode-generation.rd14-positive.yaml"
+        REPO_ROOT / "resilience_agent/config/episode-generation.rd05-positive.yaml"
     ).model_copy(update={"output_dir": tmp_path})
     scan = _episode_source_report()
     scan = scan.model_copy(update={"matches": [scan.matches[0], scan.matches[0]]})
@@ -876,7 +902,7 @@ def test_episode_compiler_skips_findings_without_verified_chaosblade_actuator(
     tmp_path: Path,
 ) -> None:
     config = load_episode_generation_config(
-        REPO_ROOT / "resilience_agent/config/episode-generation.rd14-positive.yaml"
+        REPO_ROOT / "resilience_agent/config/episode-generation.rd05-positive.yaml"
     ).model_copy(update={"output_dir": tmp_path})
     scan = _episode_source_report()
     unsupported = scan.matches[0].model_copy(
@@ -905,7 +931,7 @@ def test_episode_compiler_prefers_component_binding_and_caps_codegraph_entrypoin
     tmp_path: Path,
 ) -> None:
     config = load_episode_generation_config(
-        REPO_ROOT / "resilience_agent/config/episode-generation.rd14-positive.yaml"
+        REPO_ROOT / "resilience_agent/config/episode-generation.rd05-positive.yaml"
     )
     cart_binding = config.runtime_bindings[0]
     checkout_binding = cart_binding.model_copy(

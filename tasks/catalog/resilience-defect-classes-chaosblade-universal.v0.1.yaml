@@ -1,0 +1,364 @@
+catalog_version: resilience-defect-catalog-chaosblade.v0.1
+catalog_id: resilience-defect-classes-chaosblade-universal-5
+description: 与 ChaosBlade 原子故障能力紧密关联的通用韧性缺陷模式。这些模式与系统无关，可使用标准 ChaosBlade 命令触发。
+
+items:
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-CB-001
+    title: 网络丢包缺少重传处理
+    status: candidate
+    family: network
+    summary: 发生网络丢包时，应用缺少适当的重试或错误恢复机制导致故障或严重降级。
+    latent_defect:
+      description: TCP 重传延迟或 UDP 丢包在应用层没有得到优雅处理。
+      mechanism: 网络丢包导致连接停滞、数据传输不完整或硬故障，而不是透明恢复。
+      likely_locations: ["网络客户端库", "RPC 框架", "数据库连接", "消息队列客户端", "健康检查端点"]
+      risk_conditions: ["不可靠网络", "缺少应用层重试", "严格超时配置", "有状态连接缺少 keepalive"]
+
+    fault_trigger:
+      trigger_class: network_packet_loss
+      chaosblade_actuator:
+        command_template: "blade create network loss --percent {loss_percent} --interface {interface} --local-port {port} --timeout {duration}"
+        primary_params:
+          - name: loss_percent
+            description: "丢包百分比 (1-100)"
+            default: "30"
+            tuning_guidance: "从 10-20% 开始测试优雅降级，30-50% 用于严重故障场景"
+          - name: interface
+            description: "网络接口名称 (例如 eth0, docker0)"
+            default: "eth0"
+          - name: port
+            description: "目标本地端口"
+            default: ""
+            discovery: "使用 netstat 或 ss 查找服务端口"
+          - name: duration
+            description: "故障注入持续时间（秒）"
+            default: "60"
+        kubernetes_variant: "kubectl exec <pod> -- blade create network loss --percent {loss_percent} --interface eth0 --local-port {port}"
+        verification: "使用 blade status <uid> 确认激活；使用 tcpdump 观察丢包"
+        cleanup: "blade destroy <uid>"
+
+      actuator_candidates: ["ChaosBlade 网络丢包", "iptables DROP 规则", "tc netem loss"]
+      parameters: ["丢包百分比", "目标端口/网络接口", "持续时间窗口", "源/目标过滤器"]
+      guardrails: ["单个服务目标", "有界丢包率", "保护控制平面连接", "超过 50% 丢包前监控连通性"]
+
+    failure_outcome:
+      slo_impact: 在本应可恢复的有界丢包期间，请求成功率或延迟违反 SLO。
+      user_visible_symptom: 用户在轻微网络降级期间看到超时、不完整响应或连接错误。
+      expected_degradation: 请求失败与丢包直接相关，没有重试尝试或优雅退避。
+      invalid_outcomes: ["网络完全隔离", "丢包低于可观察阈值", "应用层重试成功掩盖了丢包"]
+
+    observable_evidence:
+      metrics: ["请求错误率", "请求延迟", "重试次数", "TCP 重传", "连接超时"]
+      traces: ["超时 span", "如有插桩则显示重试 span", "不完整的请求追踪"]
+      logs: ["连接超时", "断开的管道", "连接重置", "I/O 超时", "临时故障"]
+      kubernetes: ["pod 就绪状态可能波动", "网络策略未参与", "节点网络指标显示丢包"]
+      source: ["socket 选项缺少 SO_KEEPALIVE", "HTTP 客户端无重试策略", "缺少连接超时处理"]
+      chaosblade_verification: ["blade status 显示活跃的网络丢包实验", "tc qdisc show dev eth0 包含 loss 规则"]
+
+    recovery:
+      cleanup: ["blade destroy <uid> 移除丢包注入", "使用 ping/curl 验证连接恢复"]
+      verification: ["SLO 恢复到基线", "无活跃的 ChaosBlade 实验", "丢包指标恢复为零"]
+
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["网络丢包类", "ChaosBlade 网络丢包原语", "TCP 重传处理"]
+      forbidden_disclosures: ["锁定任务中的确切服务名称", "评估中使用的特定丢包百分比", "隐藏的端口号"]
+      answer_leakage_risks: ["配置注释提及基准测试用例", "硬编码的 blade 命令包含任务标识符"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-CB-002
+    title: 进程 CPU 饥饿缺少反压机制
+    status: candidate
+    family: resource
+    summary: 应用接受工作时不考虑 CPU 可用性，在 CPU 压力下缺少适当的排队或拒绝机制导致失败。
+    latent_defect:
+      description: 当 CPU 成为瓶颈时，缺少准入控制或反压机制来保护服务。
+      mechanism: CPU 密集型操作无限排队导致延迟激增并最终产生超时级联。
+      likely_locations: ["请求处理线程", "异步任务执行器", "CPU 密集型算法", "序列化/反序列化路径"]
+      risk_conditions: ["CPU 密集型端点", "无界请求队列", "缺少速率限制", "固定线程池"]
+
+    fault_trigger:
+      trigger_class: cpu_pressure
+      chaosblade_actuator:
+        command_template: "blade create cpu fullload --cpu-percent {percent} --timeout {duration}"
+        primary_params:
+          - name: percent
+            description: "目标 CPU 使用率百分比 (0-100)"
+            default: "80"
+            tuning_guidance: "使用 60-80% 进行饱和测试，90-100% 进行严重饥饿场景"
+          - name: duration
+            description: "CPU 燃烧持续时间（秒）"
+            default: "120"
+          - name: cpu_count
+            description: "要燃烧的 CPU 核心数（可选）"
+            default: ""
+            discovery: "使用 nproc 或 lscpu 确定核心数"
+        kubernetes_variant: "kubectl exec <pod> -- blade create cpu fullload --cpu-percent {percent}"
+        verification: "top 或 kubectl top pod 显示与目标百分比匹配的 CPU 使用率升高"
+        cleanup: "blade destroy <uid>"
+
+      actuator_candidates: ["ChaosBlade CPU 燃烧", "stress-ng cpu", "容器 CPU 限制降低"]
+      parameters: ["CPU 百分比", "燃烧持续时间", "核心数", "目标进程"]
+      guardrails: ["单个 pod 目标", "避免节点范围的 CPU 耗尽", "超过 90% 前监控延迟", "保护系统守护进程"]
+
+    failure_outcome:
+      slo_impact: 延迟 SLO 失败，而错误率可能保持可接受但响应太慢。
+      user_visible_symptom: 用户在 CPU 压力下看到响应缓慢、超时或完全无响应。
+      expected_degradation: 请求延迟随 CPU 利用率线性增长，没有早期拒绝或反压。
+      invalid_outcomes: ["服务正确地以 503 拒绝请求", "水平自动扩展补偿", "CPU 使用率低于饱和"]
+
+    observable_evidence:
+      metrics: ["CPU 利用率接近 100%", "请求延迟 p95/p99 激增", "线程池队列深度", "如果是 JVM 则有 GC 暂停时间"]
+      traces: ["服务端长处理 span", "慢追踪中不涉及下游依赖"]
+      logs: ["线程池饱和", "请求超时", "慢查询警告"]
+      kubernetes: ["CPU 节流秒数增加", "CPU 使用率接近限制", "无 OOMKill 事件"]
+      source: ["无界工作队列", "缺少速率限制器", "CPU 密集型操作无超时", "慢路径无断路器"]
+      chaosblade_verification: ["blade status 显示 cpu fullload 实验", "top 显示 blade 创建的 CPU 燃烧进程"]
+
+    recovery:
+      cleanup: ["blade destroy <uid>", "使用 top/kubectl top 验证 CPU 返回基线"]
+      verification: ["延迟返回基线", "CPU 利用率降至 50% 以下", "队列深度排空"]
+
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["CPU 资源饱和类", "ChaosBlade CPU 燃烧原语", "缺少准入控制"]
+      forbidden_disclosures: ["锁定用例中的确切 CPU 百分比", "隐藏端点", "特定线程池配置"]
+      answer_leakage_risks: ["部署清单中的基准 CPU 限制", "带有特定用例 CPU 值的测试脚本"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-CB-003
+    title: 内存分配激增缺少 OOM 保护
+    status: candidate
+    family: resource
+    summary: 应用无限制地分配内存并被 OOMKilled，而不是优雅降级或拒绝工作。
+    latent_defect:
+      description: 缺少内存配额强制、对象池或大数据处理的流式传输。
+      mechanism: 内存压力导致容器 OOMKill 和服务中断，而不是受控失败。
+      likely_locations: ["大负载处理", "缓存实现", "集合累积", "文件/流处理"]
+      risk_conditions: ["大请求负载", "无界缓存", "内存泄漏", "容器内存限制不匹配"]
+
+    fault_trigger:
+      trigger_class: memory_pressure
+      chaosblade_actuator:
+        command_template: "blade create mem load --mem-percent {percent} --rate {rate} --timeout {duration}"
+        primary_params:
+          - name: percent
+            description: "相对于可用内存的目标内存使用率百分比"
+            default: "70"
+            tuning_guidance: "使用 60-70% 测试优雅降级，80-95% 触发 OOM 场景"
+          - name: rate
+            description: "内存分配速率 (MB/s)"
+            default: "100"
+          - name: duration
+            description: "内存压力持续时间（秒）"
+            default: "180"
+          - name: mode
+            description: "ram（物理内存）或 cache（页缓存）"
+            default: "ram"
+        kubernetes_variant: "kubectl exec <pod> -- blade create mem load --mem-percent {percent}"
+        verification: "free -m 或 kubectl top pod 显示内存使用率升高"
+        cleanup: "blade destroy <uid>"
+
+      actuator_candidates: ["ChaosBlade 内存负载", "stress-ng vm", "大请求负载工作负载"]
+      parameters: ["内存百分比", "分配速率", "持续时间", "模式（ram/cache）"]
+      guardrails: ["单个 pod 目标", "监控 OOMKill", "避免节点内存耗尽", "设置持续时间限制以防止长时间中断"]
+
+    failure_outcome:
+      slo_impact: 可用性 SLO 由于 pod 重启而失败；延迟 SLO 可能在重启前由于 GC 压力而失败。
+      user_visible_symptom: 用户在服务重启前看到间歇性故障、连接重置或响应缓慢。
+      expected_degradation: 内存使用量在没有拒绝或流式传输的情况下增长；最终 OOMKill 或严重的 GC 暂停。
+      invalid_outcomes: ["内存限制未强制执行", "应用优雅地拒绝大请求", "流式模式处理大数据"]
+
+    observable_evidence:
+      metrics: ["容器内存使用量接近限制", "OOMKill 计数", "GC 暂停时间", "重启计数", "内存分配速率"]
+      traces: ["重启期间的追踪间隙", "OOMKill 前的延迟峰值"]
+      logs: ["OutOfMemoryError", "GC 开销超限", "容器被杀", "分配失败"]
+      kubernetes: ["lastState: OOMKilled", "重启计数增加", "内存工作集接近限制"]
+      source: ["无界集合增长", "大响应无流式传输", "缓存无淘汰", "缺少内存限制感知"]
+      chaosblade_verification: ["blade status 显示 mem load 实验", "free 命令显示与目标匹配的内存消耗"]
+
+    recovery:
+      cleanup: ["blade destroy <uid>", "等待 pod 替换和就绪"]
+      verification: ["内存使用量返回基线", "无进一步重启", "SLO 稳定"]
+
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["内存资源耗尽类", "ChaosBlade 内存负载原语", "缺少 OOM 保护"]
+      forbidden_disclosures: ["锁定用例中的确切内存百分比", "隐藏服务内存限制", "特定堆配置"]
+      answer_leakage_risks: ["带有特定基准内存限制的部署清单", "揭示答案的测试负载大小"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-CB-004
+    title: 网络延迟放大缺少超时调优
+    status: candidate
+    family: network
+    summary: 小的网络延迟通过调用链放大，因为超时预算没有按跳数调整。
+    latent_defect:
+      description: 每个服务层使用相同的绝对超时，不考虑调用深度或剩余预算。
+      mechanism: 一跳的适度网络延迟消耗整个请求预算，导致上游超时级联。
+      likely_locations: ["HTTP 客户端超时配置", "gRPC 截止时间设置", "数据库查询超时", "服务网格重试策略"]
+      risk_conditions: ["深层调用链", "统一超时常量", "无截止时间传播", "同步请求流"]
+
+    fault_trigger:
+      trigger_class: network_latency
+      chaosblade_actuator:
+        command_template: "blade create network delay --time {delay_ms} --offset {jitter_ms} --interface {interface} --local-port {port} --timeout {duration}"
+        primary_params:
+          - name: delay_ms
+            description: "网络延迟（毫秒）"
+            default: "500"
+            tuning_guidance: "使用 200-500ms 测试超时预算问题，1000-3000ms 用于严重延迟场景"
+          - name: jitter_ms
+            description: "随机抖动偏移（毫秒）"
+            default: "100"
+          - name: interface
+            description: "网络接口名称"
+            default: "eth0"
+          - name: port
+            description: "目标本地端口"
+            default: ""
+            discovery: "使用 netstat/ss 识别关键依赖端口"
+          - name: duration
+            description: "延迟注入持续时间（秒）"
+            default: "90"
+        kubernetes_variant: "kubectl exec <pod> -- blade create network delay --time {delay_ms} --interface eth0 --local-port {port}"
+        verification: "ping 或 curl 到目标显示与注入匹配的增加延迟；blade status 确认活跃"
+        cleanup: "blade destroy <uid>"
+
+      actuator_candidates: ["ChaosBlade 网络延迟", "tc netem delay", "代理延迟注入"]
+      parameters: ["延迟持续时间", "抖动", "目标服务/端口", "注入持续时间"]
+      guardrails: ["单跳目标", "延迟低于合理超时", "有界持续时间", "监控级联超时"]
+
+    failure_outcome:
+      slo_impact: 端到端 SLO 失败，而各个服务健康状态保持良好；超时错误占主导。
+      user_visible_symptom: 用户看到网关超时或缺失响应，而后端服务报告健康。
+      expected_degradation: 父请求在子请求完成前超时；超时比率随调用深度增加。
+      invalid_outcomes: ["超时按跳数正确分配预算", "异步模式打破同步链", "断路器正确打开"]
+
+    observable_evidence:
+      metrics: ["上游超时计数", "下游延迟增加", "调用深度与失败率的相关性"]
+      traces: ["子 span 在父超时后完成", "累积 span 持续时间超过父截止时间"]
+      logs: ["上下文截止时间超出", "请求超时", "上游超时而下游成功"]
+      kubernetes: ["所有 pod 就绪", "无资源压力", "服务网格指标中可见网络延迟"]
+      source: ["硬编码超时常量", "无上下文截止时间传播", "超时 > 父剩余预算"]
+      chaosblade_verification: ["blade status 显示网络延迟实验", "tc qdisc show 包含延迟规则"]
+
+    recovery:
+      cleanup: ["blade destroy <uid>", "使用 ping/curl 验证延迟返回基线"]
+      verification: ["超时率返回基线", "无活跃延迟实验", "端到端 SLO 恢复"]
+
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["网络延迟放大类", "ChaosBlade 网络延迟原语", "超时预算倒置"]
+      forbidden_disclosures: ["锁定用例中的确切延迟值", "特定调用链", "隐藏超时配置"]
+      answer_leakage_risks: ["带有特定基准超时值的配置文件", "命名目标服务的测试脚本"]
+
+  - schema_version: defect-spec.v0.1
+    defect_id: RBD-CB-005
+    title: 进程终止缺少状态恢复或幂等性
+    status: candidate
+    family: availability
+    summary: 请求处理期间的进程终止导致不一致状态或重启后的重复副作用。
+    latent_defect:
+      description: 缺少优雅关闭处理、预写日志或进行中操作的幂等性密钥。
+      mechanism: SIGKILL 或突然的 pod 终止中断状态更新，留下部分写入或丢失确认。
+      likely_locations: ["数据库事务处理", "消息确认", "文件写入", "状态机转换"]
+      risk_conditions: ["pod 驱逐", "OOMKill", "节点故障", "强制终止", "长时间运行的操作"]
+
+    fault_trigger:
+      trigger_class: process_kill
+      chaosblade_actuator:
+        command_template: "blade create process kill --process {process_name} --signal {signal}"
+        primary_params:
+          - name: process_name
+            description: "目标进程名称（例如 java, node, python）"
+            default: ""
+            discovery: "使用 ps aux 或 kubectl exec <pod> -- ps 识别主进程"
+          - name: signal
+            description: "终止信号（9 表示 SIGKILL，15 表示 SIGTERM）"
+            default: "9"
+            tuning_guidance: "使用 SIGKILL (9) 测试突然终止；SIGTERM (15) 测试优雅关闭"
+          - name: count
+            description: "终止进程的次数"
+            default: "1"
+        kubernetes_variant: "kubectl delete pod <pod> --force --grace-period=0  或  kubectl exec <pod> -- blade create process kill --process {process_name}"
+        verification: "kubectl get pods 显示重启计数增加；blade status 确认终止事件"
+        cleanup: "blade destroy <uid> 或等待 Kubernetes 重启 pod"
+
+      actuator_candidates: ["ChaosBlade 进程终止", "kubectl delete pod --force", "kill -9 命令", "容器重启"]
+      parameters: ["目标进程", "终止信号", "终止时机", "终止期间的流量负载"]
+      guardrails: ["单个 pod 目标", "尊重副本预算", "验证替换就绪性", "使用测试流量进行状态验证"]
+
+    failure_outcome:
+      slo_impact: 正确性 SLO 由于重复或缺失的操作而失败；可用性 SLO 在重启间隙期间失败。
+      user_visible_symptom: 用户在重启后看到重复的收费/订单、丢失的请求或不完整的操作。
+      expected_degradation: 终止时的进行中操作导致状态不一致或在没有去重的情况下被重放。
+      invalid_outcomes: ["优雅关闭完成所有工作", "预写日志确保恰好一次", "幂等性密钥防止重复"]
+
+    observable_evidence:
+      metrics: ["重启计数", "重复操作计数", "丢失请求计数", "终止期间的 5xx 错误"]
+      traces: ["带有进程终止时机的不完整追踪", "具有相同意图的重复事务追踪"]
+      logs: ["收到 SIGKILL 或缺少关闭日志", "重复实体 ID", "写入中断", "未发送确认"]
+      kubernetes: ["pod lastState: Error 或 Killed", "重启计数增加", "事件中的终止原因"]
+      source: ["无 SIGTERM 处理程序", "缺少事务回滚", "副作用完成前确认", "无幂等性密钥检查"]
+      chaosblade_verification: ["blade status 显示已执行进程终止实验", "kubectl describe pod 显示终止事件"]
+
+    recovery:
+      cleanup: ["如果重复则 blade destroy <uid>", "等待 pod 替换和就绪", "验证或清理重复的测试数据"]
+      verification: ["重启计数稳定", "新测试流量中无重复操作", "SLO 基线恢复"]
+
+    leakage_controls:
+      agent_visible: true
+      public_hints: ["进程终止韧性类", "ChaosBlade 进程终止原语", "状态恢复和幂等性"]
+      forbidden_disclosures: ["锁定用例中的确切操作时机", "特定实体 ID", "隐藏状态验证逻辑"]
+      answer_leakage_risks: ["嵌入用例标识符的测试实体 ID", "带有基准注释的优雅关闭代码"]
+
+metadata:
+  chaosblade_version: "1.7.x 及更高版本"
+  design_rationale: |
+    这5个通用缺陷模式直接映射到 ChaosBlade 最基本且与系统无关的故障注入原语：
+
+    1. **RBD-CB-001（网络丢包）**: 映射到 `blade create network loss` - 测试应用层对不可靠网络的韧性
+    2. **RBD-CB-002（CPU 饥饿）**: 映射到 `blade create cpu fullload` - 测试 CPU 压力下的准入控制和反压
+    3. **RBD-CB-003（内存压力）**: 映射到 `blade create mem load` - 测试内存配额感知和优雅 OOM 处理
+    4. **RBD-CB-004（网络延迟）**: 映射到 `blade create network delay` - 测试跨调用链的超时预算管理
+    5. **RBD-CB-005（进程终止）**: 映射到 `blade create process kill` - 测试突然终止时的状态恢复和幂等性
+
+    每个模式：
+    - 提供带参数指导的明确 ChaosBlade 命令模板
+    - 包含容器/虚拟机和 Kubernetes 执行变体
+    - 指定验证和清理程序
+    - 跨技术栈（Java、Go、Python、Node.js、.NET）通用应用
+    - 映射到可观察的故障模式而非实现细节
+    - 包含动态参数解析的发现指导（端口、进程、接口）
+
+  usage_guidance: |
+    使用这些模板生成基准测试：
+
+    1. **参数发现阶段**：
+       - 使用 netstat/ss 识别目标端口
+       - 使用 ps/top 识别进程名称
+       - 使用 kubectl describe 识别资源限制
+       - 使用 ip addr 识别网络接口
+
+    2. **故障注入执行**：
+       - 始终验证 ChaosBlade 安装：`blade version`
+       - 创建实验：`blade create <target> <action> <params>`
+       - 从输出中记录实验 UID
+       - 验证活跃状态：`blade status <uid>`
+       - 使用指标/日志/追踪监控影响
+       - 清理：`blade destroy <uid>`
+
+    3. **证据收集**：
+       - 在注入前/期间/后捕获指标
+       - 收集显示故障传播的追踪
+       - 保存带有故障签名的日志
+       - 如适用则记录 Kubernetes 事件
+       - 验证 blade status 输出以获取审计跟踪
+
+    4. **通用适用性**：
+       - 这些模式适用于任何支持 ChaosBlade 的平台（Linux、Kubernetes、Docker）
+       - 无特定语言假设
+       - 通过标准遥测（指标、追踪、日志）可观察
+       - 可以组合用于复合故障场景

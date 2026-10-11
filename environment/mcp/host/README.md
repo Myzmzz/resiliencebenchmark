@@ -34,6 +34,13 @@ v0.6.2 verifier usage only. They reuse the same per-Episode env files, token,
 namespace, application, and telemetry scope as the corresponding Streamable HTTP
 read-only service. There is intentionally no `chaos_control` SSE unit.
 
+`resbench-chaos-controller.service` is a separate local supervisor process. It
+renews a private, short-lived process lease every 30 seconds. Write-enabled
+`chaos_control` requires that lease to be unexpired, to contain the configured
+controller id, and to reference the currently live supervisor PID. Stopping or
+restarting the supervisor therefore makes new writes fail closed immediately;
+the MCP watchdog remains responsible for already-owned cleanup handles.
+
 The read-only services use strict systemd hardening and do not receive writable
 runtime paths. `chaos_control` is also hardened, but it is allowed to write only
 its active cleanup ledger under `/var/lib/resiliencebenchmark/chaos-control/active`.
@@ -64,6 +71,14 @@ set in the runtime env file. It enforces a singleton active experiment contract
 and requires the service-managed ledger plus its duration watchdog so cleanup is
 durable across process restarts. Historical ChaosBlade resources that are not
 owned by this controller must be reconciled outside the MCP service.
+
+For a manual Codex TUI run, first complete a fresh formal 600-second baseline,
+then run `scripts/prepare_manual_codex_session.py`. The preparer accepts only a
+qualified report no more than 15 minutes old, re-resolves exactly one Ready Pod,
+requires global ChaosBlade inventory to be zero, issues a one-time target-bound
+baseline token, and writes the runtime bundle to a mode-`0600` file under
+`/run/resiliencebenchmark/manual-codex`. The Agent may read that exact file, but
+must never receive unrestricted access to the controller ledger or secret root.
 
 ## Install
 

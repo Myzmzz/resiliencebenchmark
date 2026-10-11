@@ -37,21 +37,6 @@ export interface HarnessSafety {
   deny_unscoped_shell?: boolean;
 }
 
-export interface HarnessVersionPin {
-  upstream?: string;
-  distribution?: string;
-  channel?: string;
-  package_version?: string;
-  npm_dist_tag_policy?: string;
-  npm_integrity?: string;
-  runtime_lock?: string;
-  runtime_lock_sha256?: string;
-  git_tag?: string;
-  commit?: string;
-  verification_status?: string;
-  note?: string;
-}
-
 export interface HarnessConfig {
   id: string;
   kind: string;
@@ -64,7 +49,6 @@ export interface HarnessConfig {
   trace?: Record<string, string>;
   models: HarnessModels;
   safety: HarnessSafety;
-  version_pin?: HarnessVersionPin;
 }
 
 export interface HarnessesRegistry {

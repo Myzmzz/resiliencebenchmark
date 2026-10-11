@@ -43,6 +43,7 @@ SERVICE_NAMES = (
     "source_ro_sse",
 )
 UNIT_NAMES = (
+    "resbench-chaos-controller.service",
     "resbench-mcp-k8s-ro.service",
     "resbench-mcp-telemetry-ro.service",
     "resbench-mcp-source-ro.service",

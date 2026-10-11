@@ -42,6 +42,8 @@ def test_get_episodes_with_real_data(client):
     data = response.json()
 
     assert isinstance(data, list)
+    assert all(item["status"] != "error" for item in data)
+    assert all("multi-level" not in item["episode_id"] for item in data)
 
     # If episodes exist, check structure
     if len(data) > 0:
