@@ -1,0 +1,7 @@
+schema_version: stage2-permission-profile.v1
+profile_id: p1-no-telemetry-mcp
+mcp_servers: [k8s_ro, source_ro, chaos_control]
+bladeai_native:
+  kubernetes_read: true
+  kubernetes_metrics: true
+  chaosblade_execute: true

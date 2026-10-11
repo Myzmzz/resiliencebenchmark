@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly DSH_PACKAGE='@deepseek-ai/dsh@0.1.0-rc.7'
-readonly DSH_EXPECTED_INTEGRITY='sha512-ZceDCJ8FAywih+USW/OMk9jEhunlvJBGEz4kqrhau23hPzbciOazZrywH0nBRsaalSeAJ1JGBmjtw4OSjToStw=='
+readonly DSH_PACKAGE='@deepseek-ai/dsh@0.1.5-rc.2'
+readonly DSH_EXPECTED_INTEGRITY='sha512-8Xc8hCQHcIWRmTCVU/xZdp6/qMsWMeAd2ObChKDEsfhUPJFXx6H0lgeb1DxUMD86HZrrVN+1bCvn1ppjZ/fOxw=='
 readonly DSH_LOCK_SHA256='3fd8d9fe3f91cc780d70dc443977edf077e054c756c1eb248b63fe2e64ad9f72'
 readonly DSH_INSTALL_ROOT='/opt/resiliencebenchmark/deepseek-harness'
 readonly DSH_NODE_BINARY="$DSH_INSTALL_ROOT/bin/node"
@@ -59,11 +59,11 @@ const fs = require('fs')
 const lock = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
 const expectedIntegrity = process.argv[3]
 const top = lock.packages?.['node_modules/@deepseek-ai/dsh']
-if (!top || top.version !== '0.1.0-rc.7' || top.integrity !== expectedIntegrity) {
+if (!top || top.version !== '0.1.5-rc.2' || top.integrity !== expectedIntegrity) {
   throw new Error('top-level DSH lock entry does not match the repository pin')
 }
 for (const [path, info] of Object.entries(lock.packages || {})) {
-  if (/(^|\/)node_modules\/@deepseek-ai\/dsh(?:$|[^/]+$)/.test(path) && info.version !== '0.1.0-rc.7') {
+  if (/(^|\/)node_modules\/@deepseek-ai\/dsh(?:$|[^/]+$)/.test(path) && info.version !== '0.1.5-rc.2') {
     throw new Error('runtime lock contains a non-rc.7 DSH package')
   }
   if (path && info.resolved && !info.link && !info.integrity) {
@@ -122,7 +122,7 @@ rm -f -- "$wrapper_tmp"
 trap - EXIT
 
 installed_version="$(npm --prefix "$DSH_INSTALL_ROOT" list @deepseek-ai/dsh --depth=0 --json | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const x=JSON.parse(s);process.stdout.write(x.dependencies["@deepseek-ai/dsh"].version)})')"
-if [[ "$installed_version" != '0.1.0-rc.7' ]]; then
+if [[ "$installed_version" != '0.1.5-rc.2' ]]; then
   echo "unexpected installed version: $installed_version" >&2
   exit 1
 fi
@@ -135,7 +135,7 @@ const fs = require('fs')
 const tree = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
 function verify(dependencies) {
   for (const [name, info] of Object.entries(dependencies || {})) {
-    if ((name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-')) && info.version !== '0.1.0-rc.7') {
+    if ((name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-')) && info.version !== '0.1.5-rc.2') {
       throw new Error('installed dependency tree contains a non-rc.7 DSH package')
     }
     verify(info.dependencies)

@@ -1,0 +1,47 @@
+{
+  "schema_version": "semantic-resilience-scan.v1",
+  "run_id": "semantic-generic-contract-fixture",
+  "generated_at": "2026-08-28T00:00:00Z",
+  "codegraph": {
+    "codegraph_version": "0.9.4",
+    "codebase_path": "/contract-fixture",
+    "source_identity": "generic-contract-fixture-v1",
+    "initialized": true,
+    "file_count": 1,
+    "node_count": 1,
+    "edge_count": 0,
+    "languages": ["typescript"],
+    "index_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": {"initialized": true},
+    "parse_failures": [],
+    "coverage": {"fixture": true}
+  },
+  "kubernetes": {
+    "mode": "manifest",
+    "source_paths": ["contract-fixture.yaml"],
+    "resource_count": 1,
+    "kinds": {"Deployment": 1},
+    "manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "completeness": {"fixture": true},
+    "authoritative_for_namespace": false
+  },
+  "template_registry_version": "generic-chaosblade-10.v4",
+  "model": {"provider": "contract-fixture"},
+  "matches": [],
+  "coverage": [
+    {"template_id": "RD-01", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-02", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-03", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-04", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-05", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-06", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-07", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-08", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-09", "status": "not_found", "explanation": "Contract-only fixture result."},
+    {"template_id": "RD-10", "status": "not_found", "explanation": "Contract-only fixture result."}
+  ],
+  "question_eligible_count": 0,
+  "scan_coverage": {"fixture": true},
+  "tool_traces": [],
+  "limitations": ["Contract fixture only; no model scan or runtime fault was executed."]
+}

@@ -93,6 +93,27 @@ make qualify-mcp-dry
 make trial-dry
 ```
 
+### 测试必须与机器无关
+
+`make test` 的全套用例应当在任何一台开发机上都能跑通，因此测试里**不得出现某台
+机器特有的绝对路径**（个人主目录、某人的 `~/.kube/xxx`、某台主机的挂载点）。
+需要一个「存在的文件」时用 pytest 的 `tmp_path` 现造，不要借用真实环境里的文件。
+
+这条是有教训的：`tests/test_system_snapshot.py` 曾把
+`/Users/<前一位操作者>/.kube/coroot-config` 直接写进用例。该测试其实**根本不连集群**
+（HTTP 响应全部由桩 runner 返回），那个路径只是用来满足
+`KubectlObservationAdapter` 构造时的「文件是否存在」检查。后果是它在除那台笔记本
+以外的任何机器上都失败，且报错是 `configured kubeconfig does not exist`——
+看起来像环境没配好，实际是测试自己的缺陷。
+
+更麻烦的是这类失败会**变成背景噪音**：一旦「全量测试有一个已知失败」被当成常态，
+真正的回归就很容易被归到同一句「哦又是那个」里而漏掉。2026-09-13 已改为
+`tmp_path` 现造 kubeconfig，测试意图（断言查询路径固定）完全不变，
+现仓库 `tests/` 全绿。
+
+**判断标准**：一个测试失败时，应当能说清它反映的是代码缺陷还是环境缺失；
+如果答案是「换台机器就好了」，那它本身就是缺陷。
+
 Source snapshots are materialized from immutable public locks and verified by commit plus archive SHA-256:
 
 ```bash

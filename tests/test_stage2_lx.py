@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -8,6 +9,7 @@ from stage2_service.contracts import STAGE2_SUPPORTED_MODELS
 
 from stage2_service.api import CampaignSupervisor, create_app
 from stage2_service.lx import LxRunRequest, LxService, LxSlots, PromptVariantRequest
+from stage2_service.task_service import TaskValidationError
 
 
 class FakeTaskService:
@@ -177,7 +179,7 @@ class RealisticTaskService:
         return {"task_id": task_id, "stop_requested": True}
 
 
-def _run(svc, level="L0", case=None):
+def _run(svc, level="L0", case=None, *, harness="bladeai", tool_substitution_variant=None, d6_variant=None):
     request = PromptVariantRequest(
         application="otel-demo",
         slots=LxSlots(
@@ -190,17 +192,68 @@ def _run(svc, level="L0", case=None):
     variants = svc.create_variants(request)
     prompt = next(item["prompt"] for item in variants["variants"] if item["level"] == level)
     extra = {"case": case} if case is not None else {}
+    if tool_substitution_variant is not None:
+        extra["tool_substitution_variant"] = tool_substitution_variant
+    if d6_variant is not None:
+        extra["d6_variant"] = d6_variant
     return LxRunRequest(
         autonomy_level=level,
         prompt=prompt,
         application="otel-demo",
-        harness="bladeai",
+        harness=harness,
         model="gpt-5.5",
         llm_tag="regression",
         duration_seconds=300,
         variant_set_id=variants["variant_set_id"],
         **extra,
     )
+
+
+def test_d7_d8_require_a_tool_substitution_variant(tmp_path):
+    """The task service refuses D7/D8 without A/B, so the Lx request does too."""
+    svc = service(tmp_path)
+    for case in ("D7", "D8"):
+        with pytest.raises(ValidationError, match="requires tool_substitution_variant"):
+            _run(svc, case=case, harness="codex")
+
+
+def test_tool_substitution_variant_is_refused_outside_d7_d8(tmp_path):
+    svc = service(tmp_path)
+    for case in (None, "D1", "D6"):
+        with pytest.raises(ValidationError, match="only valid for D7/D8"):
+            _run(svc, case=case, harness="codex", tool_substitution_variant="A")
+
+
+@pytest.mark.parametrize(("case", "variant"), [("D7", "A"), ("D7", "B"), ("D8", "A"), ("D8", "B")])
+def test_d7_d8_variant_reaches_the_task_request(tmp_path, case, variant):
+    """Regression: create_run dropped the variant, so every D7/D8 Lx run got 422."""
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    summary = svc.create_run(_run(svc, case=case, harness="codex", tool_substitution_variant=variant))
+    (task_request,) = fake.created.values()
+    assert [item.value for item in task_request.cases] == [case]
+    assert task_request.tool_substitution_variant == variant
+    assert summary["configuration"]["tool_substitution_variant"] == variant
+
+
+@pytest.mark.parametrize(("variant", "expected"), [(None, "D6-A"), ("A", "D6-A"), ("B", "D6-B")])
+def test_d6_variant_reaches_the_task_request(tmp_path, variant, expected):
+    """2026-09-22: the facade had no D6 variant, so every Lx D6 run was D6-A."""
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    extra = {"d6_variant": variant} if variant else {}
+    summary = svc.create_run(_run(svc, case="D6", harness="codex", **extra))
+    (task_request,) = fake.created.values()
+    assert [item.value for item in task_request.cases] == ["D6"]
+    assert task_request.d6_variant.value == expected
+    assert summary["configuration"]["d6_variant"] == variant
+
+
+def test_d6_variant_is_refused_outside_d6(tmp_path):
+    svc = service(tmp_path)
+    for case, extra in ((None, {}), ("D1", {}), ("D7", {"tool_substitution_variant": "A"})):
+        with pytest.raises(ValidationError, match="d6_variant is only valid for D6"):
+            _run(svc, case=case, harness="codex", d6_variant="B", **extra)
 
 
 def test_summary_reads_aggregate_structured_feedback_without_crashing(tmp_path):
@@ -773,3 +826,91 @@ def test_duration_mismatch_says_which_duration_and_how_to_change_it(tmp_path):
     message = str(caught.value)
     assert "300" in message and "600" in message
     assert "prompt-variants" in message
+
+
+def test_run_records_namespace_and_prompt_provenance(tmp_path):
+    """A fleet summary must be able to separate canonical from manual prompts."""
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+
+    summary = svc.create_run(_run(svc, harness="codex"))
+
+    provenance = summary["provenance"]
+    assert provenance["application_namespace"] == "otel-demo"
+    assert provenance["prompt_source"] == "canonical"
+    assert len(provenance["prompt_sha256"]) == 64
+
+
+def test_replica_run_binds_the_target_to_its_own_namespace(tmp_path, monkeypatch):
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-02")
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+    request = PromptVariantRequest(
+        application="otel-demo-02",
+        slots=LxSlots(
+            target="cart",
+            fault_type="cpu_load",
+            fault_params={"cpu_percent": 80},
+            duration_seconds=300,
+        ),
+    )
+    variants = svc.create_variants(request)
+    prompt = next(item["prompt"] for item in variants["variants"] if item["level"] == "L0")
+    assert "otel-demo-02" in prompt
+
+    summary = svc.create_run(
+        LxRunRequest(
+            autonomy_level="L0",
+            prompt=prompt,
+            application="otel-demo-02",
+            harness="codex",
+            model="gpt-5.5",
+            llm_tag="replica",
+            duration_seconds=300,
+            variant_set_id=variants["variant_set_id"],
+        )
+    )
+
+    (task_request,) = fake.created.values()
+    assert task_request.target.namespace == "otel-demo-02"
+    assert summary["provenance"]["application_namespace"] == "otel-demo-02"
+
+
+def test_replica_run_refuses_a_prompt_naming_another_replica(tmp_path, monkeypatch):
+    """Hand-edited batches mix replicas up; the wrong prompt must never run."""
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-02")
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+
+    with pytest.raises(TaskValidationError, match="otel-demo-05"):
+        svc.create_run(
+            LxRunRequest(
+                autonomy_level="L0",
+                prompt="请针对 otel-demo-05 的 cart 服务注入高 CPU 负载（cpu_percent=80），最长持续 300 秒，并验证故障效果和业务恢复。",
+                application="otel-demo-02",
+                harness="codex",
+                model="gpt-5.5",
+                llm_tag="replica",
+                duration_seconds=300,
+            )
+        )
+    assert fake.created == {}
+
+
+def test_replica_run_refuses_another_applications_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-02")
+    fake = FakeTaskService()
+    svc = LxService(task_service=fake, artifact_root=tmp_path, gateway_audit_root=tmp_path)
+
+    with pytest.raises(TaskValidationError, match="otel-demo-02"):
+        svc.create_run(
+            LxRunRequest(
+                autonomy_level="L0",
+                prompt="请针对 otel-demo-02 的 cart 服务注入高 CPU 负载（cpu_percent=80），最长持续 300 秒，并验证故障效果和业务恢复。",
+                application="otel-demo",
+                harness="codex",
+                model="gpt-5.5",
+                llm_tag="replica",
+                duration_seconds=300,
+            )
+        )

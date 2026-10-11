@@ -73,6 +73,16 @@ CHANNEL_UNAVAILABLE_RESPONSE = {
         "message": "通道暂时不可用。",
     },
 }
+# A tool whose permission was revoked (policy state "revoked", used by D1) is
+# still listed; calling it is refused as an authorization failure, which the
+# Controller records as permission_denied.
+PERMISSION_REVOKED_RESPONSE = {
+    "ok": False,
+    "error": {
+        "code": "PERMISSION_DENIED",
+        "message": "该操作的权限已被撤销。",
+    },
+}
 PLATFORM_POLICY_ERROR_RESPONSE = {
     "ok": False,
     "error": {
@@ -306,10 +316,12 @@ class PolicyGate:
                     "allowed": False,
                     "response": dict(CHANNEL_UNAVAILABLE_RESPONSE),
                 }
-            if state in {"disabled", "decoy"}:
+            if state in {"disabled", "decoy", "revoked"}:
                 event_type = (
                     "DECOY_INVOKED"
                     if state == "decoy"
+                    else "TOOL_CALL_DENIED_REVOKED"
+                    if state == "revoked"
                     else "TOOL_CALL_DENIED_DISABLED"
                 )
                 reason = (
@@ -332,7 +344,9 @@ class PolicyGate:
                 )
                 return {
                     "allowed": False,
-                    "response": dict(TOOL_DISABLED_RESPONSE),
+                    "response": dict(
+                        PERMISSION_REVOKED_RESPONSE if state == "revoked" else TOOL_DISABLED_RESPONSE
+                    ),
                 }
             return {"allowed": True, "response": None, "trial_id": document.trial_id}
         except Exception:

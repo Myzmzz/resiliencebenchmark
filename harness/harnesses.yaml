@@ -71,7 +71,7 @@ harnesses:
         - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
-        - deepseek-v4-flash-0731
+        - deepseek-v4.1-flash
         - qwen3.8-max
         - qwen3.8-flash
     safety:
@@ -117,7 +117,7 @@ harnesses:
         - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
-        - deepseek-v4-flash-0731
+        - deepseek-v4.1-flash
         - qwen3.8-max
         - qwen3.8-flash
     safety:
@@ -127,7 +127,7 @@ harnesses:
     session:
       logical_resume: true
       resume_flag: --resume
-      verification: real isolated initial-and-resume smoke passed with Claude Code 2.1.233
+      verification: real isolated initial-and-resume smoke passed with Claude Code 2.1.278
 
   codex:
     kind: codex
@@ -157,7 +157,7 @@ harnesses:
         - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
-        - deepseek-v4-flash-0731
+        - deepseek-v4.1-flash
         - qwen3.8-max
         - qwen3.8-flash
     safety:
@@ -167,7 +167,7 @@ harnesses:
     session:
       logical_resume: true
       resume_command: codex exec --sandbox read-only resume
-      verification: real isolated initial-and-resume smoke passed with Codex CLI 0.139.0
+      verification: real isolated initial-and-resume smoke passed with Codex CLI 0.155.1
 
   deepseek-harness:
     kind: official_deepseek_harness
@@ -205,7 +205,7 @@ harnesses:
         - gpt-5.6-sol
         - claude-opus-5
         - deepseek-v4-pro-0813
-        - deepseek-v4-flash-0731
+        - deepseek-v4.1-flash
         - qwen3.8-max
         - qwen3.8-flash
     safety:

@@ -23,12 +23,16 @@ DEFAULT_RUNTIME_BASE = (
     "1.94.151.57:85/observe/resbench-stage2@"
     "sha256:416b7a66756e69438c8a50e5aba407c0951eb98339fd765f654e1f7d8cb2b7cf"
 )
-TEMPLATES = ("stage2.yaml", "execution-identities.yaml", "stage2-integration.yaml", "stage2-matrix-job.yaml")
-BLADEAI_RELEASE_TAG = "blade-ai-v0.6.2"
-BLADEAI_RELEASE_COMMIT = "d8c5473ccda329a3841f114f83a43881a2205ab5"
+TEMPLATES = ("stage2.yaml", "execution-identities.yaml", "stage2-integration.yaml",
+             "stage2-matrix-job.yaml", "fleet.yaml")
+# BladeAI 0.7.0 (black-box server) lives on feature/blade-ai at 98a9ddb.  Every
+# blade-ai-v0.x tag still resolves to the old d8c5473 (package 0.3.0), so the
+# release ref is the commit itself.
+BLADEAI_RELEASE_TAG = "98a9ddbdd4b6b8fe55dd218aa4812c45ea38d2ad"
+BLADEAI_RELEASE_COMMIT = "98a9ddbdd4b6b8fe55dd218aa4812c45ea38d2ad"
 BLADEAI_SUBTREE = "blade-ai"
 BLADEAI_PACKAGE_NAME = "blade-ai"
-BLADEAI_PACKAGE_VERSION = "0.3.0"
+BLADEAI_PACKAGE_VERSION = "0.7.0"
 BLADEAI_MCP_DEPENDENCY = "mcp>=1.0,<2.0"
 BLADEAI_MCP_PIN = "1.27.0"
 BLADEAI_REQUIRED_PATHS = (
@@ -55,6 +59,9 @@ def source_digest() -> str:
     roots = [
         REPO_ROOT / "controller",
         REPO_ROOT / "stage2_service",
+        REPO_ROOT / "fleet_service",
+        REPO_ROOT / "environment/kubernetes/otel-demo",
+        REPO_ROOT / "environment/workloads/otel-demo",
         REPO_ROOT / "harness",
         REPO_ROOT / "mcp_servers",
         REPO_ROOT / "frontend",
@@ -79,10 +86,11 @@ def source_digest() -> str:
             REPO_ROOT / "scripts/probe_models.py",
             REPO_ROOT / "scripts/qualify_agent_channel.py",
             REPO_ROOT / "scripts/publish_harness_capabilities.py",
-            REPO_ROOT / "scripts/build_bladeai_qualification.py",
-            REPO_ROOT / "scripts/qualify_bladeai_task.py",
             REPO_ROOT / "scripts/qualify_execution_identities.py",
             REPO_ROOT / "scripts/serve_stage2_matrix_review.py",
+            REPO_ROOT / "scripts/deploy_application.py",
+            REPO_ROOT / "scripts/fleet_ctl.py",
+            REPO_ROOT / "deploy/stage2/fleet.yaml",
             REPO_ROOT / "deploy/stage2/Dockerfile.runtime-overlay",
             REPO_ROOT / "deploy/stage2/Dockerfile.agent",
             REPO_ROOT / "deploy/stage2/codex-eval",

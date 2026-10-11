@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -19,6 +20,11 @@ from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 from .capability_policy import CapabilityPolicyDocument, CapabilityPolicyRegistry
 from .contracts import DisturbanceRecord, DisturbanceType
 from .platform_ledger import PlatformLedger
+from .target_binding import current as current_target_binding
+
+
+# The Controller stamps this label on every fault it creates.
+CHAOSBLADE_NAMESPACE_LABEL = "benchmark.namespace"
 
 
 class RuntimeAdapterError(RuntimeError):
@@ -41,6 +47,63 @@ class SubprocessRunner:
         )
 
 
+def _chaosblade_target_namespace(item: Mapping[str, Any]) -> str | None:
+    """The namespace a ChaosBlade CR aims at, from the platform label or its spec.
+
+    The Controller labels every experiment it creates with
+    ``benchmark.namespace``. An unlabelled CR is attributed through its first
+    experiment's ``namespace`` matcher, which is how ChaosBlade itself scopes
+    a Pod-level experiment. Returns ``None`` when neither is present.
+    """
+    metadata = item.get("metadata") if isinstance(item, Mapping) else None
+    labels = metadata.get("labels") if isinstance(metadata, Mapping) else None
+    if isinstance(labels, Mapping):
+        labelled = str(labels.get(CHAOSBLADE_NAMESPACE_LABEL) or "").strip()
+        if labelled:
+            return labelled
+    spec = item.get("spec") if isinstance(item, Mapping) else None
+    experiments = spec.get("experiments") if isinstance(spec, Mapping) else None
+    if isinstance(experiments, list):
+        for experiment in experiments:
+            matchers = experiment.get("matchers") if isinstance(experiment, Mapping) else None
+            if not isinstance(matchers, list):
+                continue
+            for matcher in matchers:
+                if not isinstance(matcher, Mapping) or str(matcher.get("name") or "") != "namespace":
+                    continue
+                values = matcher.get("value")
+                if isinstance(values, list) and values:
+                    return str(values[0]).strip() or None
+                if isinstance(values, str) and values.strip():
+                    return values.strip()
+    return None
+
+
+def _partition_chaosblade_inventory(
+    items: list[Any], namespace: str
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """Split a cluster-wide ChaosBlade inventory into own, foreign and unattributed.
+
+    Matching is exact equality, never a prefix test: ``otel-demo`` is a prefix
+    of ``otel-demo-01`` and a ``startswith`` would treat one replica's fault as
+    another's. An experiment with no discoverable target namespace stays in the
+    blocking set, so an unattributable leftover still fails the gate.
+    """
+    own: list[Any] = []
+    foreign: list[Any] = []
+    unattributed: list[Any] = []
+    for item in items:
+        target = _chaosblade_target_namespace(item) if isinstance(item, Mapping) else None
+        if target is None:
+            unattributed.append(item)
+            own.append(item)
+        elif target == namespace:
+            own.append(item)
+        else:
+            foreign.append(item)
+    return own, foreign, unattributed
+
+
 class KubernetesEnvironmentGate:
     """Read-only gate; the service never starts or scales the application load generator."""
 
@@ -49,9 +112,22 @@ class KubernetesEnvironmentGate:
         self.runner = runner or SubprocessRunner()
 
     def qualify(self, episode) -> Mapping[str, Any]:
-        namespace = episode.public.environment_snapshot.get("namespace", "")
-        if namespace != "otel-demo":
-            return {"qualified": False, "reason": "fixed Episode namespace is not otel-demo"}
+        # The Episode is frozen and hash-checked, so its snapshot names the
+        # system it was written against -- the deployment bundle. A replica is
+        # a copy of that system in its own namespace, so the Episode is
+        # checked against the bundle and the cluster is read in the namespace
+        # this instance is actually bound to. With the default binding the two
+        # are the same name and this is the original check.
+        snapshot = episode.public.environment_snapshot.get("namespace", "")
+        binding = current_target_binding()
+        # Exact equality only: ``otel-demo`` and ``otel-demo-01`` share a
+        # prefix, and a prefix match would mix a replica with the full system.
+        if snapshot != binding.bundle:
+            return {
+                "qualified": False,
+                "reason": f"fixed Episode namespace is not {binding.bundle}",
+            }
+        namespace = binding.application_namespace
         deployments = self._json(
             ["get", "deployments", "-n", namespace, "-o", "json"]
         )
@@ -70,17 +146,21 @@ class KubernetesEnvironmentGate:
         )
         load_desired = int(load.get("spec", {}).get("replicas") or 0) if load else 0
         load_ready = int(load.get("status", {}).get("readyReplicas") or 0) if load else 0
+        # ChaosBlade CRs are cluster-scoped, so the inventory is listed across
+        # namespaces and then attributed. Only experiments aimed at *this*
+        # replica may block it; a sibling replica's injection must not.
         chaos = self._json(
             ["get", "chaosblades.chaosblade.io", "-A", "-o", "json"]
         )
         chaos_items = chaos.get("items") if isinstance(chaos, dict) else None
         if not isinstance(chaos_items, list):
             raise RuntimeAdapterError("ChaosBlade inventory is invalid")
+        own, foreign, unattributed = _partition_chaosblade_inventory(chaos_items, namespace)
         qualified = (
             load_desired >= 1
             and load_ready >= 1
             and desired == ready
-            and len(chaos_items) == 0
+            and len(own) == 0
         )
         return {
             "qualified": qualified,
@@ -90,7 +170,12 @@ class KubernetesEnvironmentGate:
             "ready_replicas": ready,
             "built_in_load_generator_desired": load_desired,
             "built_in_load_generator_ready": load_ready,
-            "active_chaosblade_count": len(chaos_items),
+            "active_chaosblade_count": len(own),
+            "cluster_chaosblade_count": len(chaos_items),
+            "foreign_chaosblade_count": len(foreign),
+            "unattributed_chaosblade_names": [
+                str((item.get("metadata") or {}).get("name") or "") for item in unattributed
+            ],
             "reason": (
                 "ready"
                 if qualified
@@ -146,6 +231,10 @@ class McpTokenStateRegistry:
             self._original[key] = token
             path = self._path(trial_id, server)
             _atomic_token(path, token)
+            # The pre-revocation token is snapshotted at initialization, not at
+            # revocation time, so a Controller that is restarted between the two
+            # can still restore the identity it issued (O08).
+            self._write_restoration_snapshot(trial_id, server, token, stage="initialize")
             paths[server] = str(path)
         return paths
 
@@ -170,17 +259,107 @@ class McpTokenStateRegistry:
         path = self._path(trial_id, server)
         if not path.is_file():
             raise RuntimeAdapterError("MCP token state was not initialized")
+        # Snapshot the live identity before rotating it away. Without this the
+        # only copy of the pre-revocation token lives in Controller memory and a
+        # restart turns an ordinary restore into ``restoration state is missing``.
+        snapshot = self._ensure_restoration_snapshot(trial_id, server, path)
         _atomic_token(path, secrets.token_urlsafe(48))
+        self._append_permission_event(
+            trial_id,
+            "MCP_PERMISSION_REVOKED",
+            server=server,
+            capability=capability,
+            token_sha256=_token_fingerprint(snapshot),
+        )
+        # The evidence shape is pinned by recorded 2026-09-11 D1/D3/D4 records;
+        # the durable snapshot is reported through the ledger event above.
         return {"server": server, "capability": capability, "revoked": True}
 
     def restore(self, trial_id: str, capability: str) -> dict[str, Any]:
         server = self.SERVER_BY_CAPABILITY.get(capability)
-        key = f"{trial_id}:{server}"
-        token = self._original.get(key)
-        if not server or token is None:
-            raise RuntimeAdapterError("MCP permission restoration state is missing")
-        _atomic_token(self._path(trial_id, server), token)
+        if not server:
+            raise RuntimeAdapterError(
+                f"no MCP server mapping for capability {capability}"
+            )
+        token, source = self._read_restoration_snapshot(trial_id, server)
+        if token is None:
+            raise RuntimeAdapterError(
+                "MCP permission restoration snapshot is missing for "
+                f"{server}; expected {self._restore_path(trial_id, server).as_posix()}"
+            )
+        path = self._path(trial_id, server)
+        # Restoring is idempotent: replaying it after a completed restore must
+        # neither fail nor rewrite a file that already holds the right identity.
+        already_restored = path.is_file() and _read_token(path) == token
+        if not already_restored:
+            _atomic_token(path, token)
+        self._original.setdefault(f"{trial_id}:{server}", token)
+        self._append_permission_event(
+            trial_id,
+            "MCP_PERMISSION_RESTORED",
+            server=server,
+            capability=capability,
+            token_sha256=_token_fingerprint(token),
+            snapshot_source=source,
+            already_restored=already_restored,
+        )
         return {"server": server, "capability": capability, "verified": True}
+
+    def _restore_path(self, trial_id: str, server: str) -> Path:
+        return self._path(trial_id, server).with_suffix(".restore")
+
+    def _write_restoration_snapshot(
+        self, trial_id: str, server: str, token: str, *, stage: str
+    ) -> str:
+        path = self._restore_path(trial_id, server)
+        _atomic_token(path, token)
+        self._append_permission_event(
+            trial_id,
+            "MCP_PERMISSION_SNAPSHOT",
+            server=server,
+            capability=None,
+            token_sha256=_token_fingerprint(token),
+            stage=stage,
+            snapshot_path=path.as_posix(),
+        )
+        return token
+
+    def _ensure_restoration_snapshot(
+        self, trial_id: str, server: str, live_path: Path
+    ) -> str:
+        existing, _ = self._read_restoration_snapshot(trial_id, server)
+        if existing is not None:
+            return existing
+        token = _read_token(live_path)
+        if token is None:
+            raise RuntimeAdapterError("MCP token state was not initialized")
+        return self._write_restoration_snapshot(trial_id, server, token, stage="revoke")
+
+    def _read_restoration_snapshot(
+        self, trial_id: str, server: str
+    ) -> tuple[str | None, str]:
+        """Prefer the durable snapshot; process memory is only a fast path."""
+        token = _read_token(self._restore_path(trial_id, server))
+        if token is not None:
+            return token, "ledger_snapshot"
+        token = self._original.get(f"{trial_id}:{server}")
+        if token is not None:
+            return token, "process_memory"
+        return None, "missing"
+
+    def _append_permission_event(
+        self, trial_id: str, event_type: str, **payload: Any
+    ) -> None:
+        """Record restoration metadata only; the token itself never enters the ledger."""
+        try:
+            self.platform_ledger.append(
+                trial_id=trial_id,
+                event_type=event_type,
+                occurred_at=datetime.now(timezone.utc),
+                payload={key: value for key, value in payload.items() if value is not None},
+            )
+        except Exception:  # noqa: BLE001 - evidence must not break a restore.
+            pass
 
     def _path(self, trial_id: str, server: str) -> Path:
         _validate_trial_id(trial_id)
@@ -193,6 +372,12 @@ class McpTokenStateRegistry:
 
 
 class TargetCapabilityRebinder(Protocol):
+    def fence(self, trial_id: str, *, namespace: str) -> Mapping[str, Any]: ...
+
+    def release_fence(
+        self, trial_id: str, *, namespace: str, fence: Mapping[str, Any]
+    ) -> Mapping[str, Any]: ...
+
     def rebind(
         self,
         trial_id: str,
@@ -275,21 +460,36 @@ class CompositeDisturbanceExecutor:
     def apply(self, plan) -> DisturbanceRecord:
         if plan.type is DisturbanceType.TARGET_CHANGE:
             target = plan.parameters["target"]
-            replacement = self.kubernetes_client.restart_exact_pod(
-                namespace=str(target["namespace"]),
-                name=str(target["name"]),
-                expected_uid=str(target["uid"]),
-                timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
-                labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
-            )
             if self.target_rebinder is None:
                 raise RuntimeAdapterError("target capability rebinder is unavailable")
-            capability = self.target_rebinder.rebind(
-                plan.trial_id,
-                namespace=str(target["namespace"]),
-                target_name=str(replacement["name"]),
-                target_uid=str(replacement["uid"]),
+            # The old Pod keeps its uid while it terminates, so creates naming it
+            # must be refused before it is deleted; rebind() below lets creates
+            # through again, for the replacement only.
+            fence = self.target_rebinder.fence(
+                plan.trial_id, namespace=str(target["namespace"])
             )
+            try:
+                replacement = self.kubernetes_client.restart_exact_pod(
+                    namespace=str(target["namespace"]),
+                    name=str(target["name"]),
+                    expected_uid=str(target["uid"]),
+                    timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
+                    labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
+                )
+                capability = self.target_rebinder.rebind(
+                    plan.trial_id,
+                    namespace=str(target["namespace"]),
+                    target_name=str(replacement["name"]),
+                    target_uid=str(replacement["uid"]),
+                )
+            except Exception:
+                # A replacement that failed (2026-09-23: a binding to the
+                # placeholder uid "pending" matched no Pod) must not leave every
+                # create refused; D2 may still trigger on a later commitment.
+                self.target_rebinder.release_fence(
+                    plan.trial_id, namespace=str(target["namespace"]), fence=fence
+                )
+                raise
             if capability.get("baseline_capability_rebound") is not True:
                 raise RuntimeAdapterError(
                     "target capability rebind was not independently verified"
@@ -303,11 +503,14 @@ class CompositeDisturbanceExecutor:
                     "replacement_name": replacement["name"],
                     "replacement_uid": replacement["uid"],
                     "baseline_capability": dict(capability),
+                    "baseline_capability_fence": dict(fence),
                 },
             )
         if plan.type is DisturbanceType.PERMISSION_CHANGE:
             capability = str(plan.parameters["revoke_capability"])
-            if plan.backend == "mcp_policy":
+            if plan.backend == "mcp_policy" and plan.parameters.get("revoke_scope") == "tool":
+                evidence = self._revoke_mcp_tool_permission(plan.trial_id, capability)
+            elif plan.backend == "mcp_policy":
                 evidence = self._revoke_mcp_capability(plan.trial_id, capability)
             else:
                 raise RuntimeAdapterError("unsupported permission disturbance backend")
@@ -448,8 +651,13 @@ class CompositeDisturbanceExecutor:
     def rollback(self, record: DisturbanceRecord) -> DisturbanceRecord:
         if record.plan.type is DisturbanceType.PERMISSION_CHANGE:
             capability = str(record.plan.parameters["revoke_capability"])
-            if record.plan.backend == "mcp_policy":
-                evidence = self._restore_mcp_capability(record, capability)
+            if (
+                record.plan.backend == "mcp_policy"
+                and record.plan.parameters.get("revoke_scope") == "tool"
+            ):
+                evidence = self._restore_mcp_tool_permission(record)
+            elif record.plan.backend == "mcp_policy":
+                evidence = self._restore_mcp_capabilities(record, (capability,))
             else:
                 raise RuntimeAdapterError("unsupported permission restoration backend")
             return record.model_copy(
@@ -459,29 +667,9 @@ class CompositeDisturbanceExecutor:
             capabilities = tuple(
                 str(item) for item in record.plan.parameters["revoke_capabilities"]
             )
-            evidence = [
-                self.mcp_tokens.restore(record.plan.trial_id, capability)
-                for capability in capabilities
-            ]
-            policy_snapshot = _earliest_policy_snapshot(record)
-            if policy_snapshot is None:
-                raise RuntimeAdapterError("MCP policy restoration snapshot is missing")
-            restored_policy = self._policy_registry_for(record.plan.trial_id).restore(
-                policy_snapshot,
-                source="disturbance-runtime-rollback",
-            )
+            evidence = self._restore_mcp_capabilities(record, capabilities)
             return record.model_copy(
-                update={
-                    "rolled_back": True,
-                    "rollback_evidence": {
-                        "restored": evidence,
-                        "policy": {
-                            "sequence": restored_policy.sequence,
-                            "restored": True,
-                        },
-                        "verified": True,
-                    },
-                }
+                update={"rolled_back": True, "rollback_evidence": evidence}
             )
         if record.plan.type is DisturbanceType.TOOL_CHANNEL_INTERRUPTION:
             return self._rollback_d5(record)
@@ -708,23 +896,94 @@ class CompositeDisturbanceExecutor:
             "policy": policy_evidence,
         }
 
-    def _restore_mcp_capability(
-        self,
-        record: DisturbanceRecord,
-        capability: str,
-    ) -> dict[str, Any]:
-        token_evidence = self.mcp_tokens.restore(record.plan.trial_id, capability)
-        policy_snapshot = _policy_snapshot_from_record(record, capability)
+    def _revoke_mcp_tool_permission(self, trial_id: str, capability: str) -> dict[str, Any]:
+        """Revoke one tool's permission and leave the rest of its server usable.
+
+        D1 (2026-09-22) used ``_revoke_mcp_capability``, which replaces the
+        whole server's bearer token: after it every chaos_control call failed,
+        so an Agent that confirmed its plan before validating it lost
+        chaos_validate_plan too and never got a platform-validated target.
+        Here only the committed tool is set to ``revoked``; the MCP runtime
+        refuses exactly that call with PERMISSION_DENIED, whenever the Agent
+        makes it, and planning, validation and inventory keep working.  The
+        evidence has the shape ``_revoke_mcp_capability`` writes, so the
+        evaluator and ``_mcp_revocation_entries`` read both alike.
+        """
+        server, tool = self._policy_target_for_capability(capability)
+        if tool is None:
+            raise RuntimeAdapterError(f"capability {capability} names no single tool to revoke")
+        registry = self._policy_registry_for(trial_id)
+        snapshot = registry.snapshot()
+        document = registry.set_tool(
+            server,
+            tool,
+            state="revoked",
+            reason=capability,
+            source="disturbance-runtime",
+        )
+        return {
+            "server": server,
+            "tool": tool,
+            "capability": capability,
+            "revoked": True,
+            "scope": "tool",
+            "policy": {
+                "server": server,
+                "tool": tool,
+                "sequence": document.sequence,
+                "snapshot": snapshot.model_dump(mode="json"),
+            },
+        }
+
+    def _restore_mcp_tool_permission(self, record: DisturbanceRecord) -> dict[str, Any]:
+        """Undo ``_revoke_mcp_tool_permission``: only the policy changed, no token."""
+        policy_snapshot = _earliest_policy_snapshot(_mcp_revocation_entries(record))
         if policy_snapshot is None:
             raise RuntimeAdapterError("MCP policy restoration snapshot is missing")
         registry = self._policy_registry_for(record.plan.trial_id)
-        restored = registry.restore(policy_snapshot, source="disturbance-runtime-rollback")
+        restored_policy = registry.restore(
+            policy_snapshot,
+            source="disturbance-runtime-rollback",
+        )
         return {
-            **token_evidence,
+            "restored": [],
             "policy": {
-                "sequence": restored.sequence,
+                "sequence": restored_policy.sequence,
                 "restored": True,
             },
+            "verified": True,
+        }
+
+    def _restore_mcp_capabilities(
+        self,
+        record: DisturbanceRecord,
+        capabilities: tuple[str, ...],
+    ) -> dict[str, Any]:
+        """Undo ``_revoke_mcp_capability`` for D1 and D3/D4 alike.
+
+        The pre-revocation policy snapshot and the policy registry are resolved
+        before any token or policy is written, so a malformed record fails
+        without leaving a half-restored capability behind.
+        """
+        policy_snapshot = _earliest_policy_snapshot(_mcp_revocation_entries(record))
+        if policy_snapshot is None:
+            raise RuntimeAdapterError("MCP policy restoration snapshot is missing")
+        registry = self._policy_registry_for(record.plan.trial_id)
+        restored_tokens = [
+            self.mcp_tokens.restore(record.plan.trial_id, capability)
+            for capability in capabilities
+        ]
+        restored_policy = registry.restore(
+            policy_snapshot,
+            source="disturbance-runtime-rollback",
+        )
+        return {
+            "restored": restored_tokens,
+            "policy": {
+                "sequence": restored_policy.sequence,
+                "restored": True,
+            },
+            "verified": True,
         }
 
     def _policy_target_for_capability(self, capability: str) -> tuple[str, str | None]:
@@ -761,30 +1020,40 @@ def _validate_trial_id(trial_id: str) -> None:
         raise RuntimeAdapterError("invalid token-state identity")
 
 
-def _policy_snapshot_from_record(
-    record: DisturbanceRecord,
-    capability: str,
-) -> CapabilityPolicyDocument | None:
+def _mcp_revocation_entries(record: DisturbanceRecord) -> tuple[Mapping[str, Any], ...]:
+    """Return the per-capability entries ``_revoke_mcp_capability`` recorded.
+
+    Every entry carries the token registry's ``"revoked": True`` flag.  D1
+    stores its single entry as the whole application evidence, while D3/D4
+    wrap theirs in a ``"revoked"`` list, so the key name alone cannot tell the
+    two shapes apart.  Decode by disturbance type, exactly as ``apply`` wrote
+    the evidence and as the evaluator reads it.
+    """
     evidence = record.application_evidence
-    if "revoked" in evidence:
-        for item in evidence["revoked"]:
-            if item.get("capability") == capability:
-                snapshot = (item.get("policy") or {}).get("snapshot")
-                return CapabilityPolicyDocument(**snapshot) if snapshot else None
-        return None
-    snapshot = (evidence.get("policy") or {}).get("snapshot")
-    return CapabilityPolicyDocument(**snapshot) if snapshot else None
+    if record.plan.type is DisturbanceType.PERMISSION_CHANGE:
+        entries: list[Any] = [evidence]
+    elif record.plan.type is DisturbanceType.OBSERVABILITY_CHANGE:
+        revoked = evidence.get("revoked")
+        entries = list(revoked) if isinstance(revoked, (list, tuple)) else []
+    else:
+        raise RuntimeAdapterError("disturbance type has no MCP revocation evidence")
+    if not entries or not all(isinstance(entry, Mapping) for entry in entries):
+        raise RuntimeAdapterError("MCP revocation evidence is malformed")
+    return tuple(entries)
 
 
-def _earliest_policy_snapshot(record: DisturbanceRecord) -> CapabilityPolicyDocument | None:
+def _earliest_policy_snapshot(
+    entries: tuple[Mapping[str, Any], ...],
+) -> CapabilityPolicyDocument | None:
+    """Return the policy snapshot taken before the disturbance's first revocation."""
     snapshots: list[CapabilityPolicyDocument] = []
-    for item in record.application_evidence.get("revoked") or ():
-        snapshot = (item.get("policy") or {}).get("snapshot")
+    for entry in entries:
+        policy = entry.get("policy")
+        snapshot = policy.get("snapshot") if isinstance(policy, Mapping) else None
         if snapshot:
             snapshots.append(CapabilityPolicyDocument(**snapshot))
     if not snapshots:
-        snapshot = (record.application_evidence.get("policy") or {}).get("snapshot")
-        return CapabilityPolicyDocument(**snapshot) if snapshot else None
+        return None
     return min(snapshots, key=lambda document: document.sequence)
 
 
@@ -798,9 +1067,23 @@ def _utc_datetime(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _read_token(path: Path) -> str | None:
+    """Read a token file without treating an absent or unusable file as fatal."""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except (OSError, ValueError, UnicodeError):
+        return None
+    return token or None
+
+
+def _token_fingerprint(token: str) -> str:
+    """Identify a token in evidence without recording the token itself."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def _atomic_token(path: Path, token: str) -> None:
     _validate_token(token)
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(f".{path.name}.tmp")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:

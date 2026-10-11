@@ -22,6 +22,10 @@ TIMEOUT_ENV = "RESBENCH_TELEMETRY_TIMEOUT_SECONDS"
 NAMESPACE_ALLOWLIST_ENV = "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES"
 JAEGER_SERVICE_ALLOWLIST_ENV = "RESBENCH_JAEGER_ALLOWED_SERVICES"
 ALLOW_RAW_QUERIES_ENV = "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES"
+# Replica fleets run many copies of the same services, so a Jaeger service name
+# no longer identifies one system under test. With this set, a trace is in
+# scope only when it also carries this runtime's Kubernetes namespace.
+REQUIRE_TRACE_NAMESPACE_ENV = "RESBENCH_TELEMETRY_REQUIRE_TRACE_NAMESPACE"
 DISTURBANCE_DIR_ENV = "RESBENCH_TELEMETRY_DISTURBANCE_DIR"
 WORKLOAD_STATS_URL_ENV = "RESBENCH_WORKLOAD_STATS_URL"
 WORKLOAD_STAT_NAME_ENV = "RESBENCH_WORKLOAD_STAT_NAME"
@@ -41,7 +45,21 @@ MAX_STEP_SECONDS = 3_600
 MAX_FILTERS = 12
 MAX_FILTER_VALUE_LENGTH = 256
 MAX_LITERAL_CONTAINS_LENGTH = 200
-NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace")
+# k8s_namespace_name is what Prometheus OTLP ingestion produces for the OTel
+# resource attribute k8s.namespace.name; without it every otel-demo application
+# metric is scoped out (Stage-1, 2026-09-15).
+NAMESPACE_LABEL_KEYS = ("namespace", "kubernetes_namespace", "exported_namespace", "k8s_namespace_name")
+# The Kubernetes namespace the OTel k8sattributes processor puts on every span.
+# ``service.namespace`` is deliberately not here: it is the demo's own logical
+# name, identical in every replica, and reading it as a Kubernetes namespace
+# would drop every trace.
+TRACE_NAMESPACE_TAG_KEYS = (
+    "k8s.namespace.name",
+    "k8s_namespace_name",
+)
+# Structured Prometheus tools match `namespace` or, for series without it, this
+# OTel label (Stage-1, 2026-09-15).
+OTEL_NAMESPACE_LABEL_KEY = "k8s_namespace_name"
 PROMETHEUS_GROUP_BY_ALLOWLIST = frozenset(
     {
         "namespace",
@@ -118,6 +136,7 @@ class RuntimeConfig:
     jaeger_service_allowlist: frozenset[str] = frozenset()
     timeout_seconds: float = 5.0
     allow_raw_queries: bool = False
+    require_trace_namespace: bool = False
     workload_stats_url: str | None = None
     workload_stat_name: str = "/api/cart"
 
@@ -165,6 +184,9 @@ class RuntimeConfig:
             jaeger_service_allowlist=_parse_service_allowlist(os.environ.get(JAEGER_SERVICE_ALLOWLIST_ENV)),
             timeout_seconds=timeout,
             allow_raw_queries=_parse_bool_env(os.environ.get(ALLOW_RAW_QUERIES_ENV), ALLOW_RAW_QUERIES_ENV),
+            require_trace_namespace=_parse_bool_env(
+                os.environ.get(REQUIRE_TRACE_NAMESPACE_ENV), REQUIRE_TRACE_NAMESPACE_ENV
+            ),
             workload_stats_url=_clean_base_url(
                 os.environ.get(WORKLOAD_STATS_URL_ENV), WORKLOAD_STATS_URL_ENV
             ),
@@ -398,8 +420,8 @@ class TelemetryROService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
-        match = _build_prometheus_selector(namespace=self.config.namespace, metric=metric, labels=labels)
-        return await self._prometheus_list_series_raw(match=[match], start=start, end=end, limit=limit, offset=offset, constructed=True)
+        matches = _build_prometheus_selectors(namespace=self.config.namespace, metric=metric, labels=labels)
+        return await self._prometheus_list_series_raw(match=matches, start=start, end=end, limit=limit, offset=offset, constructed=True)
 
     async def prometheus_list_labels(
         self,
@@ -602,7 +624,11 @@ class TelemetryROService:
         if max_duration:
             params["maxDuration"] = _validate_duration(max_duration, "max_duration")
         data = await self._request("jaeger", "/api/traces", params)
-        scoped = _scope_filter_traces(data.get("data"), self.config.jaeger_service_allowlist)
+        scoped = _scope_filter_traces(
+            data.get("data"),
+            self.config.jaeger_service_allowlist,
+            namespace=self.config.namespace if self.config.require_trace_namespace else None,
+        )
         traces = _limited_result(scoped.items, limit)
         return envelope(
             {
@@ -617,7 +643,12 @@ class TelemetryROService:
                 **_scope_metadata(
                     self.config,
                     scoped.scoped_out_count,
-                    warning="Traces containing services outside the Jaeger allowlist are removed.",
+                    warning=(
+                        "Traces containing services outside the Jaeger allowlist, or "
+                        "spans from another Kubernetes namespace, are removed."
+                        if self.config.require_trace_namespace
+                        else "Traces containing services outside the Jaeger allowlist are removed."
+                    ),
                 ),
                 "traces": traces["items"],
             }
@@ -633,11 +664,15 @@ class TelemetryROService:
             )
         data = await self._request("jaeger", f"/api/traces/{trace_id.lower()}", {})
         traces = _expect_sequence(data.get("data"), "Jaeger trace data")
-        scoped = _scope_filter_traces(traces, self.config.jaeger_service_allowlist)
+        scoped = _scope_filter_traces(
+            traces,
+            self.config.jaeger_service_allowlist,
+            namespace=self.config.namespace if self.config.require_trace_namespace else None,
+        )
         if scoped.scoped_out_count:
             raise TelemetryROError(
                 "trace_outside_service_scope",
-                "trace contains a service outside the configured Jaeger allowlist.",
+                "trace contains a service outside the configured Jaeger allowlist or namespace.",
                 "Use telemetry_jaeger_find_traces for an allowed service and do not fetch trace ids from another scope.",
             )
         return envelope({"service": "jaeger", "operation": "get_trace", "traceId": trace_id.lower(), "traces": traces})
@@ -979,11 +1014,25 @@ def _scope_metadata(config: RuntimeConfig, scoped_out_count: int, *, warning: st
     return {"scopeFiltered": scoped_out_count > 0}
 
 
-def _build_prometheus_selector(*, namespace: str, metric: str, labels: Mapping[str, str] | None = None) -> str:
+def _build_prometheus_selectors(*, namespace: str, metric: str, labels: Mapping[str, str] | None = None) -> list[str]:
+    """Build the namespace-scoped selectors for one metric.
+
+    Series scraped from Kubernetes carry `namespace`; OTel application metrics ingested through Prometheus
+    OTLP carry only `k8s_namespace_name`. The second selector requires `namespace` to be absent, so each
+    series is matched by the same label that `_namespace_value` uses for the result scope check.
+    """
     metric = _validate_metric_name(metric)
-    filters = {"namespace": namespace, **_validate_exact_label_filters(labels, family="prometheus")}
-    matchers = ",".join(f'{key}="{_escape_query_string(value)}"' for key, value in filters.items())
-    return f"{metric}{{{matchers}}}"
+    caller_filters = _validate_exact_label_filters(labels, family="prometheus")
+    namespace_filter_sets = (
+        {"namespace": namespace},
+        {"namespace": "", OTEL_NAMESPACE_LABEL_KEY: namespace},
+    )
+    selectors: list[str] = []
+    for namespace_filters in namespace_filter_sets:
+        filters = {**namespace_filters, **caller_filters}
+        matchers = ",".join(f'{key}="{_escape_query_string(value)}"' for key, value in filters.items())
+        selectors.append(f"{metric}{{{matchers}}}")
+    return selectors
 
 
 def _build_prometheus_metric_query(
@@ -995,7 +1044,7 @@ def _build_prometheus_metric_query(
     window: int = 60,
     group_by: Sequence[str] | None = None,
 ) -> str:
-    selector = _build_prometheus_selector(namespace=namespace, metric=metric, labels=labels)
+    selectors = _build_prometheus_selectors(namespace=namespace, metric=metric, labels=labels)
     normalized_transform = "none" if transform is None else transform.strip().lower()
     if normalized_transform not in {"none", "rate", "increase"}:
         raise TelemetryROError(
@@ -1005,9 +1054,10 @@ def _build_prometheus_metric_query(
         )
     if normalized_transform in {"rate", "increase"}:
         window = _bounded_window_seconds(window)
-        expression = f"{normalized_transform}({selector}[{window}s])"
+        expressions = [f"{normalized_transform}({selector}[{window}s])" for selector in selectors]
     else:
-        expression = selector
+        expressions = selectors
+    expression = " or ".join(expressions)
     groups = _validate_prometheus_group_by(group_by)
     if groups:
         expression = f"sum by ({','.join(groups)}) ({expression})"
@@ -1077,7 +1127,7 @@ def _validate_exact_label_filters(labels: Mapping[str, str] | None, *, family: s
             raise TelemetryROError(
                 "namespace_filter_reserved",
                 "namespace labels are reserved and injected by telemetry_ro.",
-                "Do not pass namespace, kubernetes_namespace, or exported_namespace as label filters.",
+                "Do not pass namespace, kubernetes_namespace, exported_namespace, or k8s_namespace_name as label filters.",
             )
         if _SECRET_HINT_RE.search(raw_key):
             raise TelemetryROError(
@@ -1126,8 +1176,10 @@ def _validate_prometheus_group_by(group_by: Sequence[str] | None) -> list[str]:
         )
     if len(group_by) > 8:
         raise TelemetryROError("invalid_group_by", "group_by contains too many labels.", "Use at most 8 group labels.")
-    labels: list[str] = ["namespace"]
-    seen = {"namespace"}
+    # Both namespace labels stay in the aggregation so the result scope check still sees the namespace
+    # of every aggregated series (OTel application metrics only carry k8s_namespace_name).
+    labels: list[str] = ["namespace", OTEL_NAMESPACE_LABEL_KEY]
+    seen = set(labels)
     for item in group_by:
         if not isinstance(item, str) or not _LABEL_RE.fullmatch(item):
             raise TelemetryROError(
@@ -1135,6 +1187,8 @@ def _validate_prometheus_group_by(group_by: Sequence[str] | None) -> list[str]:
                 "group_by labels must be valid label identifiers.",
                 "Use only allowlisted label names; operators and expressions are not accepted.",
             )
+        if item in seen:
+            continue
         if item not in PROMETHEUS_GROUP_BY_ALLOWLIST:
             raise TelemetryROError(
                 "group_by_outside_allowlist",
@@ -1407,13 +1461,65 @@ def _trace_service_names(trace: Any) -> set[str]:
     return names
 
 
-def _scope_filter_traces(value: Any, allowlist: frozenset[str]) -> ScopedItems:
+def _trace_namespaces(trace: Any) -> set[str]:
+    """Kubernetes namespaces named by a trace's process tags.
+
+    Jaeger keeps a span's resource attributes on its process. An empty result
+    means the trace carries no namespace evidence at all.
+    """
+    if not isinstance(trace, Mapping):
+        return set()
+    found: set[str] = set()
+
+    def collect(tags: Any) -> None:
+        if not isinstance(tags, list):
+            return
+        for tag in tags:
+            if not isinstance(tag, Mapping):
+                continue
+            if str(tag.get("key") or "") in TRACE_NAMESPACE_TAG_KEYS:
+                value = tag.get("value")
+                if isinstance(value, str) and value:
+                    found.add(value)
+
+    processes = trace.get("processes")
+    if isinstance(processes, Mapping):
+        for process in processes.values():
+            if isinstance(process, Mapping):
+                collect(process.get("tags"))
+    spans = trace.get("spans")
+    if isinstance(spans, list):
+        for span in spans:
+            if not isinstance(span, Mapping):
+                continue
+            process = span.get("process")
+            if isinstance(process, Mapping):
+                collect(process.get("tags"))
+    return found
+
+
+def _scope_filter_traces(
+    value: Any, allowlist: frozenset[str], *, namespace: str | None = None
+) -> ScopedItems:
+    """Keep traces whose services are allowed and, optionally, whose namespace matches.
+
+    ``namespace`` is used by replica fleets, where every replica runs services
+    with the same names: a trace is kept only when it carries namespace
+    evidence and every namespace it names is exactly this one. A trace with no
+    namespace tag is dropped rather than guessed at, so another replica's data
+    can never be read as this replica's.
+    """
     traces = _expect_sequence(value or [], "Jaeger trace data")
     scoped: list[Any] = []
     for trace in traces:
         names = _trace_service_names(trace)
-        if names and names.issubset(allowlist):
-            scoped.append(trace)
+        if not names or not names.issubset(allowlist):
+            continue
+        if namespace is not None:
+            namespaces = _trace_namespaces(trace)
+            if not namespaces or namespaces != {namespace}:
+                continue
+        scoped.append(trace)
     return ScopedItems(scoped, len(traces) - len(scoped))
 
 

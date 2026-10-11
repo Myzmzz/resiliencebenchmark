@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://resiliencebenchmark.local/schemas/permission-profile.schema.json",
+  "title": "Stage2 static permission profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "mcp_servers",
+    "bladeai_native"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "stage2-permission-profile.v1"
+    },
+    "profile_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{1,127}$"
+    },
+    "mcp_servers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "k8s_ro",
+          "telemetry_ro",
+          "source_ro",
+          "chaos_control"
+        ]
+      }
+    },
+    "bladeai_native": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kubernetes_read",
+        "kubernetes_metrics",
+        "chaosblade_execute"
+      ],
+      "properties": {
+        "kubernetes_read": {"type": "boolean"},
+        "kubernetes_metrics": {"type": "boolean"},
+        "chaosblade_execute": {"type": "boolean"}
+      }
+    }
+  }
+}

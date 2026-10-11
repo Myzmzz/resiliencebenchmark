@@ -102,6 +102,8 @@ def test_qualification_record_requires_each_harness_and_evidence_reference(tmp_p
     assert descriptors["codex"]["code_execution"] == "platform_sandbox"
     assert descriptors["bladeai"]["qualification_passed"] is False
     assert source["harnesses"]["bladeai"]["status"] == "capability_probe_missing"
+    # A Harness without a published record falls back to its declaration.
+    assert descriptors["bladeai"]["code_execution"] == "none"
 
 
 def test_runtime_preflight_uses_only_qualification_record_for_readiness(
@@ -190,3 +192,5 @@ def test_failed_qualification_cannot_be_overridden_by_capability_claim(tmp_path:
 
     assert descriptors["deepseek-harness"]["qualification_passed"] is False
     assert source["harnesses"]["deepseek-harness"]["status"] == "qualification_not_passed"
+    # The failed record claimed platform_sandbox; the loader keeps the declared "none".
+    assert descriptors["deepseek-harness"]["code_execution"] == "none"

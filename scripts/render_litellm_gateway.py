@@ -28,6 +28,7 @@ in ``deploy/stage2/litellm/README.md``.
 from __future__ import annotations
 
 import argparse
+import copy
 import re
 import sys
 from pathlib import Path
@@ -116,18 +117,67 @@ def unused_names(config: Mapping[str, Any], env: Mapping[str, str]) -> list[str]
     return sorted(set(env) - required_names(config))
 
 
+def pace_config(
+    config: Mapping[str, Any],
+    *,
+    max_parallel_requests: int | None,
+    replicas: int,
+    account_rpm: int | None,
+    account_tpm: int | None,
+) -> dict[str, Any]:
+    """Add pacing to a routing table: a concurrency gate and per-replica budgets.
+
+    Every Controller Pod runs its own gateway sidecar and they cannot see one
+    another, so an account-wide budget has to be divided by the number of
+    replicas that will share it. ``max_parallel_requests`` is the lever that
+    actually makes a request wait instead of failing; the per-alias rpm and
+    tpm are the guard rail that stops one replica running away with the
+    account. Passing none of them returns the table unchanged.
+    """
+    if replicas < 1:
+        raise ValueError("--replicas must be at least 1")
+    document = copy.deepcopy(dict(config))
+    if max_parallel_requests is not None:
+        if max_parallel_requests < 1:
+            raise ValueError("--max-parallel-requests must be at least 1")
+        settings = dict(document.get("litellm_settings") or {})
+        settings["max_parallel_requests"] = max_parallel_requests
+        document["litellm_settings"] = settings
+    per_replica_rpm = account_rpm // replicas if account_rpm else None
+    per_replica_tpm = account_tpm // replicas if account_tpm else None
+    if per_replica_rpm is not None and per_replica_rpm < 1:
+        raise ValueError("--account-rpm divided by --replicas leaves less than one request per minute")
+    if per_replica_tpm is not None and per_replica_tpm < 1:
+        raise ValueError("--account-tpm divided by --replicas leaves less than one token per minute")
+    if per_replica_rpm is None and per_replica_tpm is None:
+        return document
+    entries = []
+    for entry in document.get("model_list") or []:
+        item = dict(entry)
+        params = dict(item.get("litellm_params") or {})
+        if per_replica_rpm is not None:
+            params["rpm"] = per_replica_rpm
+        if per_replica_tpm is not None:
+            params["tpm"] = per_replica_tpm
+        item["litellm_params"] = params
+        entries.append(item)
+    document["model_list"] = entries
+    return document
+
+
 def render_manifests(
     config_text: str,
     config: Mapping[str, Any],
     env: Mapping[str, str],
     namespace: str,
+    configmap_name: str = CONFIGMAP_NAME,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Separate provider credentials from the Controller's gateway-only client."""
     configmap = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
         "metadata": {
-            "name": CONFIGMAP_NAME,
+            "name": configmap_name,
             "namespace": namespace,
             "labels": dict(MANAGED_LABELS),
         },
@@ -173,6 +223,18 @@ def write_manifests(output_dir: Path, configmap: Mapping[str, Any], secret: Mapp
     return written
 
 
+def pacing_summary(config: Mapping[str, Any], args: argparse.Namespace) -> Iterable[str]:
+    settings = config.get("litellm_settings") or {}
+    if settings.get("max_parallel_requests"):
+        yield f"pacing: max_parallel_requests={settings['max_parallel_requests']} per gateway"
+    first = (config.get("model_list") or [{}])[0].get("litellm_params") or {}
+    if first.get("rpm") or first.get("tpm"):
+        yield (
+            f"pacing: per-alias rpm={first.get('rpm')} tpm={first.get('tpm')} "
+            f"(account rpm={args.account_rpm} tpm={args.account_tpm} split over {args.replicas} replicas)"
+        )
+
+
 def summary_lines(config: Mapping[str, Any], env: Mapping[str, str]) -> Iterable[str]:
     yield f"aliases ({len(model_aliases(config))}): " + ", ".join(model_aliases(config))
     for name in sorted(required_names(config)):
@@ -190,6 +252,38 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--namespace", default=DEFAULT_NAMESPACE)
     value.add_argument("--output-dir", type=Path, help="where to write the ConfigMap and Secret manifests")
     value.add_argument("--check", action="store_true", help="validate only; write nothing")
+    value.add_argument(
+        "--configmap-name",
+        default=CONFIGMAP_NAME,
+        help=(
+            "name of the rendered ConfigMap; use a separate one for a replica fleet "
+            "so its pacing does not change the single-system Controller"
+        ),
+    )
+    value.add_argument(
+        "--max-parallel-requests",
+        type=int,
+        help=(
+            "concurrent upstream requests one gateway will run; further requests wait "
+            "rather than fail. This is the lever that paces, not the one that rejects"
+        ),
+    )
+    value.add_argument(
+        "--replicas",
+        type=int,
+        default=1,
+        help="how many Pods share the account budget; each gets account limit / replicas",
+    )
+    value.add_argument(
+        "--account-rpm",
+        type=int,
+        help="requests per minute the upstream account allows, read from its console",
+    )
+    value.add_argument(
+        "--account-tpm",
+        type=int,
+        help="tokens per minute the upstream account allows, read from its console",
+    )
     return value
 
 
@@ -208,7 +302,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.check or not args.output_dir:
         print("credentials complete; nothing written" if args.check else "credentials complete; pass --output-dir to render")
         return 0
-    configmap, secret, client_secret = render_manifests(config_text, config, env, args.namespace)
+    paced = pace_config(
+        config,
+        max_parallel_requests=args.max_parallel_requests,
+        replicas=args.replicas,
+        account_rpm=args.account_rpm,
+        account_tpm=args.account_tpm,
+    )
+    if paced != config:
+        # Re-serialize only when pacing changed something, so an unpaced render
+        # still ships the reviewed file byte for byte, comments included.
+        config_text = yaml.safe_dump(paced, sort_keys=False, allow_unicode=True, width=100)
+        for line in pacing_summary(paced, args):
+            print(line)
+    configmap, secret, client_secret = render_manifests(
+        config_text, paced, env, args.namespace, args.configmap_name
+    )
     for path in write_manifests(args.output_dir, configmap, secret, client_secret):
         print(f"wrote {path}")
     print(

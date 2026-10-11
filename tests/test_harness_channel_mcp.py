@@ -28,9 +28,14 @@ from mcp_servers.harness_channel.service import (
     HarnessChannelService,
 )
 from stage2_service.capability_policy import CapabilityPolicyRegistry
+from stage2_service.condition_policy import (
+    EFFECT_OPERATORS,
+    RECOVERY_OPERATORS,
+    WORKLOAD_METRICS,
+)
 from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutcome
 from stage2_service.harness_adapters.base import ToolCall, ToolResult
-from stage2_service.plan_schema import PlanSafetyEnvelope
+from stage2_service.plan_schema import AGENT_PLAN_SKELETON, PlanSafetyEnvelope
 from stage2_service.platform_ledger import PlatformLedger
 from stage2_service.simulated_user import HarnessResponder, SimulatedUserPolicy
 from stage2_service.simulated_user import ConversationError, HarnessModelTimeout
@@ -280,6 +285,93 @@ def test_submit_result_schema_ref_expansion_rejects_unsupported_refs() -> None:
         _expand_local_json_schema_refs({"$ref": "#/$defs/missing", "$defs": {}})
     with pytest.raises(RuntimeError, match="circular reference"):
         _expand_local_json_schema_refs({"$ref": "#/$defs/loop", "$defs": {"loop": {"$ref": "#/$defs/loop"}}})
+
+
+def test_confirm_tool_publishes_the_plan_vocabulary_with_optional_conditions(tmp_path: Path) -> None:
+    service, _ledger, _decision = channel(tmp_path)
+    tools = {tool.name: tool for tool in run(create_server(service=service).list_tools())}
+    confirm_tool = tools["harness_confirm"]
+
+    description = confirm_tool.description
+    for value in (*WORKLOAD_METRICS, *EFFECT_OPERATORS, *RECOVERY_OPERATORS):
+        assert value in description
+    assert "effect_condition, recovery_condition (optional)" in description
+    assert "effect_observation_seconds" in description
+    assert len(description) < 2048
+
+    input_schema = confirm_tool.input_schema
+    assert input_schema["required"] == ["plan"]
+    plan_schema = input_schema["properties"]["plan"]
+    # Nothing inside the plan is required: the conditions in particular stay
+    # optional because the Harness may fill them in.
+    assert "required" not in plan_schema
+    assert list(_schema_refs(plan_schema)) == []
+    for name, operators in (
+        ("effect_condition", EFFECT_OPERATORS),
+        ("recovery_condition", RECOVERY_OPERATORS),
+    ):
+        condition = plan_schema["properties"][name]
+        assert condition["description"].startswith("Optional.")
+        assert condition["properties"]["metric"]["enum"] == sorted(WORKLOAD_METRICS)
+        assert condition["properties"]["operator"]["enum"] == sorted(operators)
+        assert condition["properties"]["threshold"]["type"] == "number"
+        assert condition["properties"]["threshold"]["minimum"] == 0
+
+    validator = Draft202012Validator(plan_schema)
+    without_conditions = {
+        key: value
+        for key, value in valid_plan().items()
+        if key not in {"effect_condition", "recovery_condition"}
+    }
+    codex_style = {
+        **valid_plan(),
+        "effect_condition": {"metric": "cpu_usage", "operator": ">=", "threshold": 50},
+    }
+    assert list(validator.iter_errors(valid_plan())) == []
+    assert list(validator.iter_errors(without_conditions)) == []
+    assert list(validator.iter_errors(codex_style)) != []
+
+
+def test_confirm_tool_text_is_identical_across_trials_and_names_no_trial_value(tmp_path: Path) -> None:
+    first, _ledger, _decision = channel(tmp_path / "a")
+    second, _ledger2, _decision2 = channel(tmp_path / "b", trial_id="trial-2", case_id="C0")
+    first_tool = {tool.name: tool for tool in run(create_server(service=first).list_tools())}["harness_confirm"]
+    second_tool = {tool.name: tool for tool in run(create_server(service=second).list_tools())}["harness_confirm"]
+
+    assert first_tool.description == second_tool.description
+    assert first_tool.input_schema == second_tool.input_schema
+    published = first_tool.description + json.dumps(first_tool.input_schema)
+    for trial_value in ("otel-demo", "cart-a", "11111111-2222-4333-8444-555555555555", "trial-1"):
+        assert trial_value not in published
+
+
+def test_confirm_refusal_explains_each_issue_and_keeps_its_codes(tmp_path: Path) -> None:
+    service, ledger, decision_file = channel(tmp_path)
+    server = create_server(service=service)
+    plan = {
+        **valid_plan(),
+        "effect_condition": {"metric": "cpu_usage", "operator": ">=", "threshold": 50},
+        "target_uid": "11111111-2222-4333-8444-555555555555",
+    }
+
+    result = run(server.call_tool("harness_confirm", {"plan": plan})).structured_content
+
+    assert result["allowed"] is False
+    assert result["error_code"] == "PLAN_SCHEMA_INVALID"
+    assert result["reason"] == "plan_schema_invalid"
+    assert not decision_file.exists()
+    denied = ledger.query()[-1]
+    assert denied.event_type == "CONFIRM_DENIED"
+    assert denied.payload["error_code"] == "PLAN_SCHEMA_INVALID"
+    assert "message" not in denied.payload
+    message = result["message"]
+    assert "- target_uid: PLAN_UNKNOWN_FIELD — " in message
+    assert "MISSING_TARGET_UID" not in message
+    assert all(value in message for value in (*WORKLOAD_METRICS, *EFFECT_OPERATORS))
+    assert AGENT_PLAN_SKELETON in message
+    # This channel's policy lets the Harness supply nothing, so the refusal
+    # does not suggest leaving the conditions out.
+    assert "可以省略" not in message
 
 
 def test_harness_channel_emits_realtime_call_and_receipt(tmp_path: Path) -> None:

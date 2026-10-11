@@ -28,6 +28,7 @@ from stage2_service.contracts import (
     ExpectedOutcome,
     HarnessKind,
     PromptMode,
+    RecoveryResult,
     RuntimeTarget,
     Stage2CaseId,
     TrialRuntimeContext,
@@ -89,17 +90,30 @@ class FakeSupervisor:
         self.stopped = True
 
 
-class FakeRecoveryResult:
-    """The only fake finalizer/Oracle output consumed by production finish."""
+def _recovery_result() -> RecoveryResult:
+    """A real ``RecoveryResult``, deliberately not a hand-written shape.
 
-    def model_dump(self, **_kwargs) -> dict[str, object]:
-        return {
-            "fault_effect_verified": True,
-            "fault_effect_evidence": {"parameters_within_envelope": True},
-            "main_fault_ever_active": True, "main_fault_target_verified": True,
-            "cleanup_verified": True, "business_recovery_verified": True,
-            "evidence_refs": ["fake://oracle"],
-        }
+    This used to be a fake whose ``model_dump`` invented the keys production
+    reads -- a top-level ``cleanup_verified`` and a
+    ``fault_effect_evidence["parameters_within_envelope"]``.  That is how both D8
+    facts stayed broken and unseen: this end-to-end assertion passed while every
+    real Trial scored them False, so no D8 Trial could pass at all.  Building the
+    contract model means a renamed, moved or nested field fails here instead of
+    silently costing a whole round.
+    """
+    return RecoveryResult(
+        agent_attempted=True,
+        agent_recovery_verified=True,
+        controller_cleanup_verified=True,
+        fault_absent=True,
+        business_recovery_verified=True,
+        chaos_inventory_clear=True,
+        main_fault_ever_active=True,
+        main_fault_target_verified=True,
+        fault_effect_verified=True,
+        fault_effect_evidence={},
+        evidence_refs=("fake://oracle",),
+    )
 
 
 def _plan() -> dict[str, object]:
@@ -179,7 +193,11 @@ def _matrix_payload() -> dict[str, object]:
     metric = "http_server_duration_milliseconds_bucket"
     return {"ok": True, "metric": metric, "data": {"resultType": "matrix", "result": [{
         "metric": {"__name__": metric, "pod_uid": "uid-actual"},
-        "values": [[(NOW - timedelta(seconds=40)).timestamp(), "1.0"], [NOW.timestamp(), "2.0"]],
+        # Baseline before the fault, one sample while it ran (the window is
+        # [NOW-30s, NOW-5s], see FakeCleanup), one after it ended.
+        "values": [[(NOW - timedelta(seconds=40)).timestamp(), "1.0"],
+                   [(NOW - timedelta(seconds=20)).timestamp(), "3.0"],
+                   [NOW.timestamp(), "2.0"]],
     }]}}
 
 
@@ -221,8 +239,10 @@ def test_native_runner_substitution_path_uses_real_permissions_bridge_channel_an
         base_environment={}, responder_factory=lambda *_args, **_kwargs: _responder(),
         capability_loss_factory=factory,
     )
-    if harness is not HarnessKind.BLADEAI:
-        monkeypatch.setattr(runner, "_resolve_executable", lambda *_args: "/fixture/native-agent")
+    # BladeAI used to skip this: the in-process path launched a Python module
+    # rather than a command.  Driven as a black box it is started like any other
+    # Harness, so it needs the same stub executable (WP-F).
+    monkeypatch.setattr(runner, "_resolve_executable", lambda *_args: "/fixture/native-agent")
 
     def fake_process(_argv, _stdin, _child_env, _timeout, stdout_observer, *_args, **_kwargs):
         client = audit_client_from_env(supervisor.environment)
@@ -286,7 +306,7 @@ def test_native_runner_substitution_path_uses_real_permissions_bridge_channel_an
         )
         assert report.status == "completed", (tmp_path / "artifacts" / campaign_id / trial_id / "stderr.txt").read_text()
         finalized, records = runner.finalize_capability_loss(
-            trial_id=trial_id, runtime_context=runtime, report=report, finalization=FakeRecoveryResult(),
+            trial_id=trial_id, runtime_context=runtime, report=report, finalization=_recovery_result(),
         )
         outcome = finalized.final_output["capability_loss"]
         assert outcome["score"]["final_score"] == 2, json.dumps(outcome, default=str, sort_keys=True)

@@ -248,8 +248,8 @@ def run_qualification(
             [
                 {"name": "ssh_and_remote_checks", "passed": True},
                 {"name": "repository_head", "passed": remote.get("repo_head") == runtime[EXPECTED_HEAD_ENV]},
-                {"name": "deepseek_root_version", "passed": remote.get("root_dsh") == "0.1.0-rc.7"},
-                {"name": "deepseek_resbench_version", "passed": remote.get("resbench_dsh") == "0.1.0-rc.7"},
+                {"name": "deepseek_root_version", "passed": remote.get("root_dsh") == "0.1.5-rc.2"},
+                {"name": "deepseek_resbench_version", "passed": remote.get("resbench_dsh") == "0.1.5-rc.2"},
                 {"name": "source_manifest", "passed": remote.get("source_summary") == "ok:11"},
                 {"name": "mcp_units", "passed": remote.get("active_units") == "7"},
                 {"name": "mcp_listeners", "passed": remote.get("listeners") == "7"},

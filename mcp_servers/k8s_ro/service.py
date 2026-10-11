@@ -37,6 +37,11 @@ NAMESPACED_RESOURCES: Mapping[str, str] = {
     "endpoints": "endpoints",
     "jobs": "jobs.batch",
     "configmaps": "configmaps",
+    # Stage-1 tool mode (2026-09-15): resilience analysis needs disruption budgets,
+    # autoscalers and volume claims. All three stay read-only (get/list) like the rest.
+    "poddisruptionbudgets": "poddisruptionbudgets.policy",
+    "horizontalpodautoscalers": "horizontalpodautoscalers.autoscaling",
+    "persistentvolumeclaims": "persistentvolumeclaims",
 }
 CLUSTER_RESOURCES: Mapping[str, str] = {
     "nodes": "nodes",

@@ -20,14 +20,16 @@ CODEX_ARG0_ALIAS_NAMES = frozenset({
 })
 DSH_NODE_MODULES_REL_PREFIX = ("dsh-home", "profiles", "node_modules")
 DSH_NODE_MODULES_TARGET_ROOT = "/opt/resiliencebenchmark/deepseek-harness/node_modules"
-# The locked DSH distribution resolves this package from its frontend's
-# nested dependency tree. Observed in the real 0.1.0-rc.7 profile cache.
-DSH_NESTED_PACKAGE_TARGETS = {
-    "@deepseek-ai/dsh-client-web": (
-        f"{DSH_NODE_MODULES_TARGET_ROOT}/@deepseek-ai/dsh-web-frontend/"
-        "node_modules/@deepseek-ai/dsh-client-web"
-    ),
-}
+# npm hoists most packages to the install root but keeps version-conflicting
+# ones nested under their dependent, so a profile alias may point at
+# ``<root>/<dependent>/node_modules/<package>`` instead of ``<root>/<package>``.
+# 0.1.0-rc.7 nested exactly one such package (@deepseek-ai/dsh-client-web under
+# dsh-web-frontend); 0.1.5-rc.2 drops that package and nests others instead
+# (for example chokidar under @deepseek-ai/dsh-skill-filesystem).  Enumerating
+# them pinned the guard to one DSH release and failed the next one, so the rule
+# below accepts any nesting depth while keeping both real protections: the
+# target stays inside the DSH install root, and its final component must still
+# be the package the alias claims to be.
 
 
 def normalize_shared_trial_tree(
@@ -122,12 +124,34 @@ def _is_dsh_node_modules_package_alias(path: Path, root: Path) -> bool:
     if not _is_dsh_package_parts(package_parts):
         return False
     package = "/".join(package_parts)
-    expected = DSH_NESTED_PACKAGE_TARGETS.get(package, f"{DSH_NODE_MODULES_TARGET_ROOT}/{package}")
     try:
         target = os.readlink(path)
     except OSError:
         return False
-    return target == expected
+    return _dsh_target_resolves_to_package(target, package)
+
+
+def _dsh_target_resolves_to_package(target: str, package: str) -> bool:
+    """True when ``target`` is ``package`` inside the DSH install root.
+
+    Accepts the hoisted form and any ``node_modules`` nesting under the root.
+    Rejects anything outside the root, any relative traversal, and any target
+    whose final component is a different package than the alias claims.
+    """
+    prefix = f"{DSH_NODE_MODULES_TARGET_ROOT}/"
+    if not target.startswith(prefix):
+        return False
+    remainder = target[len(prefix):]
+    if remainder == package:
+        return True
+    suffix = f"/node_modules/{package}"
+    if not remainder.endswith(suffix):
+        return False
+    dependent = remainder[: -len(suffix)]
+    if not dependent:
+        return False
+    segments = dependent.split("/")
+    return all(segment and segment != ".." and segment != "." for segment in segments)
 
 
 def _is_dsh_package_parts(parts: tuple[str, ...]) -> bool:

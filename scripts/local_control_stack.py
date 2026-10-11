@@ -33,6 +33,15 @@ ENDPOINTS = {
     "RESBENCH_CHAOS_CONTROL_MCP_URL": "http://127.0.0.1:18084/mcp",
 }
 PORTS = (19090, 19086, 13100, 18081, 18082, 18083, 18084)
+# Stage-1 tool mode (2026-09-15): optional SSE twins of the read-only servers for
+# Blade AI (its MCP client only speaks SSE) and a configurable Jaeger allowlist.
+BLADEAI_SSE_PORTS = {"k8s_ro": 18181, "telemetry_ro": 18182, "source_ro": 18183}
+BLADEAI_SSE_ENDPOINTS = {
+    "RESBENCH_BLADEAI_K8S_MCP_SSE_URL": "http://127.0.0.1:18181/sse",
+    "RESBENCH_BLADEAI_TELEMETRY_MCP_SSE_URL": "http://127.0.0.1:18182/sse",
+    "RESBENCH_BLADEAI_SOURCE_MCP_SSE_URL": "http://127.0.0.1:18183/sse",
+}
+DEFAULT_JAEGER_ALLOWED_SERVICES = "frontend,frontend-proxy,checkout,cart,payment,shipping"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -55,6 +64,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--codex-smoke", action="store_true")
     parser.add_argument("--codex-model", default="gpt-5.6")
     parser.add_argument("--enable-chaos-writes", action="store_true")
+    parser.add_argument(
+        "--allow-raw-telemetry",
+        action="store_true",
+        help="Register the read-only raw PromQL/LogQL/trace-id tools in telemetry_ro.",
+    )
+    parser.add_argument(
+        "--jaeger-allowed-services",
+        default=DEFAULT_JAEGER_ALLOWED_SERVICES,
+        help="Comma-separated Jaeger service allowlist for telemetry_ro.",
+    )
+    parser.add_argument(
+        "--bladeai-sse",
+        action="store_true",
+        help="Also serve k8s_ro/telemetry_ro/source_ro over SSE on 18181-18183 for Blade AI.",
+    )
     return parser
 
 
@@ -66,6 +90,8 @@ def build_stack_environment(
     runtime_root: Path,
     token: str,
     enable_chaos_writes: bool = False,
+    allow_raw_telemetry: bool = False,
+    jaeger_allowed_services: str = DEFAULT_JAEGER_ALLOWED_SERVICES,
 ) -> dict[str, dict[str, str]]:
     common = {
         "RESBENCH_MCP_TOKEN": token,
@@ -96,10 +122,8 @@ def build_stack_environment(
             "RESBENCH_JAEGER_URL": "http://127.0.0.1:19086",
             "RESBENCH_LOKI_URL": "http://127.0.0.1:13100",
             "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": "otel-demo",
-            "RESBENCH_JAEGER_ALLOWED_SERVICES": (
-                "frontend,frontend-proxy,checkout,cart,payment,shipping"
-            ),
-            "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
+            "RESBENCH_JAEGER_ALLOWED_SERVICES": jaeger_allowed_services,
+            "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "true" if allow_raw_telemetry else "false",
             "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(telemetry_dir),
         },
         "source_ro": {
@@ -166,7 +190,9 @@ class LocalStack:
         source_root: Path,
         runtime_root: Path,
         environments: dict[str, dict[str, str]],
+        bladeai_sse: bool = False,
     ):
+        self.bladeai_sse = bladeai_sse
         self.port_forward_kubeconfig = port_forward_kubeconfig
         self.controller_kubeconfig = controller_kubeconfig
         self.codex_auth_file = codex_auth_file
@@ -187,7 +213,7 @@ class LocalStack:
         return self
 
     def _start(self) -> None:
-        for port in PORTS:
+        for port in self._all_ports():
             if _port_open(port):
                 raise RuntimeError(f"local stack port is already in use: {port}")
         self.runtime_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -250,9 +276,26 @@ class LocalStack:
         ):
             env = {**os.environ, **self.environments[name]}
             self._spawn(name, [sys.executable, "-m", f"mcp_servers.{name}"], env)
-        for port in PORTS:
+        if self.bladeai_sse:
+            for name, port in BLADEAI_SSE_PORTS.items():
+                env = {
+                    **os.environ,
+                    **self.environments[name],
+                    "RESBENCH_MCP_TRANSPORT": "sse",
+                    "RESBENCH_MCP_HTTP_PORT": str(port),
+                    "RESBENCH_MCP_HTTP_PATH": "/sse",
+                    "RESBENCH_MCP_RESOURCE_URL": f"http://127.0.0.1:{port}/sse",
+                }
+                self._spawn(f"{name}-sse", [sys.executable, "-m", f"mcp_servers.{name}"], env)
+        for port in self._all_ports():
             _wait_port(port, timeout_seconds=30)
         self._write_private_env()
+
+    def _all_ports(self) -> tuple[int, ...]:
+        """Ports this stack binds; the Blade AI SSE twins count only when requested."""
+        if self.bladeai_sse:
+            return PORTS + tuple(BLADEAI_SSE_PORTS.values())
+        return PORTS
 
     def __exit__(self, *_args: object) -> None:
         self._stop()
@@ -342,6 +385,8 @@ class LocalStack:
                 "chaos_control"
             ]["RESBENCH_CHAOS_CONTROLLER_LEASE_FILE"],
         }
+        if self.bladeai_sse:
+            values.update(BLADEAI_SSE_ENDPOINTS)
         if self.codex_auth_file is not None:
             values["RESBENCH_CODEX_AUTH_FILE"] = str(self.codex_auth_file)
         path = self.runtime_root / "stack.env"
@@ -403,6 +448,8 @@ def main(argv: list[str] | None = None) -> int:
         runtime_root=runtime_root,
         token=token,
         enable_chaos_writes=args.enable_chaos_writes,
+        allow_raw_telemetry=args.allow_raw_telemetry,
+        jaeger_allowed_services=args.jaeger_allowed_services,
     )
     plan = redacted_plan(environments, runtime_root)
     if args.dry_run:
@@ -431,6 +478,7 @@ def main(argv: list[str] | None = None) -> int:
             source_root=source_root,
             runtime_root=runtime_root,
             environments=environments,
+            bladeai_sse=args.bladeai_sse,
         ):
             qualification_env = {"RESBENCH_MCP_TOKEN": token, **ENDPOINTS}
             report = run_qualification(

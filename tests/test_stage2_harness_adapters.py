@@ -30,7 +30,10 @@ def test_factory_exports_four_harnesses_without_claiming_qualification():
         HarnessKind.CODEX: "stream",
         HarnessKind.CLAUDE_CODE: "stream",
         HarnessKind.DEEPSEEK: "post_hoc",
-        HarnessKind.BLADEAI: "controller_driven",
+        # Black-box BladeAI streams its own SSE events exactly as codex
+        # streams JSONL; it is no longer driven in-process by us replacing
+        # its private functions.
+        HarnessKind.BLADEAI: "stream",
     }
 
     for kind, execution_model in expected.items():
@@ -566,32 +569,72 @@ def test_deepseek_result_without_tool_call_remains_unclosed_evidence(tmp_path: P
     assert events[0].call_id == "missing-call"
 
 
-def test_bladeai_preserves_steps_without_inventing_tool_calls():
+def test_bladeai_node_lifecycle_does_not_invent_tool_calls():
+    """BladeAI's node lifecycle is structure, not tool use.
+
+    Same intent as the pre-black-box version of this test, restated against the
+    real 0.7.0 event vocabulary: the old ``stage2_bladeai_event`` envelope was
+    minted by our own in-process worker and no longer exists.
+    """
     adapter = create_adapter(HarnessKind.BLADEAI)
 
-    calls = adapter.on_stream_line(
-        _line(
-            {
-                "type": "stage2_bladeai_event",
-                "kind": "step_start",
-                "payload": {"name": "planning", "attrs": {"phase": "C1"}},
-            }
-        )
+    started = adapter.on_stream_line(
+        _line({"type": "node_start", "node": "execute_loop", "task_id": "turn-1"})
     )
-    results = adapter.on_stream_line(
-        _line(
-            {
-                "type": "stage2_bladeai_event",
-                "kind": "step_end",
-                "payload": {"name": "planning", "attrs": {"phase": "C1"}},
-            }
-        )
+    ended = adapter.on_stream_line(
+        _line({"type": "node_end", "node": "execute_loop", "task_id": "turn-1"})
     )
 
-    assert len(calls) == 1
-    assert isinstance(calls[0], Checkpoint)
-    assert calls[0].values["event"] == "step_start"
-    assert len(results) == 1
-    assert isinstance(results[0], Checkpoint)
-    assert results[0].values["event"] == "step_end"
+    assert started == []
+    assert ended == []
     assert adapter.open_calls() == []
+
+
+def _touch(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    return path
+
+
+def test_dsh_session_logs_finds_every_session_format_generation(tmp_path):
+    """0.1.0-rc.7 wrote session.jsonl.zstd; 0.1.5-rc.2 writes session.v3.jsonl.zstd.
+
+    Matching only the generation-0 name captured no trace from 0.1.5-rc.2, so
+    every DSH Trial failed capability publication for "missing native evidence"
+    while its own run had succeeded.
+    """
+    old = _touch(tmp_path / "sessions" / "a" / "session.jsonl.zstd")
+    new = _touch(tmp_path / "sessions" / "b" / "session.v3.jsonl.zstd")
+
+    assert deepseek.dsh_session_logs(tmp_path) == [old, new]
+
+
+def test_dsh_session_logs_keeps_only_the_newest_generation_per_session(tmp_path):
+    """Two generations of one session describe the same conversation.
+
+    Replaying both would present each tool call twice, which capability
+    publication rejects as an ambiguous call identity.
+    """
+    session = tmp_path / "sessions" / "one"
+    _touch(session / "session.jsonl.zstd")
+    _touch(session / "session.v2.jsonl.zstd")
+    newest = _touch(session / "session.v10.jsonl.zstd")
+
+    assert deepseek.dsh_session_logs(tmp_path) == [newest]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "session.v0.jsonl.zstd",   # DSH never names generation 0 with a tag
+        "session.v03.jsonl.zstd",  # leading zero is not canonical
+        "session.V3.jsonl.zstd",   # uppercase is not canonical
+        "session.v3.jsonl",        # uncompressed log is not what the platform archives
+        "session.v3.jsonl.zstd.tmp",
+        "other.v3.jsonl.zstd",
+    ],
+)
+def test_dsh_session_logs_ignores_names_dsh_does_not_treat_as_canonical(tmp_path, name):
+    _touch(tmp_path / "sessions" / "one" / name)
+
+    assert deepseek.dsh_session_logs(tmp_path) == []

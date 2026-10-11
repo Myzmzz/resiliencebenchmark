@@ -17,6 +17,7 @@ from stage2_service.condition_policy import (
 from stage2_service.plan_schema import (
     AgentPlan,
     PlanSafetyEnvelope,
+    validate_agent_plan,
 )
 
 from mcp_servers.chaos_core.contracts import (
@@ -240,6 +241,55 @@ def _mapping_or_raw(value: Any) -> Any:
     if isinstance(value, Mapping):
         return dict(value)
     return deepcopy(value)
+
+
+def execution_parameters_within_envelope(
+    *,
+    namespace: str,
+    target_name: str,
+    target_uid: str,
+    fault_type: str,
+    duration_seconds: Any,
+    intensity: Any,
+    envelope: PlanSafetyEnvelope,
+) -> bool:
+    """Whether concrete execution-shaped parameters satisfy a plan-safety envelope.
+
+    This is the create gate's own judgement -- the same synthetic plan, the same
+    adapter and the same ``validate_agent_plan`` -- without the gate's side
+    effect of raising, so an independent Oracle can ask the question again after
+    the fact and cannot drift from what the executor enforced at create time.
+
+    Fail closed on purpose: parameters that are missing, partial or unreadable
+    answer ``False``.  An absent record must never be reported as "inside the
+    envelope", because that is the answer an injection with no recorded
+    parameters would otherwise get.
+    """
+    if not (namespace and target_name and target_uid and fault_type):
+        return False
+    if isinstance(duration_seconds, bool) or not isinstance(duration_seconds, int):
+        return False
+    if duration_seconds < 1:
+        return False
+    if not isinstance(intensity, Mapping) or not intensity:
+        return False
+    request_plan = _request_plan_from_approved(
+        {},
+        namespace=namespace,
+        target_name=target_name,
+        target_uid=target_uid,
+        fault_type=fault_type,
+        duration_seconds=duration_seconds,
+        intensity=dict(intensity),
+    )
+    try:
+        result = validate_agent_plan(
+            _agent_plan_input(_synthetic_agent_plan(request_plan)),
+            envelope,
+        )
+    except Exception:  # noqa: BLE001 - malformed input is "not within", never a crash
+        return False
+    return result.ok
 
 
 def _assert_controller_owned_plan_fields(raw_plan: Mapping[str, Any]) -> None:

@@ -37,7 +37,7 @@ from stage2_service.harness_adapters import (
     ToolResult,
     create_adapter,
 )
-from stage2_service.harness_adapters.deepseek import iter_zstd_jsonl_lines
+from stage2_service.harness_adapters.deepseek import dsh_session_logs, iter_zstd_jsonl_lines
 from stage2_service.session import (
     HarnessSession,
     ResumeArgvBuilder,
@@ -148,6 +148,11 @@ AGENT_SHARED_RUNTIME_ENV = {
     "RESBENCH_CODE_SANDBOX_MCP_URL",
     "RESBENCH_BLADEAI_CHANNEL_ONLY",
 }
+# Harnesses that act through their own built-in tools rather than through the
+# platform's MCP gateway.  Their calls are outside the gateway allow-list by
+# construction and are not escapes (ruling, 2026-09-12).
+BLACK_BOX_NATIVE_TOOL_PREFIXES: tuple[str, ...] = ("bladeai.",)
+
 ALLOWED_MCP_TOOLS = {
     "harness_channel": {"harness_consult", "harness_confirm", "harness_submit_result", "harness_poll_notices"},
     "k8s_ro": {
@@ -992,6 +997,14 @@ def canonical_event_payload(event: CanonicalEvent) -> dict[str, Any]:
 
 def allowed_mcp_tool_call(call: ToolCall) -> bool:
     name = call.tool
+    if name.startswith(BLACK_BOX_NATIVE_TOOL_PREFIXES):
+        # A Harness driven as a black box works through its own built-in
+        # tooling, which never passes the platform's MCP gateway, so an
+        # allow-list of gateway tool names cannot describe it: every ordinary
+        # action it takes would read as an escape.  Scope is judged instead on
+        # what the run actually affected -- the same basis as the
+        # ``tool_screener`` gate ruling -- which is WP-E's process-level sweep.
+        return True
     if name.startswith("mcp__"):
         parts = name.split("__", 2)
         if len(parts) != 3:
@@ -1039,7 +1052,12 @@ def build_argv(
         else:
             args.extend(output_args)
     argv = [command, *args]
-    if transport == "stdin":
+    if transport in {"stdin", "adapter_owned"}:
+        # ``adapter_owned`` means the adapter decides how the prompt reaches the
+        # Agent; the platform's job is only to hand it over.  Black-box BladeAI
+        # is driven over HTTP, where its turn executor reads this same buffer
+        # and posts it as the turn's ``input`` field -- there is no command line
+        # to put it on.
         return argv, prompt_text.encode("utf-8"), None
     if harness_name == "deepseek-harness":
         return argv, b"", None
@@ -1176,6 +1194,24 @@ def validate_final_agent_result(
     return "", "agent output did not contain a JSON object matching agent-result.schema.json"
 
 
+def _redact_session_line(line: str, env: Mapping[str, str]) -> str:
+    """Redact one DSH session record without breaking its JSON.
+
+    Redacting the raw line corrupted records (2026-09-22 L0xD1, dsh-dspro-r1,
+    line 143): the model's reasoning contained ``baseline_gate_token =
+    \\"...\\"``, the ``token = value`` pattern swallowed the backslash of the
+    escaped quote, and the bare quote left behind made the record invalid, so
+    the whole Trial ended ADAPTER_TRACE_INVALID.  Each string value is
+    redacted after decoding and the record is encoded again, so escaping stays
+    correct.  A line that is not JSON keeps the plain text redaction.
+    """
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return redact_text(f"{line}\n", env)
+    return json.dumps(redact_json(record, env), ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
 def capture_dsh_session_trace(
     dsh_home: Path,
     artifact_dir: Path,
@@ -1190,7 +1226,7 @@ def capture_dsh_session_trace(
     import zstandard
 
     references: list[str] = []
-    for index, source in enumerate(sorted(dsh_home.rglob("session.jsonl.zstd"))):
+    for index, source in enumerate(dsh_session_logs(dsh_home)):
         jsonl_name = f"dsh-session-{index:02d}.jsonl"
         jsonl_path = artifact_dir / jsonl_name
         total = 0
@@ -1201,7 +1237,7 @@ def capture_dsh_session_trace(
                 total += len(output_line.encode("utf-8"))
                 if total > 128 * 1024 * 1024:
                     raise ValueError("DSH native trace exceeds 128 MiB archive limit")
-                destination.write(redact_text(output_line, env))
+                destination.write(_redact_session_line(line, env))
         compressed_name = f"dsh-session-{index:02d}.jsonl.zstd"
         compressed_path = artifact_dir / compressed_name
         with jsonl_path.open("rb") as original, compressed_path.open("wb") as destination:
