@@ -235,7 +235,9 @@ def test_prometheus_metric_instant_constructs_namespace_scoped_query():
     assert result["ok"] is True
     assert result["operation"] == "metric_instant"
     assert transport.calls[0]["params"]["query"] == (
-        'sum by (namespace,pod) (rate(http_requests_total{namespace="otel-demo",service="checkout"}[60s]))'
+        "sum by (namespace,k8s_namespace_name,pod) ("
+        'rate(http_requests_total{namespace="otel-demo",service="checkout"}[60s]) or '
+        'rate(http_requests_total{namespace="",k8s_namespace_name="otel-demo",service="checkout"}[60s]))'
     )
 
 
@@ -350,7 +352,10 @@ def test_prometheus_metric_series_injects_namespace_matcher():
     assert result["total"] == 1
     assert result["scopeFiltered"] is True
     assert "scopedOutCount" not in result
-    assert transport.calls[0]["params"]["match[]"] == ['up{namespace="otel-demo",job="otel"}']
+    assert transport.calls[0]["params"]["match[]"] == [
+        'up{namespace="otel-demo",job="otel"}',
+        'up{namespace="",k8s_namespace_name="otel-demo",job="otel"}',
+    ]
 
 
 def test_prometheus_aggregate_without_namespace_is_dropped_fail_closed():
@@ -915,3 +920,84 @@ def test_replica_trace_scope_ignores_the_shared_logical_service_namespace():
     result = run(svc.jaeger_find_traces(service="cart", start=1700000000, end=1700000300, limit=10))
 
     assert [item["traceID"] for item in result["traces"]] == ["own"]
+def test_prometheus_raw_query_scopes_otel_metrics_by_k8s_namespace_name():
+    svc, _ = service(
+        {
+            ("http://prometheus.monitoring.svc:9090", "/api/v1/query"): {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {"metric": {"__name__": "app_cart_add_item_latency_count", "k8s_namespace_name": "otel-demo"}},
+                        {"metric": {"__name__": "app_cart_add_item_latency_count", "k8s_namespace_name": "other"}},
+                    ],
+                },
+            }
+        }
+    )
+
+    result = run(svc.prometheus_query_instant(query="app_cart_add_item_latency_count", time=1700000000))
+
+    assert result["ok"] is True
+    assert result["returned"] == 1
+    assert result["scopedOutCount"] == 1
+
+
+def test_structured_prometheus_metric_query_reaches_otel_application_metrics():
+    """OTel application metrics carry only k8s_namespace_name; structured tools must still see them in scope."""
+    svc, transport = service(
+        {
+            ("http://prometheus.monitoring.svc:9090", "/api/v1/query"): {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {"metric": {"__name__": "app_cart_get_cart_latency_seconds_count", "k8s_namespace_name": "otel-demo"}},
+                        {"metric": {"__name__": "app_cart_get_cart_latency_seconds_count", "k8s_namespace_name": "other"}},
+                    ],
+                },
+            }
+        },
+        allow_raw_queries=False,
+    )
+
+    result = run(svc.prometheus_metric_instant(metric="app_cart_get_cart_latency_seconds_count", time=1700000000))
+
+    assert result["ok"] is True
+    assert result["returned"] == 1
+    assert result["scopeFiltered"] is True
+    assert transport.calls[0]["params"]["query"] == (
+        'app_cart_get_cart_latency_seconds_count{namespace="otel-demo"} or '
+        'app_cart_get_cart_latency_seconds_count{namespace="",k8s_namespace_name="otel-demo"}'
+    )
+
+
+def test_structured_group_by_keeps_both_namespace_labels_and_ignores_duplicates():
+    svc, transport = service(
+        {
+            ("http://prometheus.monitoring.svc:9090", "/api/v1/query"): {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {"metric": {"k8s_namespace_name": "otel-demo", "service_name": "cart"}, "value": [1700000000, "2"]},
+                        {"metric": {"service_name": "cart"}, "value": [1700000000, "5"]},
+                    ],
+                },
+            }
+        },
+        allow_raw_queries=False,
+    )
+
+    result = run(
+        svc.prometheus_metric_instant(
+            metric="app_cart_get_cart_latency_seconds_count",
+            time=1700000000,
+            transform="rate",
+            group_by=["service_name", "namespace"],
+        )
+    )
+
+    assert result["returned"] == 1
+    assert result["result"][0]["metric"]["service_name"] == "cart"
+    assert transport.calls[0]["params"]["query"].startswith("sum by (namespace,k8s_namespace_name,service_name) (")

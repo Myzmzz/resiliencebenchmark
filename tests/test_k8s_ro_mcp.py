@@ -387,3 +387,15 @@ def test_create_server_accepts_http_auth_injection():
     server = create_server(service=svc, auth=auth, token_verifier=verifier)
 
     assert server is not None
+
+
+def test_stage1_resilience_resources_are_readable_but_secrets_stay_forbidden():
+    import pytest
+
+    from mcp_servers.k8s_ro.service import K8sROError, _namespaced_resource
+
+    assert _namespaced_resource("poddisruptionbudgets") == "poddisruptionbudgets.policy"
+    assert _namespaced_resource("horizontalpodautoscalers") == "horizontalpodautoscalers.autoscaling"
+    assert _namespaced_resource("persistentvolumeclaims") == "persistentvolumeclaims"
+    with pytest.raises(K8sROError):
+        _namespaced_resource("secrets")
