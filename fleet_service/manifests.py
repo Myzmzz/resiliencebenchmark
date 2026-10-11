@@ -29,7 +29,11 @@ CONTROLLER_SERVICE_ACCOUNT = "resbench-stage2-controller"
 # Controller runs one Trial at a time (``/cancel`` cancels every task on the
 # server it reaches).
 BLADEAI_SERVER_PORT = 8399
-BLADEAI_SERVER_BINARY = "/opt/bladeai-070/blade-ai/blade-ai"
+# 0.7.2 official linux-amd64 package, unpacked by deploy/stage2/Dockerfile.bladeai072
+# and owned by 10001 (blade chmods its own vendored binary, EPERM otherwise).
+# Upgraded from 0.7.0 on 2026-09-22 for the new-environment BladeAI round: 0.7.2
+# carries turn_hold_fault_window, the recovery switch that round relies on.
+BLADEAI_SERVER_BINARY = "/opt/bladeai-072/blade-ai/blade-ai"
 BLADEAI_STATE_ROOT = "/var/lib/bladeai"
 # The server shells out to kubectl with this kubeconfig.  BladeAI injects with
 # its own native providers (ChaosBlade CRs, ``blade`` inside the chaosblade-tool
@@ -417,7 +421,19 @@ def _controller_containers(config: FleetConfig, index: int) -> list[dict[str, An
                 {"name": "BLADE_AI_CONFIRMATION_REQUIRED", "value": "true"},
                 {"name": "BLADE_AI_CONFIG_DIR", "value": f"{BLADEAI_STATE_ROOT}/config"},
                 {"name": "BLADE_AI_MEMORY_DIR", "value": f"{BLADEAI_STATE_ROOT}/config/memory"},
-                {"name": "BLADE_AI_MAX_INJECT_SECONDS", "value": "300"},
+                # 0.7.2 enforces this as a wall-clock budget for the whole inject
+                # turn (0.7.0 ignored it).  300 killed every Trial before blade
+                # create ran ("wall_clock_timeout: budget=300s", 2026-09-21 manual
+                # run); it has to cover the longest approved fault (1200 s) plus
+                # planning, verification and the held fault window.
+                {"name": "BLADE_AI_MAX_INJECT_SECONDS", "value": "2700"},
+                # Hold the inject turn until the approved fault window ends and
+                # recover inside the same turn (user decision, 2026-09-21).
+                {"name": "BLADE_AI_TURN_HOLD_FAULT_WINDOW", "value": "true"},
+                # Same model settings as the 2026-09-21/22 manual runs, so the
+                # platform numbers stay comparable with them.
+                {"name": "BLADE_AI_LLM_ENABLE_THINKING", "value": "true"},
+                {"name": "BLADE_AI_LLM_TEMPERATURE", "value": "0"},
                 # BLADE_AI_SKILL_SCRIPT_DEFAULT_ALLOW is left at BladeAI's own
                 # default (true).  With skill scripts denied the planner never
                 # loads a catalogue use-case and, after approval, loops between
