@@ -311,8 +311,11 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
     cleared = next(
         node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED"
     )
-    assert cleared["completion_source"] == "CONTROLLER_FALLBACK"
-    assert cleared["score"] == 0
+    # The fault ended on the Agent's own 600-second timer, within the approved
+    # 1200 seconds: that is the Agent's cleanup on time (user rule, 2026-09-10).
+    assert recovery.recovery_attribution["agent_timer_cleanup_in_time"] is True
+    assert cleared["completion_source"] == "AGENT"
+    assert cleared["score"] == 10
     assert decision["agent_verdict"] == ("PARTIAL" if scenario == "plain" else "FAIL_EVIDENCE")
     if scenario in {"custom", "plain_question", "advice"}:
         target = next(node for node in decision["node_results"] if node["node"] == "TARGET_IDENTITY")

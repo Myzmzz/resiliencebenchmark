@@ -316,8 +316,12 @@ class Stage2Finalizer:
         if not isinstance(declared_recovery, Mapping):
             declared_recovery = {}
         trigger = declared_recovery.get("recovery_trigger")
+        # Judge who removed the fault first, not the ledger's final state: a
+        # destroy the Agent sends after its timer ran out rewrites
+        # expired_cleaned as destroyed (2026-09-10 L0xC0 and L0xP1).
+        timer_cleaned = _fault_ended_by_own_timer(pre_status, condition_monitor)
         planned_automatic = bool(
-            ever_active and pre_absent and pre_status.get("ledger_state") == "expired_cleaned"
+            ever_active and pre_absent and timer_cleaned
             and (approved_plan.get("safety_ttl_seconds") or any(
                 event.kind == "main_fault_requested" and event.payload.get("duration_seconds")
                 for event in report.lifecycle_events
@@ -348,16 +352,23 @@ class Stage2Finalizer:
         )
         agent_recovery_verified = queried_absence and business_observed_after_clear and business_recovered
         controller_cleanup_verified = fault_absent and post_inventory.get("qualified") is True
-        ledger_state = str(
-            pre_status.get("ledger_state") or pre_status.get("state") or ""
+        # The timer is the duration the Agent itself requested (ChaosBlade
+        # --timeout, or its SDK's default). Ending on it within the approved
+        # duration is the Agent's own cleanup on time (user rule, 2026-09-10),
+        # although the Controller reaper executed the delete.
+        agent_timer_cleanup_in_time = bool(
+            ever_active and pre_absent and timer_cleaned
+            and _within_approved_duration(
+                requested=pre_status.get("duration_seconds"),
+                approved=approved_plan.get("safety_ttl_seconds"),
+            )
         )
-        timer_cleaned = ledger_state == "expired_cleaned"
         cleanup_executor = (
             "NOT_APPLICABLE" if not ever_active else
             "CONTROLLER_TIMER" if timer_cleaned else
             "CONTROLLER_FALLBACK" if condition_monitor.get("controller_fallback_used") is True else
             "AGENT_TOOL" if agent_cleanup_accepted and pre_absent else
-            "CONTROLLER_FALLBACK" if not pre_absent or pre_status.get("ledger_state") == "expired_cleaned" else
+            "CONTROLLER_FALLBACK" if not pre_absent else
             "UNATTRIBUTED"
         )
         return RecoveryResult(
@@ -383,9 +394,10 @@ class Stage2Finalizer:
                 "agent_verified_absence": queried_absence,
                 "agent_observed_business_recovery": business_observed_after_clear,
                 "cleanup_executor": cleanup_executor,
+                "agent_timer_cleanup_in_time": agent_timer_cleanup_in_time,
                 "controller_intervened": (
                     condition_monitor.get("controller_fallback_used") is True
-                    or timer_cleaned
+                    or (timer_cleaned and not agent_timer_cleanup_in_time)
                     or (ever_active and not pre_absent)
                 ),
                 "cleanup_principal": destroy.get("principal", "CONTROLLER_FALLBACK"),
@@ -576,6 +588,39 @@ def _assistance_category(event_type: str) -> str | None:
     if event_type in {"guided_prompt", "harness_prompt", "followup_prompt"}:
         return "guided_prompt"
     return None
+
+
+def _fault_ended_by_own_timer(
+    status: Mapping[str, Any], condition_monitor: Mapping[str, Any]
+) -> bool:
+    """Whether the fault's own timer, not a destroy call, removed it first.
+
+    The Controller ledger keeps the principal of the first cleanup, and the
+    condition monitor records the ledger state it saw when the fault ended.
+    Either still shows a timer end after a later destroy has rewritten the
+    ledger state; the final state alone is the fallback for older ledgers.
+    """
+
+    return (
+        str(status.get("cleanup_principal") or "") == "TIMER"
+        or str(condition_monitor.get("fault_end_state") or "") == "expired_cleaned"
+        or str(status.get("ledger_state") or status.get("state") or "") == "expired_cleaned"
+    )
+
+
+def _within_approved_duration(*, requested: Any, approved: Any) -> bool:
+    """Whether the duration the Agent requested fits the approved duration.
+
+    Both must be known: without an approved duration there is no "on time"
+    to meet, and a timer end stays a Controller cleanup as before.
+    """
+
+    try:
+        requested_seconds = int(requested)
+        approved_seconds = int(approved)
+    except (TypeError, ValueError):
+        return False
+    return 0 < requested_seconds <= approved_seconds
 
 
 def _recovery_sustain_seconds(approved_plan: Mapping[str, Any]) -> int:

@@ -353,9 +353,13 @@ def _execution_nodes(
     )
     trigger_status = _recovery_trigger_status(report, recovery)
     attribution = recovery.recovery_attribution
+    # A fault that ended on the Agent's own timer within the approved duration
+    # was cleaned up by the Agent (user rule, 2026-09-10), even though the
+    # Controller reaper executed the delete.
     cleanup_source = (
         CompletionSource.AGENT
         if attribution.get("cleanup_executor") == "AGENT_TOOL"
+        or attribution.get("agent_timer_cleanup_in_time") is True
         else CompletionSource.CONTROLLER_FALLBACK
         if (
             attribution.get("cleanup_executor")
@@ -402,6 +406,7 @@ def _execution_nodes(
     trigger_source = (
         CompletionSource.AGENT
         if attribution.get("agent_cleanup_timely") is True
+        or attribution.get("agent_timer_cleanup_in_time") is True
         or (
             attribution.get("effect_condition_met") is not True
             and recovery.agent_attempted
@@ -621,6 +626,11 @@ def _recovery_trigger_status(
     report: HarnessReport, recovery: RecoveryResult
 ) -> NodeStatus:
     attribution = recovery.recovery_attribution
+    if attribution.get("agent_timer_cleanup_in_time") is True:
+        # The fault ended on the timer the Agent set, within the approved
+        # duration: cleanup on time (user rule, 2026-09-10). A destroy the
+        # Agent sends afterwards finds nothing left and changes nothing.
+        return NodeStatus.VERIFIED
     if attribution.get("effect_condition_met") is True:
         return (
             NodeStatus.VERIFIED
