@@ -25,12 +25,22 @@ from .contracts import (
     HarnessKind,
     MainFaultSpec,
     NodeStatus,
+    OperationUncertaintyVariant,
     TargetSpec,
     Stage2CaseId,
     STAGE2_SUPPORTED_MODELS,
     ToolSubstitutionVariant,
 )
+
+# The Lx facade names the D6 variants the way a batch does; the task service
+# keeps its own enum ("D6-A" / "D6-B").
+D6_VARIANTS = {
+    "A": OperationUncertaintyVariant.NOT_APPLIED,
+    "B": OperationUncertaintyVariant.APPLIED_RESPONSE_HIDDEN,
+}
 from .node_evaluation import summarize_node_results
+from .prompt_rendering import PromptHygieneError, assert_prompt_hygiene, prompt_sha256
+from .target_binding import current as current_target_binding
 from .task_service import (
     CAPABILITY_LOSS_CASE_IDS,
     SAFE_REFUSAL_CASE_IDS,
@@ -120,7 +130,7 @@ class LxSlots(LxModel):
     @model_validator(mode="after")
     def validate_contract(self) -> "LxSlots":
         canonical = canonical_fault_type(self.fault_type)
-        policy = default_policy({"otel-demo"})
+        policy = default_policy({current_target_binding().application_namespace})
         contract = policy.fault_type_contracts.get(canonical)
         if contract is None:
             raise ValueError(f"unsupported fault_type: {self.fault_type}")
@@ -148,8 +158,9 @@ class PromptVariantRequest(LxModel):
 
     @model_validator(mode="after")
     def validate_application(self) -> "PromptVariantRequest":
-        if self.application != "otel-demo":
-            raise ValueError("only otel-demo has a qualified Lx execution adapter")
+        bound = current_target_binding().application
+        if self.application != bound:
+            raise ValueError(f"only {bound} has a qualified Lx execution adapter")
         return self
 
 
@@ -179,6 +190,13 @@ class LxRunRequest(LxModel):
             "D7/D8 only: A names the legal alternative tool after an honest help request; "
             "B gives only a neutral exploration hint"
         ),
+    )
+    # D6 hides the outcome of the Agent's create call.  Before 2026-09-22 the
+    # facade could not say which, so every Lx D6 run was D6-A (the task
+    # service default); unset still means A, so existing callers are unchanged.
+    d6_variant: Literal["A", "B"] | None = Field(
+        default=None,
+        description="D6 only: A hides a create that was not applied; B one that was applied but whose response was lost",
     )
 
     @field_validator("case")
@@ -237,6 +255,8 @@ class LxRunRequest(LxModel):
             )
         if case not in CAPABILITY_LOSS_CASE_IDS and self.tool_substitution_variant is not None:
             raise ValueError("tool_substitution_variant is only valid for D7/D8")
+        if case is not Stage2CaseId.D6 and self.d6_variant is not None:
+            raise ValueError("d6_variant is only valid for D6")
         return self
 
     @field_validator("model")
@@ -511,10 +531,17 @@ class LxService:
         return self._relint(variant_set_id, value)
 
     def create_run(self, request: LxRunRequest, *, idempotency_key: str | None = None) -> dict[str, Any]:
-        if request.application != "otel-demo":
-            raise TaskValidationError("only otel-demo has a qualified Lx execution adapter")
+        binding = current_target_binding()
+        if request.application != binding.application:
+            raise TaskValidationError(f"only {binding.application} has a qualified Lx execution adapter")
         if request.duration_seconds <= 0:
             raise TaskValidationError("duration_seconds must be positive")
+        try:
+            # A prompt naming another replica would be executed against this
+            # one; refuse it before anything is minted (HTTP 422).
+            assert_prompt_hygiene(request.prompt, own_namespace=binding.application_namespace)
+        except PromptHygieneError as exc:
+            raise TaskValidationError(str(exc)) from exc
         variant_set = None
         selected_variant = None
         if request.variant_set_id:
@@ -569,7 +596,7 @@ class LxService:
         if violations:
             raise TaskValidationError("prompt is inconsistent with autonomy_level: " + ", ".join(violations))
         canonical = canonical_fault_type(slots.fault_type)
-        target = TargetSpec(namespace="otel-demo", component=slots.target)
+        target = TargetSpec(namespace=binding.application_namespace, component=slots.target)
         main_fault = MainFaultSpec(
             fault_type=canonical,
             duration_seconds=slots.duration_seconds,
@@ -594,6 +621,7 @@ class LxService:
             # Unset for every case but D7/D8, which the task service refuses
             # without it (see LxRunRequest.validate_tool_substitution_variant).
             tool_substitution_variant=request.tool_substitution_variant,
+            d6_variant=D6_VARIANTS[request.d6_variant or "A"],
             target=target,
             main_fault=main_fault,
         )
@@ -617,6 +645,14 @@ class LxService:
             "terminal": False,
             "accepted_at": datetime.now(UTC).isoformat(),
             "configuration": request.model_dump(mode="json"),
+            # Where this run executed and whether its prompt was the rendered
+            # authoritative text, so a fleet summary can separate manual
+            # prompt overrides from canonical rounds.
+            "provenance": {
+                "application_namespace": binding.application_namespace,
+                "prompt_source": "canonical" if variant_set is not None else "manual",
+                "prompt_sha256": prompt_sha256(request.prompt),
+            },
             "resolved": {
                 "autonomy_level": request.autonomy_level,
                 "disclosed_slots": list(LEVEL_MATRIX[request.autonomy_level]["disclosed_slots"]),

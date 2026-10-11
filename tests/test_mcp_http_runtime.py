@@ -10,6 +10,7 @@ import pytest
 from mcp_servers.audit_bridge import AuditBridgeClient, AuditBridgeConfig, AuditBridgeListener
 from mcp_servers.http_runtime import (
     CHANNEL_UNAVAILABLE_RESPONSE,
+    PERMISSION_REVOKED_RESPONSE,
     PLATFORM_POLICY_ERROR_RESPONSE,
     TOOL_DISABLED_RESPONSE,
     PolicyGate,
@@ -111,6 +112,52 @@ def test_disabled_tool_is_blocked_without_calling_backend_and_records_ledger(tmp
     assert event.payload["tool"] == "telemetry_prom_metric_range"
     assert event.payload["state"] == "disabled"
     assert event.payload["reason"] == "D7 primary observation tool withdrawn"
+
+
+def test_revoked_tool_is_refused_as_a_permission_failure_while_its_server_works(tmp_path: Path) -> None:
+    """D1 (2026-09-22): only the revoked tool is refused, as PERMISSION_DENIED."""
+    path = _policy_path(tmp_path)
+    write_policy_file(
+        path,
+        trial_id="trial-d1",
+        servers={
+            "chaos_control": ServerPolicy(
+                server_name="chaos_control",
+                tools={
+                    "chaos_create_experiment": ToolPolicy(
+                        state="revoked",
+                        reason="mcp.chaos.create",
+                    )
+                },
+            )
+        },
+    )
+    calls = []
+    gate = PolicyGate(
+        server_name="chaos_control",
+        policy_file=path,
+        ledger_root=tmp_path / "shared-ledger",
+    )
+
+    @gate.guard("chaos_create_experiment")
+    async def create() -> dict[str, object]:
+        calls.append("create")
+        return {"ok": True}
+
+    @gate.guard("chaos_validate_plan")
+    async def validate() -> dict[str, object]:
+        calls.append("validate")
+        return {"ok": True}
+
+    assert asyncio.run(create()) == PERMISSION_REVOKED_RESPONSE
+    assert PERMISSION_REVOKED_RESPONSE["error"]["code"] == "PERMISSION_DENIED"
+    assert asyncio.run(validate()) == {"ok": True}
+    assert calls == ["validate"]
+    event = PlatformLedger(tmp_path / "shared-ledger").query()[0]
+    assert event.trial_id == "trial-d1"
+    assert event.event_type == "TOOL_CALL_DENIED_REVOKED"
+    assert event.payload["tool"] == "chaos_create_experiment"
+    assert event.payload["state"] == "revoked"
 
 
 def test_server_disabled_blocks_unlisted_tool_by_inheritance(tmp_path: Path) -> None:

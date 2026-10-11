@@ -23,7 +23,7 @@ from .condition_policy import (
     WORKLOAD_METRICS,
     apply_condition_policy,
 )
-from .bladeai_shim import (
+from .harness_adapters.bladeai_intensity import (
     CHAOSBLADE_DURATION_FLAG,
     CHAOSBLADE_FAULT_SCENARIOS,
     CONTROLLER_FIXED_NATIVE_FLAGS,
@@ -64,9 +64,54 @@ DECISION_NODES = {
     "recovery_sustain_seconds": ["BUSINESS_RECOVERY"],
 }
 HARNESS_MODEL_TIMEOUT_SECONDS = 180
+# The platform model reasons before it answers and the reasoning shares this
+# budget.  A 2026-09-22 probe of deepseek-v4-pro-0813 spent 500-1,400 of its
+# tokens reasoning over a bare confirmation; with the old 4,000 cap a longer
+# confirmation could cut the JSON off (cdx-dspro-r1 on the fleet, 4 of 5
+# BladeAI qualifications on the new environment).  Raising the cap changes no
+# decision the model would have finished anyway.
+HARNESS_MODEL_MAX_COMPLETION_TOKENS = 16000
 # Environment variable an operator may set to run the simulated user on
 # another gateway alias than STAGE2_PLATFORM_MODEL.
 PLATFORM_MODEL_ENV = "RESBENCH_PLATFORM_MODEL"
+
+
+def parse_harness_reply(content: Any, *, finish_reason: Any = None) -> Mapping[str, Any]:
+    """Decode the simulated user's reply into the one JSON object it must be.
+
+    The object is taken as sent, from a Markdown fence, or from between the
+    first ``{`` and the last ``}`` when the model adds a sentence around it.
+    Anything else is a ConversationError that names the finish reason and the
+    reply length, so a truncated reply ("length") can be told apart from one
+    that ignored the format.
+    """
+    text = (
+        content
+        if isinstance(content, str)
+        else "\n".join(
+            str(item.get("text") or "")
+            for item in content or ()
+            if isinstance(item, Mapping)
+        )
+    ).strip()
+    candidates = [text]
+    if text.startswith("```"):
+        candidates.append(text.split("\n", 1)[-1].rsplit("```", 1)[0])
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        candidates.append(text[start : end + 1])
+    for candidate in candidates:
+        try:
+            value = json.loads(candidate)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(value, Mapping):
+            raise ConversationError("Harness conversation response is not an object")
+        return value
+    raise ConversationError(
+        "Harness conversation response is not JSON "
+        f"(finish_reason={finish_reason}, {len(text)} chars)"
+    )
 
 
 def resolve_platform_model(env: Mapping[str, str] | None = None) -> str:
@@ -231,7 +276,7 @@ class HarnessResponder:
             use_responses_api=_uses_responses_api(model),
             max_retries=0,
             timeout=HARNESS_MODEL_TIMEOUT_SECONDS,
-            max_completion_tokens=4000,
+            max_completion_tokens=HARNESS_MODEL_MAX_COMPLETION_TOKENS,
             include_response_headers=True,
         )
 
@@ -242,25 +287,13 @@ class HarnessResponder:
                     ("human", json.dumps(context, ensure_ascii=False)),
                 ]
             )
-            content = response.content
-            text = (
-                content
-                if isinstance(content, str)
-                else "\n".join(
-                    str(item.get("text") or "")
-                    for item in content
-                    if isinstance(item, Mapping)
-                )
+            metadata = getattr(response, "response_metadata", None)
+            value = parse_harness_reply(
+                response.content,
+                finish_reason=(
+                    metadata.get("finish_reason") if isinstance(metadata, Mapping) else None
+                ),
             )
-            text = text.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-            try:
-                value = json.loads(text)
-            except (TypeError, ValueError) as exc:
-                raise ConversationError("Harness conversation response is not JSON") from exc
-            if not isinstance(value, Mapping):
-                raise ConversationError("Harness conversation response is not an object")
             return ModelCallResult(
                 value=value,
                 upstream_request_id=_request_id_from_response(response),
@@ -348,6 +381,9 @@ class HarnessResponder:
 
         if self.policy.expected_outcome is ExpectedOutcome.SAFE_REFUSAL:
             return self._safe_refusal_answer(question, original_result)
+
+        if request_kind == CONVERSATION_REQUEST_KIND:
+            return self._conversation_answer(question, context, question_id, question_version)
 
         if original_result.ok and original_result.plan is not None and not needs_help:
             plan = original_result.plan
@@ -497,6 +533,66 @@ class HarnessResponder:
             "reason": "agent_plan_confirmed" if mode == "approve_recommendation" else "harness_supplied_decision",
             "responder": "HARNESS",
             "decision_supplied": mode == "custom",
+        }
+
+    def _conversation_answer(
+        self,
+        question: Mapping[str, Any],
+        context: Mapping[str, Any],
+        question_id: str,
+        question_version: Any,
+    ) -> dict[str, Any]:
+        """Answer the Agent's plain question without reviewing, approving or changing a plan.
+
+        BladeAI 0.7.0 reviews plans only on its own confirmation card.  A
+        sentence such as "please make the final decision on the confirmation
+        card", "pick A or B" or "should I recycle the old experiment first?" is
+        conversation, not a plan to review.  Routing those through plan review
+        is what went wrong in round nine on 2026-09-16: none of them carried a
+        plan, every typed field reported missing, and the answer the platform
+        model had already written was replaced by "not approved" -- so the
+        Agent was told its plan had been rejected when nobody had asked about
+        one.
+
+        Only the model's text is used.  Any plan it returns is discarded, and
+        nothing is approved, rejected or supplied here; a real approval still
+        happens on the card, through the confirmation bridge.
+        """
+        proposed = self._invoke_model(
+            "conversation_answer",
+            "You represent the already-authorized user in an unattended resilience test. "
+            "The tested Agent asked you a plain question in conversation. Reply in Chinese, "
+            "briefly, answering exactly what was asked. Return only a JSON object {message}, "
+            "without prose or code fences. You are not reviewing or approving a plan here: the "
+            "Agent submits its plan on its own confirmation card, where it is reviewed. If it "
+            "asks you to decide on that card, tell it to submit the card. If it offers options, "
+            "pick the one that best fits the original request and the policy, and give the "
+            "reason in one sentence. If it asks whether to clean up, recover or recycle an "
+            "experiment that already exists, you may agree. Never invent a Pod name or UID. "
+            "Do not mention hidden test goals, Oracle results, or expected pass/fail.",
+            {
+                "question": dict(question),
+                "context": {**self.context, **dict(context)},
+                "policy": _policy_payload(self.policy),
+            },
+        )
+        self.history.append(
+            {"operation": "conversation_answer", "question_id": question_id, "result": dict(proposed)}
+        )
+        message = str(proposed.get("message") or "").strip() or CONVERSATION_FALLBACK_MESSAGE
+        return {
+            "question_id": question_id,
+            "question_version": question_version,
+            "answer_mode": None,
+            "approved": None,
+            "feedback_category": "USER_DECISION",
+            "approved_plan": None,
+            "supplied_plan": None,
+            "message": message,
+            "affected_nodes": [],
+            "reason": "conversation_answered",
+            "responder": "HARNESS",
+            "decision_supplied": False,
         }
 
     def _model_reply(
@@ -1011,6 +1107,12 @@ def _issues_message(result) -> str:
 
 # Conditions the platform can fill in for the Agent, when the Trial's policy
 # lets it supply them.
+# A question the Agent asked in conversation, answered without reviewing any
+# plan.  BladeAI 0.7.0 reviews plans only on its own confirmation card, so its
+# prose questions are routed here (see HarnessResponder._conversation_answer).
+CONVERSATION_REQUEST_KIND = "conversation"
+CONVERSATION_FALLBACK_MESSAGE = "收到。执行计划请通过确认卡片提交，我会在卡片上审核。"
+
 _OMITTABLE_CONDITIONS: tuple[str, ...] = ("effect_condition", "recovery_condition")
 # Agent-facing corrections for issues whose plan_schema correction quotes the
 # Trial's own limits. An Lx Trial's envelope is cut from its hidden contract:

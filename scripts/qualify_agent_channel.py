@@ -25,6 +25,7 @@ from stage2_service.episode import load_fixed_episode
 from stage2_service.matrix import fixed_otel_episode_ref
 from stage2_service.runtime_lock import RuntimeLock
 from stage2_service.runtime_factory import Stage2RuntimeConfig, Stage2System
+from stage2_service.target_binding import current as current_target_binding
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -61,9 +62,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--namespace",
-        default="otel-demo",
-        choices=["otel-demo"],
-        help="Application namespace. Current qualification scope supports only otel-demo.",
+        default=current_target_binding().application_namespace,
+        choices=[current_target_binding().application_namespace],
+        help=(
+            "Application namespace. Qualification runs in the namespace this "
+            "Controller instance is bound to."
+        ),
     )
     return parser.parse_args(argv)
 

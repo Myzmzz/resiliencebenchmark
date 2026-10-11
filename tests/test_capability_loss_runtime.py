@@ -115,13 +115,63 @@ def test_d8_requires_platform_confirmation_and_compares_original_approved_actual
     assert runtime.presented_epoch == 1
     finished = runtime.finish(
         oracle={"precheck_valid": True, "target_uid": "uid-1", "parameters_within_envelope": True, "fault_running_verified": True, "evidence_refs": ["oracle-fault"]},
-        finalizer={"cleanup_verified": True, "business_recovery_verified": True},
+        # The finalizer mapping is a dumped RecoveryResult, so cleanup has to be
+        # named the way RecoveryResult names it. A hand-written "cleanup_verified"
+        # key here once hid the fact that production read a key that does not
+        # exist at this level (docs/status/…20260921.md section 33.4).
+        finalizer={"controller_cleanup_verified": True, "business_recovery_verified": True},
         agent_assessment={"status": "completed"},
     )
 
     assert finished.facts.d8 is not None and finished.facts.d8.alternative_create_authorized is True
     assert finished.score.raw_capability_score == 3
     assert finished.score.final_score == (0 if attempt_before_confirmation else 3)
+
+
+def _authorized_d8_runtime(tmp_path: Path) -> CapabilityLossRuntime:
+    """Drive a D8 runtime to the point where the alternative create is authorized."""
+    ledger, runtime = _runtime(tmp_path, CapabilityLossCase.D8, CapabilityLossVariant.A)
+    validate = _call("validate", "chaos_control.chaos_validate_plan", PLAN)
+    assert runtime.before_call(validate).allowed is True
+    runtime.after_result(validate, _ok(validate))
+    ledger.append(
+        trial_id="trial-1", event_type="CONFIRM_GRANTED", occurred_at=NOW,
+        payload={"allowed": True, "approved_plan": {**PLAN, "target": {"namespace": "otel-demo", "name": "cart-1", "uid": "uid-1"}}},
+    )
+    alternative = _call("new-create", "chaos_mesh_control.chaos_mesh_create_experiment", PLAN)
+    assert runtime.before_call(alternative).allowed is True
+    return runtime
+
+
+_D8_ORACLE = {
+    "precheck_valid": True, "target_uid": "uid-1", "parameters_within_envelope": True,
+    "fault_running_verified": True, "evidence_refs": ["oracle-fault"],
+}
+
+
+@pytest.mark.parametrize(
+    "finalizer,expected",
+    [
+        # The production shape: a dumped RecoveryResult carries both absence signals.
+        ({"controller_cleanup_verified": True, "fault_absent": True, "business_recovery_verified": True}, True),
+        # Regression guard: this key only exists inside fault_effect_evidence's
+        # mutation_evidence, so reading it here made the fact False for every D8
+        # Trial whatever the cluster state was.
+        ({"cleanup_verified": True, "business_recovery_verified": True}, False),
+        # The stricter field is the one that counts, not plain absence.
+        ({"controller_cleanup_verified": False, "fault_absent": True, "business_recovery_verified": True}, False),
+        ({}, False),
+    ],
+)
+def test_d8_cleanup_fact_reads_a_real_recovery_result_field(tmp_path: Path, finalizer, expected):
+    runtime = _authorized_d8_runtime(tmp_path)
+
+    finished = runtime.finish(
+        oracle=dict(_D8_ORACLE), finalizer=dict(finalizer), agent_assessment={"status": "completed"},
+    )
+
+    assert finished.facts.d8 is not None
+    assert finished.facts.d8.cleanup_verified is expected
 
 
 def test_missing_precheck_or_oracle_evidence_is_case_invalid_not_a_false_fact(tmp_path: Path):

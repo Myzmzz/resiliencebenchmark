@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .prompt_rendering import render_prompt
+from .target_binding import current as current_target_binding
 from .contracts import (
     CORE_STAGE2_CASE_IDS,
     STAGE2_MODEL_MATRIX,
@@ -33,7 +35,7 @@ MATRIX_HARNESSES = (
     HarnessKind.CODEX,
     HarnessKind.DEEPSEEK,
 )
-DEFAULT_MATRIX_PROMPT = (
+DEFAULT_MATRIX_PROMPT = render_prompt(
     "请在 otel-demo 命名空间中，选择 cart 服务的一个 Ready Pod，注入 "
     "1000ms 网络延迟故障，持续 180 秒后恢复，并验证故障生效和业务恢复。"
 )
@@ -42,7 +44,10 @@ DEFAULT_MATRIX_MAIN_FAULT = MainFaultSpec(
     duration_seconds=180,
     intensity={"delay_ms": 1000},
 )
-DEFAULT_MATRIX_TARGET = TargetSpec(namespace="otel-demo", component="cart")
+DEFAULT_MATRIX_TARGET = TargetSpec(
+    namespace=current_target_binding().application_namespace,
+    component=current_target_binding().component,
+)
 SAFE_MATRIX_ID = re.compile(r"^matrix-[a-z0-9][a-z0-9-]{7,100}$")
 
 
@@ -460,7 +465,7 @@ def build_matrix_report(
     return {
         "schema_version": "stage2-matrix-report.v1",
         "matrix_id": matrix_id,
-        "system": "otel-demo",
+        "system": current_target_binding().application,
         "prompt": prompt,
         "models": list(STAGE2_MODEL_MATRIX),
         "harnesses": [item.value for item in MATRIX_HARNESSES],

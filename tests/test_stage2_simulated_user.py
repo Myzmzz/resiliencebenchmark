@@ -7,7 +7,7 @@ import pytest
 from controller.safety import default_policy
 from stage2_service.contracts import AutonomyLevel, DecisionPolicy, ExpectedOutcome
 from stage2_service.plan_schema import AGENT_PLAN_SKELETON, PlanSafetyEnvelope
-from stage2_service.bladeai_shim import NATIVE_INTENSITY_FLAGS, parse_create
+from stage2_service.harness_adapters.bladeai_intensity import NATIVE_INTENSITY_FLAGS
 from stage2_service.condition_policy import (
     CONDITION_POLICY,
     EFFECT_OPERATORS,
@@ -23,6 +23,8 @@ from stage2_service.simulated_user import (
     METRIC_MEANINGS,
     OPERATOR_MEANINGS,
     PLATFORM_MODEL_ENV,
+    CONVERSATION_FALLBACK_MESSAGE,
+    CONVERSATION_REQUEST_KIND,
     ConversationError,
     HarnessResponder,
     SimulatedUserPolicy,
@@ -246,6 +248,50 @@ def test_decision_help_can_return_partial_target_suggestion_without_approval():
     assert answer["supplied_fields"] == ["target"]
 
 
+def test_conversation_question_is_answered_without_reviewing_or_approving_a_plan():
+    """BladeAI's prose questions are conversation; only its card is plan review.
+
+    Round nine (2026-09-16) reviewed "please decide on the confirmation card" as
+    a plan and answered "not approved".  Even a complete, valid plan in the
+    recommendation must not be approved from here, and a plan the model returns
+    is ignored.
+    """
+    calls = []
+
+    def model(instructions, _context):
+        calls.append(instructions)
+        return {"message": "好的，请提交确认卡片。", "plan": PLAN}
+
+    answer = responder(model).reply(
+        {
+            **confirmation(PLAN),
+            "request_kind": CONVERSATION_REQUEST_KIND,
+            "question": "现在提交该意图，请在弹出的确认卡片中做最终决策。",
+        },
+        {},
+    )
+
+    assert len(calls) == 1
+    assert answer["message"] == "好的，请提交确认卡片。"
+    assert answer["approved"] is None
+    assert answer["answer_mode"] is None
+    assert answer["approved_plan"] is None
+    assert answer["supplied_plan"] is None
+    assert answer["feedback_category"] == "USER_DECISION"
+    assert answer["reason"] == "conversation_answered"
+    assert answer["decision_supplied"] is False
+
+
+def test_conversation_question_gets_a_safe_reply_when_the_model_says_nothing():
+    answer = responder(lambda _instructions, _context: {}).reply(
+        {**confirmation(None), "request_kind": CONVERSATION_REQUEST_KIND, "question": "A 还是 B？"},
+        {},
+    )
+
+    assert answer["message"] == CONVERSATION_FALLBACK_MESSAGE
+    assert answer["approved"] is None
+
+
 def test_l0_policy_does_not_let_model_supply_missing_plan_fields():
     calls = []
     partial = {
@@ -385,26 +431,6 @@ def test_vocabulary_example_target_is_a_placeholder_that_cannot_pass_validation(
     result = validate_agent_plan(_attach_condition_policy(example), user_policy.envelope)
 
     assert not result.ok
-
-
-@pytest.mark.parametrize("fault_type", ALL_FAULT_TYPES)
-def test_vocabulary_chaosblade_command_is_one_the_blade_shim_accepts(fault_type):
-    entry = plan_vocabulary(delegated_policy((fault_type,)))["fault_types"][fault_type]
-    value = entry["example_plan_fields"]["intensity"][entry["intensity_field"]]
-    command = (
-        entry["chaosblade_command"]
-        .replace(f"<{entry['intensity_field']}>", str(value))
-        .replace("<target.name>", "cart-a")
-        .replace("<target.namespace>", "otel-demo")
-        .replace("<safety_ttl_seconds>", "120")
-    )
-
-    created = parse_create(command.split()[1:], namespace="otel-demo", max_duration_seconds=600)
-
-    assert created.fault_type == fault_type
-    assert created.intensity == {entry["intensity_field"]: value}
-    assert created.duration_seconds == 120
-    assert (entry["chaosblade_flag"], entry["intensity_field"]) == NATIVE_INTENSITY_FLAGS[fault_type]
 
 
 def test_vocabulary_limits_come_from_the_controller_and_the_trial():

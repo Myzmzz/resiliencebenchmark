@@ -34,6 +34,10 @@ MARKER_NAME = "resbench-active-system"
 STANDBY_ANNOTATION = "resiliencebenchmark.io/standby-replicas"
 SUPPORTED_APPLICATIONS = ("train-ticket", "sock-shop", "otel-demo")
 LIVE_NAMESPACES = {name: name for name in SUPPORTED_APPLICATIONS}
+# A replica namespace of an application: its live namespace plus a numeric
+# suffix, for example ``otel-demo-03``.  Matching is exact, never a prefix
+# test, so ``otel-demo`` itself never matches a replica rule.
+REPLICA_SUFFIX_RE = re.compile(r"^(?P<application>[a-z0-9][a-z0-9-]*[a-z0-9])-(?P<index>[0-9]{1,3})$")
 PROTECTED_NAMESPACES = frozenset({"observability", "ischaos", "resiliencebenchmark-system", "resilience-benchmark-system"})
 PLACEHOLDER_RE = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 SAFE_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
@@ -236,11 +240,55 @@ def render_manifest(
     return rewrite_tree(document, source_namespace, target_namespace)
 
 
-def render_values(path: Path, values: Mapping[str, str], source_namespace: str, target_namespace: str) -> dict[str, Any]:
+def merge_values(base: Any, overlay: Any) -> Any:
+    """Deep-merge ``overlay`` onto ``base`` with Helm's ``-f a -f b`` semantics.
+
+    Maps merge key by key; anything else, lists included, is replaced whole;
+    and a null in the overlay deletes the key, as Helm documents for values
+    files. Deleting is the only way to drop a receiver the base config
+    defines, since a null left in place would reach the chart as a value.
+    """
+    if isinstance(base, dict) and isinstance(overlay, dict):
+        merged = dict(base)
+        for key, value in overlay.items():
+            if value is None:
+                merged.pop(key, None)
+            elif key in merged:
+                merged[key] = merge_values(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+    return overlay
+
+
+def values_profile_path(application: str, profile: str | None) -> Path | None:
+    """``values-<profile>.yaml`` of an application bundle, or None for the base."""
+    if not profile:
+        return None
+    if not SAFE_NAME_RE.fullmatch(profile):
+        raise DeployError("--values-profile must be a lowercase dns-style name")
+    path = REPO_ROOT / "environment" / "kubernetes" / application / f"values-{profile}.yaml"
+    if not path.is_file():
+        raise DeployError(f"unknown values profile for {application}: {profile}")
+    return path
+
+
+def render_values(
+    path: Path,
+    values: Mapping[str, str],
+    source_namespace: str,
+    target_namespace: str,
+    overlay_path: Path | None = None,
+) -> dict[str, Any]:
     rendered = render_text(path.read_text(encoding="utf-8"), values)
     document = yaml.safe_load(rendered)
     if not isinstance(document, dict):
         raise DeployError("rendered Helm values must be a mapping")
+    if overlay_path is not None:
+        overlay = yaml.safe_load(render_text(overlay_path.read_text(encoding="utf-8"), values))
+        if not isinstance(overlay, dict):
+            raise DeployError("rendered Helm values overlay must be a mapping")
+        document = merge_values(document, overlay)
     document = rewrite_tree(document, source_namespace, target_namespace)
     if source_namespace != target_namespace:
         service = document.get("components", {}).get("frontend-proxy", {}).get("service")
@@ -286,6 +334,28 @@ def namespace_inventory(runner: CommandRunner, kubeconfig: Path, namespace: str)
     )
 
 
+def replica_index(application: str, namespace: str) -> int | None:
+    """The replica number when ``namespace`` is ``<live namespace>-<NN>``.
+
+    ``None`` for the live namespace itself and for any unrelated name, so a
+    caller can never confuse ``otel-demo`` with ``otel-demo-01``.
+    """
+    match = REPLICA_SUFFIX_RE.fullmatch(namespace)
+    if match is None or match.group("application") != LIVE_NAMESPACES.get(application):
+        return None
+    return int(match.group("index"))
+
+
+def marker_namespace(application: str, namespace: str) -> str:
+    """Where this target's active-system marker ConfigMap lives.
+
+    A replica owns the marker in its own namespace so parallel replicas do not
+    overwrite one another; every other target keeps the single historical
+    marker namespace.
+    """
+    return namespace if replica_index(application, namespace) is not None else MARKER_NAMESPACE
+
+
 def protected_resources(application: str) -> list[str]:
     config = application_config(application)
     return list(config.get("spec", {}).get("resetContract", {}).get("protectedResources", []))
@@ -295,8 +365,15 @@ def assert_delete_boundary(application: str, namespace: str) -> None:
     if namespace in PROTECTED_NAMESPACES:
         raise DeployError(f"refusing to delete protected namespace {namespace}")
     live = LIVE_NAMESPACES[application]
-    if namespace != live and not namespace.startswith(("rb-", "resbench-", "tmp-")):
-        raise DeployError("non-default delete targets must use an rb-, resbench-, or tmp- namespace")
+    if (
+        namespace != live
+        and replica_index(application, namespace) is None
+        and not namespace.startswith(("rb-", "resbench-", "tmp-"))
+    ):
+        raise DeployError(
+            "non-default delete targets must be a numbered replica namespace of the "
+            "application or use an rb-, resbench-, or tmp- prefix"
+        )
 
 
 def assert_inventory_not_protected(
@@ -641,6 +718,7 @@ def apply_otel_demo(
     timeout_seconds: int,
     *,
     server_dry_run: bool = False,
+    values_profile: str | None = None,
 ) -> list[str]:
     """Install or upgrade OTel Demo and apply its supplemental manifest.
 
@@ -665,7 +743,13 @@ def apply_otel_demo(
     else:
         run_checked(runner, ["helm", "repo", "add", chart["repositoryName"], chart["repositoryUrl"], "--force-update"], timeout=120)
         chart_reference = f"{chart['repositoryName']}/{chart['name']}"
-    values = render_values(base / item["values"], runtime, "otel-demo", namespace)
+    values = render_values(
+        base / item["values"],
+        runtime,
+        "otel-demo",
+        namespace,
+        values_profile_path("otel-demo", values_profile),
+    )
     release_output = helm_upgrade(
         runner,
         release=item["release"],
@@ -813,15 +897,17 @@ def wait_ready(
         )
 
 
-def update_active_marker(runner: CommandRunner, kubeconfig: Path, active: str) -> None:
-    if not namespace_exists(runner, kubeconfig, MARKER_NAMESPACE):
+def update_active_marker(
+    runner: CommandRunner, kubeconfig: Path, active: str, namespace: str = MARKER_NAMESPACE
+) -> None:
+    if not namespace_exists(runner, kubeconfig, namespace):
         return
     marker = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
         "metadata": {
             "name": MARKER_NAME,
-            "namespace": MARKER_NAMESPACE,
+            "namespace": namespace,
             "labels": {"app.kubernetes.io/managed-by": "resiliencebenchmark"},
         },
         "data": {"active-system": active, "inactive-strategy": "reversible-scale-to-zero"},
@@ -829,8 +915,10 @@ def update_active_marker(runner: CommandRunner, kubeconfig: Path, active: str) -
     run_checked(runner, kube_base(kubeconfig) + ["apply", "-f", "-"], stdin=yaml.safe_dump(marker, sort_keys=False))
 
 
-def current_active_marker(runner: CommandRunner, kubeconfig: Path) -> str | None:
-    result = runner.run(kube_base(kubeconfig) + ["get", "configmap", MARKER_NAME, "-n", MARKER_NAMESPACE, "-o", "json"], timeout=30)
+def current_active_marker(
+    runner: CommandRunner, kubeconfig: Path, namespace: str = MARKER_NAMESPACE
+) -> str | None:
+    result = runner.run(kube_base(kubeconfig) + ["get", "configmap", MARKER_NAME, "-n", namespace, "-o", "json"], timeout=30)
     if result.returncode != 0:
         return None
     return str(json.loads(result.stdout).get("data", {}).get("active-system") or "") or None
@@ -871,8 +959,16 @@ def assert_server_dry_run_supported(args: argparse.Namespace, namespace: str) ->
     """Reject --server-dry-run combinations that could mutate or that it does not mirror."""
     if args.execute:
         raise DeployError("--server-dry-run and --execute are mutually exclusive")
-    if args.application != "otel-demo" or args.mode != "apply" or args.fresh or namespace != LIVE_NAMESPACES["otel-demo"]:
-        raise DeployError("--server-dry-run supports only --application otel-demo --mode apply in namespace otel-demo without --fresh")
+    if (
+        args.application != "otel-demo"
+        or args.mode != "apply"
+        or args.fresh
+        or (namespace != LIVE_NAMESPACES["otel-demo"] and replica_index("otel-demo", namespace) is None)
+    ):
+        raise DeployError(
+            "--server-dry-run supports only --application otel-demo --mode apply in namespace "
+            "otel-demo or one of its numbered replica namespaces, without --fresh"
+        )
     if args.kubeconfig is None:
         raise DeployError("--server-dry-run requires --kubeconfig")
 
@@ -883,6 +979,10 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
     namespace = validate_name(args.namespace or LIVE_NAMESPACES[application], "namespace")
     server_dry_run = bool(getattr(args, "server_dry_run", False))
     report = plan_report(application, args.mode, namespace, args.fresh)
+    if getattr(args, "values_profile", None):
+        if application != "otel-demo" or args.mode != "apply":
+            raise DeployError("--values-profile supports only --application otel-demo --mode apply")
+        report["valuesProfile"] = args.values_profile
     if server_dry_run:
         # Checked before any cluster contact: combining the preflight with
         # --execute or --fresh must never turn it into real mutations.
@@ -920,7 +1020,11 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
         if application == "train-ticket":
             apply_train_ticket(runner, kubeconfig, namespace, runtime, args.secret_source_namespace, args.timeout)
         elif application == "otel-demo":
-            dry_run_checks = apply_otel_demo(runner, kubeconfig, namespace, runtime, args.timeout, server_dry_run=server_dry_run)
+            dry_run_checks = apply_otel_demo(
+                runner, kubeconfig, namespace, runtime, args.timeout,
+                server_dry_run=server_dry_run,
+                values_profile=getattr(args, "values_profile", None),
+            )
         else:
             apply_sock_shop(runner, kubeconfig, namespace, runtime)
         if server_dry_run:
@@ -933,8 +1037,9 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
         return report
     if args.mode == "standby":
         report["standby"] = standby_application(runner, kubeconfig, namespace)
-        if current_active_marker(runner, kubeconfig) == application:
-            update_active_marker(runner, kubeconfig, "none")
+        marker_ns = marker_namespace(application, namespace)
+        if current_active_marker(runner, kubeconfig, marker_ns) == application:
+            update_active_marker(runner, kubeconfig, "none", marker_ns)
         report["result"] = "standby"
         return report
     if namespace == LIVE_NAMESPACES[application]:
@@ -945,7 +1050,7 @@ def execute(args: argparse.Namespace, runner: CommandRunner | None = None, env: 
             if namespace_exists(runner, kubeconfig, other_ns):
                 standby_application(runner, kubeconfig, other_ns)
     report["activate"] = activate_application(runner, kubeconfig, application, namespace, args.timeout)
-    update_active_marker(runner, kubeconfig, application)
+    update_active_marker(runner, kubeconfig, application, marker_namespace(application, namespace))
     report["result"] = "active-ready"
     return report
 
@@ -958,6 +1063,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--kubeconfig", type=Path)
     parser.add_argument("--runtime-env-file", type=Path)
     parser.add_argument("--secret-source-namespace", help="Explicit source namespace for transient Secret copying")
+    parser.add_argument(
+        "--values-profile",
+        help=(
+            "otel-demo apply only: deep-merge environment/kubernetes/<app>/values-<profile>.yaml "
+            "over the bundle values, for example 'replica' for one trimmed fleet replica"
+        ),
+    )
     parser.add_argument("--fresh", action="store_true", help="For apply only: delete and recreate the target namespace")
     parser.add_argument("--execute", action="store_true", help="Perform cluster mutations; default is dry-run")
     parser.add_argument(

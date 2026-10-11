@@ -143,7 +143,9 @@ STRUCTURED_ERROR_AUTHORIZATION_MARKERS: tuple[str, ...] = (
 #                send error: Transport [rmcp::transport::worker::WorkerTransport
 #                <...>] ..."}}, with the 401 further on in the message;
 #   claude-code  is_error text 'MCP server "chaos_control" requires
-#                re-authorization (token expired)';
+#                re-authorization (token expired)'; since 2.1.278 (2026-09-22
+#                L0xD1) 'MCP server "chaos_control" rejected the Authorization
+#                header in its config (update it, then run /mcp to reconnect)';
 #   deepseek     is_error text 'Error: Streamable HTTP error: Error POSTing to
 #                endpoint: {"error": "invalid_token", "error_description":
 #                "Authentication required"}', the 401 body of the MCP SDK bearer
@@ -166,6 +168,7 @@ CLIENT_AUTHORIZATION_FAILURE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"\binsufficient_scope\b",  # RFC 6750 error code sent with 403
         r"\bauth(?:entication)? required\b",
         r"\bre-?authori[sz](?:ation|e)\b",  # "requires re-authorization"
+        r"\brejected the authori[sz]ation header\b",  # claude-code 2.1.278
         r"\btoken (?:has )?(?:been )?(?:expired|revoked)\b",
         r"\bpermission denied\b",
     )

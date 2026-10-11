@@ -15,6 +15,7 @@ from typing import Any, Mapping, Protocol
 
 from .condition_policy import CONDITION_POLICY
 from .reset_policy import ResetPolicyDecision, ResetTier, classify_reset_policy
+from .target_binding import current as current_target_binding
 
 
 # ``deploy_application.py --server-dry-run`` reports this result only when
@@ -75,7 +76,18 @@ class OtelDemoResetter:
         timeout_seconds: int = 900,
         recovery_timeout_seconds: int = 180,
         verify_only: bool = False,
+        application: str | None = None,
+        namespace: str | None = None,
     ):
+        # Defaults are this Controller's binding, i.e. ``otel-demo`` unless the
+        # replica variables are set. The Helm release keeps the application
+        # name and lives in the application namespace.
+        binding = current_target_binding()
+        # ``application`` selects the deployment bundle under
+        # ``environment/kubernetes/``; replicas share the bundle of the system
+        # they copy, while the namespace is their own.
+        self.application = application or binding.bundle
+        self.namespace = namespace or binding.application_namespace
         self.repo_root = repo_root.resolve()
         self.kubeconfig = kubeconfig.resolve()
         self.runtime_env_file = runtime_env_file.resolve()
@@ -182,7 +194,7 @@ class OtelDemoResetter:
         with tempfile.TemporaryDirectory(
             prefix=f"{trial_id}-reset-", dir=self.kubeconfig.parent
         ) as raw_private:
-            private_runtime = Path(raw_private) / "otel-demo.env"
+            private_runtime = Path(raw_private) / f"{self.application}.env"
             shutil.copyfile(self.runtime_env_file, private_runtime)
             private_runtime.chmod(0o600)
             # The uninstall below deletes the system under test, so it runs
@@ -193,9 +205,9 @@ class OtelDemoResetter:
                 [
                     "helm",
                     "uninstall",
-                    "otel-demo",
+                    self.application,
                     "--namespace",
-                    "otel-demo",
+                    self.namespace,
                     "--wait",
                     "--timeout",
                     f"{self.timeout_seconds}s",
@@ -205,7 +217,7 @@ class OtelDemoResetter:
             )
             if uninstall.returncode and "release: not found" not in uninstall.stderr.lower():
                 raise ResetError(
-                    "OTel Demo Helm uninstall failed",
+                    "Helm uninstall of the system under test failed",
                     evidence={
                         "stage": "uninstall",
                         "reinstall_preflight": preflight,
@@ -262,7 +274,12 @@ class OtelDemoResetter:
             sys.executable,
             str(self.repo_root / "scripts/deploy_application.py"),
             "--application",
-            "otel-demo",
+            self.application,
+            # Without this the script would fall back to the application's own
+            # live namespace and a replica reinstall would land on the full
+            # system's namespace.
+            "--namespace",
+            self.namespace,
             "--mode",
             "apply",
             "--server-dry-run" if server_dry_run else "--execute",

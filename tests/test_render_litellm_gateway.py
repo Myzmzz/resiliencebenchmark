@@ -148,3 +148,60 @@ def test_cli_complete_env_reports_success(tmp_path, capsys, flag):
 
     assert code == 0
     assert "credentials complete" in capsys.readouterr().out
+
+
+def test_pacing_is_absent_unless_asked_for():
+    """An unpaced render must ship the reviewed routing table unchanged."""
+    config = yaml.safe_load(renderer.DEFAULT_CONFIG.read_text(encoding="utf-8"))
+
+    assert renderer.pace_config(
+        config, max_parallel_requests=None, replicas=1, account_rpm=None, account_tpm=None
+    ) == config
+
+
+def test_pacing_divides_the_account_budget_over_the_replicas():
+    """Each Pod runs its own gateway and cannot see the others' traffic."""
+    config = yaml.safe_load(renderer.DEFAULT_CONFIG.read_text(encoding="utf-8"))
+
+    paced = renderer.pace_config(
+        config, max_parallel_requests=2, replicas=5, account_rpm=500, account_tpm=3_000_000
+    )
+
+    assert paced["litellm_settings"]["max_parallel_requests"] == 2
+    # The deliberate choice not to re-issue a request the transcript omits.
+    assert paced["litellm_settings"]["num_retries"] == 0
+    for entry in paced["model_list"]:
+        assert entry["litellm_params"]["rpm"] == 100
+        assert entry["litellm_params"]["tpm"] == 600_000
+    # Routing itself is untouched: same aliases, same upstreams.
+    assert [item["model_name"] for item in paced["model_list"]] == [
+        item["model_name"] for item in config["model_list"]
+    ]
+    assert [item["litellm_params"]["api_base"] for item in paced["model_list"]] == [
+        item["litellm_params"]["api_base"] for item in config["model_list"]
+    ]
+
+
+def test_pacing_refuses_a_budget_that_leaves_nothing_per_replica():
+    config = yaml.safe_load(renderer.DEFAULT_CONFIG.read_text(encoding="utf-8"))
+
+    with pytest.raises(ValueError, match="less than one request"):
+        renderer.pace_config(config, max_parallel_requests=None, replicas=20,
+                             account_rpm=10, account_tpm=None)
+    with pytest.raises(ValueError, match="less than one token"):
+        renderer.pace_config(config, max_parallel_requests=None, replicas=20,
+                             account_rpm=None, account_tpm=10)
+    with pytest.raises(ValueError, match="at least 1"):
+        renderer.pace_config(config, max_parallel_requests=0, replicas=1,
+                             account_rpm=None, account_tpm=None)
+
+
+def test_rendered_configmap_can_be_named_for_the_fleet():
+    config = yaml.safe_load(renderer.DEFAULT_CONFIG.read_text(encoding="utf-8"))
+    env = {name: "test-only-value" for name in renderer.required_names(config)}
+
+    configmap, _secret, _client = renderer.render_manifests(
+        "model_list: []\n", config, env, "resiliencebenchmark-system", "litellm-config-fleet"
+    )
+
+    assert configmap["metadata"]["name"] == "litellm-config-fleet"

@@ -116,22 +116,34 @@ def test_agent_image_has_only_runtime_assets_and_harness_package_is_side_effect_
     assert "COPY stage2_service /" not in image
     for required in (
         "COPY harness/schemas/agent-result.schema.json /app/harness/schemas/agent-result.schema.json",
-        "COPY stage2_service/bladeai_worker.py /app/stage2_service/bladeai_worker.py",
-        "COPY stage2_service/bladeai_events.py /app/stage2_service/bladeai_events.py",
-        "COPY stage2_service/bladeai_mcp_guard.py /app/stage2_service/bladeai_mcp_guard.py",
-        "COPY stage2_service/bladeai_duration.py /app/stage2_service/bladeai_duration.py",
         "COPY harness/mcp-tools.yaml /app/harness/mcp-tools.yaml",
-        "COPY stage2_service/bladeai_task.py /app/stage2_service/bladeai_task.py",
-        "COPY stage2_service/bladeai_shim.py /app/stage2_service/bladeai_shim.py",
-        "COPY stage2_service/bladeai_read_cli.py /app/stage2_service/bladeai_read_cli.py",
         "COPY deploy/stage2/codex-eval /usr/local/bin/codex-eval",
+        "COPY stage2_service/condition_policy.py /app/stage2_service/condition_policy.py",
         "/opt/bladeai-venv/bin/python",
         "ln -s /opt/resiliencebenchmark/deepseek-harness/bin/dsh /usr/local/bin/dsh",
-        "sed -i '1c #!/opt/bladeai-venv/bin/python' /app/harness/bladeai/blade-shim/blade",
+        "chmod 0755 /usr/local/bin/codex-eval",
+        "! command -v blade-native",
     ):
         assert required in image
-    for path in ("/app/harness/bladeai/blade-shim/blade", "/app/harness/bladeai/kubectl-shim/kubectl", "/usr/local/bin/blade"):
-        assert path in image
+    # BladeAI 0.7.0 runs as a black-box `blade-ai server` container: the in-process
+    # worker modules and the blade/kubectl shims were deleted, so the Agent image
+    # must neither COPY them nor install/patch the shims any more.
+    for removed in (
+        "COPY stage2_service/bladeai_worker.py",
+        "COPY stage2_service/bladeai_events.py",
+        "COPY stage2_service/bladeai_mcp_guard.py",
+        "COPY stage2_service/bladeai_duration.py",
+        "COPY stage2_service/bladeai_task.py",
+        "COPY stage2_service/bladeai_shim.py",
+        "COPY stage2_service/bladeai_read_cli.py",
+        "COPY harness/bladeai/",
+        "/app/harness/bladeai/blade-shim/blade",
+        "/app/harness/bladeai/kubectl-shim/kubectl",
+        "sed -i '1c #!/opt/bladeai-venv/bin/python'",
+    ):
+        assert removed not in image
+    # Token match, so a longer path such as /usr/local/bin/blade-ai stays legal.
+    assert "/usr/local/bin/blade" not in image.split()
     assert "chmod 0755" in image
     package = (ROOT / "harness/__init__.py").read_text(encoding="utf-8")
     assert "from .streaming" not in package

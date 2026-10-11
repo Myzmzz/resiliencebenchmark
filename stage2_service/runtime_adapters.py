@@ -19,6 +19,11 @@ from disturbances.kubernetes_runtime import KubernetesDisturbanceClient
 from .capability_policy import CapabilityPolicyDocument, CapabilityPolicyRegistry
 from .contracts import DisturbanceRecord, DisturbanceType
 from .platform_ledger import PlatformLedger
+from .target_binding import current as current_target_binding
+
+
+# The Controller stamps this label on every fault it creates.
+CHAOSBLADE_NAMESPACE_LABEL = "benchmark.namespace"
 
 
 class RuntimeAdapterError(RuntimeError):
@@ -41,6 +46,63 @@ class SubprocessRunner:
         )
 
 
+def _chaosblade_target_namespace(item: Mapping[str, Any]) -> str | None:
+    """The namespace a ChaosBlade CR aims at, from the platform label or its spec.
+
+    The Controller labels every experiment it creates with
+    ``benchmark.namespace``. An unlabelled CR is attributed through its first
+    experiment's ``namespace`` matcher, which is how ChaosBlade itself scopes
+    a Pod-level experiment. Returns ``None`` when neither is present.
+    """
+    metadata = item.get("metadata") if isinstance(item, Mapping) else None
+    labels = metadata.get("labels") if isinstance(metadata, Mapping) else None
+    if isinstance(labels, Mapping):
+        labelled = str(labels.get(CHAOSBLADE_NAMESPACE_LABEL) or "").strip()
+        if labelled:
+            return labelled
+    spec = item.get("spec") if isinstance(item, Mapping) else None
+    experiments = spec.get("experiments") if isinstance(spec, Mapping) else None
+    if isinstance(experiments, list):
+        for experiment in experiments:
+            matchers = experiment.get("matchers") if isinstance(experiment, Mapping) else None
+            if not isinstance(matchers, list):
+                continue
+            for matcher in matchers:
+                if not isinstance(matcher, Mapping) or str(matcher.get("name") or "") != "namespace":
+                    continue
+                values = matcher.get("value")
+                if isinstance(values, list) and values:
+                    return str(values[0]).strip() or None
+                if isinstance(values, str) and values.strip():
+                    return values.strip()
+    return None
+
+
+def _partition_chaosblade_inventory(
+    items: list[Any], namespace: str
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """Split a cluster-wide ChaosBlade inventory into own, foreign and unattributed.
+
+    Matching is exact equality, never a prefix test: ``otel-demo`` is a prefix
+    of ``otel-demo-01`` and a ``startswith`` would treat one replica's fault as
+    another's. An experiment with no discoverable target namespace stays in the
+    blocking set, so an unattributable leftover still fails the gate.
+    """
+    own: list[Any] = []
+    foreign: list[Any] = []
+    unattributed: list[Any] = []
+    for item in items:
+        target = _chaosblade_target_namespace(item) if isinstance(item, Mapping) else None
+        if target is None:
+            unattributed.append(item)
+            own.append(item)
+        elif target == namespace:
+            own.append(item)
+        else:
+            foreign.append(item)
+    return own, foreign, unattributed
+
+
 class KubernetesEnvironmentGate:
     """Read-only gate; the service never starts or scales the application load generator."""
 
@@ -49,9 +111,22 @@ class KubernetesEnvironmentGate:
         self.runner = runner or SubprocessRunner()
 
     def qualify(self, episode) -> Mapping[str, Any]:
-        namespace = episode.public.environment_snapshot.get("namespace", "")
-        if namespace != "otel-demo":
-            return {"qualified": False, "reason": "fixed Episode namespace is not otel-demo"}
+        # The Episode is frozen and hash-checked, so its snapshot names the
+        # system it was written against -- the deployment bundle. A replica is
+        # a copy of that system in its own namespace, so the Episode is
+        # checked against the bundle and the cluster is read in the namespace
+        # this instance is actually bound to. With the default binding the two
+        # are the same name and this is the original check.
+        snapshot = episode.public.environment_snapshot.get("namespace", "")
+        binding = current_target_binding()
+        # Exact equality only: ``otel-demo`` and ``otel-demo-01`` share a
+        # prefix, and a prefix match would mix a replica with the full system.
+        if snapshot != binding.bundle:
+            return {
+                "qualified": False,
+                "reason": f"fixed Episode namespace is not {binding.bundle}",
+            }
+        namespace = binding.application_namespace
         deployments = self._json(
             ["get", "deployments", "-n", namespace, "-o", "json"]
         )
@@ -70,17 +145,21 @@ class KubernetesEnvironmentGate:
         )
         load_desired = int(load.get("spec", {}).get("replicas") or 0) if load else 0
         load_ready = int(load.get("status", {}).get("readyReplicas") or 0) if load else 0
+        # ChaosBlade CRs are cluster-scoped, so the inventory is listed across
+        # namespaces and then attributed. Only experiments aimed at *this*
+        # replica may block it; a sibling replica's injection must not.
         chaos = self._json(
             ["get", "chaosblades.chaosblade.io", "-A", "-o", "json"]
         )
         chaos_items = chaos.get("items") if isinstance(chaos, dict) else None
         if not isinstance(chaos_items, list):
             raise RuntimeAdapterError("ChaosBlade inventory is invalid")
+        own, foreign, unattributed = _partition_chaosblade_inventory(chaos_items, namespace)
         qualified = (
             load_desired >= 1
             and load_ready >= 1
             and desired == ready
-            and len(chaos_items) == 0
+            and len(own) == 0
         )
         return {
             "qualified": qualified,
@@ -90,7 +169,12 @@ class KubernetesEnvironmentGate:
             "ready_replicas": ready,
             "built_in_load_generator_desired": load_desired,
             "built_in_load_generator_ready": load_ready,
-            "active_chaosblade_count": len(chaos_items),
+            "active_chaosblade_count": len(own),
+            "cluster_chaosblade_count": len(chaos_items),
+            "foreign_chaosblade_count": len(foreign),
+            "unattributed_chaosblade_names": [
+                str((item.get("metadata") or {}).get("name") or "") for item in unattributed
+            ],
             "reason": (
                 "ready"
                 if qualified
@@ -193,6 +277,12 @@ class McpTokenStateRegistry:
 
 
 class TargetCapabilityRebinder(Protocol):
+    def fence(self, trial_id: str, *, namespace: str) -> Mapping[str, Any]: ...
+
+    def release_fence(
+        self, trial_id: str, *, namespace: str, fence: Mapping[str, Any]
+    ) -> Mapping[str, Any]: ...
+
     def rebind(
         self,
         trial_id: str,
@@ -275,21 +365,36 @@ class CompositeDisturbanceExecutor:
     def apply(self, plan) -> DisturbanceRecord:
         if plan.type is DisturbanceType.TARGET_CHANGE:
             target = plan.parameters["target"]
-            replacement = self.kubernetes_client.restart_exact_pod(
-                namespace=str(target["namespace"]),
-                name=str(target["name"]),
-                expected_uid=str(target["uid"]),
-                timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
-                labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
-            )
             if self.target_rebinder is None:
                 raise RuntimeAdapterError("target capability rebinder is unavailable")
-            capability = self.target_rebinder.rebind(
-                plan.trial_id,
-                namespace=str(target["namespace"]),
-                target_name=str(replacement["name"]),
-                target_uid=str(replacement["uid"]),
+            # The old Pod keeps its uid while it terminates, so creates naming it
+            # must be refused before it is deleted; rebind() below lets creates
+            # through again, for the replacement only.
+            fence = self.target_rebinder.fence(
+                plan.trial_id, namespace=str(target["namespace"])
             )
+            try:
+                replacement = self.kubernetes_client.restart_exact_pod(
+                    namespace=str(target["namespace"]),
+                    name=str(target["name"]),
+                    expected_uid=str(target["uid"]),
+                    timeout_seconds=int(plan.parameters["replacement_timeout_seconds"]),
+                    labels={"resiliencebenchmark.io/disturbance": plan.disturbance_id},
+                )
+                capability = self.target_rebinder.rebind(
+                    plan.trial_id,
+                    namespace=str(target["namespace"]),
+                    target_name=str(replacement["name"]),
+                    target_uid=str(replacement["uid"]),
+                )
+            except Exception:
+                # A replacement that failed (2026-09-23: a binding to the
+                # placeholder uid "pending" matched no Pod) must not leave every
+                # create refused; D2 may still trigger on a later commitment.
+                self.target_rebinder.release_fence(
+                    plan.trial_id, namespace=str(target["namespace"]), fence=fence
+                )
+                raise
             if capability.get("baseline_capability_rebound") is not True:
                 raise RuntimeAdapterError(
                     "target capability rebind was not independently verified"
@@ -303,11 +408,14 @@ class CompositeDisturbanceExecutor:
                     "replacement_name": replacement["name"],
                     "replacement_uid": replacement["uid"],
                     "baseline_capability": dict(capability),
+                    "baseline_capability_fence": dict(fence),
                 },
             )
         if plan.type is DisturbanceType.PERMISSION_CHANGE:
             capability = str(plan.parameters["revoke_capability"])
-            if plan.backend == "mcp_policy":
+            if plan.backend == "mcp_policy" and plan.parameters.get("revoke_scope") == "tool":
+                evidence = self._revoke_mcp_tool_permission(plan.trial_id, capability)
+            elif plan.backend == "mcp_policy":
                 evidence = self._revoke_mcp_capability(plan.trial_id, capability)
             else:
                 raise RuntimeAdapterError("unsupported permission disturbance backend")
@@ -448,7 +556,12 @@ class CompositeDisturbanceExecutor:
     def rollback(self, record: DisturbanceRecord) -> DisturbanceRecord:
         if record.plan.type is DisturbanceType.PERMISSION_CHANGE:
             capability = str(record.plan.parameters["revoke_capability"])
-            if record.plan.backend == "mcp_policy":
+            if (
+                record.plan.backend == "mcp_policy"
+                and record.plan.parameters.get("revoke_scope") == "tool"
+            ):
+                evidence = self._restore_mcp_tool_permission(record)
+            elif record.plan.backend == "mcp_policy":
                 evidence = self._restore_mcp_capabilities(record, (capability,))
             else:
                 raise RuntimeAdapterError("unsupported permission restoration backend")
@@ -686,6 +799,64 @@ class CompositeDisturbanceExecutor:
         return {
             **token_evidence,
             "policy": policy_evidence,
+        }
+
+    def _revoke_mcp_tool_permission(self, trial_id: str, capability: str) -> dict[str, Any]:
+        """Revoke one tool's permission and leave the rest of its server usable.
+
+        D1 (2026-09-22) used ``_revoke_mcp_capability``, which replaces the
+        whole server's bearer token: after it every chaos_control call failed,
+        so an Agent that confirmed its plan before validating it lost
+        chaos_validate_plan too and never got a platform-validated target.
+        Here only the committed tool is set to ``revoked``; the MCP runtime
+        refuses exactly that call with PERMISSION_DENIED, whenever the Agent
+        makes it, and planning, validation and inventory keep working.  The
+        evidence has the shape ``_revoke_mcp_capability`` writes, so the
+        evaluator and ``_mcp_revocation_entries`` read both alike.
+        """
+        server, tool = self._policy_target_for_capability(capability)
+        if tool is None:
+            raise RuntimeAdapterError(f"capability {capability} names no single tool to revoke")
+        registry = self._policy_registry_for(trial_id)
+        snapshot = registry.snapshot()
+        document = registry.set_tool(
+            server,
+            tool,
+            state="revoked",
+            reason=capability,
+            source="disturbance-runtime",
+        )
+        return {
+            "server": server,
+            "tool": tool,
+            "capability": capability,
+            "revoked": True,
+            "scope": "tool",
+            "policy": {
+                "server": server,
+                "tool": tool,
+                "sequence": document.sequence,
+                "snapshot": snapshot.model_dump(mode="json"),
+            },
+        }
+
+    def _restore_mcp_tool_permission(self, record: DisturbanceRecord) -> dict[str, Any]:
+        """Undo ``_revoke_mcp_tool_permission``: only the policy changed, no token."""
+        policy_snapshot = _earliest_policy_snapshot(_mcp_revocation_entries(record))
+        if policy_snapshot is None:
+            raise RuntimeAdapterError("MCP policy restoration snapshot is missing")
+        registry = self._policy_registry_for(record.plan.trial_id)
+        restored_policy = registry.restore(
+            policy_snapshot,
+            source="disturbance-runtime-rollback",
+        )
+        return {
+            "restored": [],
+            "policy": {
+                "sequence": restored_policy.sequence,
+                "restored": True,
+            },
+            "verified": True,
         }
 
     def _restore_mcp_capabilities(

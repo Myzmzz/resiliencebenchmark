@@ -393,3 +393,62 @@ def test_reinstall_failure_after_passing_preflight_records_the_uninstall(
     assert caught.value.evidence["stage"] == "reinstall"
     assert caught.value.evidence["uninstalled"] is True
     assert caught.value.evidence["reinstall_preflight"]["passed"] is True
+
+
+def test_replica_reset_targets_its_own_namespace(tmp_path: Path, monkeypatch):
+    """Without --namespace the reinstall would land on the full system's namespace."""
+    monkeypatch.setenv("RESBENCH_APPLICATION_NAMESPACE", "otel-demo-04")
+    repo = Path(__file__).resolve().parents[1]
+    kubeconfig = tmp_path / "kubeconfig"
+    runtime = tmp_path / "runtime.env"
+    chart = tmp_path / "opentelemetry-demo-0.40.5.tgz"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runtime.write_text("HARBOR_REGISTRY=registry.example\n", encoding="utf-8")
+    chart.write_bytes(b"pinned chart fixture")
+    runner = Runner()
+
+    result = OtelDemoResetter(
+        repo_root=repo,
+        kubeconfig=kubeconfig,
+        runtime_env_file=runtime,
+        chart_file=chart,
+        environment_gate=Gate(),
+        traffic_evidence=Traffic(),
+        runner=runner,
+    ).reset("campaign-1234567890abcdef-codex-t1", object())
+
+    assert result["verified"] is True
+    preflight, uninstall, deploy = (call[0] for call in runner.calls[:3])
+    assert uninstall[:5] == ["helm", "uninstall", "otel-demo", "--namespace", "otel-demo-04"]
+    for argv in (preflight, deploy):
+        # The replica shares the bundle of the system it copies, in its own namespace.
+        assert argv[argv.index("--application") + 1] == "otel-demo"
+        assert argv[argv.index("--namespace") + 1] == "otel-demo-04"
+    assert ["--execute" if item == "--server-dry-run" else item for item in preflight] == deploy
+
+
+def test_default_reset_still_names_the_single_system(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("RESBENCH_APPLICATION_NAMESPACE", raising=False)
+    repo = Path(__file__).resolve().parents[1]
+    kubeconfig = tmp_path / "kubeconfig"
+    runtime = tmp_path / "runtime.env"
+    chart = tmp_path / "opentelemetry-demo-0.40.5.tgz"
+    kubeconfig.write_text("apiVersion: v1\n", encoding="utf-8")
+    runtime.write_text("HARBOR_REGISTRY=registry.example\n", encoding="utf-8")
+    chart.write_bytes(b"pinned chart fixture")
+    runner = Runner()
+
+    OtelDemoResetter(
+        repo_root=repo,
+        kubeconfig=kubeconfig,
+        runtime_env_file=runtime,
+        chart_file=chart,
+        environment_gate=Gate(),
+        traffic_evidence=Traffic(),
+        runner=runner,
+    ).reset("campaign-1234567890abcdef-codex-t1", object())
+
+    uninstall = runner.calls[1][0]
+    deploy = runner.calls[2][0]
+    assert uninstall[:5] == ["helm", "uninstall", "otel-demo", "--namespace", "otel-demo"]
+    assert deploy[deploy.index("--namespace") + 1] == "otel-demo"

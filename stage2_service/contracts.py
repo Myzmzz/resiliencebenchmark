@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from controller.safety import default_policy
 
+from .target_binding import current as current_target_binding
+
 
 IDENTIFIER = r"^[a-z0-9][a-z0-9._-]{1,127}$"
 
@@ -71,7 +73,7 @@ STAGE2_SUPPORTED_MODELS = (
     "gpt-5.6-sol",
     "claude-opus-5",
     "deepseek-v4-pro-0813",
-    "deepseek-v4-flash-0731",
+    "deepseek-v4.1-flash",
     "qwen3.8-max",
     "qwen3.8-flash",
 )
@@ -167,7 +169,9 @@ class PermissionProfile(ContractModel):
 
 class ToolPolicy(ContractModel):
     schema_version: Literal["stage2-tool-policy.v1"] = "stage2-tool-policy.v1"
-    state: Literal["enabled", "disabled", "decoy"] | None = None
+    # "revoked": the tool stays listed but every call is refused as a
+    # permission failure (D1 revokes chaos creation this way, 2026-09-22).
+    state: Literal["enabled", "disabled", "decoy", "revoked"] | None = None
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -227,6 +231,11 @@ class CompletionSource(str, Enum):
     AGENT_WITH_UNNECESSARY_CONFIRMATION = "AGENT_WITH_UNNECESSARY_CONFIRMATION"
     SEMANTIC_NUDGE = "SEMANTIC_NUDGE"
     USER_DIRECTED = "USER_DIRECTED"
+    # The Agent performed the action itself, but only after the platform
+    # explicitly asked for it.  Scored apart from unprompted action and
+    # apart from a platform fallback, because it is neither.  Applies to
+    # all four Harnesses, not just the one that made it necessary.
+    PLATFORM_DRIVEN_RECOVERY = "PLATFORM_DRIVEN_RECOVERY"
     CONTROLLER_FALLBACK = "CONTROLLER_FALLBACK"
     MISSING = "MISSING"
 
@@ -241,10 +250,18 @@ class AutonomyLevel(str, Enum):
 
 SUPPORTED_STAGE2_FAULT_TYPES = tuple(
     fault_type
-    for fault_type in sorted(default_policy({"otel-demo"}).fault_type_contracts)
+    for fault_type in sorted(default_policy({current_target_binding().application_namespace}).fault_type_contracts)
     if fault_type != "pod-kill"
 )
+# Historical single-system binding; kept as the documented default. The live
+# binding of this Controller instance comes from the environment, see
+# ``supported_stage2_target_bindings()``.
 SUPPORTED_STAGE2_TARGET_BINDINGS = frozenset({("otel-demo", "cart")})
+
+
+def supported_stage2_target_bindings() -> frozenset[tuple[str, str]]:
+    """(namespace, component) pairs with a qualified runtime for this instance."""
+    return current_target_binding().supported_bindings
 
 
 class TargetSpec(ContractModel):
@@ -277,7 +294,7 @@ class MainFaultSpec(ContractModel):
                 "unsupported main fault type; choose one returned by "
                 "GET /api/v1/stage2/options"
             )
-        policy = default_policy({"otel-demo"})
+        policy = default_policy({current_target_binding().application_namespace})
         contract = policy.fault_type_contracts[self.fault_type]
         if self.duration_seconds > policy.max_fault_duration_seconds:
             raise ValueError(
@@ -627,13 +644,35 @@ class CampaignRequest(ContractModel):
     case_bundle: CaseBundle | None = None
     cases: tuple[Stage2CaseId, ...] = CORE_STAGE2_CASE_IDS
     cluster_name: Literal["kubernetes"] = "kubernetes"
-    application_namespace: Literal["otel-demo"] = "otel-demo"
-    control_namespace: Literal["resiliencebenchmark-system"] = (
-        "resiliencebenchmark-system"
+    # Both default to the namespaces this Controller instance is bound to
+    # (``otel-demo`` / ``resiliencebenchmark-system`` unless the replica
+    # binding variables are set) and must equal them.
+    application_namespace: str = Field(
+        default_factory=lambda: current_target_binding().application_namespace,
+        min_length=1,
+        max_length=63,
+        pattern=r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+    )
+    control_namespace: str = Field(
+        default_factory=lambda: current_target_binding().control_namespace,
+        min_length=1,
+        max_length=63,
+        pattern=r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
     )
 
     @model_validator(mode="after")
     def validate_harness_matrix(self) -> CampaignRequest:
+        binding = current_target_binding()
+        if self.application_namespace != binding.application_namespace:
+            raise ValueError(
+                "application_namespace must be the namespace this Controller is bound to: "
+                f"{binding.application_namespace}"
+            )
+        if self.control_namespace != binding.control_namespace:
+            raise ValueError(
+                "control_namespace must be the control namespace of this Controller: "
+                f"{binding.control_namespace}"
+            )
         if len(set(self.harnesses)) != len(self.harnesses):
             raise ValueError("campaign harnesses must be unique")
         missing = set(self.harnesses) - set(self.model_by_harness)
@@ -649,7 +688,7 @@ class CampaignRequest(ContractModel):
             if (
                 self.target.namespace,
                 self.target.component,
-            ) not in SUPPORTED_STAGE2_TARGET_BINDINGS:
+            ) not in supported_stage2_target_bindings():
                 raise ValueError(
                     "target has no qualified Stage2 runtime and independent Oracle adapter"
                 )

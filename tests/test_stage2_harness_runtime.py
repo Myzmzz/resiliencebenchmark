@@ -18,7 +18,6 @@ from stage2_service.harness_runtime import (
     _clarification_request_from_item,
     _extract_recorded_feedback,
     _runtime_public_episode,
-    _bladeai_wp8_retry_classifier,
     _bladeai_terminal_failure_details,
 )
 from stage2_service.contracts import (
@@ -42,38 +41,6 @@ from stage2_service.platform_ledger import PlatformLedger
 
 class DummySupervisor:
     pass
-
-
-def test_bladeai_wp8_retry_classifier_requires_transient_error_and_no_write_path():
-    result = CommandResult(
-        returncode=0,
-        stdout=(
-            b'{"type":"stage2_bladeai_event","kind":"llm_thought","payload":{}}\n'
-            b'{"type":"stage2_bladeai_result","status":"failed","error":{"code":"UNKNOWN","message":"Too many pending requests, please retry later"}}\n'
-        ),
-        stderr=b"",
-    )
-
-    retry, reason, details = _bladeai_wp8_retry_classifier(result)
-
-    assert retry is True
-    assert reason == "transient BladeAI provider failure before mutation"
-    assert details["retry_scope"] == "bladeai_wp8_pre_mutation"
-
-
-def test_bladeai_wp8_retry_classifier_rejects_any_confirmation_or_write_attempt():
-    result = CommandResult(
-        returncode=0,
-        stdout=(
-            b'{"type":"stage2_bladeai_event","kind":"runtime_tool_start","payload":{"tool":"chaos_control.chaos_create_experiment"}}\n'
-            b'{"type":"stage2_bladeai_result","status":"failed","error":{"code":"UNKNOWN","message":"Too many pending requests, please retry later"}}\n'
-        ),
-        stderr=b"",
-    )
-
-    retry, _reason, _details = _bladeai_wp8_retry_classifier(result)
-
-    assert retry is False
 
 
 def test_bladeai_quota_failure_is_non_retryable_and_has_stable_diagnostic():
@@ -302,46 +269,6 @@ def run_with_turn_complete_fixture(
         feedbacks.extend(observed or [])
         return CommandResult(returncode=0, stdout=b"Understood\n", stderr=b"")
 
-    def fake_prepare_bladeai_launch(**kwargs):
-        agent_home = Path(kwargs["trial_root"]) / "bladeai-home"
-        config_root = agent_home / ".blade-ai"
-        config_root.mkdir(mode=0o700, parents=True)
-        kubeconfig = agent_home / "proxy.kubeconfig"
-        write_json(kubeconfig, {"apiVersion": "v1", "kind": "Config"})
-        task_path = agent_home / "task.json"
-        write_json(
-            task_path,
-            {
-                "mode": "task",
-                "trial_id": kwargs["trial_id"],
-                "intent": kwargs["prompt"],
-                "namespace": kwargs["namespace"],
-                "kubeconfig": str(kubeconfig),
-            },
-        )
-        mcp_path = config_root / "mcp.json"
-        write_json(
-            mcp_path,
-            {
-                "mcpServers": {
-                    "harness_channel": {"transport": "http", "url": "http://127.0.0.1:18085/mcp"},
-                    "k8s_ro": {"transport": "http", "url": "http://127.0.0.1:18081/mcp"},
-                    "source_ro": {"transport": "http", "url": "http://127.0.0.1:18084/mcp"},
-                    "telemetry_ro": {"transport": "http", "url": "http://127.0.0.1:18082/mcp"},
-                }
-            },
-        )
-        child_env = dict(kwargs["environment"])
-        child_env.update(
-            {
-                "BLADE_AI_BLADE_PATH": str(Path(kwargs["repo_root"]) / "harness/bladeai/blade-shim/blade"),
-                "BLADE_AI_KUBECTL_PATH": str(Path(kwargs["repo_root"]) / "harness/bladeai/kubectl-shim/kubectl"),
-                "BLADE_AI_MCP_CONFIG_PATH": str(mcp_path),
-                "RESBENCH_BLADE_SHIM_STATE_FILE": str(agent_home / "blade-aliases.json"),
-            }
-        )
-        return [kwargs["python_executable"], "-m", "stage2_service.bladeai_worker", str(task_path)], b"", child_env
-
     def make_adapter(_harness):
         adapter = FakeAdapter()
         if terminal_result is not None:
@@ -351,7 +278,6 @@ def run_with_turn_complete_fixture(
     monkeypatch.setattr(harness_runtime, "create_adapter", make_adapter)
     monkeypatch.setattr(harness_runtime, "subprocess_streaming_runner", fake_streaming_runner)
     monkeypatch.setattr(NativeHarnessRunner, "_resolve_executable", lambda self, _harness, _declared: "/bin/echo")
-    monkeypatch.setattr("stage2_service.bladeai_launch.prepare_bladeai_launch", fake_prepare_bladeai_launch)
     runtime = NativeHarnessRunner(
         repo_root=Path(__file__).resolve().parents[1],
         private_root=tmp_path / "private",
@@ -1186,22 +1112,6 @@ def test_fault_duration_ceiling_prefers_an_explicit_ceiling_then_the_trial_durat
     assert _fault_duration_ceiling({"fault_type": "cpu-load", "duration_seconds": 300}) == 300
     assert _fault_duration_ceiling({"fault_type": "network-delay"}) == 1200
     assert _fault_duration_ceiling({"duration_seconds": True}) == 1200
-
-
-def test_bladeai_duration_source_is_read_from_the_last_proposal_event():
-    import json as _json
-    from types import SimpleNamespace as _Namespace
-
-    from stage2_service.harness_runtime import _bladeai_duration_source
-
-    lines = [
-        {"type": "stage2_bladeai_event", "kind": "sdk_confirmation_proposed", "payload": {"duration_source": "agent_plan"}},
-        {"type": "stage2_bladeai_event", "kind": "tool_start", "payload": {}},
-        {"type": "stage2_bladeai_event", "kind": "sdk_confirmation_proposed", "payload": {"duration_source": "sdk_default"}},
-    ]
-    stdout = ("\n".join(_json.dumps(line) for line in lines) + "\nnot json\n").encode()
-    assert _bladeai_duration_source(_Namespace(stdout=stdout)) == "sdk_default"
-    assert _bladeai_duration_source(_Namespace(stdout=b"")) is None
 
 
 def test_bladeai_intensity_source_is_read_from_the_last_proposal_event():

@@ -16,7 +16,7 @@ class FakeRunner:
 
     def __call__(self, argv, stdin, timeout_seconds):
         self.calls.append({"argv": argv, "stdin": stdin, "timeout": timeout_seconds})
-        return deploy.CommandResult(returncode=0, stdout=b"0.1.0-rc.7\n", stderr=b"")
+        return deploy.CommandResult(returncode=0, stdout=b"0.1.5-rc.2\n", stderr=b"")
 
 
 def write_install_bundle(repo_root: Path) -> None:

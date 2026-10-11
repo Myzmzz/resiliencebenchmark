@@ -33,14 +33,16 @@ The real credentials live outside git, for example
 
 | Public alias | Upstream | Upstream model id | Used by |
 | --- | --- | --- | --- |
-| `gpt-5.5` | aigcbest new-api relay (`https://api2.aigcbest.top/v1`) | `gpt-5.5` | Harness default (Codex, DeepSeek Harness) |
-| `claude-opus-5` | Acucompute console, Anthropic protocol | `claude-opus-5` | Claude Code native model |
-| `deepseek-v4-pro-0813` | DeepSeek official (`https://api.deepseek.com/v1`) | `deepseek-v4-pro` | supported model |
-| `deepseek-v4-flash-0731` | DeepSeek official | `deepseek-v4-flash` | supported model |
+| `gpt-5.5` | nexustokenai relay (`https://api.nexustokenai.com/v1`) | `gpt-5.5` | Harness default (Codex, DeepSeek Harness) |
+| `gpt-5.5-nexustokenai` | nexustokenai relay, explicit alternate | `gpt-5.5` | selected deliberately only |
+| `claude-opus-5` | nexustokenai relay, Anthropic protocol, `NEXUSTOKENAI_ANTHROPIC_API_KEY` | `claude-opus-5` | Claude Code native model |
+| `gpt-5.6-sol` | nexustokenai relay (`https://api.nexustokenai.com/v1`) | `gpt-5.6-sol` | supported model |
+| `deepseek-v4-pro-0813` | DashScope compatible mode | `deepseek-v4-pro-0813` | supported model |
+| `deepseek-v4.1-flash` | DashScope compatible mode | `deepseek-v4.1-flash` | supported model |
 | `qwen3.8-max` | DashScope compatible mode | `qwen3.8-max` | supported model |
 | `qwen3.8-flash` | DashScope compatible mode | `qwen3.8-flash` | supported model |
-| `gpt-5.6-sol` | Acucompute console | `gpt-5.6-sol` | BladeAI default / diagnostic route |
-| `gpt-5.5-nexustokenai` | nexustokenai relay (`https://api.nexustokenai.com/v1`) | `gpt-5.5` | explicit alternate route, never an automatic fallback |
+
+Routing as of 2026-09-21 (user direction): Claude and GPT through nexustokenai; the two DeepSeek and two Qwen models through one DashScope key.  The DeepSeek official route (`deepseek-v4-flash-0731` / `deepseek-v4-pro` on `api.deepseek.com`) was retired because it rejects the tool-result ordering LiteLLM produces for Claude Code; see the comment in `config.yaml`.
 
 Why aigcbest carries the default: in a side-by-side sample on 2026-09-05 the
 nexustokenai relay prefixed every chat-completion answer with an invisible
@@ -111,7 +113,7 @@ kubectl --kubeconfig /Users/mymz/.kube/coroot-config \
     exec <verified-new-integration-pod> -c stage2 -- /app/.venv/bin/python /app/scripts/probe_models.py \
     --models-config /app/harness/models.yaml \
     --model gpt-5.5 --model claude-opus-5 --model deepseek-v4-pro-0813 \
-    --model deepseek-v4-flash-0731 --model qwen3.8-max --model qwen3.8-flash
+    --model deepseek-v4.1-flash --model qwen3.8-max --model qwen3.8-flash
 ```
 
 Do not delete the private rendered Secret directory using a broad variable or

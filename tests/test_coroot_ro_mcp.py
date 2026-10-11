@@ -17,7 +17,7 @@ from mcp_servers.coroot_ro.service import (
     HttpResponse,
     RuntimeConfig,
 )
-from stage2_service.capability_loss.factory import _metric_result_covers_window
+from stage2_service.capability_loss.factory import OracleTarget, metric_result_covers_window
 from stage2_service.capability_loss.records import FaultRunningWindow
 
 
@@ -367,17 +367,18 @@ def test_coroot_matrix_output_remains_usable_by_d7_factory_relevance_gate() -> N
 
     result = run(observer.metrics_range(metric="http_server_duration_milliseconds_bucket", start=100, end=160))
 
-    assert _metric_result_covers_window(
+    assert metric_result_covers_window(
         "coroot_metrics_range",
         {"metric": "http_server_duration_milliseconds_bucket", "start": 100, "end": 160},
         result,
-        "52f278d8-d2c0-41e7-b37e-2ad9f4a2ed4f",
+        OracleTarget(namespace="otel-demo", uid="52f278d8-d2c0-41e7-b37e-2ad9f4a2ed4f"),
         FaultRunningWindow(
             started_at=datetime.fromtimestamp(105, UTC),
             ended_at=datetime.fromtimestamp(125, UTC),
             oracle_record_ref="private://oracle",
         ),
         "network-delay",
+        observed_at=datetime.fromtimestamp(160, UTC),
     )
 
 
