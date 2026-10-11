@@ -1,0 +1,94 @@
+# 第三套环境（otcaix-60/61/62）的清单差异值。
+#
+# 仓库里的 deploy/stage2/*.yaml 渲染出来直接 apply 会丢三样东西——这正是操作手册
+# 那句「永远不要 kubectl apply 仓库渲染出来的清单」的由来：
+#
+#   1. fsGroupChangePolicy 在仓库任何清单里都没有；少了它，kubelet 每次挂载都会递归
+#      改权限，Controller 的私有文件变成组可读，下一次运行卡在 QUEUED 或直接
+#      KubernetesIdentityError；
+#   2. RESBENCH_COROOT_PROJECT_ID 在仓库里写的是旧集群的 9auios5b；
+#   3. 仓库清单没有 nodeSelector，而只有装了 AppArmor profile 的那台能跑 agent-runtime。
+#
+# 下面每个值都是 2026-09-12 在第三套环境实测出来的，出处见
+# docs/status/stage2-env3-inventory-20260912.md。
+schemaVersion: stage2-env-overlay.v1
+environment: env3
+
+# 平台落在 otcaix-62：60 是控制面不压，61 内存只有一半且时间未同步。
+# 取舍见 docs/status/stage2-env3-preparation-plan-20260912.md 第 3 节。
+nodeSelector:
+  kubernetes.io/hostname: otcaix-62
+
+# 集群里唯一的存储类（默认），nfs-subdir-external-provisioner，Retain。
+storageClassName: nfs-client
+
+# 私有文件必须活过重新挂载。仓库清单里没有这一项。
+securityContext:
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+
+# Coroot 项目 id 是每套集群各不相同的生成值。
+# 第三套环境实测 po24tcoz（3 节点 / 132 应用）；另一个 ra3gd47x 指向一个外部
+# Coroot 且持续 404，不是本集群的。注意 available_projects 返回的是显示名
+# （default / cluster-b），不是 id——用显示名拼 API 路径会得到 HTTP 500。
+coroot:
+  projectId: po24tcoz
+  allowAnonymousRead: true
+
+# 仓库的两份清单里 STAGE2_HARNESS_CAPABILITIES_FILE 出现 0 次
+# （grep -c 于 stage2.yaml 与 stage2-integration.yaml 均为 0），而第二套环境的
+# 线上 Deployment 是设了的。少了它，harness_capabilities_from_qualification()
+# 拿不到资格文件，四个智能体一律 qualification_not_passed，/options 里没有一个
+# 可跑——这是第四样「渲染即丢」的设置，和上面三样同一类。
+# 路径本身不随环境变，但必须显式写出来。
+harnessCapabilitiesFile: /var/lib/resbench-stage2/integration/private/harness-capabilities.json
+
+# 这套集群两个 CoreDNS 副本只有一个能用：otcaix-60 上那个（pod 10.244.2.53）到
+# 8.8.8.8 / 1.1.1.1 / 159.226.8.6 的 UDP 53 全部超时，对外域名一律 SERVFAIL；
+# otcaix-62 上那个 10/10 正常。Service 10.96.0.10 在两者之间轮询，于是对外解析
+# 大约一半失败，在 litellm 里表现为 "OpenAIException - Connection error."，
+# 七个模型里五个探测不过。
+#
+# 这是这套共享集群的既有故障（该副本已 95 天没重启过，otel-demo 和别人的 aiops
+# 也在同样报错），不由本项目修改共享组件。这里只给平台 Pod 兜一层：
+# dnsPolicy 为 ClusterFirst 时，dnsConfig.nameservers 会「追加」到 10.96.0.10
+# 之后，集群内名字仍然先问 CoreDNS；只有 CoreDNS 回 SERVFAIL 时才落到下一台。
+# 实测依据：平台 Pod 直连 159.226.8.6 五次全中、均 0.00s；经 10.96.0.10 则是
+# SERVFAIL/2.0s 与 NOERROR/0.0s 严格交替。
+dnsFallback:
+  nameservers:
+    - 159.226.8.6
+
+# 网关路由的三处改指。仓库基线把 gpt-5.5 指向 aigcbest、claude-opus-5 与
+# gpt-5.6-sol 指向 Acucompute，那是 2026-09-05 在另一套环境做过对比取样之后的
+# 决定（基线表里有完整注释）。这套环境上两条都走不通：
+#
+#   AIGCBEST_API_KEY    本环境没有，占位值 PLACEHOLDER-not-supplied-env3
+#   ACUCOMPUTE_API_KEY  用户 2026-09-13 明确说「用不了，别用」
+#
+# 可用的只有中转站 nexustokenai，而且它的 GPT 与 Claude 是**两把不同的 key、
+# 分属不同模型组**：拿 GPT 那把去调 claude-opus-5 会返回 404
+# 「not supported by any configured account in this group」。所以 Claude 单列一个
+# 环境变量 NEXUSTOKENAI_CLAUDE_API_KEY。
+#
+# 基线选 aigcbest 的两条理由在本环境重新测过（2026-09-13，经网关各 4 次）：
+#   * U+200B 零宽前缀：**没有复现**。gpt-5.5 与 gpt-5.6-sol 共 8 次全干净，
+#     严格 json.loads 全过，探测项 structured_json_output 也是 supported。
+#   * Cloudflare 1010 拒绝 python-urllib：**仍然存在**，但只影响裸 urllib；
+#     litellm 用 httpx，不受影响（我自己用 urllib 直连时撞到过）。
+#
+# **已知偏差**：claude-opus-5 经这个中转站不遵守 response_format=json_object，
+# 4/4 把 JSON 包在 ```json 围栏里，严格 json.loads 失败。平台探测容忍围栏、
+# 仍判 supported，但依赖严格解析的地方要留意。
+gatewayRoutes:
+  gpt-5.5:
+    api_base: https://api.nexustokenai.com/v1
+    api_key: os.environ/NEXUSTOKENAI_API_KEY
+  gpt-5.6-sol:
+    api_base: https://api.nexustokenai.com/v1
+    api_key: os.environ/NEXUSTOKENAI_API_KEY
+  claude-opus-5:
+    # 中转站走 OpenAI 格式，不是 anthropic/
+    model: openai/claude-opus-5
+    api_base: https://api.nexustokenai.com/v1
+    api_key: os.environ/NEXUSTOKENAI_CLAUDE_API_KEY

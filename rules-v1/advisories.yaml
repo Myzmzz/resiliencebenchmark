@@ -1,0 +1,104 @@
+# 用途：写不出任何可核对检查条件的条款（"设置合理的超时"这一类），单独登记，不进 rules.yaml。
+#       由第 4 步产生。字段与 rules.yaml 同源，但没有 checks / parameter_relation，
+#       多一个 why_not_checkable 说明为什么核对不了。quote 同样由 validate.py 逐字回查。
+advisories:
+
+- advisory_id: A-TIMEOUT-001
+  mechanism_group: 限制等待
+  mechanism: 超时与截止时间
+  statement: Choosing the timeout value is the hard part; too high wastes resources, too low fails good requests.
+  gloss_zh: 超时值取多少才是难点——大了白占资源，小了误伤正常请求。
+  sources:
+  - doc_id: DOC-AWS-TIMEOUTS
+    quote: |-
+      Typically, the most difficult problem is choosing a timeout value to set. Setting a timeout too high reduces its usefulness, because resources are still consumed while the client waits for the timeout.
+    location: Timeouts, retries and backoff with jitter > Timeouts
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      Balancing these constraints to pick a good deadline can be something of an art.
+    location: Latency and Deadlines > Picking a deadline
+  why_not_checkable: 没有给出任何阈值或与系统参数的关系；只有拿到该系统自己的延迟分布与 SLO 才谈得上判断，落到规则里就是 R-TIMEOUT-002 那条需求相对型。
+
+- advisory_id: A-RETRY-001
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试与退避抖动
+  statement: The retry policy should match the business requirements and the nature of the failure.
+  gloss_zh: 重试策略要贴着业务需求和失败性质来调。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-RETRY
+    quote: |-
+      The retry policy should be tuned to match the business requirements of the application and the nature of the failure. For some noncritical operations, it's better to fail fast rather than retry several times and affect the throughput of the application.
+    location: Retry pattern > Issues and considerations
+  why_not_checkable: 「贴着业务需求」没有可判定的形式；同一份配置对交互式接口是错的、对批处理是对的，静态与运行时都无法单独判定。
+
+- advisory_id: A-JITTER-001
+  mechanism_group: 处理瞬时失败
+  mechanism: 重试与退避抖动
+  statement: Jitter should be considered for all timers, periodic jobs and other delayed work, not only retries.
+  gloss_zh: 抖动不只用在重试上，所有定时器和周期任务都该考虑加。
+  sources:
+  - doc_id: DOC-AWS-TIMEOUTS
+    quote: |-
+      When building systems, we consider adding some jitter to all timers, periodic jobs, and other delayed work. This helps spread out spikes of work, and makes it easier for downstream services to scale for a workload.
+    location: Timeouts, retries and backoff with jitter > Jitter
+  why_not_checkable: 范围是「所有定时器和周期任务」，既没有给出哪些必须加、也没给出加多少；要逐个定时器人工判断是否值得加抖动，写不成通用检查条件。
+
+- advisory_id: A-QUEUE-001
+  mechanism_group: 卸载过载
+  mechanism: 排队与背压
+  statement: For bursty traffic, queue size should be derived from thread count, per-request processing time, and burst size and frequency.
+  gloss_zh: 突发型流量的队列长度要按线程数、单请求耗时、突发的大小和频率来算。
+  sources:
+  - doc_id: DOC-SRE-CASCADING
+    quote: |-
+      On the other end of the spectrum, systems with “bursty” load for which traffic patterns fluctuate drastically may do better with a queue size based on the current number of threads in use, processing time for each request, and the size and frequency of bursts.
+    location: Preventing Server Overload > Queue Management
+  why_not_checkable: 只说了「由这几个量决定」，没给函数形式；平稳流量那半句（≤ 50%）是可核对的，已落进 R-QUEUE-001，这半句留在这里。
+
+- advisory_id: A-LOADTEST-001
+  mechanism_group: 卸载过载
+  mechanism: 准入控制与限流（服务端与客户端）
+  statement: A service that has not been load tested past its breaking point should be assumed to fail in the worst possible way.
+  gloss_zh: 没压测到崩、而且压过崩点的服务，就该假定它会以最难看的方式失败。
+  sources:
+  - doc_id: DOC-AWS-LOADSHED
+    quote: |-
+      if they haven’t load tested their service to the point where it breaks, and far beyond the point where it breaks, they should assume that the service will fail in the least desirable way possible
+    location: Using load shedding to avoid overload > Load testing
+  why_not_checkable: 这是对研发流程的要求，不是对系统实现或配置的要求；在被测系统的代码和配置里找不到对应物。
+
+- advisory_id: A-HEALTH-001
+  mechanism_group: 检测与恢复
+  mechanism: 健康端点及其依赖范围
+  statement: Decide whether the monitoring endpoint should be the same as the general access endpoint.
+  gloss_zh: 健康端点要不要和业务端点走同一个入口，这个得自己权衡。
+  sources:
+  - doc_id: DOC-AZ-PATTERN-HEM
+    quote: |-
+      Decide whether to use the same endpoint for monitoring and for general access. You can use the same endpoint for both but design a specific path for health verification checks.
+    location: Health Endpoint Monitoring pattern > Issues and considerations
+  why_not_checkable: 原文是「自己决定」，两种做法都被认可；只有结合"探针会不会被业务流量一起限住"才变成可核对条件，那一面已落进 R-PRIO-001。
+
+- advisory_id: A-QUORUM-001
+  mechanism_group: 有状态组件的容错
+  mechanism: 主备切换
+  statement: Queue leaders should be reasonably evenly distributed across cluster nodes.
+  gloss_zh: 队列的主成员最好在集群各节点上分得均匀些。
+  sources:
+  - doc_id: DOC-RABBITMQ-QUORUM
+    quote: |-
+      To avoid some nodes in a cluster hosting the majority of queue leader members and thus handling most of the load, it may be beneficial if queue leaders are reasonably evenly distributed across cluster nodes.
+    location: Quorum Queues > Leader distribution
+  why_not_checkable: 「reasonably evenly」没有阈值，也没有说偏斜到什么程度算问题；运行期能测出分布，但判不出合格线。
+
+- advisory_id: A-SELFHEAL-001
+  mechanism_group: 降级
+  mechanism: 功能开关
+  statement: Use automated actions that the monitoring solution triggers when it detects predetermined health status changes.
+  gloss_zh: 监控发现健康状态变化时，用自动化动作去响应。
+  sources:
+  - doc_id: DOC-AZ-WAF-SELFPRES
+    quote: |-
+      Implement automated self-healing actions: Use automated actions that your monitoring solution triggers when it detects predetermined health status changes.
+    location: Recommendations for self-preservation and self-healing > Design for self-healing
+  why_not_checkable: 没有说哪些状态变化、触发什么动作；「有没有自动化动作」要看运维平台而不是被测系统本身。可核对的那一面（降级开关能否不重启生效、能否自动触发）已落进 R-FLAG-001。

@@ -19,3 +19,11 @@ artifacts/
 benchmark-wheels/
 runs/
 tmp/
+
+# 论文 PDF 原件不入库（出版商原文，9.9MB）；URL 见 literature-v1/tools/sources.tsv，可用 fetch.py 重抓
+literature-v1/docs-cache/raw/*.pdf
+
+# 抓取的上游文档缓存：体积大（约 45 MB）且可由 rules-v1/tools/fetch.py 依 sources.tsv 重抓。
+# 完整缓存保留在 origin/rules-v1-buildout 分支上，需要离线核对出处时从那里取。
+rules-v1/docs-cache/
+literature-v1/docs-cache/
