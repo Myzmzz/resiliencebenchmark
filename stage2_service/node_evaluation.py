@@ -506,7 +506,11 @@ def _execution_nodes(
     trigger_status = _recovery_trigger_status(report, recovery)
     attribution = recovery.recovery_attribution
     # A fault that ended on the timer the Agent armed is the Agent's own
-    # recovery, not a platform cleanup (ruling, 2026-09-22).
+    # recovery, not a platform cleanup (ruling, 2026-09-22).  The Finalizer also
+    # records agent_timer_cleanup_in_time, the ledger-side view of the same
+    # timer, but credit keeps flowing through planned_automatic_recovery: the
+    # Finalizer leaves that False for condition-driven tasks, where hitting the
+    # timer is a late recovery.
     timer_recovery = _agent_timer_recovery(recovery)
     cleanup_source = (
         CompletionSource.AGENT

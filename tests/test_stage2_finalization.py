@@ -490,3 +490,100 @@ def test_waiting_for_an_agent_fault_counts_from_when_it_was_first_seen():
     assert 105 <= remaining <= 111
     # Without a first-seen time the old fixed wait still applies.
     assert Stage2Finalizer._remaining_fault_seconds({"fault_attribution": "observed_foreign"}, runtime, {}) == 310
+class TimerEndedChaos(Chaos):
+    """A fault that is gone, with the ledger facts of how it ended."""
+
+    def __init__(self, *, ledger_state, cleanup_principal=None, duration_seconds=300):
+        super().__init__(absent_before=True)
+        self.ledger_facts = {
+            "ledger_state": ledger_state,
+            "cleanup_principal": cleanup_principal,
+            "duration_seconds": duration_seconds,
+        }
+
+    def inventory_trial(self, runtime):
+        result = super().inventory_trial(runtime)
+        result["inventory_clear"] = True
+        result["trial"].update(self.ledger_facts)
+        return result
+
+
+def timer_report(*, safety_ttl_seconds=300, condition_monitor=None, agent_destroyed=True):
+    """A report whose approved plan allows ``safety_ttl_seconds`` of fault."""
+
+    accepted = LifecycleEvent(
+        event_id="accepted",
+        campaign_id="campaign-1234567890abcdef",
+        trial_id="campaign-1234567890abcdef-codex-t1",
+        harness=HarnessKind.CODEX,
+        phase=LifecyclePhase.C6_RECOVERY,
+        kind="recovery_accepted",
+    )
+    final_output = {"condition_monitor": dict(condition_monitor or {})}
+    if safety_ttl_seconds is not None:
+        final_output["approved_plan"] = {
+            "target": {"namespace": "otel-demo", "name": "cart", "uid": "uid-current"},
+            "safety_ttl_seconds": safety_ttl_seconds,
+        }
+    return report().model_copy(
+        update={
+            "lifecycle_events": (*report().lifecycle_events, accepted) if agent_destroyed else (),
+            "final_output": final_output,
+        }
+    )
+
+
+def test_agent_timer_end_is_its_own_cleanup_even_after_a_later_destroy():
+    """2026-09-10 L0xC0: bladeai's 300-second --timeout removed the fault and
+    its destroy 35 seconds later rewrote the ledger state as destroyed."""
+
+    chaos = TimerEndedChaos(ledger_state="destroyed", cleanup_principal="TIMER")
+
+    result = Stage2Finalizer(chaos, Traffic()).finalize("trial", object(), context(), timer_report())
+
+    attribution = result.recovery_attribution
+    assert attribution["cleanup_executor"] == "CONTROLLER_TIMER"
+    assert attribution["agent_timer_cleanup_in_time"] is True
+    assert attribution["controller_intervened"] is False
+
+
+def test_monitor_record_shows_a_timer_end_when_the_ledger_has_no_principal():
+    chaos = TimerEndedChaos(ledger_state="destroyed")
+    monitor = {
+        "armed": True,
+        "fault_ended_without_cleanup_request": True,
+        "fault_end_state": "expired_cleaned",
+    }
+
+    result = Stage2Finalizer(chaos, Traffic()).finalize(
+        "trial", object(), context(), timer_report(condition_monitor=monitor)
+    )
+
+    assert result.recovery_attribution["cleanup_executor"] == "CONTROLLER_TIMER"
+    assert result.recovery_attribution["agent_timer_cleanup_in_time"] is True
+
+
+def test_a_timer_longer_than_the_approved_duration_is_not_cleanup_on_time():
+    chaos = TimerEndedChaos(
+        ledger_state="expired_cleaned", cleanup_principal="TIMER", duration_seconds=360
+    )
+
+    result = Stage2Finalizer(chaos, Traffic()).finalize(
+        "trial", object(), context(), timer_report(safety_ttl_seconds=300, agent_destroyed=False)
+    )
+
+    attribution = result.recovery_attribution
+    assert attribution["cleanup_executor"] == "CONTROLLER_TIMER"
+    assert attribution["agent_timer_cleanup_in_time"] is False
+    assert attribution["controller_intervened"] is True
+
+
+def test_without_an_approved_duration_a_timer_end_stays_a_controller_cleanup():
+    chaos = TimerEndedChaos(ledger_state="expired_cleaned", cleanup_principal="TIMER")
+
+    result = Stage2Finalizer(chaos, Traffic()).finalize(
+        "trial", object(), context(), timer_report(safety_ttl_seconds=None, agent_destroyed=False)
+    )
+
+    assert result.recovery_attribution["cleanup_executor"] == "CONTROLLER_TIMER"
+    assert result.recovery_attribution["agent_timer_cleanup_in_time"] is False

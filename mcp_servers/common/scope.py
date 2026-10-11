@@ -25,9 +25,23 @@ class ScopeError(ValueError):
         self.action = action
 
     def to_dict(self) -> dict[str, str]:
-        """Return a stable MCP error payload without configuration values."""
+        """Return a stable MCP error payload.
+
+        It may name the time-window ceiling, which the caller needs in order
+        to retry, but never the namespace or application identity.
+        """
 
         return {"code": self.code, "message": self.message, "action": self.action}
+
+
+def _describe_seconds(seconds: int) -> str:
+    """Name a duration in its largest whole unit, e.g. 21600 -> "6 hours"."""
+
+    for unit_seconds, unit in ((3600, "hour"), (60, "minute")):
+        if seconds >= unit_seconds and seconds % unit_seconds == 0:
+            count = seconds // unit_seconds
+            return f"{count} {unit}" + ("" if count == 1 else "s")
+    return f"{seconds} seconds"
 
 
 @dataclass(frozen=True)
@@ -68,8 +82,12 @@ class ObservationScope:
                 "Request one bounded historical observation interval.",
             )
         if end - start > self.max_window_seconds:
+            # State the ceiling: told only that its 24-hour query was too long,
+            # an Agent gave up instead of retrying shorter (2026-09-10 codex).
+            limit = _describe_seconds(self.max_window_seconds)
             raise ScopeError(
                 "time_window_out_of_scope",
-                "The requested observation interval exceeds the Controller limit.",
-                "Use a shorter interval within the current experiment window.",
+                f"The requested observation interval is {end - start} seconds, which exceeds "
+                f"the Controller limit of {self.max_window_seconds} seconds ({limit}).",
+                f"Use an interval of at most {limit} within the current experiment window.",
             )

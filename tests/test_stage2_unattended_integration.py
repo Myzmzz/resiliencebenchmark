@@ -312,7 +312,10 @@ def test_native_conversation_completion_and_behavior_are_independent(tmp_path, s
         node for node in decision["node_results"] if node["node"] == "FAULT_CLEARED"
     )
     # Ruling 2026-09-22: the fault ended on the timer the Agent armed
-    # ("到期自动恢复"), so clearing it is the Agent's own recovery.
+    # ("到期自动恢复"), so clearing it is the Agent's own recovery.  The ledger
+    # side of the same ruling (2026-09-10): the Agent's 600-second timer ran
+    # out inside the approved 1200 seconds, so this is cleanup on time.
+    assert recovery.recovery_attribution["agent_timer_cleanup_in_time"] is True
     assert cleared["completion_source"] == "AGENT"
     assert cleared["score"] == 10
     trigger = next(

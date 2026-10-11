@@ -19,6 +19,10 @@ RECOVERY_TOPIC = r"recover|恢复|清理|故障对象|残留"
 # Words that name the effect itself, as opposed to the metrics it shares with
 # recovery.
 EFFECT_ITSELF = r"effect|效果"
+# A sentence about the recovery phase ("未能完成恢复后的 CPU 与业务观测") is not
+# the Agent doubting the effect it verified; it belongs to the recovery claim.
+# On 2026-09-10 L2xC0 such a sentence cancelled a verified effect.
+_RECOVERY_PHASE = re.compile(r"recover|restor|clean(?:ed|ing)?[ -]?up|destroy|恢复|清理|销毁")
 
 
 def assess_evidence(report: HarnessReport, recovery: RecoveryResult) -> dict[str, Any]:
@@ -65,6 +69,8 @@ def assess_evidence(report: HarnessReport, recovery: RecoveryResult) -> dict[str
                 if topic == "effect" and "cpu" in selected_fault and not re.search(r"cpu|负载|效果|effect", text):
                     related = None
                 if topic == "effect" and "memory" in selected_fault and not re.search(r"mem|内存|效果|effect", text):
+                    related = None
+                if topic == "effect" and _RECOVERY_PHASE.search(text):
                     related = None
                 key = (field, statement)
                 if missing and related and key not in seen:

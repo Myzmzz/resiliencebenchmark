@@ -387,8 +387,10 @@ def test_metrics_rejects_namespace_override_and_overlong_window_before_backend_c
 
     with pytest.raises(CorootROError, match="Controller-owned"):
         run(observer.metrics_range(metric="up", start=100, end=120, labels={"namespace": "other"}))
-    with pytest.raises(CorootROError, match="exceeds"):
+    with pytest.raises(CorootROError, match="exceeds") as overlong:
         run(observer.metrics_range(metric="up", start=1, end=6 * 60 * 60 + 2))
+    # The error names the ceiling, so the Agent can retry with a shorter window.
+    assert "limit of 21600 seconds (6 hours)" in overlong.value.to_dict()["message"]
 
     assert transport.calls == []
 
