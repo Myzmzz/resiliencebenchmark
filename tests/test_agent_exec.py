@@ -325,16 +325,31 @@ def test_agent_output_normalization_rejects_dsh_node_modules_mismatched_target(t
         normalize_shared_trial_tree(root, os.getgid())
 
 
-def test_agent_output_normalization_accepts_only_the_observed_nested_dsh_package(tmp_path: Path) -> None:
+def test_agent_output_normalization_accepts_nested_dsh_packages_at_any_depth(tmp_path: Path) -> None:
+    """npm nests version-conflicting packages, and which ones move per release.
+
+    0.1.0-rc.7 nested @deepseek-ai/dsh-client-web under dsh-web-frontend;
+    0.1.5-rc.2 drops that package and nests others (chokidar under
+    @deepseek-ai/dsh-skill-filesystem).  Pinning the guard to one release's
+    layout failed the next one, so nesting itself is accepted as long as the
+    target stays in the install root and still names the same package.
+    """
     from harness.agent_exec.shared_trial import normalize_shared_trial_tree
 
     root = tmp_path / "trial"
-    package = root / "dsh-home/profiles/node_modules/@deepseek-ai/dsh-client-web"
-    package.parent.mkdir(parents=True)
-    package.symlink_to(f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-web-frontend/node_modules/@deepseek-ai/dsh-client-web")
+    scoped = root / "dsh-home/profiles/node_modules/@deepseek-ai/dsh-client-web"
+    scoped.parent.mkdir(parents=True)
+    scoped.symlink_to(f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-web-frontend/node_modules/@deepseek-ai/dsh-client-web")
     normalize_shared_trial_tree(root, os.getgid())
-    package.unlink()
-    package.symlink_to(f"{DSH_NODE_MODULES_ROOT}/other/node_modules/@deepseek-ai/dsh-client-web")
+
+    # A plain package nested under a different dependent, as 0.1.5-rc.2 does.
+    plain = root / "dsh-home/profiles/node_modules/chokidar"
+    plain.symlink_to(f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-skill-filesystem/node_modules/chokidar")
+    normalize_shared_trial_tree(root, os.getgid())
+
+    # The final component must still be the package the alias claims to be.
+    plain.unlink()
+    plain.symlink_to(f"{DSH_NODE_MODULES_ROOT}/@deepseek-ai/dsh-skill-filesystem/node_modules/readdirp")
     with pytest.raises(RuntimeError, match="symlinks"):
         normalize_shared_trial_tree(root, os.getgid())
 

@@ -1,0 +1,88 @@
+schema_version: otel-demo-static-candidate-set.v1
+candidate_set_id: otel-demo-2.2.0-core-six
+candidate_set_version: 2026-08-31.v1
+selection_status: selected_for_testing
+public_evidence_included: false
+harness_prompt_catalog: tasks/catalog/otel-demo-harness-prompts.v1.yaml
+
+source_snapshot:
+  repository: open-telemetry/opentelemetry-demo
+  version: 2.2.0
+  commit: b74a7bc7bbe66099c61951f42b24dab8b6f02d18
+
+runtime_confirmation:
+  performed: false
+  note: 这六项已经有直接源码或部署配置依据，但尚未通过Kubernetes和ChaosBlade实验确认最终业务后果。
+
+scope_note: >
+  这六项是OTel Demo后续功能测试的固定工作集。其余通用模式继续保留在研究档案中，
+  但不进入当前测试入口，除非后续获得新的直接证据并重新确认范围。
+
+recommended_test_order: [OTEL-C04, OTEL-C06, OTEL-C05, OTEL-C01, OTEL-C03, OTEL-C02]
+
+candidates:
+  - candidate_id: OTEL-C01
+    title: 结算结果不确定时，重复提交可能再次扣款或发货
+    description: >
+      Checkout接收的PlaceOrder请求没有携带可以在多次提交之间复用的操作标识。一次结算会依次扣款、
+      发货、清空购物车并发送订单消息。如果第一次调用实际上已经完成了部分操作，但成功响应在后续步骤
+      或返回途中丢失，用户再次提交时，系统会把它当成一笔新订单，可能再次扣款、再次发货或再次发送消息。
+      这一判断来自pb/demo.proto中的PlaceOrderRequest，以及src/checkout/main.go中的PlaceOrder执行顺序。
+    test_note: >
+      后续测试应在第一次结算已经越过至少一个副作用、但客户端没有收到成功响应时制造网络丢包，
+      随后重试同一笔结算，并对订单、交易、物流、购物车和Kafka消息做唯一性对账。
+
+  - candidate_id: OTEL-C02
+    title: Valkey内存空间很小时，购物车可能随着进程重启一起丢失
+    description: >
+      Cart会不断把不同用户的购物车写入Valkey，并让数据保留六十分钟。Benchmark只给Valkey配置了20Mi
+      内存上限，启动参数中没有看到maxmemory或淘汰策略。购物车继续增长时，Valkey可能触碰容器内存上限，
+      随后被杀死或重启；由于该部署也没有为购物车状态配置持久化存储，已有购物车可能同时丢失。
+      这一判断来自src/cart/src/cartstore/ValkeyCartStore.cs和environment/kubernetes/otel-demo/values.yaml。
+    test_note: >
+      后续测试应先写入可以独立核对的购物车数据，再对Valkey施加受控内存压力，持续观察内存、OOM、
+      Pod重启和Cart接口，并在恢复后逐项检查原有购物车是否完整。
+
+  - candidate_id: OTEL-C03
+    title: Pod看起来健康时，真实业务请求可能已经失败
+    description: >
+      Checkout、Product Catalog、Product Reviews和Recommendation的健康处理器会直接返回SERVING，
+      并不检查各自依赖的数据库或下游服务。Benchmark也没有为这些业务组件配置能够代表真实业务能力的
+      Kubernetes探针。因此，下游服务变慢或不可用时，Pod仍可能显示Ready并继续接收流量，但用户请求已经失败。
+      这一判断来自上述服务的健康处理器和environment/kubernetes/otel-demo/values.yaml中的探针配置。
+    test_note: >
+      后续测试应让一个真实业务依赖变慢或失效，同时记录Pod状态、Service Endpoint和业务请求结果。
+      只有在Pod仍被路由流量而真实请求持续失败时，才能确认这个问题。
+
+  - candidate_id: OTEL-C04
+    title: Checkout被终止时，正在进行的结算不会被安全排空
+    description: >
+      Checkout在注册SIGTERM处理逻辑之前，就同步进入了阻塞的gRPC Serve调用。正常提供服务期间，
+      后面的GracefulStop代码实际上无法执行。Kubernetes终止Checkout Pod时，正在进行的结算可能被直接切断，
+      而系统无法保证已经接收的请求完成，也无法确认扣款、发货、购物车和订单消息分别进行到了哪一步。
+      这一判断直接来自src/checkout/main.go中的服务启动和停止控制流。
+    test_note: >
+      后续测试应在一个可跟踪的长结算请求进行期间终止Checkout Pod，并同时记录旧Pod、Endpoint、
+      客户端响应以及所有业务副作用，确认请求是否被安全排空、重复执行或部分完成。
+
+  - candidate_id: OTEL-C05
+    title: 结算中途失败后，各服务可能留下彼此不一致的状态
+    description: >
+      Checkout按顺序执行扣款、发货、清空购物车、发送邮件和发布Kafka消息，但没有持久化的结算状态机、
+      Outbox或补偿流程。清空购物车失败会被忽略，邮件或Kafka失败也可能只留下日志。只要结算在这些步骤之间
+      中断，就可能出现支付已经成功但没有订单消息、商品已经发货但购物车未清空等部分完成状态。
+      这一判断来自src/checkout/main.go和src/checkout/kafka/producer.go。
+    test_note: >
+      后续测试应分别在扣款后、发货后、清空购物车后和Kafka发布期间制造中断，并对订单、支付、
+      物流、购物车、Kafka和Accounting记录进行跨服务完整性对账。
+
+  - candidate_id: OTEL-C06
+    title: Accounting写库失败后，Kafka消息仍可能被当作已经消费
+    description: >
+      Accounting从Kafka取出订单后写入PostgreSQL。数据库或解析异常会被捕获并只记录日志，消费循环不会
+      因此失败；同时消费者启用了自动提交Offset。数据库写入和Kafka消费位置不在同一个事务或显式确认边界内，
+      所以写库失败后，消费位置仍可能向前推进，订单随后不会再次交给Accounting处理。
+      这一判断直接来自src/accounting/Consumer.cs。
+    test_note: >
+      后续测试应在Accounting处理订单时让PostgreSQL写入失败或在SaveChanges前后终止消费者，
+      然后精确对比Kafka consumer group Offset、PostgreSQL订单记录以及恢复后的重放和重复情况。

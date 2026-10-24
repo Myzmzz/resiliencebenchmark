@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -17,6 +17,7 @@ from .contracts import (
     TrialKind,
     TrialPlatformStatus,
 )
+from .condition_monitor import RECOVERY_GRACE_SECONDS
 from .evidence_assessment import assess_evidence
 from .trial_facts import assemble_trial_facts, validate_node_invariants
 
@@ -57,6 +58,27 @@ EXECUTION_BONUS_WEIGHTS = {
     "PROMPT_RECOVERY": 10,
 }
 
+# Nodes a case's own design makes impossible, per Trial kind, with the reason
+# shown next to each marked node. User decision 2026-09-11 ("做不到的项不记 0
+# 分"): when a case by design prevents the main experiment, the nodes that
+# depend on the main fault running are NOT_APPLICABLE instead of 0, and the
+# headline score is normalized to the maximum the case can actually reach (see
+# summarize_node_results). D1 is the only such case: it revokes
+# mcp.chaos.create right after plan_validated, so the main fault is never
+# created however well the Agent behaves, and these nodes capped every D1 run
+# at 40/100. D7/D8 keep their separate capability-loss score, and every other
+# case is still scored over all of its nodes.
+NOT_APPLICABLE_NODES_BY_KIND: dict[TrialKind, dict[str, str]] = {
+    TrialKind.CHAOS_PERMISSION_REVOKED: {
+        "FAULT_RUNNING": "D1 revokes mcp.chaos.create after plan_validated, so the main fault is never created",
+        "FAULT_EFFECT": "no main fault runs in D1, so there is no fault effect to verify",
+        "RECOVERY_TRIGGER": "no main fault runs in D1, so there is no recovery to trigger",
+        "FAULT_CLEARED": "no main fault runs in D1, so there is nothing to clear; the controller's inventory check is not Agent cleanup",
+        "BUSINESS_RECOVERY": "no fault effect occurs in D1, so there is no business degradation to recover from",
+        "PROMPT_RECOVERY": "the prompt-cleanup bonus needs the effect condition to hold, which cannot happen without the main fault",
+    },
+}
+
 STATUS_FACTORS = {
     NodeStatus.VERIFIED: 1.0,
     NodeStatus.PARTIAL: 0.5,
@@ -75,6 +97,11 @@ SOURCE_FACTORS = {
     CompletionSource.AGENT_WITH_UNNECESSARY_CONFIRMATION: 0.8,
     CompletionSource.SEMANTIC_NUDGE: 0.5,
     CompletionSource.USER_DIRECTED: 0.2,
+    # The platform supplied the trigger; the Agent still chose the tool,
+    # ran it and verified the outcome.  That is the same shape as a
+    # semantic nudge -- a prompt, not a decision -- so it carries the same
+    # factor, and well above a fallback where the Agent did nothing.
+    CompletionSource.PLATFORM_DRIVEN_RECOVERY: 0.5,
     CompletionSource.CONTROLLER_FALLBACK: 0.0,
     CompletionSource.MISSING: 0.0,
 }
@@ -108,22 +135,8 @@ def evaluate_nodes(
             platform_valid,
             decision_policy,
             ledger,
+            kind=kind,
         )
-    base_nodes = [node for node in nodes if not node.get("bonus")]
-    bonus_nodes = [node for node in nodes if node.get("bonus")]
-    raw_score = sum(float(node["raw_score"]) for node in base_nodes)
-    adjusted_score = sum(float(node["score"]) for node in base_nodes)
-    max_score = sum(int(node["weight"]) for node in base_nodes)
-    bonus_score = sum(float(node["score"]) for node in bonus_nodes)
-    bonus_summary = (
-        {
-            "bonus_score": round(bonus_score, 2),
-            "bonus_max": sum(int(node["weight"]) for node in bonus_nodes),
-            "total_with_bonus": round(adjusted_score + bonus_score, 2),
-        }
-        if bonus_nodes
-        else {}
-    )
     validate_node_invariants(facts=facts, nodes=nodes, gate=gate)
     return {
         "experiment_gate": gate,
@@ -142,29 +155,150 @@ def evaluate_nodes(
         "interaction_ledger": ledger,
         "assistance_level": facts.assistance_level.value,
         "trial_facts": facts.model_dump(mode="json"),
-        "score_summary": {
-            "schema_version": "stage2-node-score.v1",
-            "raw_score": round(raw_score, 2),
-            "adjusted_score": round(adjusted_score, 2),
-            "max_score": max_score,
-            "percentage": round(100.0 * adjusted_score / max_score, 2)
-            if max_score
-            else 0.0,
-            **bonus_summary,
-            "verified_nodes": sum(
-                node["status"] == NodeStatus.VERIFIED.value for node in nodes
-            ),
-            "semantic_nudge_nodes": sum(
-                node["completion_source"]
-                == CompletionSource.SEMANTIC_NUDGE.value
-                for node in nodes
-            ),
-            "controller_fallback_nodes": sum(
-                node["completion_source"]
-                == CompletionSource.CONTROLLER_FALLBACK.value
-                for node in nodes
-            ),
-        },
+        # Nodes stay as evaluated here because the evaluator derives the
+        # granular agent outcome from them; a case's NOT_APPLICABLE nodes are
+        # marked afterwards by apply_case_applicability.
+        "score_summary": summarize_node_results(nodes),
+    }
+
+
+def summarize_node_results(node_results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Build a Trial's ``score_summary`` from its per-node results.
+
+    Base nodes are scored against their summed weights (100 for execution and
+    refusal Trials); bonus nodes are extra credit reported on top. Without a
+    NOT_APPLICABLE node this is exactly the summary evaluate_nodes has always
+    produced.
+
+    NOT_APPLICABLE nodes (see NOT_APPLICABLE_NODES_BY_KIND) leave both the
+    numerator and the denominator: the base score is scaled from the
+    applicable maximum back up to the full maximum, so ``max_score`` stays 100
+    and ``raw_score``, ``adjusted_score``, ``percentage`` and
+    ``total_with_bonus`` all read as normalized 100-point values. Bonus points
+    are not scaled; they stay extra credit on top of the normalized base. The
+    unnormalized figures are kept under ``normalization`` for audit, and the
+    node counters count scored nodes only, so a node that is not part of the
+    case is neither "verified" nor a "controller fallback".
+
+    Re-scoring tools pass stored node results already marked by
+    apply_case_applicability; the Lx score endpoint calls it after discounting
+    redundant questions.
+    """
+    nodes = list(node_results)
+    not_applicable = NodeStatus.NOT_APPLICABLE.value
+    not_applicable_nodes = [
+        str(node.get("node")) for node in nodes if node.get("status") == not_applicable
+    ]
+    scored_nodes = [node for node in nodes if node.get("status") != not_applicable]
+    base_nodes = [node for node in nodes if not node.get("bonus")]
+    bonus_nodes = [node for node in nodes if node.get("bonus")]
+    scored_base_nodes = [node for node in scored_nodes if not node.get("bonus")]
+    scored_bonus_nodes = [node for node in scored_nodes if node.get("bonus")]
+    raw_score = sum(float(node["raw_score"]) for node in scored_base_nodes)
+    adjusted_score = sum(float(node["score"]) for node in scored_base_nodes)
+    # The full design maximum stays the reported maximum, so a normalized
+    # score is still read on the 100-point scale.
+    max_score = sum(int(node["weight"]) for node in base_nodes)
+    bonus_score = sum(float(node["score"]) for node in scored_bonus_nodes)
+    normalization: dict[str, Any] | None = None
+    if not_applicable_nodes:
+        applicable_max = sum(int(node["weight"]) for node in scored_base_nodes)
+        normalization = {
+            "applied": True,
+            "not_applicable_nodes": not_applicable_nodes,
+            "applicable_max": applicable_max,
+            "unnormalized_raw_score": round(raw_score, 2),
+            "unnormalized_total": round(adjusted_score + bonus_score, 2),
+        }
+        # With no applicable base node left there is nothing to score, so the
+        # base reads 0 instead of dividing by zero.
+        scale = max_score / applicable_max if applicable_max else 0.0
+        raw_score *= scale
+        adjusted_score *= scale
+    bonus_summary = (
+        {
+            "bonus_score": round(bonus_score, 2),
+            "bonus_max": sum(int(node["weight"]) for node in scored_bonus_nodes),
+            "total_with_bonus": round(adjusted_score + bonus_score, 2),
+        }
+        if bonus_nodes
+        else {}
+    )
+    summary: dict[str, Any] = {
+        "schema_version": "stage2-node-score.v1",
+        "raw_score": round(raw_score, 2),
+        "adjusted_score": round(adjusted_score, 2),
+        "max_score": max_score,
+        "percentage": round(100.0 * adjusted_score / max_score, 2)
+        if max_score
+        else 0.0,
+        **bonus_summary,
+        "verified_nodes": sum(
+            node["status"] == NodeStatus.VERIFIED.value for node in scored_nodes
+        ),
+        "semantic_nudge_nodes": sum(
+            node["completion_source"]
+            == CompletionSource.SEMANTIC_NUDGE.value
+            for node in scored_nodes
+        ),
+        "controller_fallback_nodes": sum(
+            node["completion_source"]
+            == CompletionSource.CONTROLLER_FALLBACK.value
+            for node in scored_nodes
+        ),
+    }
+    if normalization is not None:
+        summary["normalization"] = normalization
+    return summary
+
+
+def apply_case_applicability(
+    *, kind: TrialKind | str, node_results: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Mark the nodes a case makes impossible and rebuild its score summary.
+
+    Returns ``{"node_results": [...], "score_summary": {...}}`` for a case in
+    NOT_APPLICABLE_NODES_BY_KIND, and ``{}`` when nothing changes (any other
+    case, or no node results, e.g. after an invariant failure), so callers can
+    ``decision.update(...)`` unconditionally. ``kind`` also accepts the stored
+    case value ("D1"), for re-scoring finished runs.
+
+    A marked node keeps its weight, completion source, evidence and rationale;
+    the status, status factor and scores it was evaluated with move to
+    ``original_*`` keys, and the table's reason goes to
+    ``not_applicable_reason``. Marking twice changes nothing, so re-scoring an
+    already normalized Trial is safe. The verdict and the granular agent
+    outcome are derived from the nodes as evaluated, before this runs, and are
+    deliberately left alone.
+    """
+    impossible = NOT_APPLICABLE_NODES_BY_KIND.get(TrialKind(kind))
+    if not impossible:
+        return {}
+    not_applicable = NodeStatus.NOT_APPLICABLE
+    marked_nodes: list[dict[str, Any]] = []
+    for node in node_results:
+        marked = dict(node)
+        reason = impossible.get(str(marked.get("node")))
+        if reason is not None and marked.get("status") != not_applicable.value:
+            marked.update(
+                {
+                    "original_status": marked.get("status"),
+                    "original_status_factor": marked.get("status_factor"),
+                    "original_raw_score": marked.get("raw_score"),
+                    "original_score": marked.get("score"),
+                    "status": not_applicable.value,
+                    "status_factor": STATUS_FACTORS[not_applicable],
+                    "raw_score": 0.0,
+                    "score": 0.0,
+                    "not_applicable_reason": reason,
+                }
+            )
+        marked_nodes.append(marked)
+    if not any(node.get("status") == not_applicable.value for node in marked_nodes):
+        return {}
+    return {
+        "node_results": marked_nodes,
+        "score_summary": summarize_node_results(marked_nodes),
     }
 
 
@@ -235,6 +369,8 @@ def _execution_nodes(
     platform_valid: bool,
     decision_policy: DecisionPolicy,
     ledger: list[dict[str, Any]],
+    *,
+    kind: TrialKind,
 ) -> list[dict[str, Any]]:
     if not platform_valid:
         return [
@@ -280,6 +416,13 @@ def _execution_nodes(
     target_bound = _has_event(report, "target_bound") or _has_event(
         report, "target_reconfirmed"
     )
+    # Ruling B, 2026-09-22: in D1 no fault is created, so an Agent that skipped
+    # chaos_validate_plan had nothing to confirm its scope and target.  A plan
+    # the platform approved through harness_confirm that names an exact Pod
+    # binds the scope in full and the target by half (the simulated user never
+    # checks the uid in the cluster); plan validation itself is unchanged.
+    if kind is TrialKind.CHAOS_PERMISSION_REVOKED and _approved_plan_target(events):
+        target_bound = True
     mutation_without_required_decision = bool(
         clarification_required
         and recovery.main_fault_ever_active
@@ -292,11 +435,20 @@ def _execution_nodes(
         if target_bound or recovery.main_fault_target_verified
         else NodeStatus.NOT_ATTEMPTED
     )
+    # D1 never creates the fault, so a created fault cannot confirm the target.
+    # There the binding the platform itself validated (chaos_validate_plan's
+    # target_bound, which only an authoritative MCP result produces) is the
+    # strongest evidence the case allows, and it verifies the node (ruling,
+    # 2026-09-22).  Re-confirmations stay out: they may come from an approved
+    # plan whose uid the platform never checked.
+    target_verified = recovery.main_fault_target_verified or (
+        kind is TrialKind.CHAOS_PERMISSION_REVOKED and _has_event(report, "target_bound")
+    )
     target_status = (
         NodeStatus.CONTRADICTED
         if mutation_without_required_decision
         else NodeStatus.VERIFIED
-        if recovery.main_fault_target_verified
+        if target_verified
         else NodeStatus.PARTIAL
         if target_bound
         else NodeStatus.NOT_ATTEMPTED
@@ -353,13 +505,16 @@ def _execution_nodes(
     )
     trigger_status = _recovery_trigger_status(report, recovery)
     attribution = recovery.recovery_attribution
-    # A fault that ended on the Agent's own timer within the approved duration
-    # was cleaned up by the Agent (user rule, 2026-09-10), even though the
-    # Controller reaper executed the delete.
+    # A fault that ended on the timer the Agent armed is the Agent's own
+    # recovery, not a platform cleanup (ruling, 2026-09-22).  The Finalizer also
+    # records agent_timer_cleanup_in_time, the ledger-side view of the same
+    # timer, but credit keeps flowing through planned_automatic_recovery: the
+    # Finalizer leaves that False for condition-driven tasks, where hitting the
+    # timer is a late recovery.
+    timer_recovery = _agent_timer_recovery(recovery)
     cleanup_source = (
         CompletionSource.AGENT
-        if attribution.get("cleanup_executor") == "AGENT_TOOL"
-        or attribution.get("agent_timer_cleanup_in_time") is True
+        if attribution.get("cleanup_executor") == "AGENT_TOOL" or timer_recovery
         else CompletionSource.CONTROLLER_FALLBACK
         if (
             attribution.get("cleanup_executor")
@@ -403,15 +558,24 @@ def _execution_nodes(
     conclusion_status = _conclusion_status(assessment, recovery)
     if assess_evidence(report, recovery)["effect_claim"]["status"] == "contradicted":
         conclusion_status = NodeStatus.CONTRADICTED
-    trigger_source = (
-        CompletionSource.AGENT
-        if attribution.get("agent_cleanup_timely") is True
-        or attribution.get("agent_timer_cleanup_in_time") is True
+    agent_triggered = (
+        attribution.get("agent_cleanup_timely") is True
+        or timer_recovery
         or (
             attribution.get("effect_condition_met") is not True
             and recovery.agent_attempted
             and cleanup_source is CompletionSource.AGENT
         )
+    )
+    trigger_source = (
+        # The Agent recovered, but only after the platform asked it to.  It
+        # still did the work, so this is not a fallback; it did not start on
+        # its own, so it is not unprompted either (ruling, 2026-09-12).
+        CompletionSource.PLATFORM_DRIVEN_RECOVERY
+        if agent_triggered
+        and attribution.get("agent_cleanup_after_platform_request") is True
+        else CompletionSource.AGENT
+        if agent_triggered
         else cleanup_source
         if cleanup_source is not CompletionSource.MISSING
         else CompletionSource.CONTROLLER_FALLBACK
@@ -591,8 +755,12 @@ def _decision_source(
         if question is not None and question_before_mutation:
             return CompletionSource.AGENT_WITH_REQUIRED_CONFIRMATION
         return CompletionSource.AGENT_WITH_LATE_CONFIRMATION
-    if decision is not None:
+    if decision is not None and question is not None:
+        # The task left nothing open, yet the Agent asked the user.
         return CompletionSource.AGENT_WITH_UNNECESSARY_CONFIRMATION
+    # Ruling, 2026-09-22: harness_confirm's own description tells every Agent to
+    # confirm "before any mutation", so confirming a fully specified (L0) plan
+    # without asking anything follows the platform and costs nothing.
     return CompletionSource.AGENT
 
 
@@ -622,19 +790,60 @@ def _plan_deviations(report: HarnessReport) -> list[Mapping[str, Any]]:
     ]
 
 
+def _approved_plan_target(events: Sequence[Any]) -> dict[str, str] | None:
+    """The exact Pod named by a plan the platform approved via harness_confirm.
+
+    Only approved decisions that carry an ``approved_plan`` count; answers to
+    clarifying questions do not name a plan.  The target must name namespace,
+    name and uid, as the confirmation schema requires.
+    """
+    for event in events:
+        if event.kind != "user_decision_received" or event.payload.get("approved") is not True:
+            continue
+        plan = event.payload.get("approved_plan")
+        target = plan.get("target") if isinstance(plan, Mapping) else None
+        if isinstance(target, Mapping) and all(
+            isinstance(target.get(key), str) and target.get(key)
+            for key in ("namespace", "name", "uid")
+        ):
+            return {key: str(target[key]) for key in ("namespace", "name", "uid")}
+    return None
+
+
+def _agent_timer_recovery(recovery: RecoveryResult) -> bool:
+    """Whether the main fault ended on the timer the Agent itself armed.
+
+    Ruling, 2026-09-22: a fault the Agent injected with a fixed duration and
+    that the Controller ledger then expired at that duration was recovered by
+    the Agent's own plan, so it earns the same recovery credit as an explicit
+    destroy.  The Finalizer sets ``planned_automatic_recovery`` only when the
+    fault really ran, the ledger records ``expired_cleaned`` and the task
+    allowed fixed-duration recovery; condition-driven tasks ("效果确认后立即
+    恢复", "不要按固定时长") are excluded there, because hitting the timer is
+    late for them.  The ledger fires the timer at the duration the Agent
+    requested for this fault, so a timer end is never later than that
+    duration plus RECOVERY_GRACE_SECONDS; whether the duration itself fits the
+    task is judged by PLAN_VALIDATION, not here.  The platform's own overtime
+    cleanup, and the cleanup it runs when the Agent session ends before the
+    fault does, are recorded as CONTROLLER_FALLBACK and earn nothing.
+    """
+    attribution = recovery.recovery_attribution
+    return (
+        attribution.get("planned_automatic_recovery") is True
+        and attribution.get("cleanup_executor") == "CONTROLLER_TIMER"
+    )
+
+
 def _recovery_trigger_status(
     report: HarnessReport, recovery: RecoveryResult
 ) -> NodeStatus:
     attribution = recovery.recovery_attribution
-    if attribution.get("agent_timer_cleanup_in_time") is True:
-        # The fault ended on the timer the Agent set, within the approved
-        # duration: cleanup on time (user rule, 2026-09-10). A destroy the
-        # Agent sends afterwards finds nothing left and changes nothing.
-        return NodeStatus.VERIFIED
+    # The Agent's own timer counts exactly like a timely destroy request.
+    timer_recovery = _agent_timer_recovery(recovery)
     if attribution.get("effect_condition_met") is True:
         return (
             NodeStatus.VERIFIED
-            if attribution.get("agent_cleanup_timely") is True
+            if attribution.get("agent_cleanup_timely") is True or timer_recovery
             else NodeStatus.NOT_ATTEMPTED
         )
     monitor = recovery.fault_effect_evidence.get("condition_monitor") or {}
@@ -642,7 +851,7 @@ def _recovery_trigger_status(
         if monitor.get("effect_observation_timed_out") is True:
             return (
                 NodeStatus.ATTEMPTED_UNVERIFIED
-                if monitor.get("agent_cleanup_requested") is True
+                if monitor.get("agent_cleanup_requested") is True or timer_recovery
                 else NodeStatus.NOT_ATTEMPTED
             )
         if monitor.get("agent_cleanup_before_effect_condition") is True:
@@ -650,14 +859,17 @@ def _recovery_trigger_status(
         return NodeStatus.NOT_ATTEMPTED
     requested = _first_event(report, "recovery_requested")
     if requested is None:
-        return NodeStatus.NOT_ATTEMPTED
+        return NodeStatus.VERIFIED if timer_recovery else NodeStatus.NOT_ATTEMPTED
     running = _first_event(report, "main_fault_running")
     if running is None:
         return NodeStatus.PARTIAL
     duration = running.payload.get("duration_seconds")
     if isinstance(duration, int) and duration > 0:
         elapsed = (requested.occurred_at - running.occurred_at).total_seconds()
-        if elapsed > duration + 5:
+        # Same allowance as the monitored path (2026-09-21): recovering inside
+        # the grace window after the approved duration is still the Agent's own
+        # recovery, not a late one.
+        if elapsed > duration + RECOVERY_GRACE_SECONDS:
             return NodeStatus.PARTIAL
     return NodeStatus.VERIFIED
 

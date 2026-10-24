@@ -29,6 +29,7 @@ from .campaign import CampaignEngine
 from .capability_preflight import harness_capabilities_from_qualification
 from .capability_loss.factory import CapabilityLossRuntimeFactory
 from .condition_monitor import ConditionRecoveryMonitor
+from .foreign_fault_observer import ForeignFaultObserver
 from .condition_policy import RESOURCE_METRICS
 from .condition_policy import evaluate_condition
 from .contracts import (
@@ -55,6 +56,7 @@ from .preparation import ApplicationTrafficCapabilityIssuer, KubernetesTrialPrep
 from .qualification import D0QualificationGate
 from .kubernetes_identities import CONTROLLER_SERVICE_ACCOUNT, prepare_execution_identities
 from .reset import OtelDemoResetter
+from .target_binding import current as current_target_binding
 from .runtime_adapters import (
     CompositeDisturbanceExecutor,
     KubernetesEnvironmentGate,
@@ -93,6 +95,17 @@ def _probe_report_has_error(report: Mapping[str, Any]) -> bool:
         isinstance(issue, Mapping) and issue.get("severity") == "ERROR"
         for issue in issues
     ) if isinstance(issues, list) else False
+
+
+# The chart's own service names; identical in every replica namespace, so the
+# agent-visible allowlists stay the same text whatever replica runs a trial.
+OBSERVED_SERVICES = "frontend,frontend-proxy,checkout,cart,payment,shipping"
+
+
+def workload_stats_url(namespace: str | None = None) -> str:
+    """Locust ``/stats/requests`` of the load generator inside ``namespace``."""
+    target = namespace or current_target_binding().application_namespace
+    return f"http://load-generator.{target}.svc.cluster.local:8089/stats/requests"
 
 
 def _model_probe_failure_reason(failure_classes: tuple[str, ...]) -> str:
@@ -233,9 +246,10 @@ def build_runtime(
     episode,
     request_model_by_harness: Mapping[Any, str],
     *,
-    namespace: str = "otel-demo",
+    namespace: str | None = None,
 ) -> Stage2Components:
     """Build the production Stage-2 runtime from process configuration."""
+    namespace = namespace or current_target_binding().application_namespace
     config = Stage2RuntimeConfig.from_env()
     for path in (config.private_root, config.artifact_root):
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -289,19 +303,30 @@ def _build_runtime(
         "RESBENCH_JAEGER_URL": "http://jaeger-query.observability.svc:16686",
         "RESBENCH_LOKI_URL": "http://loki.observability.svc:3100",
         "RESBENCH_TELEMETRY_ALLOWED_NAMESPACES": namespace,
-        "RESBENCH_JAEGER_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
+        "RESBENCH_JAEGER_ALLOWED_SERVICES": OBSERVED_SERVICES,
         "RESBENCH_COROOT_URL": config.coroot_url,
         "RESBENCH_COROOT_PROJECT_ID": config.coroot_project_id,
         "RESBENCH_COROOT_ALLOWED_NAMESPACE": namespace,
-        "RESBENCH_COROOT_ALLOWED_SERVICES": "frontend,frontend-proxy,checkout,cart,payment,shipping",
+        "RESBENCH_COROOT_ALLOWED_SERVICES": OBSERVED_SERVICES,
         "RESBENCH_COROOT_ALLOW_ANONYMOUS_READ": "true" if config.coroot_allow_anonymous_read else "false",
         "RESBENCH_COROOT_TIMEOUT_SECONDS": "10",
         "RESBENCH_TELEMETRY_ALLOW_RAW_QUERIES": "false",
+        # Replicas share Jaeger and run identically named services, so a trace
+        # must also carry this replica's namespace. Off for the single-system
+        # binding, which keeps the default agent-visible behaviour unchanged.
+        **(
+            {"RESBENCH_TELEMETRY_REQUIRE_TRACE_NAMESPACE": "true"}
+            if not current_target_binding().is_default
+            else {}
+        ),
         "RESBENCH_TELEMETRY_DISTURBANCE_DIR": str(private / "telemetry"),
-        "RESBENCH_WORKLOAD_STATS_URL": "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
+        "RESBENCH_WORKLOAD_STATS_URL": workload_stats_url(namespace),
         "RESBENCH_WORKLOAD_STAT_NAME": "/api/cart",
         "RESBENCH_SOURCE_ROOT": str(config.source_root),
-        "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": "otel-demo",
+        # The frozen source snapshot is shared by every replica and its locks are
+        # registered under the bundle's application id, so a replica (otel-demo-01)
+        # keeps otel-demo here instead of its namespace.
+        "RESBENCH_SOURCE_ALLOWED_APPLICATIONS": current_target_binding().source_application,
         "RESBENCH_CHAOS_EXECUTE_ENABLED": "true",
         "RESBENCH_CHAOS_KUBECONFIG": str(identities.executor_kubeconfig),
         "RESBENCH_CHAOS_CLEANUP_KUBECONFIG": str(identities.finalizer_kubeconfig),
@@ -428,7 +453,7 @@ class KubernetesTrafficEvidence:
         gate: KubernetesEnvironmentGate,
         episode,
         *,
-        stats_url: str = "http://load-generator.otel-demo.svc.cluster.local:8089/stats/requests",
+        stats_url: str | None = None,
         stats_loader: Callable[[str], Mapping[str, Any]] | None = None,
         stats_resetter: Callable[[str], None] | None = None,
         prometheus_url: str = "http://prometheus.observability.svc:9090",
@@ -439,7 +464,7 @@ class KubernetesTrafficEvidence:
     ):
         self.gate = gate
         self.episode = episode
-        self.stats_url = stats_url
+        self.stats_url = stats_url or workload_stats_url()
         self.stats_loader = stats_loader or self._load_stats
         self.stats_resetter = stats_resetter or self._reset_stats
         self.prometheus_url = prometheus_url.rstrip("/")
@@ -1201,6 +1226,23 @@ class DirectChaosCleanup:
     destroy method; foreign resources remain evidence for the reset gate.
     """
 
+    # An Agent that injects with its own ChaosBlade client leaves a CR the
+    # ledger knows nothing about: ``run_id``, ``target_uid`` and ``owner`` all
+    # come from labels only ``chaos_control`` writes, so such a resource can
+    # only ever be counted as foreign and ``MAIN_FAULT_ACTIVE`` can never pass.
+    # Measured 2026-09-15 (BladeAI black-box, round six): four real cpu-load
+    # experiments on the Trials' own cart Pods, and every Trial was scored "no
+    # fault ever ran".  With this switch on, a foreign experiment acting on the
+    # Trial's own target with the Trial's own fault type counts as the main
+    # fault.  It stays off by default, because for an Agent that injects
+    # through ``chaos_control`` the private ledger is the stricter evidence.
+    FOREIGN_FAULT_ATTRIBUTION_ENV = "STAGE2_FOREIGN_FAULT_ATTRIBUTION"
+
+    @classmethod
+    def foreign_fault_attribution_enabled(cls) -> bool:
+        """Whether an observed foreign experiment may count as the main fault."""
+        return os.environ.get(cls.FOREIGN_FAULT_ATTRIBUTION_ENV, "off").strip().lower() in {"1", "true", "yes", "on"}
+
     def __init__(
         self,
         chaosblade: ChaosControlService,
@@ -1212,12 +1254,26 @@ class DirectChaosCleanup:
             "chaos_mesh": chaos_mesh,
         }
         self.kubeconfig = str(kubeconfig)
+        # trial_id -> when a matching foreign experiment was first and last
+        # seen acting.  The CR is usually gone before finalization reads the
+        # inventory (BladeAI passes ``--timeout`` and the operator reaps it),
+        # so the observation has to be remembered when it is made.
+        self._foreign_observations: dict[str, dict[str, Any]] = {}
 
     def inventory_trial(self, runtime):
         return asyncio.run(self._inventory_trial(runtime))
 
     def cleanup_owned(self, runtime):
         return asyncio.run(self._cleanup_owned(runtime))
+
+    def cleanup_overdue_foreign(self, runtime):
+        """Delete the credited Agent experiment that outlived its approved duration.
+
+        Called by ``ForeignFaultObserver`` while the Trial is still running.
+        Unlike ``cleanup_owned`` it never touches a ledger fault: those have
+        their own overtime path in the condition monitor.
+        """
+        return asyncio.run(self._cleanup_overdue_foreign(runtime))
 
     def status(self, cleanup_handle: str):
         """Condition-monitor status through the one exact ledger owner."""
@@ -1288,9 +1344,11 @@ class DirectChaosCleanup:
         matching_resources = [
             resource for resource in resources if resource.owned_by_trial(runtime.trial_id)
         ]
+        observed_foreign = self._observe_foreign_fault(runtime, resources, ledger)
         snapshot["trial"] = {
             "resource_absent": snapshot["owned_resources_absent"],
             "ever_active": bool(ledger.get("ever_active")),
+            "fault_attribution": "ledger",
             "namespace": str(ledger.get("namespace") or runtime.target.namespace),
             "target_name": str(ledger.get("target_name") or runtime.target.name),
             "target_uid": str(ledger.get("target_uid") or runtime.target.uid),
@@ -1307,7 +1365,82 @@ class DirectChaosCleanup:
             "ledger_match_count": len(trial_ledgers),
             "executor_id": ledger_executor,
         }
+        if observed_foreign is not None:
+            # The Trial's own target is under a fault the ledger cannot see.
+            # ``target_name`` and ``target_uid`` deliberately keep the runtime
+            # values set above: a foreign CR carries no uid (it is a label),
+            # and finalization compares those two against the approved plan.
+            snapshot["trial"].update(
+                {
+                    "resource_absent": observed_foreign.get("ended_at") is not None,
+                    "ever_active": True,
+                    "fault_attribution": "observed_foreign",
+                    "fault_type": str(
+                        observed_foreign.get("fault_type")
+                        or snapshot["trial"]["fault_type"]
+                    ),
+                    "experiment_name": observed_foreign.get("experiment_name"),
+                    "executor_id": observed_foreign.get("executor_id"),
+                    "started_at": observed_foreign.get("started_at"),
+                    "ended_at": observed_foreign.get("ended_at"),
+                    "foreign_observations": int(observed_foreign.get("observations") or 0),
+                }
+            )
         return snapshot
+
+    def _observe_foreign_fault(
+        self,
+        runtime,
+        resources: list[Any],
+        ledger: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Remember a foreign experiment acting on this Trial's own target.
+
+        Returns the sticky record for this Trial, or ``None`` when the feature
+        is off or the ledger already owns a fault -- the ledger is the stricter
+        evidence and always wins.  The match is namespace + Pod name + fault
+        type, because a foreign CR has no ``run_id`` or ``target_uid``: those
+        are labels only ``chaos_control`` writes.  The Pod name and namespace
+        come from the CR's own matchers and the fault type from its
+        target/action pair, so all three are readable on a foreign resource.
+        """
+        if ledger.get("ever_active") or not self.foreign_fault_attribution_enabled():
+            return None
+        planned_fault = str(runtime.main_fault.get("fault_type") or "")
+        acting = [
+            resource
+            for resource in resources
+            if resource.active
+            and not resource.owned_by_trial(runtime.trial_id)
+            and resource.namespace == runtime.target.namespace
+            and resource.target_name == runtime.target.name
+            and (not planned_fault or resource.fault_type == planned_fault)
+        ]
+        memo = self._foreign_observations.get(runtime.trial_id)
+        stamp = datetime.now(UTC).isoformat()
+        if acting:
+            observed = acting[0]
+            if memo is None:
+                memo = {
+                    "experiment_name": observed.name,
+                    "executor_id": observed.executor_id,
+                    "fault_type": observed.fault_type,
+                    "namespace": observed.namespace,
+                    "target_name": observed.target_name,
+                    "started_at": stamp,
+                    "ended_at": None,
+                    "observations": 0,
+                }
+                self._foreign_observations[runtime.trial_id] = memo
+            memo["observations"] = int(memo.get("observations") or 0) + 1
+            memo["last_seen_at"] = stamp
+            memo["ended_at"] = None
+            return memo
+        if memo is not None and memo.get("ended_at") is None:
+            # First read after it disappeared is the closest the Controller can
+            # get to when the Agent's own cleanup landed.
+            memo["ended_at"] = stamp
+        return memo
 
     async def _cleanup_owned(self, runtime) -> dict[str, Any]:
         inventory = await self._inventory_trial(runtime)
@@ -1315,6 +1448,10 @@ class DirectChaosCleanup:
             return {"verified_absent": False, "principal": "CONTROLLER_FALLBACK", "reason": "fault_inventory_incomplete"}
         trial = dict(inventory.get("trial") or {})
         if int(trial.get("ledger_match_count") or 0) == 0:
+            # Only reachable with STAGE2_FOREIGN_FAULT_ATTRIBUTION on: without it
+            # fault_attribution is always "ledger" and nothing below changes.
+            if trial.get("fault_attribution") == "observed_foreign" and trial.get("resource_absent") is not True:
+                return await self._cleanup_attributed_foreign(runtime, inventory, trial)
             return {"verified_absent": inventory.get("owned_resources_absent") is True, "principal": "CONTROLLER_FALLBACK", "idempotent": True}
         if int(trial.get("ledger_match_count") or 0) != 1:
             return {"verified_absent": False, "principal": "CONTROLLER_FALLBACK", "reason": "ambiguous_trial_ledger"}
@@ -1326,6 +1463,84 @@ class DirectChaosCleanup:
             principal="CONTROLLER_FALLBACK",
         )
         return {**dict(result), "principal": "CONTROLLER_FALLBACK", "executor_id": executor_id}
+
+    async def _cleanup_overdue_foreign(self, runtime) -> dict[str, Any]:
+        inventory = await self._inventory_trial(runtime)
+        refused = {"verified_absent": False, "principal": "CONTROLLER_FALLBACK"}
+        if inventory.get("qualified") is not True:
+            return {**refused, "reason": "fault_inventory_incomplete"}
+        trial = dict(inventory.get("trial") or {})
+        if (
+            int(trial.get("ledger_match_count") or 0) != 0
+            or trial.get("fault_attribution") != "observed_foreign"
+        ):
+            return {**refused, "reason": "not_an_attributed_foreign_fault"}
+        if trial.get("resource_absent") is True:
+            # Gone between the observer's read and this one: nothing to delete,
+            # and nothing the platform can claim to have recovered.
+            return {"verified_absent": True, "principal": "CONTROLLER_FALLBACK", "already_absent": True}
+        return await self._cleanup_attributed_foreign(runtime, inventory, trial)
+
+    async def _cleanup_attributed_foreign(
+        self,
+        runtime,
+        inventory: Mapping[str, Any],
+        trial: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Delete the one Agent-created experiment this Trial was credited with.
+
+        Before this, ``_cleanup_owned`` answered ``verified_absent: True``
+        whenever the ledger was empty -- true of the ledger, false of the
+        cluster.  With foreign attribution on, a credited experiment still
+        burning CPU was reported as cleaned up, the platform retried at once,
+        and the retry was blocked by that same experiment (round seven r5,
+        round eight r4).  All twelve BladeAI experiments measured across rounds
+        six to eight lived 605-612 s: their own ``--timeout=600``, never an
+        earlier cleanup by the Agent or by this Controller.
+
+        This is still exact deletion, not discovery.  The name comes from this
+        Trial's own attribution record, and the resource must be found exactly
+        once as a non-owned, active experiment of the recorded fault type in
+        the Trial's namespace; anything else is refused.  Absence is re-read
+        from the cluster afterwards instead of being assumed.
+        """
+        name = str(trial.get("experiment_name") or "")
+        executor_id = str(trial.get("executor_id") or "")
+        namespace = runtime.target.namespace
+        fault_type = str(trial.get("fault_type") or "")
+        refused = {"verified_absent": False, "principal": "CONTROLLER_FALLBACK"}
+        if not name or executor_id not in self.services:
+            return {**refused, "reason": "attributed_foreign_experiment_unknown"}
+        candidates = [
+            resource
+            for resource in inventory.get("resources") or []
+            if resource.get("name") == name
+            and resource.get("namespace") == namespace
+            and resource.get("executor_id") == executor_id
+            and resource.get("owned_by_trial") is not True
+            and resource.get("active") is True
+            and (not fault_type or resource.get("fault_type") == fault_type)
+        ]
+        if len(candidates) != 1:
+            return {
+                **refused,
+                "reason": "attributed_foreign_experiment_not_uniquely_found",
+                "candidate_count": len(candidates),
+            }
+        await self.services[executor_id].backend.delete_experiment(namespace, name, self.kubeconfig)
+        after = await self._inventory_trial(runtime)
+        still_active = any(
+            resource.get("name") == name
+            and resource.get("namespace") == namespace
+            and resource.get("active") is True
+            for resource in after.get("resources") or []
+        )
+        return {
+            "verified_absent": after.get("qualified") is True and not still_active,
+            "principal": "CONTROLLER_FALLBACK",
+            "executor_id": executor_id,
+            "deleted_foreign_experiment": name,
+        }
 
     @staticmethod
     def _read_ledgers(service) -> list[dict[str, Any]]:
@@ -1398,7 +1613,13 @@ class Stage2System:
         self.d0_gate = D0QualificationGate(config.d0_artifact_root)
         self._active_lock = Lock()
         self._active_controls: dict[str, dict[str, Any]] = {}
-        self._model_probe_runner = model_probe_runner or self._default_model_probe_runner
+        # An injected runner (tests, tools) is always honoured; otherwise the
+        # real probe only runs when STAGE2_GATEWAY_MODEL_PROBE opts into it.
+        self._model_probe_runner = model_probe_runner or (
+            self._default_model_probe_runner
+            if self.gateway_model_probe_enabled()
+            else self._skipped_model_probe_runner
+        )
         self._probe_cache_ttl_seconds = probe_cache_ttl_seconds
         self._probe_lock = Lock()
         self._gateway_readiness: dict[tuple[str, str, tuple[str, ...]], GatewayReadinessEntry] = {}
@@ -1702,6 +1923,37 @@ class Stage2System:
             payload["error"] = entry.error
         return payload
 
+    # A real capability probe sends several requests per alias to every upstream
+    # (tool calls, streaming, structured output) whenever its cache expires.  On
+    # 2026-09-15 five replica Controllers probing seven aliases at once got
+    # nexustokenai to rate-limit gpt-5.5, which then marked gpt-5.5 unrunnable and
+    # blocked the very Trials the probe was meant to protect.  By default the
+    # Controller now trusts the gateway's own model list (``/v1/models``, no
+    # tokens) and lets a Trial fail with the upstream's error if the model cannot
+    # actually serve it.  STAGE2_GATEWAY_MODEL_PROBE=on restores the probe.
+    GATEWAY_MODEL_PROBE_ENV = "STAGE2_GATEWAY_MODEL_PROBE"
+    SKIPPED_PROBE_STATUS = "not_probed"
+    RUNNABLE_PROBE_STATUSES = frozenset({"supported", SKIPPED_PROBE_STATUS})
+
+    @classmethod
+    def gateway_model_probe_enabled(cls) -> bool:
+        """Whether this Controller sends real capability probes through the gateway."""
+        return os.environ.get(cls.GATEWAY_MODEL_PROBE_ENV, "off").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _skipped_model_probe_runner(
+        self,
+        snapshot: GatewayConfigSnapshot,
+        aliases: Sequence[str],
+    ) -> Mapping[str, Any]:
+        """Report every alias as not probed; runnability then rests on the gateway model list."""
+        del snapshot
+        return {
+            "schemaVersion": "resiliencebenchmark.model_probe/v1",
+            "mode": "skipped",
+            "issues": [],
+            "models": [{"alias": alias, "overallStatus": self.SKIPPED_PROBE_STATUS} for alias in aliases],
+        }
+
     def _default_model_probe_runner(
         self,
         snapshot: GatewayConfigSnapshot,
@@ -1760,7 +2012,7 @@ class Stage2System:
                 visible
                 and snapshot is not None
                 and not has_error_issue
-                and probe_status == "supported"
+                and probe_status in self.RUNNABLE_PROBE_STATUSES
             )
             row: dict[str, Any] = {
                 "runnable": runnable,
@@ -1798,10 +2050,13 @@ class Stage2System:
             if isinstance(item, Mapping) and item.get("id")
         }, None
 
-    def build_runtime(self, episode, request_model_by_harness, *, namespace="otel-demo") -> Stage2Components:
+    def build_runtime(self, episode, request_model_by_harness, *, namespace=None) -> Stage2Components:
         """Compose one attempt with this system's pinned configuration."""
-        return _build_runtime(config=self.config, episode=episode,
-                              request_model_by_harness=request_model_by_harness, namespace=namespace)
+        return _build_runtime(
+            config=self.config, episode=episode,
+            request_model_by_harness=request_model_by_harness,
+            namespace=namespace or current_target_binding().application_namespace,
+        )
 
     def run(
         self,
@@ -1827,6 +2082,11 @@ class Stage2System:
             resetter=components.resetter,
             condition_monitor_factory=lambda: ConditionRecoveryMonitor(
                 components.traffic, components.cleanup_backend
+            ),
+            foreign_fault_observer_factory=(
+                (lambda: ForeignFaultObserver(components.cleanup_backend))
+                if DirectChaosCleanup.foreign_fault_attribution_enabled()
+                else None
             ),
             artifacts=ArtifactStore(self.config.artifact_root),
             platform_ledger=components.token_registry.platform_ledger,
@@ -1887,7 +2147,7 @@ class Stage2System:
         }
 
     def reset_environment(self, operation_id: str, application: str) -> Mapping[str, Any]:
-        if application != "otel-demo":
+        if application != current_target_binding().application:
             return {
                 "verified": False,
                 "reason": f"unsupported application: {application}",
@@ -1912,7 +2172,7 @@ class Stage2System:
 
     def verify_environment(self, operation_id: str, application: str) -> Mapping[str, Any]:
         """Verify a clean OTel Demo state without mutating the namespace."""
-        if application != "otel-demo":
+        if application != current_target_binding().application:
             return {
                 "verified": False,
                 "reason": f"unsupported application: {application}",
@@ -1971,7 +2231,7 @@ def write_incluster_kubeconfig(path: Path) -> None:
                 "context": {
                     "cluster": "kubernetes",
                     "user": CONTROLLER_SERVICE_ACCOUNT,
-                    "namespace": "otel-demo",
+                    "namespace": current_target_binding().application_namespace,
                 },
             }
         ],

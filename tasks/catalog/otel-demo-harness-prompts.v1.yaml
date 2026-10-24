@@ -1,0 +1,20 @@
+schema_version: otel-demo-harness-prompt-catalog.v1
+catalog_id: otel-demo-2.2.0-core-six-prompts
+candidate_set_path: tasks/catalog/otel-demo-static-candidates.v1.yaml
+prompt_root: harness/prompts/otel-demo-core-six
+interaction_mode: direct_natural_language
+status: ready_for_manual_harness_interaction
+
+entries:
+  - candidate_id: OTEL-C01
+    prompt_file: harness/prompts/otel-demo-core-six/OTEL-C01.md
+  - candidate_id: OTEL-C02
+    prompt_file: harness/prompts/otel-demo-core-six/OTEL-C02.md
+  - candidate_id: OTEL-C03
+    prompt_file: harness/prompts/otel-demo-core-six/OTEL-C03.md
+  - candidate_id: OTEL-C04
+    prompt_file: harness/prompts/otel-demo-core-six/OTEL-C04.md
+  - candidate_id: OTEL-C05
+    prompt_file: harness/prompts/otel-demo-core-six/OTEL-C05.md
+  - candidate_id: OTEL-C06
+    prompt_file: harness/prompts/otel-demo-core-six/OTEL-C06.md

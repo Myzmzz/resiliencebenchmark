@@ -116,10 +116,25 @@ class GatewayConfigSnapshot:
         return {alias: self.route(alias) for alias in self._required_aliases}
 
 
+# router_settings keys that only change how often and how patiently the proxy
+# retries a request against the same upstream.  Anything else (fallbacks,
+# routing strategy, load balancing) would change which upstream answers and
+# stays rejected.  Retries were allowed on 2026-09-15 for the gpt-5.5 route
+# after nexustokenai rate-limited five parallel BladeAI trials.
+RETRY_ONLY_ROUTER_SETTINGS = frozenset({"retry_after", "model_group_retry_policy"})
+
+
 def _reject_active_routing_policy(document: Mapping[str, Any]) -> None:
     router_settings = document.get("router_settings")
     if router_settings not in (None, {}, []):
-        raise GatewayConfigError("LiteLLM router_settings must not enable fallback or load balancing")
+        if not isinstance(router_settings, Mapping) or not set(router_settings) <= RETRY_ONLY_ROUTER_SETTINGS:
+            raise GatewayConfigError("LiteLLM router_settings must not enable fallback or load balancing")
+        retry_after = router_settings.get("retry_after", 0)
+        if not isinstance(retry_after, int) or isinstance(retry_after, bool) or retry_after < 0:
+            raise GatewayConfigError("LiteLLM router_settings.retry_after must be a non-negative integer")
+        policies = router_settings.get("model_group_retry_policy", {})
+        if not isinstance(policies, Mapping) or not all(isinstance(policy, Mapping) for policy in policies.values()):
+            raise GatewayConfigError("LiteLLM router_settings.model_group_retry_policy must map model groups to retry counts")
     for key in ("fallbacks", "context_window_fallbacks", "model_group_alias"):
         value = document.get(key)
         if value not in (None, {}, []):

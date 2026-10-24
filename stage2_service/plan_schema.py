@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from enum import Enum
 import math
 import re
@@ -13,6 +13,7 @@ from pydantic import ConfigDict, Field, ValidationError, field_validator, model_
 from controller.safety import ControllerPolicy
 
 from .condition_policy import (
+    CONDITION_POLICY,
     EFFECT_OPERATORS,
     RECOVERY_OPERATORS,
     WORKLOAD_METRICS,
@@ -23,6 +24,29 @@ from .contracts import ContractModel, MainFaultSpec
 DNS_LABEL_RE = r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
 POD_NAME_RE = r"^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$"
 UID_RE = r"^[A-Za-z0-9][A-Za-z0-9_.:/#@-]{1,255}$"
+
+
+def legal_values(values: Iterable[str]) -> str:
+    """List legal values in one stable order for Agent-facing text."""
+
+    return ", ".join(sorted(values))
+
+
+# Corrections for condition vocabulary errors. They name every legal value and
+# read it from condition_policy: the metric hint used to list three of the five
+# metrics and the operator hint only said "use a supported operator", and
+# Agents kept re-sending the same rejected wording.
+METRIC_CORRECTION = f"Use one of these metrics: {legal_values(WORKLOAD_METRICS)}."
+EFFECT_OPERATOR_CORRECTION = (
+    f"Use one of these effect_condition operators: {legal_values(EFFECT_OPERATORS)}."
+)
+RECOVERY_OPERATOR_CORRECTION = (
+    f"Use one of these recovery_condition operators: {legal_values(RECOVERY_OPERATORS)}."
+)
+TARGET_UID_CORRECTION = (
+    "Set target.uid to the target Pod's metadata.uid (read the Pod first if you "
+    "do not have it yet)."
+)
 
 
 class FaultType(str, Enum):
@@ -278,6 +302,83 @@ class AgentPlan(ContractModel):
         }
 
 
+# Timing fields the Controller fills from its condition policy: every policy
+# key except the recovery mode and the Agent-chosen fault lifetime.
+CONTROLLER_TIMING_FIELDS: tuple[str, ...] = tuple(
+    key for key in CONDITION_POLICY if key not in {"recovery_mode", "safety_ttl_seconds"}
+)
+# Top-level fields an Agent writes itself; the rest of AgentPlan is timing.
+AGENT_PLAN_FIELDS: tuple[str, ...] = tuple(
+    name for name in AgentPlan.model_fields if name not in CONTROLLER_TIMING_FIELDS
+)
+# Top-level keys whose value belongs inside target. They are chaos_control's
+# flat argument names (namespace, target_name, target_uid; see
+# chaos_create_arguments) and their short forms, which Agents copy into plans.
+MISPLACED_TARGET_KEYS: dict[str, str] = {
+    "namespace": "target.namespace",
+    "target_namespace": "target.namespace",
+    "name": "target.name",
+    "target_name": "target.name",
+    "uid": "target.uid",
+    "target_uid": "target.uid",
+}
+# Keys each nested plan object accepts, for unknown-key corrections.
+_NESTED_PLAN_FIELDS: dict[str, tuple[str, ...]] = {
+    "target": tuple(AgentTarget.model_fields),
+    "effect_condition": tuple(Condition.model_fields),
+    "recovery_condition": tuple(Condition.model_fields),
+}
+# Condition fields AgentPlan's model validator checks. Its errors carry no
+# location, so the field is read back from the validator's own message.
+_MODEL_CHECKED_CONDITION_FIELDS: tuple[str, ...] = (
+    "effect_condition.metric",
+    "recovery_condition.metric",
+    "effect_condition.operator",
+    "recovery_condition.operator",
+)
+
+
+def _condition_shape(operators: frozenset[str]) -> str:
+    return (
+        '{"metric", "operator", "threshold"} with metric one of '
+        f"{legal_values(WORKLOAD_METRICS)}; operator one of {legal_values(operators)}; "
+        "threshold a non-negative JSON number in the metric's unit"
+    )
+
+
+# What each Agent-written field holds, so a missing or malformed field gets a
+# concrete correction instead of "Repair AgentPlan field <path>".
+_FIELD_SHAPES: dict[str, str] = {
+    "target": (
+        '{"namespace", "name", "uid", "kind": "Pod"} naming the exact Pod, with '
+        "uid set to the Pod's metadata.uid"
+    ),
+    "fault_type": "one of " + legal_values(fault.value for fault in FaultType),
+    "intensity": (
+        "an object holding the fault type's one intensity field as a "
+        "non-negative JSON number"
+    ),
+    "effect_condition": _condition_shape(EFFECT_OPERATORS),
+    "recovery_condition": _condition_shape(RECOVERY_OPERATORS),
+    "stop_conditions": "a non-empty list of short sentences",
+    "safety_ttl_seconds": "a whole number of seconds, at least 1",
+}
+# A placeholder-only plan in the accepted shape. Agents see it in every plan
+# rejection, so it must carry no Trial value: each <...> is to be replaced,
+# and copied verbatim it is not even valid JSON, so it cannot pass as a
+# made-up plan.
+AGENT_PLAN_SKELETON = (
+    '{"target": {"namespace": "<namespace>", "name": "<Pod name>", '
+    '"uid": "<Pod metadata.uid>", "kind": "Pod"}, '
+    '"fault_type": "<fault type>", "intensity": {"<intensity field>": <number>}, '
+    '"effect_condition": {"metric": "<metric>", "operator": "<effect operator>", '
+    '"threshold": <number>}, '
+    '"recovery_condition": {"metric": "<metric>", "operator": "<recovery operator>", '
+    '"threshold": <number>}, '
+    '"stop_conditions": ["<when to stop early>"]}'
+)
+
+
 def validate_agent_plan(raw: Mapping[str, Any] | None, envelope: PlanSafetyEnvelope) -> PlanValidationResult:
     if not isinstance(raw, Mapping):
         return _invalid(
@@ -326,7 +427,7 @@ def validate_agent_plan(raw: Mapping[str, Any] | None, envelope: PlanSafetyEnvel
                 "MISSING_TARGET_UID",
                 "target.uid",
                 "Target UID is required before mutation.",
-                "Re-read the exact Pod and include metadata.uid.",
+                TARGET_UID_CORRECTION,
             )
         )
 
@@ -404,7 +505,7 @@ def _raw_repair_issues(
                     "MISSING_TARGET_UID",
                     "target.uid",
                     "Target UID is required before mutation.",
-                    "Re-read the exact Pod and include metadata.uid.",
+                    TARGET_UID_CORRECTION,
                 )
             )
 
@@ -452,17 +553,18 @@ def _raw_condition_issues(
                 "INVALID_CONDITION_METRIC",
                 f"{name}.metric",
                 "Condition metric is not supported.",
-                "Use target_latency_ms, target_success_rate, or target_current_rps.",
+                METRIC_CORRECTION,
             )
         )
     operator = raw.get("operator")
     if isinstance(operator, str) and operator not in operators:
+        effect = name == "effect_condition"
         issues.append(
             _issue(
-                "INVALID_EFFECT_OPERATOR" if name == "effect_condition" else "INVALID_RECOVERY_OPERATOR",
+                "INVALID_EFFECT_OPERATOR" if effect else "INVALID_RECOVERY_OPERATOR",
                 f"{name}.operator",
                 "Condition operator is not supported for this phase.",
-                "Use an operator supported for this condition phase.",
+                EFFECT_OPERATOR_CORRECTION if effect else RECOVERY_OPERATOR_CORRECTION,
             )
         )
     threshold = raw.get("threshold")
@@ -566,9 +668,55 @@ def _issues_from_validation_error(exc: ValidationError) -> tuple[PlanValidationI
     for error in exc.errors():
         path = ".".join(str(item) for item in error.get("loc", ()))
         message = str(error.get("msg") or "invalid Agent plan field")
+        if error.get("type") == "extra_forbidden":
+            issues.append(_unknown_field_issue(path))
+            continue
+        # AgentPlan's model validator reports a bad condition metric or
+        # operator without a location. Attach it to the field it names so it
+        # merges with that field's raw issue (see _dedupe_issues) instead of
+        # adding a "<root>: PLAN_SCHEMA_INVALID" line that repeats it with no
+        # usable correction.
+        path = path or _named_condition_field(message)
         code = _schema_issue_code(path, message)
         issues.append(_issue(code, path, message, _correction_for(code, path)))
     return tuple(issues)
+
+
+def _unknown_field_issue(path: str) -> PlanValidationIssue:
+    """Report a key AgentPlan does not accept, and where its value belongs.
+
+    Pydantic reports these as ``extra_forbidden``. They used to go through the
+    path-suffix rules of _schema_issue_code, so a top-level ``target_uid``
+    became MISSING_TARGET_UID and sent the Agent to re-read a Pod whose UID it
+    had already sent. The plan is still refused; only the code and the
+    correction change.
+    """
+
+    parent, _, key = path.rpartition(".")
+    if not parent:
+        destination = MISPLACED_TARGET_KEYS.get(key)
+        correction = (
+            f"Move its value to {destination}."
+            if destination
+            else "Remove it; it is not part of the plan."
+        )
+        return _issue(
+            "PLAN_UNKNOWN_FIELD", path, f"{key} is not an AgentPlan field.", correction
+        )
+    accepted = _NESTED_PLAN_FIELDS.get(parent)
+    correction = (
+        f"Remove it; {parent} holds only: {', '.join(accepted)}."
+        if accepted
+        else "Remove it; it is not part of the plan."
+    )
+    return _issue("PLAN_UNKNOWN_FIELD", path, f"{key} is not a {parent} field.", correction)
+
+
+def _named_condition_field(message: str) -> str:
+    return next(
+        (field for field in _MODEL_CHECKED_CONDITION_FIELDS if field in message),
+        "",
+    )
 
 
 def _dedupe_issues(issues: tuple[PlanValidationIssue, ...] | list[PlanValidationIssue]) -> tuple[PlanValidationIssue, ...]:
@@ -598,24 +746,34 @@ def _schema_issue_code(path: str, message: str) -> str:
         return "INVALID_RECOVERY_OPERATOR"
     if path.endswith("metric"):
         return "INVALID_CONDITION_METRIC"
-    if path.endswith("uid"):
+    # Only the real field: unknown keys, including ones that end in "uid",
+    # are PLAN_UNKNOWN_FIELD before this point.
+    if path == "target.uid":
         return "MISSING_TARGET_UID"
     return "PLAN_SCHEMA_INVALID"
 
 
 def _correction_for(code: str, path: str) -> str:
+    field = path.split(".", 1)[0]
+    shape = _FIELD_SHAPES.get(field)
     if code == "FAULT_TYPE_NOT_ALLOWED":
         return "Use a canonical fault_type such as network-delay, network-loss, cpu-load, or memory-stress."
     if code == "INVALID_INTENSITY_VALUE":
         return "Use a finite non-negative JSON number for the exact intensity field required by the fault type."
     if code == "INVALID_CONDITION_THRESHOLD":
         return "Use a finite non-negative JSON number for the condition threshold."
-    if code in {"INVALID_EFFECT_OPERATOR", "INVALID_RECOVERY_OPERATOR"}:
-        return "Use an operator supported for this condition phase."
+    if code == "INVALID_EFFECT_OPERATOR":
+        return EFFECT_OPERATOR_CORRECTION
+    if code == "INVALID_RECOVERY_OPERATOR":
+        return RECOVERY_OPERATOR_CORRECTION
     if code == "INVALID_CONDITION_METRIC":
-        return "Use target_latency_ms, target_success_rate, or target_current_rps."
+        return METRIC_CORRECTION
     if code == "MISSING_TARGET_UID":
-        return "Re-read the exact Pod and include metadata.uid."
+        return TARGET_UID_CORRECTION
+    if shape is not None and code == "MISSING_PLAN_FIELD":
+        return f"Add {path}; {field} is {shape}."
+    if shape is not None:
+        return f"Fix {path}; {field} must be {shape}."
     return f"Repair AgentPlan field {path or '<root>'}."
 
 

@@ -191,7 +191,7 @@ def test_preflight_requires_models_visibility_and_successful_probe(tmp_path: Pat
         snapshot,
         lambda _snapshot, _aliases: _probe_report({"qwen3.8-max": "probed_with_unsupported_capabilities"}),
     )
-    visible = set(STAGE2_SUPPORTED_MODELS) - {"deepseek-v4-flash-0731"}
+    visible = set(STAGE2_SUPPORTED_MODELS) - {"deepseek-v4.1-flash"}
     system._gateway_models = lambda: (visible, None)
     monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(_qualification_file(tmp_path)))
 
@@ -201,13 +201,13 @@ def test_preflight_requires_models_visibility_and_successful_probe(tmp_path: Pat
     assert result["model_probes"]["qwen3.8-max"]["visible_in_gateway_models"] is True
     assert result["model_probes"]["qwen3.8-max"]["probe_status"] == "probed_with_unsupported_capabilities"
     assert result["model_probes"]["qwen3.8-max"]["runnable"] is False
-    assert result["model_probes"]["deepseek-v4-flash-0731"]["visible_in_gateway_models"] is False
-    assert result["model_probes"]["deepseek-v4-flash-0731"]["probe_status"] == "supported"
-    assert result["model_probes"]["deepseek-v4-flash-0731"]["runnable"] is False
+    assert result["model_probes"]["deepseek-v4.1-flash"]["visible_in_gateway_models"] is False
+    assert result["model_probes"]["deepseek-v4.1-flash"]["probe_status"] == "supported"
+    assert result["model_probes"]["deepseek-v4.1-flash"]["runnable"] is False
     assert result["status"] == "READY"
     assert all(result["harnesses"].values())
     assert all(
-        not row["qwen3.8-max"] and not row["deepseek-v4-flash-0731"]
+        not row["qwen3.8-max"] and not row["deepseek-v4.1-flash"]
         for row in result["model_matrix"].values()
     )
     assert all(
@@ -589,3 +589,43 @@ def test_runtime_config_from_env_requires_real_gateway_config_file(tmp_path: Pat
         assert "LiteLLM gateway config is not readable" in str(exc)
     else:  # pragma: no cover - assertion branch.
         raise AssertionError("missing runtime LiteLLM config must fail closed")
+
+
+def test_gateway_model_probe_is_off_unless_explicitly_enabled(monkeypatch):
+    monkeypatch.delenv(Stage2System.GATEWAY_MODEL_PROBE_ENV, raising=False)
+    assert Stage2System.gateway_model_probe_enabled() is False
+    for value in ("on", "true", "1", "yes"):
+        monkeypatch.setenv(Stage2System.GATEWAY_MODEL_PROBE_ENV, value)
+        assert Stage2System.gateway_model_probe_enabled() is True
+    monkeypatch.setenv(Stage2System.GATEWAY_MODEL_PROBE_ENV, "off")
+    assert Stage2System.gateway_model_probe_enabled() is False
+
+
+def test_skipped_probe_makes_listed_models_runnable_without_upstream_calls(tmp_path: Path, monkeypatch):
+    snapshot = GatewayConfigSnapshot.from_file(_gateway_config(tmp_path), required_aliases=STAGE2_SUPPORTED_MODELS)
+    system = _system(tmp_path, snapshot, None)
+    system._model_probe_runner = system._skipped_model_probe_runner
+    system._gateway_models = lambda: (set(STAGE2_SUPPORTED_MODELS), None)
+    monkeypatch.setenv("STAGE2_HARNESS_CAPABILITIES_FILE", str(_qualification_file(tmp_path)))
+
+    readiness = system.refresh_gateway_readiness()
+
+    assert readiness["status"] == "complete"
+    assert readiness["probe_report"]["mode"] == "skipped"
+    assert _all_runnable(system.preflight())
+
+
+def test_skipped_probe_still_blocks_a_model_the_gateway_does_not_list(tmp_path: Path):
+    snapshot = GatewayConfigSnapshot.from_file(_gateway_config(tmp_path), required_aliases=STAGE2_SUPPORTED_MODELS)
+    system = _system(tmp_path, snapshot, None)
+    listed = set(STAGE2_SUPPORTED_MODELS) - {"gpt-5.5"}
+
+    statuses = system._model_probe_statuses(
+        snapshot=snapshot,
+        available_models=listed,
+        probe_report=system._skipped_model_probe_runner(snapshot, STAGE2_SUPPORTED_MODELS),
+    )
+
+    assert statuses["gpt-5.5"]["runnable"] is False
+    assert all(statuses[alias]["runnable"] for alias in listed)
+    assert all(row["probe_status"] == Stage2System.SKIPPED_PROBE_STATUS for row in statuses.values())

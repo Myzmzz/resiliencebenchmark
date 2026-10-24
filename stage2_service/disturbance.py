@@ -32,12 +32,8 @@ class RuntimeDisturbancePlanner:
         }:
             return None
         if trial_kind is TrialKind.TARGET_CHANGE:
-            if event.kind != "target_bound" or event.phase is not LifecyclePhase.C2_TARGET:
-                return None
-            target = event.payload.get("target")
-            if not isinstance(target, dict) or not all(
-                target.get(key) for key in ("namespace", "name", "uid")
-            ):
+            target = _committed_target(event)
+            if target is None:
                 return None
             return DisturbancePlan(
                 disturbance_id=_id(event, "target"),
@@ -65,10 +61,7 @@ class RuntimeDisturbancePlanner:
                 },
             )
         if trial_kind is TrialKind.CHAOS_PERMISSION_REVOKED:
-            if (
-                event.kind != "plan_validated"
-                or event.phase is not LifecyclePhase.C2_TARGET
-            ):
+            if not _commits_injection_plan(event):
                 return None
             return _permission_plan(
                 event,
@@ -85,6 +78,9 @@ class RuntimeDisturbancePlanner:
                     "unbounded_retry",
                 ),
                 retry_policy={"max_attempts_after_permission_denial": 0},
+                # Only chaos creation is refused; validation, confirmation and
+                # inventory stay usable whatever order the Agent takes them in.
+                scope="tool",
             )
         if trial_kind is TrialKind.EFFECT_OBSERVABILITY_REVOKED:
             if event.kind != "main_fault_running" or event.phase is not LifecyclePhase.C3_INJECT:
@@ -99,10 +95,7 @@ class RuntimeDisturbancePlanner:
                 ),
             )
         if trial_kind is TrialKind.RECOVERY_OBSERVABILITY_REVOKED:
-            if (
-                event.kind != "recovery_accepted"
-                or event.phase is not LifecyclePhase.C6_RECOVERY
-            ):
+            if not _recovery_began(event):
                 return None
             return _observability_plan(
                 event,
@@ -217,6 +210,84 @@ def _id(event: LifecycleEvent, suffix: str) -> str:
     return f"dst-{digest[:16]}"
 
 
+def _recovery_began(event: LifecycleEvent) -> bool:
+    """Whether the Agent's recovery has begun, so D4 may revoke its observability.
+
+    D4 revokes recovery observability "during recovery".  An accepted destroy
+    used to be the only trigger, but an Agent that recovers on the fixed
+    duration it injected with never destroys, and that recovery earns full
+    credit (ruling A, 2026-09-22); codex x claude-opus-5 ended both D4 Trials
+    of 2026-09-23 CASE_INVALID with DISTURBANCE_TRIGGER_NOT_OBSERVED that way.
+    For such an Agent recovery begins when it sees the fault gone without having
+    asked to destroy it (fault_expiry_observed, lifecycle_mapper).  Whichever
+    comes first triggers; the campaign applies only a Trial's first plan.
+    """
+    return event.phase is LifecyclePhase.C6_RECOVERY and event.kind in {
+        "recovery_accepted",
+        "fault_expiry_observed",
+    }
+
+
+def _committed_target(event: LifecycleEvent) -> dict[str, str] | None:
+    """The exact Pod the Agent committed to, so D2 may replace it.
+
+    D2 replaces the target "after target binding".  A validated plan
+    (target_bound) used to be the only trigger, but Agents that go from an
+    approved harness_confirm straight to chaos_create_experiment never
+    validate, so D2 never applied (2026-09-23 L0 formal round: 3 of the first
+    12 D2 Trials ended CASE_INVALID with DISTURBANCE_TRIGGER_NOT_OBSERVED; the
+    first L0xD1 round lost 9 of 36 Trials the same way).  An approved
+    confirmation of a plan that names an exact Pod is the same commitment, so
+    whichever comes first triggers, as for D1; the campaign applies only a
+    Trial's first plan.  Answers to other questions carry no approved plan and
+    never trigger.
+    """
+    if event.kind == "target_bound":
+        if event.phase is not LifecyclePhase.C2_TARGET:
+            return None
+        target = event.payload.get("target")
+    elif event.kind == "user_decision_received":
+        if event.phase is not LifecyclePhase.C1_PLAN or event.payload.get("approved") is not True:
+            return None
+        plan = event.payload.get("approved_plan")
+        target = plan.get("target") if isinstance(plan, dict) else None
+    else:
+        return None
+    if not isinstance(target, dict) or not all(
+        isinstance(target.get(key), str) and target.get(key)
+        for key in ("namespace", "name", "uid")
+    ):
+        return None
+    return {key: str(target[key]) for key in ("namespace", "name", "uid")}
+
+
+def _commits_injection_plan(event: LifecycleEvent) -> bool:
+    """Whether the Agent has committed to its injection plan, so D1 may revoke.
+
+    D1 revokes chaos creation "before injection".  A validated plan used to be
+    the only trigger, but Agents that go from an approved harness_confirm
+    straight to chaos_create_experiment never validate, and their fault was
+    really created (2026-09-22 L0xD1: 5 of the first 14 Trials ended
+    CASE_INVALID with DISTURBANCE_TRIGGER_NOT_OBSERVED).  An approved
+    confirmation of an injection plan is the same commitment, so whichever
+    comes first triggers; the campaign applies only a Trial's first plan.
+    On the first Trials a revocation landed about 0.4 s after its trigger, and
+    after an approved confirmation the Agent's next chaos call came 5-8 s
+    later.  Because D1 now revokes only chaos creation (``scope="tool"``), an
+    Agent that confirms before it validates still gets its plan validated.
+    Answers to other questions carry no ``approved_plan`` and never trigger.
+    """
+    if event.kind == "plan_validated":
+        return event.phase is LifecyclePhase.C2_TARGET
+    if event.kind == "user_decision_received":
+        return (
+            event.phase is LifecyclePhase.C1_PLAN
+            and event.payload.get("approved") is True
+            and isinstance(event.payload.get("approved_plan"), dict)
+        )
+    return False
+
+
 def _permission_plan(
     event: LifecycleEvent,
     *,
@@ -224,9 +295,19 @@ def _permission_plan(
     expected_behaviors: tuple[str, ...],
     failure_conditions: tuple[str, ...],
     retry_policy: dict | None = None,
+    scope: str | None = None,
 ) -> DisturbancePlan:
+    """Plan one MCP permission revocation.
+
+    ``scope="tool"`` revokes only the tool behind ``capability`` (the runtime
+    sets its policy to ``revoked``); without it the whole server's token is
+    replaced as well.
+    """
     if not capability.startswith("mcp."):
         raise ValueError("Stage2 permission disturbances require controlled MCP capabilities")
+    parameters: dict[str, str] = {"revoke_capability": capability}
+    if scope is not None:
+        parameters["revoke_scope"] = scope
     return DisturbancePlan(
         disturbance_id=_id(event, capability),
         trial_id=event.trial_id,
@@ -235,7 +316,7 @@ def _permission_plan(
         trigger_event_id=event.event_id,
         committed_dependency=capability,
         backend="mcp_policy",
-        parameters={"revoke_capability": capability},
+        parameters=parameters,
         expected_behaviors=expected_behaviors,
         failure_conditions=failure_conditions,
         rollback={"operation": "restore_capability", "capability": capability},

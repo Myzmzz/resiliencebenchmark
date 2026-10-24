@@ -1,0 +1,29 @@
+{
+  "agent_digest": "sha256:cae928c7c7b9ddd95ede2733bbb060c9645614b67b56e217b184c9bb7f3128f6",
+  "agent_image": "1.94.151.57:85/observe/resbench-stage2:stage2-agent-60309d3",
+  "agent_immutable_ref": "1.94.151.57:85/observe/resbench-stage2:stage2-agent-60309d3@sha256:cae928c7c7b9ddd95ede2733bbb060c9645614b67b56e217b184c9bb7f3128f6",
+  "bladeai_source": {
+    "mcp_dependency": "mcp>=1.0,<2.0",
+    "mcp_pin": "1.27.0",
+    "package_name": "blade-ai",
+    "package_version": "0.3.0",
+    "release_commit": "d8c5473ccda329a3841f114f83a43881a2205ab5",
+    "release_tag": "blade-ai-v0.6.2",
+    "subtree": "blade-ai"
+  },
+  "digest": "sha256:dbe4f85eaf69d73b4c271fcc113906f2ddbd77a5859e7f35131daf4e7bac6340",
+  "frontend_included": true,
+  "image": "1.94.151.57:85/observe/resbench-stage2:stage2-d0-60309d3",
+  "immutable_ref": "1.94.151.57:85/observe/resbench-stage2:stage2-d0-60309d3@sha256:dbe4f85eaf69d73b4c271fcc113906f2ddbd77a5859e7f35131daf4e7bac6340",
+  "platform": "linux/amd64",
+  "rendered_manifests": [
+    "/private/tmp/claude-501/-Users-mymz-work---------------benchmark/d5a4b6c2-cde4-4c1c-8f7e-986a8432cdca/scratchpad/build-60309d3-rendered/stage2.yaml",
+    "/private/tmp/claude-501/-Users-mymz-work---------------benchmark/d5a4b6c2-cde4-4c1c-8f7e-986a8432cdca/scratchpad/build-60309d3-rendered/execution-identities.yaml",
+    "/private/tmp/claude-501/-Users-mymz-work---------------benchmark/d5a4b6c2-cde4-4c1c-8f7e-986a8432cdca/scratchpad/build-60309d3-rendered/stage2-integration.yaml",
+    "/private/tmp/claude-501/-Users-mymz-work---------------benchmark/d5a4b6c2-cde4-4c1c-8f7e-986a8432cdca/scratchpad/build-60309d3-rendered/stage2-matrix-job.yaml"
+  ],
+  "runtime_base": "1.94.151.57:85/observe/resbench-stage2@sha256:416b7a66756e69438c8a50e5aba407c0951eb98339fd765f654e1f7d8cb2b7cf",
+  "schema_version": "stage2-runtime-overlay-image.v1",
+  "source_head": "60309d3",
+  "source_sha256": "29d684b2264c35a6fe3f751c9fdc32e46a06f07fc296e75b1e74b03c9603ac36"
+}

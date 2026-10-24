@@ -292,7 +292,7 @@ def test_d0_runtime_builder_preserves_gateway_snapshot_loaded_by_from_env(tmp_pa
                         "gpt-5.5",
                         "claude-opus-5",
                         "deepseek-v4-pro-0813",
-                        "deepseek-v4-flash-0731",
+                        "deepseek-v4.1-flash",
                         "qwen3.8-max",
                         "qwen3.8-flash",
                     )
@@ -307,7 +307,7 @@ def test_d0_runtime_builder_preserves_gateway_snapshot_loaded_by_from_env(tmp_pa
             "gpt-5.5",
             "claude-opus-5",
             "deepseek-v4-pro-0813",
-            "deepseek-v4-flash-0731",
+            "deepseek-v4.1-flash",
             "qwen3.8-max",
             "qwen3.8-flash",
         ),

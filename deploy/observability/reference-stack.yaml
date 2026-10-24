@@ -1,0 +1,939 @@
+# 可观测栈：第二套环境的实测对象（2026-09-12 只读导出）
+#
+# 仓库里 environment/observability/ 那几个文件是往一套已有安装上打的补丁，
+# 不是从零安装的清单;这套栈也不是 Helm 管的。所以在第三套环境上没有东西可照着装。
+# 本文件把第二套环境里真正在跑的对象原样导出,去掉 status、resourceVersion、uid、
+# managedFields、last-applied-configuration、Service 的 clusterIP 等集群特有字段。
+#
+# 这不是"直接 apply 就完事"的清单。第三套环境至少要改三处(全部列在
+# docs/status/stage2-env3-reference-state-20260912.md):
+#
+#   1. nodeSelector 里的 kubernetes.io/hostname: vm-0-10-ubuntu —— 换成本环境的节点
+#   2. 镜像 1.94.151.57:85/train-ticket/* —— 那是旧集群的 HTTP 明文 Harbor,
+#      第三套环境大概率路由不到,必须先镜像化到公开仓库
+#   3. PVC prometheus-tsdb 的 storageClassName: nfs-client —— 换成本环境的存储类
+#
+# promtail-config 里写死了三个被测系统的日志路径(train-ticket / sock-shop /
+# otel-demo);只跑 otel-demo 的话可以只留一条。
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: jaeger
+  name: jaeger
+  namespace: observability
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: jaeger
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - tcse-v100-01
+      containers:
+      - command:
+        - /go/bin/all-in-one-linux
+        env:
+        - name: COLLECTOR_OTLP_ENABLED
+          value: 'true'
+        - name: SPAN_STORAGE_TYPE
+          value: memory
+        image: 1.94.151.57:85/train-ticket/jaeger-all-in-one:1.57@sha256:d8b87c36133ce920cda4f5ec15363362f84eac9f78cb1c232191914a103750d4
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: query
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: jaeger
+        ports:
+        - containerPort: 16686
+          name: query
+          protocol: TCP
+        - containerPort: 4317
+          name: otlp-grpc
+          protocol: TCP
+        - containerPort: 4318
+          name: otlp-http
+          protocol: TCP
+        - containerPort: 14268
+          name: thrift-http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: query
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/hostname: vm-0-10-ubuntu
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kube-state-metrics
+  name: kube-state-metrics
+  namespace: observability
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - tcse-v100-01
+      containers:
+      - command:
+        - /kube-state-metrics
+        image: 1.94.151.57:85/train-ticket/kube-state-metrics:v2.12.0@sha256:79aa5d25600ea821e39d166aeed5af0917a253be7f0d8114a39f71c3f80f2c8f
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /livez
+            port: telemetry
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: kube-state-metrics
+        ports:
+        - containerPort: 8080
+          name: http-metrics
+          protocol: TCP
+        - containerPort: 8081
+          name: telemetry
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: telemetry
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/hostname: vm-0-10-ubuntu
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: kube-state-metrics
+      serviceAccountName: kube-state-metrics
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: loki
+  name: loki
+  namespace: observability
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: loki
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - tcse-v100-01
+      containers:
+      - args:
+        - -config.file=/etc/loki/config.yaml
+        command:
+        - /usr/bin/loki
+        image: 1.94.151.57:85/train-ticket/loki:2.9.8@sha256:61f8be4305d470c6bf88bf5b280bafa446478854ca9e362bf6bb408e78ec78f2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: loki
+        ports:
+        - containerPort: 3100
+          name: http
+          protocol: TCP
+        - containerPort: 9095
+          name: grpc
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/loki
+          name: config
+        - mountPath: /loki
+          name: storage
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/hostname: vm-0-10-ubuntu
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: loki-config
+        name: config
+      - emptyDir: {}
+        name: storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: otel-collector
+  name: otel-collector
+  namespace: observability
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: otel-collector
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: '2026-07-01T15:49:22+08:00'
+      labels:
+        app: otel-collector
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - tcse-v100-01
+      containers:
+      - args:
+        - --config=/etc/otelcol/config.yaml
+        command:
+        - /otelcol-contrib
+        image: 1.94.151.57:85/train-ticket/otel-collector-contrib:0.102.1@sha256:8ed15eb7cd783259f1c08d80284d9960785c858d320f6d85b38d641d81a850a2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: otel-collector
+        ports:
+        - containerPort: 4317
+          name: otlp-grpc
+          protocol: TCP
+        - containerPort: 4318
+          name: otlp-http
+          protocol: TCP
+        - containerPort: 8889
+          name: prom-metrics
+          protocol: TCP
+        - containerPort: 13133
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/otelcol
+          name: config
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/hostname: vm-0-10-ubuntu
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: otel-collector-config
+        name: config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: prometheus
+  name: prometheus
+  namespace: observability
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: prometheus
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: '2026-08-21T12:41:46+08:00'
+      labels:
+        app: prometheus
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - tcse-v100-01
+      containers:
+      - args:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --web.enable-lifecycle
+        - --web.enable-otlp-receiver
+        - --enable-feature=otlp-deltatocumulative
+        - --storage.tsdb.retention.time=15d
+        - --storage.tsdb.retention.size=15GB
+        image: quay.io/prometheus/prometheus@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /-/healthy
+            port: web
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: prometheus
+        ports:
+        - containerPort: 9090
+          name: web
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /-/ready
+            port: web
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/prometheus
+          name: config
+        - mountPath: /prometheus
+          name: storage
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/hostname: vm-0-10-ubuntu
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: prometheus
+      serviceAccountName: prometheus
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: prometheus-config
+        name: config
+      - name: storage
+        persistentVolumeClaim:
+          claimName: prometheus-tsdb
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    deprecated.daemonset.template.generation: '5'
+  labels:
+    app: node-exporter
+  name: node-exporter
+  namespace: observability
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - tcse-v100-01
+      containers:
+      - args:
+        - --path.procfs=/host/proc
+        - --path.sysfs=/host/sys
+        - --path.rootfs=/host/root
+        - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+        image: quay.io/prometheus/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+        imagePullPolicy: IfNotPresent
+        name: node-exporter
+        ports:
+        - containerPort: 9100
+          hostPort: 9100
+          name: metrics
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /host/proc
+          name: proc
+          readOnly: true
+        - mountPath: /host/sys
+          name: sys
+          readOnly: true
+        - mountPath: /host/root
+          name: root
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      hostPID: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - operator: Exists
+      volumes:
+      - hostPath:
+          path: /proc
+          type: ''
+        name: proc
+      - hostPath:
+          path: /sys
+          type: ''
+        name: sys
+      - hostPath:
+          path: /
+          type: ''
+        name: root
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    deprecated.daemonset.template.generation: '11'
+  labels:
+    app: promtail
+  name: promtail
+  namespace: observability
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: '2026-08-21T12:22:21+08:00'
+      labels:
+        app: promtail
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - tcse-v100-01
+      containers:
+      - args:
+        - -config.file=/etc/promtail/config.yaml
+        command:
+        - /usr/bin/promtail
+        image: 1.94.151.57:85/train-ticket/promtail:2.9.8@sha256:0a818ddc2a6f8404d1f85dfee007618247fbe2b8cc34b4062de4f0867e241984
+        imagePullPolicy: IfNotPresent
+        name: promtail
+        ports:
+        - containerPort: 3101
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: http
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/promtail
+          name: config
+        - mountPath: /run/promtail
+          name: run
+        - mountPath: /var/log/pods
+          name: pods
+          readOnly: true
+        - mountPath: /var/lib/docker/containers
+          name: containers
+          readOnly: true
+        - mountPath: /data/docker2/containers
+          name: docker2-containers
+          readOnly: true
+        - mountPath: /data/docker/containers
+          name: data-docker-containers
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: promtail
+      serviceAccountName: promtail
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - operator: Exists
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: promtail-config
+        name: config
+      - hostPath:
+          path: /run/promtail
+          type: DirectoryOrCreate
+        name: run
+      - hostPath:
+          path: /var/log/pods
+          type: ''
+        name: pods
+      - hostPath:
+          path: /var/lib/docker/containers
+          type: ''
+        name: containers
+      - hostPath:
+          path: /data/docker2/containers
+          type: ''
+        name: docker2-containers
+      - hostPath:
+          path: /data/docker/containers
+          type: DirectoryOrCreate
+        name: data-docker-containers
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: jaeger
+  name: jaeger-query
+  namespace: observability
+spec:
+  ports:
+  - name: query
+    port: 16686
+    protocol: TCP
+    targetPort: query
+  - name: otlp-grpc
+    port: 4317
+    protocol: TCP
+    targetPort: otlp-grpc
+  - name: otlp-http
+    port: 4318
+    protocol: TCP
+    targetPort: otlp-http
+  - name: thrift-http
+    port: 14268
+    protocol: TCP
+    targetPort: thrift-http
+  selector:
+    app: jaeger
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kube-state-metrics
+  name: kube-state-metrics
+  namespace: observability
+spec:
+  ports:
+  - name: http-metrics
+    port: 8080
+    protocol: TCP
+    targetPort: http-metrics
+  - name: telemetry
+    port: 8081
+    protocol: TCP
+    targetPort: telemetry
+  selector:
+    app: kube-state-metrics
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: loki
+  name: loki
+  namespace: observability
+spec:
+  ports:
+  - name: http
+    port: 3100
+    protocol: TCP
+    targetPort: http
+  - name: grpc
+    port: 9095
+    protocol: TCP
+    targetPort: grpc
+  selector:
+    app: loki
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: node-exporter
+  name: node-exporter
+  namespace: observability
+spec:
+  ports:
+  - name: metrics
+    port: 9100
+    protocol: TCP
+    targetPort: metrics
+  selector:
+    app: node-exporter
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: otel-collector
+  name: otel-collector
+  namespace: observability
+spec:
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    protocol: TCP
+    targetPort: otlp-grpc
+  - name: otlp-http
+    port: 4318
+    protocol: TCP
+    targetPort: otlp-http
+  - name: prom-metrics
+    port: 8889
+    protocol: TCP
+    targetPort: prom-metrics
+  - name: health
+    port: 13133
+    protocol: TCP
+    targetPort: health
+  selector:
+    app: otel-collector
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: prometheus
+  name: prometheus
+  namespace: observability
+spec:
+  ports:
+  - name: web
+    port: 9090
+    protocol: TCP
+    targetPort: web
+  selector:
+    app: prometheus
+  type: ClusterIP
+---
+apiVersion: v1
+data:
+  config.yaml: "auth_enabled: false\n\nserver:\n  http_listen_port: 3100\n  grpc_listen_port:\
+    \ 9095\n\ncommon:\n  path_prefix: /loki\n  replication_factor: 1\n  ring:\n  \
+    \  kvstore:\n      store: inmemory\n  storage:\n    filesystem:\n      chunks_directory:\
+    \ /loki/chunks\n      rules_directory: /loki/rules\n\nschema_config:\n  configs:\n\
+    \    - from: 2020-10-24\n      store: boltdb-shipper\n      object_store: filesystem\n\
+    \      schema: v11\n      index:\n        prefix: index_\n        period: 24h\n\
+    \nruler:\n  storage:\n    type: local\n    local:\n      directory: /loki/rules\n\
+    \  rule_path: /loki/rules-temp\n\nlimits_config:\n  retention_period: 168h\n \
+    \ reject_old_samples: true\n  reject_old_samples_max_age: 168h\n"
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: observability
+---
+apiVersion: v1
+data:
+  config.yaml: "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint:\
+    \ 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\nprocessors:\n  batch:\n\
+    \    timeout: 5s\n  resource:\n    attributes:\n    - key: deployment.environment\n\
+    \      value: otel-demo\n      action: upsert\nexporters:\n  otlp/jaeger:\n  \
+    \  endpoint: jaeger-query.observability.svc.cluster.local:4317\n    tls:\n   \
+    \   insecure: true\n  prometheus:\n    endpoint: 0.0.0.0:8889\n    namespace:\
+    \ otel_demo\n    const_labels:\n      source: otel-collector\n  debug:\n    verbosity:\
+    \ basic\nextensions:\n  health_check:\n    endpoint: 0.0.0.0:13133\nservice:\n\
+    \  extensions:\n  - health_check\n  pipelines:\n    traces:\n      receivers:\n\
+    \      - otlp\n      processors:\n      - resource\n      - batch\n      exporters:\n\
+    \      - otlp/jaeger\n    metrics:\n      receivers:\n      - otlp\n      processors:\n\
+    \      - resource\n      - batch\n      exporters:\n      - prometheus\n    logs:\n\
+    \      receivers:\n      - otlp\n      processors:\n      - resource\n      -\
+    \ batch\n      exporters:\n      - debug\n"
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+---
+apiVersion: v1
+data:
+  prometheus.yml: "global:\n  scrape_interval: 15s\n  evaluation_interval: 15s\n\n\
+    scrape_configs:\n  - job_name: prometheus\n    static_configs:\n      - targets:\n\
+    \          - localhost:9090\n\n  - job_name: kubernetes-nodes\n    scheme: https\n\
+    \    tls_config:\n      insecure_skip_verify: true\n    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n\
+    \    kubernetes_sd_configs:\n      - role: node\n    relabel_configs:\n      -\
+    \ action: labelmap\n        regex: __meta_kubernetes_node_label_(.+)\n      -\
+    \ target_label: __address__\n        replacement: kubernetes.default.svc:443\n\
+    \      - source_labels: [__meta_kubernetes_node_name]\n        regex: (.+)\n \
+    \       target_label: __metrics_path__\n        replacement: /api/v1/nodes/$1/proxy/metrics\n\
+    \n  - job_name: kubernetes-cadvisor\n    scheme: https\n    tls_config:\n    \
+    \  insecure_skip_verify: true\n    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n\
+    \    kubernetes_sd_configs:\n      - role: node\n    relabel_configs:\n      -\
+    \ action: labelmap\n        regex: __meta_kubernetes_node_label_(.+)\n      -\
+    \ target_label: __address__\n        replacement: kubernetes.default.svc:443\n\
+    \      - source_labels: [__meta_kubernetes_node_name]\n        regex: (.+)\n \
+    \       target_label: __metrics_path__\n        replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor\n\
+    \n  - job_name: kube-state-metrics\n    static_configs:\n      - targets:\n  \
+    \        - kube-state-metrics.observability.svc:8080\n\n  - job_name: node-exporter\n\
+    \    kubernetes_sd_configs:\n      - role: endpoints\n        namespaces:\n  \
+    \        names:\n            - observability\n    relabel_configs:\n      - source_labels:\
+    \ [__meta_kubernetes_service_name]\n        action: keep\n        regex: node-exporter\n\
+    \      - source_labels: [__meta_kubernetes_endpoint_port_name]\n        action:\
+    \ keep\n        regex: metrics\n\n  - job_name: otel-collector\n    static_configs:\n\
+    \      - targets:\n          - otel-collector.observability.svc:8889\n\n  - job_name:\
+    \ kubernetes-pods-annotated\n    kubernetes_sd_configs:\n      - role: pod\n \
+    \   relabel_configs:\n      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]\n\
+    \        action: keep\n        regex: true\n      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]\n\
+    \        action: replace\n        regex: (https?)\n        target_label: __scheme__\n\
+    \      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]\n\
+    \        action: replace\n        target_label: __metrics_path__\n        regex:\
+    \ (.+)\n      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]\n\
+    \        action: replace\n        regex: ([^:]+)(?::\\d+)?;(\\d+)\n        replacement:\
+    \ $1:$2\n        target_label: __address__\n      - action: labelmap\n       \
+    \ regex: __meta_kubernetes_pod_label_(.+)\n      - source_labels: [__meta_kubernetes_namespace]\n\
+    \        action: replace\n        target_label: namespace\n      - source_labels:\
+    \ [__meta_kubernetes_pod_name]\n        action: replace\n        target_label:\
+    \ pod\n\n# Promote OTLP resource attributes to series labels (2026-09-10, same\
+    \ as\n# the old cluster). Without them request series cannot be tied to a Pod.\n\
+    otlp:\n  promote_resource_attributes:\n    - service.name\n    - k8s.namespace.name\n\
+    \    - k8s.pod.name\n    - k8s.pod.uid\n"
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: observability
+---
+apiVersion: v1
+data:
+  config.yaml: "server:\n  http_listen_port: 3101\n  grpc_listen_port: 0\n\npositions:\n\
+    \  filename: /run/promtail/positions.yaml\n\nclients:\n  - url: http://loki.observability.svc:3100/loki/api/v1/push\n\
+    \nscrape_configs:\n  - job_name: dut-pods\n    pipeline_stages:\n      - docker:\
+    \ {}\n      - drop:\n          older_than: 168h\n          drop_counter_reason:\
+    \ outside_loki_retention_window\n      - regex:\n          source: filename\n\
+    \          expression: '^/var/log/pods/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_(?P<pod_uid>[^/]+)/(?P<container>[^/]+)/[0-9]+\\\
+    .log$'\n      - labels:\n          namespace:\n          pod:\n          container:\n\
+    \    static_configs:\n      - targets: [localhost]\n        labels:\n        \
+    \  job: dut-pods\n          __path__: /var/log/pods/train-ticket_*/*/*.log\n \
+    \     - targets: [localhost]\n        labels:\n          job: dut-pods\n     \
+    \     __path__: /var/log/pods/sock-shop_*/*/*.log\n      - targets: [localhost]\n\
+    \        labels:\n          job: dut-pods\n          __path__: /var/log/pods/otel-demo_*/*/*.log\n"
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: observability
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    benchmark.openai.com/cleanup-policy: protected
+  finalizers:
+  - kubernetes.io/pvc-protection
+  labels:
+    app.kubernetes.io/managed-by: resiliencebenchmark-envprep
+    app.kubernetes.io/name: prometheus
+  name: prometheus-tsdb
+  namespace: observability
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: nfs-client
+  volumeMode: Filesystem
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: observability
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: observability
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promtail
+  namespace: observability

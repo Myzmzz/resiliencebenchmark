@@ -1,0 +1,37 @@
+[Unit]
+Description=ResilienceBenchmark manual Codex chaos controller lease
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=resbench-chaos-control
+Group=resbench-chaos-control
+WorkingDirectory=/opt/resiliencebenchmark/repo
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/resiliencebenchmark/repo/.venv/bin/python /opt/resiliencebenchmark/repo/scripts/run_manual_chaos_controller.py
+Restart=always
+RestartSec=5s
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+StateDirectory=resiliencebenchmark/chaos-control/controller
+ReadOnlyPaths=/opt/resiliencebenchmark/repo
+ReadWritePaths=/var/lib/resiliencebenchmark/chaos-control/controller
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

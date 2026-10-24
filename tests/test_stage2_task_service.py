@@ -633,6 +633,7 @@ def test_api_exposes_options_cases_and_autonomy_cases(tmp_path):
         "reason": None,
         "support_reason": None,
         "cases": ["D7-A", "D7-B", "D8-A", "D8-B"],
+        "gated_harnesses": ["codex", "claude-code", "deepseek-harness"],
     }
     assert "none" in {
         item["value"] for item in options.json()["disturbances"]
@@ -939,26 +940,66 @@ def test_tool_substitution_requires_variant_when_case_is_selected_directly():
         )
 
 
-def test_d7_d8_are_not_runnable_when_one_harness_lacks_platform_sandbox(tmp_path):
+def test_d7_d8_are_not_runnable_when_one_compared_harness_lacks_platform_sandbox(tmp_path):
     service, supervisor, _controls = task_service(tmp_path, Runner())
     original_preflight = service.preflight_provider
 
     def no_sandbox_preflight():
         value = original_preflight()
-        value["harness_capabilities"]["bladeai"]["code_execution"] = "none"
+        value["harness_capabilities"]["codex"]["code_execution"] = "none"
         return value
 
     service.preflight_provider = no_sandbox_preflight
     client = TestClient(create_app(supervisor, task_service=service))
     options = client.get("/api/v1/stage2/options").json()
     assert options["capability_loss"]["supported"] is False
-    assert options["capability_loss"]["support_reason"] == "bladeai: platform_sandbox_missing"
+    assert options["capability_loss"]["support_reason"] == "codex: platform_sandbox_missing"
     payload = request().model_dump(mode="json")
     payload.pop("cases", None)
     payload["disturbance"] = "D7-A"
     rejected = client.post("/api/v1/stage2/tasks", json=payload)
     assert rejected.status_code == 422
-    assert "D7/D8 require all four Harnesses" in rejected.json()["detail"]
+    assert "D7/D8 require the compared Harnesses" in rejected.json()["detail"]
+
+
+def test_bladeai_without_platform_sandbox_does_not_close_d7_d8_for_the_others(tmp_path):
+    """BladeAI is outside the D7/D8 comparison (user decision 2026-09-11).
+
+    Its missing sandbox capability must not keep D7/D8 closed for codex,
+    claude-code and deepseek-harness, while BladeAI itself still cannot run
+    them until its own descriptor qualifies.
+    """
+    service, supervisor, _controls = task_service(tmp_path, Runner())
+    original_preflight = service.preflight_provider
+
+    def bladeai_without_sandbox():
+        value = original_preflight()
+        value["harness_capabilities"]["bladeai"]["code_execution"] = "none"
+        return value
+
+    service.preflight_provider = bladeai_without_sandbox
+    client = TestClient(create_app(supervisor, task_service=service))
+    options = client.get("/api/v1/stage2/options").json()
+    assert options["capability_loss"]["supported"] is True
+    assert options["capability_loss"]["gated_harnesses"] == [
+        "codex", "claude-code", "deepseek-harness",
+    ]
+    by_harness = {item["harness"]: item for item in options["harnesses"]}
+    assert "D7" not in by_harness["bladeai"]["supported_cases"]
+    assert {"D7", "D8"} <= set(by_harness["codex"]["supported_cases"])
+
+    payload = request().model_dump(mode="json")
+    payload.pop("cases", None)
+    payload["disturbance"] = "D7-A"
+    payload["harness"] = "bladeai"
+    rejected = client.post("/api/v1/stage2/tasks", json=payload)
+    assert rejected.status_code == 422
+    assert "bladeai: platform_sandbox_missing" in rejected.json()["detail"]
+
+    payload["harness"] = "codex"
+    accepted = client.post("/api/v1/stage2/tasks", json=payload)
+    assert accepted.status_code == 202
+    assert accepted.json()["tool_substitution_variant"] == "A"
 
 
 def test_rejects_mismatched_cases_and_disturbance_or_unrunnable_app(tmp_path):

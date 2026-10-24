@@ -1,0 +1,120 @@
+# Admission guardrails for running BladeAI on a SHARED cluster (new environment,
+# 2026-09-22).  Black-box BladeAI injects with its own ServiceAccount, so the
+# platform's namespace allowlist does not bind it; P2 even asks it to fault the
+# benchmark controller or the observability stack.  These policies keep every
+# fault inside the benchmark's own replica namespaces (otel-demo-NN) whatever the
+# agent decides.  Requires Kubernetes >= 1.30 (ValidatingAdmissionPolicy GA).
+#
+# 1) ChaosBlade experiments: pod/container scope only, in otel-demo-NN only.
+#    Applies to every creator -- only this benchmark uses ChaosBlade here.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: resbench-chaosblade-replica-scope
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["chaosblade.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["chaosblades"]
+  validations:
+    - expression: >-
+        has(object.spec.experiments) && size(object.spec.experiments) > 0 &&
+        object.spec.experiments.all(e,
+          e.scope in ['pod', 'container'] &&
+          has(e.matchers) &&
+          e.matchers.exists(m, m.name == 'namespace' && size(m.value) > 0) &&
+          e.matchers.filter(m, m.name == 'namespace').all(m,
+            m.value.all(v, v.matches('^otel-demo-[0-9]{2}$'))))
+      message: >-
+        ChaosBlade experiments on this shared cluster must be pod/container scoped
+        and name only otel-demo-NN namespaces (resbench guardrail).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: resbench-chaosblade-replica-scope
+spec:
+  policyName: resbench-chaosblade-replica-scope
+  validationActions: ["Deny"]
+---
+# 2) Chaos Mesh experiments created by BladeAI (D8 fallback executor).  The
+#    Chaos Mesh install belongs to another tenant, so only BladeAI's own
+#    ServiceAccounts are constrained; everyone else is untouched.  Selectors
+#    may not reach outside the experiment's own replica namespace.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: resbench-bladeai-chaosmesh-scope
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["chaos-mesh.org"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["*"]
+  matchConditions:
+    - name: bladeai-service-accounts-only
+      expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:resiliencebenchmark-system:resbench-bladeai-server')
+  validations:
+    - expression: "object.kind in ['PodChaos', 'StressChaos', 'NetworkChaos']"
+      message: "BladeAI may only create PodChaos, StressChaos or NetworkChaos (resbench guardrail)."
+    - expression: "object.metadata.namespace.matches('^otel-demo-[0-9]{2}$')"
+      message: "BladeAI Chaos Mesh experiments must live in an otel-demo-NN namespace (resbench guardrail)."
+    - expression: >-
+        !has(object.spec.selector) ||
+        ((!has(object.spec.selector.namespaces) ||
+          object.spec.selector.namespaces.all(n, n == object.metadata.namespace)) &&
+         (!has(object.spec.selector.pods) ||
+          object.spec.selector.pods.all(n, n == object.metadata.namespace)))
+      message: "BladeAI Chaos Mesh selectors may not reach outside the experiment's namespace (resbench guardrail)."
+    - expression: >-
+        !has(object.spec.target) || !has(object.spec.target.selector) ||
+        ((!has(object.spec.target.selector.namespaces) ||
+          object.spec.target.selector.namespaces.all(n, n == object.metadata.namespace)) &&
+         (!has(object.spec.target.selector.pods) ||
+          object.spec.target.selector.pods.all(n, n == object.metadata.namespace)))
+      message: "BladeAI NetworkChaos targets may not reach outside the experiment's namespace (resbench guardrail)."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: resbench-bladeai-chaosmesh-scope
+spec:
+  policyName: resbench-bladeai-chaosmesh-scope
+  validationActions: ["Deny"]
+---
+# 3) BladeAI may exec only into the chaosblade-tool DaemonSet pods (to run
+#    blade).  Its Role in `default` is not name-scoped, and `default` also holds
+#    other tenants' pods (for example a MySQL).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: resbench-bladeai-exec-scope
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CONNECT"]
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+  matchConditions:
+    - name: bladeai-service-accounts-only
+      expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:resiliencebenchmark-system:resbench-bladeai-server')
+  validations:
+    - expression: "request.namespace == 'default' && request.name.startsWith('chaosblade-tool-')"
+      message: "BladeAI may only exec into default/chaosblade-tool-* pods (resbench guardrail)."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: resbench-bladeai-exec-scope
+spec:
+  policyName: resbench-bladeai-exec-scope
+  validationActions: ["Deny"]

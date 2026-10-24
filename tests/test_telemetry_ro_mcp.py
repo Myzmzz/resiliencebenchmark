@@ -13,6 +13,7 @@ from mcp_servers.telemetry_ro.service import (
     LOKI_URL_ENV,
     NAMESPACE_ALLOWLIST_ENV,
     PROMETHEUS_URL_ENV,
+    REQUIRE_TRACE_NAMESPACE_ENV,
     MAX_TIME_WINDOW_SECONDS,
     HttpResponse,
     RuntimeConfig,
@@ -234,7 +235,9 @@ def test_prometheus_metric_instant_constructs_namespace_scoped_query():
     assert result["ok"] is True
     assert result["operation"] == "metric_instant"
     assert transport.calls[0]["params"]["query"] == (
-        'sum by (namespace,pod) (rate(http_requests_total{namespace="otel-demo",service="checkout"}[60s]))'
+        "sum by (namespace,k8s_namespace_name,pod) ("
+        'rate(http_requests_total{namespace="otel-demo",service="checkout"}[60s]) or '
+        'rate(http_requests_total{namespace="",k8s_namespace_name="otel-demo",service="checkout"}[60s]))'
     )
 
 
@@ -349,7 +352,10 @@ def test_prometheus_metric_series_injects_namespace_matcher():
     assert result["total"] == 1
     assert result["scopeFiltered"] is True
     assert "scopedOutCount" not in result
-    assert transport.calls[0]["params"]["match[]"] == ['up{namespace="otel-demo",job="otel"}']
+    assert transport.calls[0]["params"]["match[]"] == [
+        'up{namespace="otel-demo",job="otel"}',
+        'up{namespace="",k8s_namespace_name="otel-demo",job="otel"}',
+    ]
 
 
 def test_prometheus_aggregate_without_namespace_is_dropped_fail_closed():
@@ -788,3 +794,210 @@ def test_create_server_accepts_http_auth_injection():
     server = create_server(service=svc, auth=auth, token_verifier=verifier)
 
     assert server is not None
+
+
+def _replica_service(namespace: str, traces, *, require_trace_namespace: bool):
+    """A telemetry_ro bound to one replica namespace, sharing one Jaeger."""
+    transport = FakeTransport(
+        {("http://jaeger.monitoring.svc:16686", "/api/traces"): {"data": traces}}
+    )
+    config = RuntimeConfig(
+        prometheus_url="http://prometheus.monitoring.svc:9090",
+        jaeger_url="http://jaeger.monitoring.svc:16686",
+        loki_url="http://loki.monitoring.svc:3100",
+        namespace_allowlist=frozenset({namespace}),
+        jaeger_service_allowlist=frozenset({"cart", "frontend"}),
+        timeout_seconds=2.0,
+        allow_raw_queries=True,
+        require_trace_namespace=require_trace_namespace,
+        workload_stats_url=f"http://load-generator.{namespace}.svc:8089/stats/requests",
+        workload_stat_name="/api/cart",
+    )
+    return TelemetryROService(config, transport)
+
+
+def _cart_trace(trace_id: str, namespace: str | None):
+    tags = (
+        [{"key": "k8s.namespace.name", "type": "string", "value": namespace}]
+        if namespace is not None
+        else []
+    )
+    return {
+        "traceID": trace_id,
+        "processes": {"p1": {"serviceName": "cart", "tags": tags}},
+        "spans": [{"spanID": "s1", "process": {"serviceName": "cart", "tags": tags}}],
+    }
+
+
+def test_replica_trace_scope_drops_sibling_namespaces():
+    """Every replica runs a service called ``cart``; the namespace separates them."""
+    traces = [
+        _cart_trace("own", "otel-demo-01"),
+        _cart_trace("sibling", "otel-demo-02"),
+        _cart_trace("full-system", "otel-demo"),
+    ]
+    svc = _replica_service("otel-demo-01", traces, require_trace_namespace=True)
+
+    result = run(svc.jaeger_find_traces(service="cart", start=1700000000, end=1700000300, limit=10))
+
+    assert [item["traceID"] for item in result["traces"]] == ["own"]
+    assert result["scopedOutCount"] == 2
+    assert "another Kubernetes namespace" in result["scopeWarning"]
+
+
+def test_replica_trace_scope_drops_traces_without_namespace_evidence():
+    """A trace that cannot be attributed is not guessed at."""
+    svc = _replica_service(
+        "otel-demo-01", [_cart_trace("no-tags", None)], require_trace_namespace=True
+    )
+
+    result = run(svc.jaeger_find_traces(service="cart", start=1700000000, end=1700000300, limit=10))
+
+    assert result["traces"] == []
+    assert result["scopedOutCount"] == 1
+
+
+def test_trace_scope_is_off_by_default_for_the_single_system():
+    """Default deployments keep the historical service-allowlist-only filter."""
+    traces = [_cart_trace("own", "otel-demo"), _cart_trace("no-tags", None)]
+    svc = _replica_service("otel-demo", traces, require_trace_namespace=False)
+
+    result = run(svc.jaeger_find_traces(service="cart", start=1700000000, end=1700000300, limit=10))
+
+    assert [item["traceID"] for item in result["traces"]] == ["own", "no-tags"]
+    assert result["scopedOutCount"] == 0
+
+
+def test_replica_trace_scope_refuses_a_sibling_trace_id():
+    """Fetching a known id must not bypass the namespace scope."""
+    transport = FakeTransport(
+        {
+            (
+                "http://jaeger.monitoring.svc:16686",
+                "/api/traces/abc123",
+            ): {"data": [_cart_trace("abc123", "otel-demo-02")]}
+        }
+    )
+    config = RuntimeConfig(
+        prometheus_url="http://prometheus.monitoring.svc:9090",
+        jaeger_url="http://jaeger.monitoring.svc:16686",
+        loki_url="http://loki.monitoring.svc:3100",
+        namespace_allowlist=frozenset({"otel-demo-01"}),
+        jaeger_service_allowlist=frozenset({"cart", "frontend"}),
+        timeout_seconds=2.0,
+        allow_raw_queries=True,
+        require_trace_namespace=True,
+    )
+    svc = TelemetryROService(config, transport)
+
+    with pytest.raises(TelemetryROError) as exc:
+        run(svc.jaeger_get_trace(trace_id="abc123"))
+
+    assert exc.value.code == "trace_outside_service_scope"
+
+
+def test_require_trace_namespace_defaults_to_false(monkeypatch):
+    monkeypatch.setenv(PROMETHEUS_URL_ENV, "http://prometheus.example")
+    monkeypatch.setenv(NAMESPACE_ALLOWLIST_ENV, "otel-demo")
+    monkeypatch.setenv(JAEGER_SERVICE_ALLOWLIST_ENV, "cart")
+    monkeypatch.delenv(REQUIRE_TRACE_NAMESPACE_ENV, raising=False)
+
+    assert RuntimeConfig.from_env().require_trace_namespace is False
+
+    monkeypatch.setenv(REQUIRE_TRACE_NAMESPACE_ENV, "true")
+    assert RuntimeConfig.from_env().require_trace_namespace is True
+
+
+def test_replica_trace_scope_ignores_the_shared_logical_service_namespace():
+    """Every replica carries service.namespace=otel-demo; only the k8s one counts."""
+    trace = _cart_trace("own", "otel-demo-01")
+    for holder in (trace["processes"]["p1"], trace["spans"][0]["process"]):
+        holder["tags"].append(
+            {"key": "service.namespace", "type": "string", "value": "otel-demo"}
+        )
+    svc = _replica_service("otel-demo-01", [trace], require_trace_namespace=True)
+
+    result = run(svc.jaeger_find_traces(service="cart", start=1700000000, end=1700000300, limit=10))
+
+    assert [item["traceID"] for item in result["traces"]] == ["own"]
+def test_prometheus_raw_query_scopes_otel_metrics_by_k8s_namespace_name():
+    svc, _ = service(
+        {
+            ("http://prometheus.monitoring.svc:9090", "/api/v1/query"): {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {"metric": {"__name__": "app_cart_add_item_latency_count", "k8s_namespace_name": "otel-demo"}},
+                        {"metric": {"__name__": "app_cart_add_item_latency_count", "k8s_namespace_name": "other"}},
+                    ],
+                },
+            }
+        }
+    )
+
+    result = run(svc.prometheus_query_instant(query="app_cart_add_item_latency_count", time=1700000000))
+
+    assert result["ok"] is True
+    assert result["returned"] == 1
+    assert result["scopedOutCount"] == 1
+
+
+def test_structured_prometheus_metric_query_reaches_otel_application_metrics():
+    """OTel application metrics carry only k8s_namespace_name; structured tools must still see them in scope."""
+    svc, transport = service(
+        {
+            ("http://prometheus.monitoring.svc:9090", "/api/v1/query"): {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {"metric": {"__name__": "app_cart_get_cart_latency_seconds_count", "k8s_namespace_name": "otel-demo"}},
+                        {"metric": {"__name__": "app_cart_get_cart_latency_seconds_count", "k8s_namespace_name": "other"}},
+                    ],
+                },
+            }
+        },
+        allow_raw_queries=False,
+    )
+
+    result = run(svc.prometheus_metric_instant(metric="app_cart_get_cart_latency_seconds_count", time=1700000000))
+
+    assert result["ok"] is True
+    assert result["returned"] == 1
+    assert result["scopeFiltered"] is True
+    assert transport.calls[0]["params"]["query"] == (
+        'app_cart_get_cart_latency_seconds_count{namespace="otel-demo"} or '
+        'app_cart_get_cart_latency_seconds_count{namespace="",k8s_namespace_name="otel-demo"}'
+    )
+
+
+def test_structured_group_by_keeps_both_namespace_labels_and_ignores_duplicates():
+    svc, transport = service(
+        {
+            ("http://prometheus.monitoring.svc:9090", "/api/v1/query"): {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {"metric": {"k8s_namespace_name": "otel-demo", "service_name": "cart"}, "value": [1700000000, "2"]},
+                        {"metric": {"service_name": "cart"}, "value": [1700000000, "5"]},
+                    ],
+                },
+            }
+        },
+        allow_raw_queries=False,
+    )
+
+    result = run(
+        svc.prometheus_metric_instant(
+            metric="app_cart_get_cart_latency_seconds_count",
+            time=1700000000,
+            transform="rate",
+            group_by=["service_name", "namespace"],
+        )
+    )
+
+    assert result["returned"] == 1
+    assert result["result"][0]["metric"]["service_name"] == "cart"
+    assert transport.calls[0]["params"]["query"].startswith("sum by (namespace,k8s_namespace_name,service_name) (")

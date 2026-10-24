@@ -79,17 +79,16 @@ models:
     protocol_candidates: [openai_responses, openai_chat_completions]
     capability_probe:
       status: probe_required
-  # DeepSeek official API. The gateway maps the dated aliases to DeepSeek's
-  # undated ids (deepseek-v4-flash / deepseek-v4-pro); aliases stay lowercase
-  # because Stage-2 request ids embed them.
+  # DeepSeek through Alibaba Cloud DashScope (2026-09-21), under DashScope's
+  # own ids; aliases stay lowercase because Stage-2 request ids embed them.
   deepseek-v4-pro-0813:
     upstream_model: deepseek-v4-pro-0813
     display_name: DeepSeek V4 Pro (2026-08-13)
     protocol_candidates: [openai_chat_completions, openai_responses, anthropic_messages]
     capability_probe: {}
-  deepseek-v4-flash-0731:
-    upstream_model: deepseek-v4-flash-0731
-    display_name: DeepSeek V4 Flash (2026-07-31)
+  deepseek-v4.1-flash:
+    upstream_model: deepseek-v4.1-flash
+    display_name: DeepSeek V4.1 Flash
     protocol_candidates: [openai_chat_completions, openai_responses, anthropic_messages]
     capability_probe: {}
   # Alibaba Cloud DashScope (OpenAI-compatible mode) through the gateway.
